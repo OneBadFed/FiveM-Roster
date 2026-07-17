@@ -148,6 +148,20 @@
         display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .setting .serr{display:none;font-size:10.5px;color:var(--red);line-height:1.45;margin-top:7px;font-weight:550;}
   .setting.modehide{display:none;} /* hidden because the selected PATROL.MODE doesn't use this field */
+  /* ranks & labels */
+  .rlhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px;}
+  .rladd{display:inline-flex;gap:8px;align-items:stretch;}
+  .rladd .in{width:200px;}
+  .rlrow{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--e1);border-radius:12px;box-shadow:var(--hi),var(--sh-1);margin-bottom:8px;}
+  .rlav{width:34px;height:34px;border-radius:10px;background:var(--e3);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;overflow:hidden;flex:0 0 auto;}
+  .rlav img{width:100%;height:100%;object-fit:contain;display:block;}
+  .rlnm{min-width:160px;font-weight:700;font-size:13px;}
+  .rlnm small{display:block;color:var(--txt-3);font-weight:500;font-size:10.5px;margin-top:1px;}
+  .rlchips{display:flex;flex-wrap:wrap;gap:6px;flex:1;}
+  .rlt{cursor:pointer;font-size:11px;font-weight:650;border-radius:999px;padding:4px 11px;background:var(--e2);color:var(--txt-3);box-shadow:var(--hi);transition:background .15s,color .15s,transform .15s;user-select:none;}
+  .rlt:hover{color:var(--txt);background:var(--e3);transform:translateY(-1px);}
+  .rlt.on{background:var(--green-t);color:var(--green-f);}
+  .rlt .rldel{cursor:pointer;margin-left:5px;opacity:.7;} .rlt .rldel:hover{opacity:1;}
   .setting.err .serr{display:block;}
   .setting.err .in,.setting.err .ddbtn{box-shadow:var(--hi),0 0 0 3px var(--red-soft) !important;}
 
@@ -548,7 +562,7 @@
              {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
              {t:'Patrol logs → hours', keys:['PATROL.MODE','PATROL.MAX_HOURS','PATROL.OVERNIGHT','PATROL.RECOMPUTE','PATROL.COL_DISCORD','PATROL.COL_CALLSIGN','PATROL.COL_START','PATROL.COL_END','PATROL.COL_DURATION']}]},
     {id:'statuses', a:'var(--amber)', title:'Statuses & tiers', desc:'The activity ladder and every status the engine may write — plus per-rank overrides and stateless status rules.', tables:true},
-    {id:'ranks', a:'var(--green)', title:'Ranks & dividers', desc:'The explicit rank/divider list — only used when Sheets & layout ▸ Divider mode is EXPLICIT_LIST. Value = the exact label; Kind = RANK (a member slot) or DIVIDER (a section header). Anything not listed falls back to the all-caps heuristic.', table:'RANKS'},
+    {id:'ranks', a:'var(--green)', title:'Ranks & labels', desc:'Every rank found in your roster’s rank column, and the labels that group them. Each label is also a live #tag — a "Supervisors" label makes #supervisors count everyone labeled with it.', custom:'ranklabels'},
     {id:'rankicons', a:'var(--cyan)', title:'Rank icons', desc:'Give each rank a small badge shown in the Control Panel in place of a member’s initials. Ranks are detected from your roster automatically — upload one image per rank and everyone with that rank shows it. Changes save immediately.', custom:'rankicons'},
     {id:'leave', a:'var(--purple)', title:'Leave engine', desc:'How leaves are requested, approved, activated and expired.',
       cards:[{t:'Request types', keys:['LEAVE.LEAVE_TYPES','LEAVE.RETURN_TYPE']},
@@ -570,7 +584,7 @@
       note:'Column classes (SLOT / MEMBER) are edited on the Control Panel ▸ Columns tab, which shows live samples and fill counts.',
       cards:[{t:'Engine flags', keys:['SYSTEM.DEV_MODE','SYSTEM.MAINTENANCE_MODE']},
              {t:'Retention limits', keys:['LIMITS.SNAPSHOT_KEEP','LIMITS.LOG_ROW_CAP','LIMITS.VALIDATION_BUFFER']}],
-      tablesMulti:['FORM_MAP','SECTIONS']},
+      tablesMulti:['FORM_MAP','SECTIONS','RANKS']},
   ];
   var HOURS=[]; (function(){ for(var h=0;h<24;h++){ var lbl=(h===0)?'12:00 AM · midnight':(h===12)?'12:00 PM · noon':(h<12)?h+':00 AM':(h-12)+':00 PM'; HOURS.push({v:String(h), l:lbl}); } })();
   var DAYS={OFF:'Off — never', SUN:'Sunday', MON:'Monday', TUE:'Tuesday', WED:'Wednesday', THU:'Thursday', FRI:'Friday', SAT:'Saturday'};
@@ -598,6 +612,7 @@
     var g=SECTIONS.filter(function(x){return x.id===id;})[0];
     if(g.tables && (tblChanged('STATUSES')||tblChanged('STATUS_OVERRIDES')||tblChanged('STATUS_RULES'))) return true;
     if(g.table && tblChanged(g.table)) return true;
+    if(g.custom==='ranklabels' && tblChanged('DASHBOARD_GROUPS')) return true;
     if(g.tablesMulti && g.tablesMulti.some(function(n){return tblChanged(n);})) return true;
     if(g.cards){ for(var bk in KV){ if(sectionOf(bk)===id && kvChanged(bk)) return true; } }
     return false;
@@ -913,6 +928,7 @@
       +(saved?'<span class="pill">'+ICONS.clock+'saved <b>'+esc(saved)+'</b></span>':'')+'</div></div>';
     h+='<div id="issues"></div>';
     if(g.custom==='rankicons'){ h+=rankIconsShell(); $('content').innerHTML=h; $('content').scrollTop=0; loadRankIcons(); return; }
+    if(g.custom==='ranklabels'){ h+=rankLabelsShell(); $('content').innerHTML=h; $('content').scrollTop=0; loadRanksList(); return; }
     if(g.warn) h+='<div class="callout"><b>Advanced — validated, but handle with care</b>These map the engine onto your sheet. A save is refused when it is invalid, but a valid-but-wrong value can still stop parsing or notifications.</div>';
     if(g.note) h+='<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+esc(g.note)+'</div>';
     if(g.cards){
@@ -1018,6 +1034,44 @@
   }
 
   /* ── rank icons (custom section: loads ranks from the roster, saves each icon immediately) ── */
+  /* ── ranks & labels (a friendlier editor over [DASHBOARD_GROUPS] rank entries) ── */
+  var RANKLIST=null;
+  function rankLabelsShell(){
+    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Toggle a label on every rank it covers — a rank may carry several labels, but headcounts put each member under their FIRST label. Section-based entries (Dashboard &amp; sections) keep working alongside; deleting a label removes its whole group.</div>'
+      +'<div id="ranklabelsHost"><div class="rkloading">Loading ranks…</div></div>';
+  }
+  function loadRanksList(){
+    if(RANKLIST){ renderRankLabels(); return; }
+    api(function(d){ RANKLIST=(d&&d.ranks)||[]; renderRankLabels(); },
+        function(e){ var h=$('ranklabelsHost'); if(h) h.innerHTML='<div class="rkloading">Could not load ranks.<br>'+esc((e&&e.message)||'')+'</div>'; },
+        'cpRankIcons');
+  }
+  function renderRankLabels(){
+    var host=$('ranklabelsHost'); if(!host) return;
+    var groups=TBL.DASHBOARD_GROUPS||[];
+    var head='<div class="rlhead">';
+    groups.forEach(function(r,gi){ var g0=String(r[0]||'').trim(); if(!g0) return;
+      head+='<span class="rlt on">'+esc(g0)+'<span class="rldel" data-rldel="'+gi+'" title="Delete this label (its whole group row)">✕</span></span>'; });
+    head+='<span class="rladd"><input class="in" id="rlNew" placeholder="New label… e.g. Supervisors" autocomplete="off"><button type="button" class="gtadd" data-rladd="1">Add label</button></span></div>';
+    if(!RANKLIST){ host.innerHTML=head+'<div class="rkloading">Loading ranks…</div>'; return; }
+    if(!RANKLIST.length){ host.innerHTML=head+'<div class="rkloading">No ranks detected on the roster yet.<br>Fill in some ranks on your roster, then reopen this.</div>'; return; }
+    host.innerHTML=head+RANKLIST.map(function(r){
+      var av=r.icon?('<img src="'+esc(r.icon)+'" alt="">'):esc(rkInitials(r.rank));
+      var chips=groups.map(function(g,gi){ var g0=String(g[0]||'').trim(); if(!g0) return '';
+        var on=listOf(g[1]).some(function(x){return x.toUpperCase()===String(r.rank).toUpperCase();});
+        return '<span class="rlt'+(on?' on':'')+'" data-rltog="1" data-gi="'+gi+'" data-rank="'+esc(r.rank)+'">'+esc(g0)+'</span>'; }).join('');
+      return '<div class="rlrow"><span class="rlav">'+av+'</span><span class="rlnm">'+esc(r.rank)
+        +'<small>'+(r.members===1?'1 member':((r.members||0)+' members'))+'</small></span>'
+        +'<div class="rlchips">'+chips+'</div></div>';
+    }).join('');
+  }
+  function rlToggle(gi,rank){
+    var row=(TBL.DASHBOARD_GROUPS||[])[gi]; if(!row) return;
+    var list=listOf(row[1]);
+    var has=list.some(function(x){return x.toUpperCase()===String(rank).toUpperCase();});
+    row[1]=(has?list.filter(function(x){return x.toUpperCase()!==String(rank).toUpperCase();}):list.concat([rank])).join(', ');
+    renderRankLabels(); updateBar();
+  }
   function rankIconsShell(){
     return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Upload a small image (badge / insignia) for any rank — everyone with that rank shows it in the Control Panel instead of their initials. Images are resized automatically; a square PNG with transparency looks best. Changes save immediately.</div>'
       +'<div id="rankiconsHost"><div class="rkloading">Loading ranks…</div></div>';
@@ -1169,6 +1223,15 @@
     if(gadd){ var gn=gadd.dataset.gtadd; var w=((TBLMETA[gn]||{}).cols||[]).length; var nr=[]; for(var gi=0;gi<w;gi++) nr.push(''); (TBL[gn]=TBL[gn]||[]).push(nr); renderSection(); updateBar(); return; }
     var gdel=e.target.closest('[data-gtdel]');
     if(gdel){ var grow=gdel.closest('[data-gt]'); if(grow){ TBL[grow.dataset.gt].splice(Number(grow.dataset.gr),1); renderSection(); updateBar(); } return; }
+    var rld=e.target.closest('[data-rldel]');
+    if(rld){ TBL.DASHBOARD_GROUPS.splice(Number(rld.dataset.rldel),1); renderRankLabels(); updateBar(); return; }
+    var rlt=e.target.closest('[data-rltog]');
+    if(rlt){ rlToggle(Number(rlt.dataset.gi), rlt.dataset.rank); return; }
+    var rla=e.target.closest('[data-rladd]');
+    if(rla){ var rlin=$('rlNew'), rlv=((rlin&&rlin.value)||'').trim(); if(!rlv) return;
+      TBL.DASHBOARD_GROUPS=TBL.DASHBOARD_GROUPS||[];
+      if(!TBL.DASHBOARD_GROUPS.some(function(r){return String(r[0]).trim().toUpperCase()===rlv.toUpperCase();})) TBL.DASHBOARD_GROUPS.push([rlv,'']);
+      renderRankLabels(); updateBar(); return; }
     var tc=e.target.closest('.tchip');
     if(tc){ var box=tc.closest('[data-tchips]'); var bk2=box.dataset.tchips; var cur=listOf(KV[bk2].value); var val=tc.dataset.tv;
       var has=cur.some(function(x){return x.toUpperCase()===val.toUpperCase();});
