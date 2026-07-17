@@ -552,12 +552,18 @@
     'DASHBOARD.ENABLE':'LIVE DASHBOARD',
     'SCHEDULE.RESET_CADENCE':'RESET FREQUENCY','SCHEDULE.WEEKLY_HOURS_RESET':'RESET DAY','SCHEDULE.WEEKLY_RESET_HOUR':'RESET TIME','SCHEDULE.RESET_DOM':'DAY OF MONTH',
     'SCHEDULE.NIGHTLY_HOUR':'NIGHTLY LEAVE CHECK','LOGGING.LOG_LEVEL':'LOG DETAIL','LOGGING.LOG_MAX_ROWS':'LOG SIZE (ROWS)','LOGGING.PERF_TIMING':'TIMING LOG',
-    'FORMATS.DATE_DISPLAY':'DATE FORMAT','FORMATS.TIMESTAMP_DISPLAY':'DATE + TIME FORMAT'};
+    'FORMATS.DATE_DISPLAY':'DATE FORMAT','FORMATS.TIMESTAMP_DISPLAY':'DATE + TIME FORMAT',
+    'LIMITS.SNAPSHOT_KEEP':'SNAPSHOTS KEPT'};
   // Display-only overrides for table cards (title / help), same idea as LABELS/HELPS for kv settings.
   var TBLTITLE={'DASHBOARD_GROUPS':'Headcount groups · priority order'};
   var TBLHELP={
     'SECTION_TAGS':'Colours + type for each divider keyword — a divider matches when its text CONTAINS the keyword. Tone must be one of: exec, admin, super, cadet, training, patrol, aux.',
-    'DASHBOARD_GROUPS':'Rows are PRIORITY ORDER — each member counts under the first group matching their rank or section. Everyday label editing is easier in the Ranks section; each group is also a #tag.'};
+    'DASHBOARD_GROUPS':'Rows are PRIORITY ORDER — each member counts under the first group matching their rank or section. Everyday label editing is easier in the Ranks section; each group is also a #tag.',
+    'FORM_MAP':'The leave form\'s question keywords — ONLY applied when First-Run Setup builds the form. Edits here do nothing until the form is rebuilt.',
+    'SECTIONS':'Which certification columns are cleared when a member transfers across sections. Empty = members keep all their columns (the safe default).',
+    'RANKS':function(){ var m=KV['ROSTER_LAYOUT.DIVIDER_MODE'], ex=m&&String(m.value).trim().toUpperCase()==='EXPLICIT_LIST';
+      return (ex?'ACTIVE — Divider mode is EXPLICIT_LIST. ':'Dormant right now — Divider mode is ALLCAPS_RANK (see Sheets & layout). ')
+        +'Value = the exact label; Kind = RANK (member slot) or DIVIDER (section header). Unlisted labels fall back to the all-caps rule.'; }};
   var HELPS={'SHEETS.FORM_RESPONSES':'Google Form responses for LOAs.','SHEETS.PATROL_RESPONSES':'Google Form responses for Patrol Logs.',
     'ROSTER_LAYOUT.HEADER_ROW':'The row with your column titles (RANK, NAME, HOURS…).',
     'ROSTER_LAYOUT.DATA_START_ROW':'The first row that can hold a member — rows above it are ignored.',
@@ -604,7 +610,10 @@
     'LOGGING.LOG_MAX_ROWS':'Oldest log rows are trimmed past this.',
     'LOGGING.PERF_TIMING':'Log how long each action takes. Turn on briefly to find slow spots, then off.',
     'FORMATS.DATE_DISPLAY':'How dates are shown in embeds, the panel and coverage.',
-    'FORMATS.TIMESTAMP_DISPLAY':'How date + time stamps are shown.'};
+    'FORMATS.TIMESTAMP_DISPLAY':'How date + time stamps are shown.',
+    'LIMITS.SNAPSHOT_KEEP':'Older snapshots are deleted past this.',
+    'LIMITS.LOG_ROW_CAP':'Edit, integrity and history logs trim their oldest rows past this.',
+    'LIMITS.VALIDATION_BUFFER':'Spare rows below the roster that keep dropdowns working — re-run First-Run Setup after big growth.'};
   var SECTIONS=[
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES','SHEETS.PATROL_RESPONSES']},
@@ -632,8 +641,7 @@
              {t:'Formats', keys:['FORMATS.DATE_DISPLAY','FORMATS.TIMESTAMP_DISPLAY']}]},
     {id:'advanced', a:'var(--red)', title:'Advanced', desc:'Engine flags, retention limits and the structural mappings that tell the engine how to read your sheet.', warn:true,
       note:'Column classes (SLOT / MEMBER) are edited on the Control Panel ▸ Columns tab, which shows live samples and fill counts.',
-      cards:[{t:'Engine flags', keys:['SYSTEM.DEV_MODE','SYSTEM.MAINTENANCE_MODE']},
-             {t:'Retention limits', keys:['LIMITS.SNAPSHOT_KEEP','LIMITS.LOG_ROW_CAP','LIMITS.VALIDATION_BUFFER']}],
+      cards:[{t:'Retention limits', keys:['LIMITS.SNAPSHOT_KEEP','LIMITS.LOG_ROW_CAP','LIMITS.VALIDATION_BUFFER']}],
       tablesMulti:['FORM_MAP','SECTIONS','RANKS']},
   ];
   var HOURS=[]; (function(){ for(var h=0;h<24;h++){ var lbl=(h===0)?'12:00 AM · midnight':(h===12)?'12:00 PM · noon':(h<12)?h+':00 AM':(h-12)+':00 PM'; HOURS.push({v:String(h), l:lbl}); } })();
@@ -953,7 +961,7 @@
     var meta=TBLMETA[name]||{cols:[],help:''}, cols=meta.cols||[], rows=TBL[name]||[];
     var gcs='grid-template-columns:repeat('+cols.length+',minmax(0,1fr)) 34px';
     var h='<div class="card" style="--a:'+(accent||'var(--accent)')+'"><div class="card-h"><span class="cico">'+ICONS.table+'</span><b>'+esc(TBLTITLE[name]||prettyBlock(name))+'</b><small>['+esc(name)+']</small></div>';
-    var thelp=TBLHELP[name]||meta.help;
+    var thelp=TBLHELP[name]; if(typeof thelp==='function') thelp=thelp(); thelp=thelp||meta.help;
     if(thelp) h+='<div class="sdesc" style="margin:-8px 0 14px;max-width:74ch;-webkit-line-clamp:3" title="'+esc(meta.help)+'">'+esc(thelp)+'</div>';
     h+='<div class="gtbl">';
     if(rows.length){
