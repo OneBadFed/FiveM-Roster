@@ -457,6 +457,19 @@ function devNewLayoutTests_() {
   devCheck_(R, 'fillTimeInRank_ writes a live TODAY() formula on the member row', /TODAY\(\)/.test(sh.getRange(8, 14).getFormula()));
   devCheck_(R, 'fillTimeInRank_ reports the member as filled', tirCount >= 1);
 
+  // Rolling archive shift (RosterExtras.gs): HOURS → rightmost period col; each takes the next; oldest drops off.
+  if (typeof shiftArchiveColumns_ === 'function') {
+    sh.getRange(8, 9).setValue(20);  // HOURS (I)
+    sh.getRange(8, 11).setValue(5);  // MAY HOURS (K)
+    sh.getRange(8, 12).setValue(10); // JUN. HOURS (L)
+    const shiftedN = shiftArchiveColumns_(sh, 'JUL HOURS');
+    devEq_(R, 'shiftArchiveColumns_ reports 2 period columns', shiftedN, 2);
+    devEq_(R, 'archive shift: left col takes the next period\'s data', sh.getRange(8, 11).getValue(), 10);
+    devEq_(R, 'archive shift: right col takes current HOURS', sh.getRange(8, 12).getValue(), 20);
+    devEq_(R, 'archive relabel: right header = new period label', String(sh.getRange(6, 12).getValue()), 'JUL HOURS');
+    devEq_(R, 'archive relabel: left header = the previous right header', String(sh.getRange(6, 11).getValue()), 'JUN. HOURS');
+  } else { devInfo_(R, 'shiftArchiveColumns_ not loaded', 'RosterExtras.gs absent — skipped'); }
+
   // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.
   const RCo = rosterCols_(devBuildRoster_([{ rank: 'Trooper', name: 'A', id: devId_(1), activity: 'Active', hours: 12 }]));
   devEq_(R, 'classic layout: activity still col 8', RCo.activity, 8);

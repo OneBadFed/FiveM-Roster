@@ -203,7 +203,58 @@ function captureHoursSnapshot_(weekLabel) {
   return rows.length;
 }
 
-/** Core reset: capture history, then zero + recompute. Locked; no UI (safe from triggers). */
+/**
+ * Period label for the archive column just captured, from [SCHEDULE].RESET_CADENCE + the date. Always ends in
+ * "HOURS" so the archive auto-detector keeps finding the column after it's relabelled.
+ *   MONTHLY → "JUL HOURS" (the month being closed; an early-in-month capture labels the month that just ended)
+ *   WEEKLY / BIWEEKLY → "13 JUL HOURS" (the period-ending date)
+ */
+function periodLabel_() {
+  const tz = ssTz_();
+  let cad = 'MONTHLY';
+  try { cad = String(cfg_().kv.SCHEDULE.RESET_CADENCE || 'MONTHLY').toUpperCase(); } catch (e) { /* config broken → monthly */ }
+  const now = todayInSheetTz_();
+  if (cad === 'MONTHLY') {
+    const d = new Date(now);
+    if (d.getDate() <= 7) d.setDate(0); // just after a month boundary → label the month that ended
+    return Utilities.formatDate(d, tz, 'MMM').toUpperCase() + ' HOURS';
+  }
+  return Utilities.formatDate(now, tz, 'd MMM').toUpperCase() + ' HOURS'; // weekly / bi-weekly → the period-ending date
+}
+
+/**
+ * Rolling archive: before hours are zeroed, shift the visible period columns (every "* HOURS" column EXCEPT the
+ * primary HOURS) one to the LEFT — each takes the next one's data + header, the oldest drops off the visible set,
+ * and the rightmost receives the current HOURS under `periodLabel`. No visible archive columns → a no-op (the
+ * hidden history tab still keeps the record). @return {number} archive columns shifted.
+ */
+function shiftArchiveColumns_(roster, periodLabel) {
+  const RC = rosterCols_(roster);
+  if (!RC.hours || !RC.headerRow) return 0;
+  const lastCol = roster.getLastColumn();
+  const hdr = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0];
+  const archive = [];
+  for (let c = 1; c <= lastCol; c++) {
+    if (c === RC.hours) continue;
+    if (String(hdr[c - 1] || '').toUpperCase().indexOf('HOURS') !== -1) archive.push(c);
+  }
+  if (!archive.length) return 0;
+  const startRow = CONFIG.rosterStartRow;
+  const n = roster.getLastRow() - startRow + 1;
+  if (n <= 0) return 0;
+  const curHours = roster.getRange(startRow, RC.hours, n, 1).getValues();
+  const archData = archive.map((c) => roster.getRange(startRow, c, n, 1).getValues()); // read ALL before writing
+  for (let i = 0; i < archive.length - 1; i++) { // shift data + headers LEFT: col i takes col (i+1)
+    roster.getRange(startRow, archive[i], n, 1).setValues(archData[i + 1]);
+    roster.getRange(RC.headerRow, archive[i], 1, 1).setValue(hdr[archive[i + 1] - 1]);
+  }
+  const last = archive[archive.length - 1]; // rightmost = the period just closed
+  roster.getRange(startRow, last, n, 1).setValues(curHours);
+  roster.getRange(RC.headerRow, last, 1, 1).setValue(periodLabel);
+  return archive.length;
+}
+
+/** Core reset: archive-shift, capture history, then zero + recompute. Locked; no UI (safe from triggers). */
 function doWeeklyReset_() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) { logWarn_('doWeeklyReset_', 'another run holds the lock; skipping.'); return; }
@@ -213,6 +264,8 @@ function doWeeklyReset_() {
     if (!roster) return;
     const captured = captureHoursSnapshot_() || 0; // preserve history BEFORE zeroing
     const before = readMembers_(roster);
+    let shifted = 0; // roll the visible period columns (MAY HOURS → JUN HOURS → …) BEFORE hours are zeroed
+    try { shifted = shiftArchiveColumns_(roster, periodLabel_()); } catch (e) { log_('doWeeklyReset_.archive', e); }
     recomputeStatuses_(roster, true);     // core function: zero + recompute
     const after = readMembers_(roster);
     const prev = {};
@@ -238,7 +291,7 @@ function doWeeklyReset_() {
       postSummary_('🗑️ Weekly Reset', `Hours zeroed and statuses recomputed. **${dropped.length}** member(s) dropped to ${lowestTier}.`, 15105570);
     }
     try { PropertiesService.getScriptProperties().setProperty(LAST_RESET_PROP, String(Date.now())); } catch (e) { /* best-effort cadence marker */ } // v2.5.0: advance the cadence clock (manual + scheduled both count)
-    return { captured: captured, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
+    return { captured: captured, shifted: shifted, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
   } finally {
     lock.releaseLock();
   }
@@ -246,17 +299,17 @@ function doWeeklyReset_() {
 
 /** Menu action: confirm, then reset with history. */
 function weeklyResetWithHistory() {
-  runAction_('Weekly Reset', () => {
+  runAction_('Capture & Reset Activity', () => {
     const ui = SpreadsheetApp.getUi();
-    const resp = ui.alert('🗑️ Weekly Reset',
-      "Capture this week's hours to history, then zero all hours and recompute?\n\nLOA/ROA/Reserve stay protected.",
+    const resp = ui.alert('📸 Capture & Reset Activity',
+      'Roll this period\'s HOURS into the previous-period column(s), save a history snapshot, then zero HOURS and recompute statuses?\n\nLOA/ROA/Reserve stay protected.',
       ui.ButtonSet.YES_NO);
     if (resp !== ui.Button.YES) return;
     const res = doWeeklyReset_();
-    if (!res) { ui.alert('Weekly reset skipped — another reset is already running.'); return; }
+    if (!res) { ui.alert('Capture skipped — another reset is already running.'); return; }
     const dn = res.droppedNames.filter(Boolean);
     const sample = dn.length ? ` (${dn.slice(0, 8).join(', ')}${dn.length > 8 ? `, +${dn.length - 8}` : ''})` : '';
-    ui.alert(`✅ Weekly reset complete.\n\n• ${res.captured} member-hours saved to history first\n• ${res.total} member(s) recomputed\n• ${dn.length} dropped to ${res.lowestTier}${sample}\n• ${Math.round(res.totalHours * 10) / 10} hrs logged this period`);
+    ui.alert(`✅ Activity captured & reset.\n\n• ${res.shifted ? `${res.shifted} period column${res.shifted === 1 ? '' : 's'} rolled forward` : 'No visible period columns (history-only)'}\n• ${res.captured} member-hours saved to history\n• ${res.total} member(s) recomputed\n• ${dn.length} dropped to ${res.lowestTier}${sample}\n• ${Math.round(res.totalHours * 10) / 10} hrs logged this period`);
   });
 }
 

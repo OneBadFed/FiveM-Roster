@@ -57,13 +57,13 @@ try {
 } catch (e) { console.error('ROSTER_HEADER_ROW bridge install failed: ' + e); }
 let _rosterColCache = {};
 
-/** @return {{rank,name,unit,discord,join,promo,activity,hours,ooc,shift,mayHours,junHours,timeInRank}} resolved 1-based columns (optional ones are 0 when absent). */
+/** @return {{rank,name,unit,discord,join,promo,activity,hours,ooc,shift,mayHours,junHours,timeInRank,headerRow}} resolved 1-based columns (optional ones are 0 when absent; headerRow = the row labels were read from). */
 function rosterCols_(sheet) {
   const id = (sheet && sheet.getSheetId) ? String(sheet.getSheetId()) : 'def';
   if (_rosterColCache[id]) return _rosterColCache[id];
   const d = CONFIG.roster;
   const cols = { rank: d.rank, name: d.name, unit: d.unit, discord: d.discord, join: 6, promo: 7, activity: d.activity, hours: d.hours,
-    ooc: 0, shift: 0, mayHours: 0, junHours: 0, timeInRank: 0 }; // optional display columns — 0 = not present on this sheet
+    ooc: 0, shift: 0, mayHours: 0, junHours: 0, timeInRank: 0, headerRow: 0 }; // optional display columns — 0 = not present; headerRow = the resolved label row
   try {
     const lastCol = sheet.getLastColumn();
     const lastRow = sheet.getLastRow();
@@ -89,10 +89,12 @@ function rosterCols_(sheet) {
       // group-banner row, or wasn't updated for this layout), auto-find the label row in the top rows so resolution
       // still works. Back-compatible: a correctly-configured header row matches on the first try — no scan.
       let hdr = (ROSTER_HEADER_ROW >= 1 && ROSTER_HEADER_ROW <= lastRow) ? readRow(ROSTER_HEADER_ROW) : null;
+      let hdrRow = hdr ? ROSTER_HEADER_ROW : 0;
       if (!looksHdr(hdr)) {
-        for (let r = 1; r <= Math.min(15, lastRow); r++) { const row = readRow(r); if (looksHdr(row)) { hdr = row; break; } }
+        for (let r = 1; r <= Math.min(15, lastRow); r++) { const row = readRow(r); if (looksHdr(row)) { hdr = row; hdrRow = r; break; } }
       }
       if (hdr) {
+        cols.headerRow = hdrRow;
         Object.keys(match).forEach((k) => {
           for (let c = 0; c < hdr.length; c++) { if (match[k](hdr[c])) { cols[k] = c + 1; break; } }
         });
@@ -259,6 +261,7 @@ function buildMenus_(prefix) {
       // Daily operations
       .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
+      .addItem('📸 Capture & Reset Activity', p + 'weeklyResetWithHistory')
       .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
       .addSeparator()
       // Roster editing
