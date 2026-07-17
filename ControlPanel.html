@@ -288,7 +288,7 @@
   /* system tab */
   .sys-h{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:var(--s2);font-weight:800;}
   .sys-body{display:flex;flex-direction:column;gap:6px;margin-bottom:var(--s2);}
-  #healthBody{display:grid;grid-template-columns:repeat(auto-fill,minmax(360px,1fr));gap:6px;}
+  #healthBody{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6px;}
   #healthBody>.btn,#healthBody>.muted2,#healthBody>.skel-row{grid-column:1/-1;}
   .hck{display:flex;align-items:center;gap:10px;background:var(--glass),var(--e1);border:none;border-radius:14px;padding:10px 13px;box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),box-shadow var(--t);}
   .hck:hover{transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
@@ -548,8 +548,7 @@
   .tsec-h small{color:var(--txt-3);font-size:11px;font-weight:500;}
   .tstat{display:flex;flex-wrap:wrap;gap:var(--s2);}
   .hchip{display:inline-flex;align-items:center;gap:8px;background:var(--e1);border-radius:11px;padding:8px 12px;font-size:11.5px;font-weight:650;box-shadow:var(--hi),var(--sh-1);}
-  /* System tab: chips stretch as an even grid so rows fill the full width instead of wrapping ragged */
-  #healthBody .tstat{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));}
+  /* System tab: chips are direct grid children — two equal columns filling the full pane width */
   #healthBody .hchip{width:100%;}
   .hchip small{color:var(--amber-f);font-weight:600;}
   .hchip .dot{width:8px;height:8px;}
@@ -1388,11 +1387,12 @@
     setHealthPill(h);
     if(!h||!h.checks){ $('healthBody').innerHTML='<span class="muted2">Unavailable.</span>'; return; }
     var needFix=false;
-    // Compact chips: passing checks tuck their detail into the tooltip; only a FAILING check spends space inline.
-    var html='<div class="tstat">'+h.checks.map(function(c){
+    // Compact chips, direct children of the #healthBody grid (two equal columns). Passing checks tuck their
+    // detail into the tooltip; only a FAILING check spends space inline.
+    var html=h.checks.map(function(c){
       if(c.fix==='fixTriggers'&&!c.ok) needFix=true;
       return '<span class="hchip" title="'+esc(c.detail||'')+'"><span class="dot '+(c.ok?'on':'off')+'"></span>'+esc(c.label)+(c.ok?'':' <small>· '+esc(c.detail||'needs attention')+'</small>')+'</span>';
-    }).join('')+'</div>';
+    }).join('');
     if(needFix) html+='<button class="btn" id="fixTrg">Install missing triggers</button>';
     $('healthBody').innerHTML=html;
     if(needFix) $('fixTrg').addEventListener('click',function(){ var b=this; b.disabled=true; api(function(msg){ b.disabled=false; toast(msg,'ok'); loadSystem(); }, function(e){ b.disabled=false; onError(e); }, "cpFixTriggers"); });
