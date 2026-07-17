@@ -2416,30 +2416,23 @@ function devConfigRobustnessTests_() {
 
 /* ======================================================================
  * SECTION 17 — DASHBOARD RENDER SAFETY (F-009/043)
- * A bare KPI label must never overwrite unrelated user content, and #stat
- * tags stay live via their note marker. Pinned to DEFAULT config so the
- * seed dashboard cells (incl. the risky bare "TOTAL") are deterministic.
+ * Label-seeking KPI boxes are RETIRED (they adopted cells on user-designed
+ * pages): a bare label must attract NO engine write. #stat tags stay live
+ * via their note marker. Pinned to DEFAULT config so the seed
+ * [DASHBOARD_CELLS] rows (incl. the risky bare "TOTAL") are deterministic.
  * ====================================================================== */
 function devDashboardRenderTests_() {
   const R = devNewResults_('Dashboard render safety (sandbox)');
   const s = { total: 30, totalHours: 100, leaves: 2, active: 10, semi: 8, inactive: 12, openSlots: 3, tierCounts: {}, groups: {} };
 
-  devWithConfig_({}, () => { // default DASHBOARD_CELLS: ['TOTAL','right','total'] etc.
-    // F-009: an EMPTY target beside a matching label is adopted (+ marker).
+  devWithConfig_({}, () => { // default DASHBOARD_CELLS: ['TOTAL','right','total'] etc. — must be inert now
+    // F-009 (retired mechanism): a matching label with an EMPTY neighbor gets NO value and NO marker.
     (() => {
       const sh = devFreshSheet_('Dash1');
-      sh.getRange(1, 1).setValue('TOTAL'); // dir 'right' → writes B1
+      sh.getRange(1, 1).setValue('TOTAL'); // old dir 'right' would have written B1
       renderDashboardOnSheet_(sh, s);
-      devEq_(R, 'F-009: KPI adopts an EMPTY target cell', String(sh.getRange(1, 2).getDisplayValue()), '30');
-      devCheck_(R, 'F-009: adopted cell carries the roster-kpi marker', String(sh.getRange(1, 2).getNote()).indexOf('roster-kpi:') === 0);
-    })();
-    // F-009: a NON-empty, unmanaged target with DIFFERENT content is protected.
-    (() => {
-      const sh = devFreshSheet_('Dash2');
-      sh.getRange(1, 1).setValue('TOTAL');
-      sh.getRange(1, 2).setValue('my important note');
-      renderDashboardOnSheet_(sh, s);
-      devEq_(R, 'F-009: user content under a matching label is NOT destroyed', String(sh.getRange(1, 2).getDisplayValue()), 'my important note');
+      devEq_(R, 'retired KPI boxes: label neighbor stays EMPTY', String(sh.getRange(1, 2).getDisplayValue()), '');
+      devEq_(R, 'retired KPI boxes: no roster-kpi marker is written', String(sh.getRange(1, 2).getNote()), '');
     })();
     // #stat tag → live value + marker (F-043 path).
     (() => {

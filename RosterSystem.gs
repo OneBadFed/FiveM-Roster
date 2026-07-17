@@ -625,54 +625,21 @@ function dashboardSkip_(name) {
 }
 
 /**
- * Render the dashboard onto ONE sheet given pre-computed stats. Two mechanisms, both writing plain VALUES (no
- * formula to break) and both position-independent:
- *   (1) Fixed KPI boxes — found by LABEL text in the top CONFIG.dashboard.searchRows rows (following merged cells
- *       to place the value beside/below the label). A label it can't find is skipped (harmless).
- *   (2) Free-form STAT TAGS — a cell that is just "#<stat>" (e.g. #members, #active, #troopers, #hours) becomes the
- *       live number; the key is remembered in the cell's NOTE so it keeps refreshing wherever the cell moves.
- *       Clearing the cell's value stops it being managed. Unknown #tags are left untouched.
+ * Render the dashboard onto ONE sheet given pre-computed stats: free-form STAT TAGS, written as plain VALUES (no
+ * formula to break), position-independent — a cell that is just "#<stat>" (e.g. #members, #active, #troopers,
+ * #hours) becomes the live number; the key is remembered in the cell's NOTE so it keeps refreshing wherever the
+ * cell moves. Clearing the cell's value stops it being managed. Unknown #tags are left untouched. Tags are the
+ * ONLY render mechanism: the engine never writes a dashboard cell the user didn't explicitly tag.
  * @return {number} cells written on this sheet.
  */
 function renderDashboardOnSheet_(sheet, s) {
-  const valueOf = (key) => (key.indexOf('group:') === 0 ? (s.groups[key.slice(6)] || 0) : (s[key] != null ? s[key] : ''));
-  const D = CONFIG.dashboard;
   const lastRow = sheet.getLastRow();
   const lastCol = sheet.getLastColumn();
   if (lastRow < 1 || lastCol < 1) return 0;
   const grid = sheet.getRange(1, 1, lastRow, lastCol).getDisplayValues();
   let written = 0;
-  const KPI_MARK = 'roster-kpi:'; // marks an engine-managed KPI box (F-009)
 
-  // (1) Fixed KPI boxes — by label within the top searchRows.
-  const labelRows = Math.min(lastRow, D.searchRows);
-  D.cells.forEach((spec) => {
-    const want = String(spec.label).trim().toUpperCase();
-    let lr = 0, lc = 0;
-    for (let r = 0; r < labelRows && !lr; r++) {
-      for (let c = 0; c < lastCol; c++) {
-        if (String(grid[r][c]).trim().toUpperCase() === want) { lr = r + 1; lc = c + 1; break; }
-      }
-    }
-    if (!lr) return; // label not found on this sheet — skip (harmless)
-    const merges = sheet.getRange(lr, lc).getMergedRanges();
-    let mLastRow = lr, mLastCol = lc;
-    if (merges.length) { mLastRow = merges[0].getLastRow(); mLastCol = merges[0].getLastColumn(); }
-    const target = spec.dir === 'below' ? sheet.getRange(mLastRow + 1, lc) : sheet.getRange(lr, mLastCol + 1);
-    // F-009: a bare label (e.g. "TOTAL") can match an unrelated user tab. Only write the target cell when it is
-    // EMPTY, already engine-MANAGED (carries the roster-kpi note), or already holds this exact value — never
-    // overwrite arbitrary user content. Adoption sets the marker + logs, so existing dashboards re-link on first refresh.
-    const val = valueOf(spec.stat);
-    const curVal = String(target.getDisplayValue()).trim();
-    const managed = String(target.getNote() || '').indexOf(KPI_MARK) === 0;
-    if (curVal === '' || managed || curVal === String(val).trim()) {
-      target.setValue(val);
-      if (!managed) { target.setNote(KPI_MARK + spec.stat); logInfo_('renderDashboardOnSheet_', `adopted KPI "${spec.label}" on "${sheet.getName()}" → ${spec.stat}`); }
-      written++;
-    } // else: matched a non-empty, unmanaged cell with different content — skip to protect the user's data
-  });
-
-  // (2) Free-form "#stat" tags anywhere on this sheet — kept live via the cell's note.
+  // Free-form "#stat" tags anywhere on this sheet — kept live via the cell's note.
   const notes = sheet.getRange(1, 1, lastRow, lastCol).getNotes();
   const TAG = /^#\s*([A-Za-z]+)$/;
   const MARK = 'roster-stat:';
