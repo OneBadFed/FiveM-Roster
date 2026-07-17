@@ -139,7 +139,7 @@
   @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
 
   .pane{display:none;}
-  #pane-add{max-width:560px;}
+  #pane-add{max-width:960px;}
   .pane.active{display:block;animation:paneIn .26s var(--ease) both;}
   @keyframes paneIn{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:none;}}
 
@@ -161,13 +161,28 @@
   .addtitle{font-size:17px;font-weight:800;letter-spacing:-.01em;margin:0 0 3px;}
   .addsub{font-size:12px;color:var(--txt-3);margin:0;line-height:1.55;}
   .lopt{color:var(--txt-3);font-weight:600;text-transform:none;letter-spacing:0;}
-  .addcard{display:flex;align-items:center;gap:12px;padding:12px 14px;border-radius:var(--r-lg);
-    background:linear-gradient(155deg,var(--patrol-t),transparent 62%),var(--e1);box-shadow:var(--hi),var(--sh-1);
-    border:1px solid var(--hair);margin-bottom:var(--s2);}
-  .addcard .mav{width:42px;height:42px;font-size:13px;}
-  .ap-meta{flex:1;min-width:0;}
-  .ap-meta b{display:block;font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .ap-meta span{font-size:12px;color:var(--txt-3);}
+  .addcols{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:var(--s4);align-items:start;}
+  @media (max-width:760px){ .addcols{grid-template-columns:1fr;} }
+  .stepcard{background:var(--glass),var(--e1);border-radius:14px;padding:var(--s3) var(--s4) var(--s4);box-shadow:var(--hi),var(--sh-1);margin-bottom:var(--s3);}
+  .step-h{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;}
+  .stepn{width:22px;height:22px;border-radius:7px;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05));color:#c4dbff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;box-shadow:var(--hi);flex:0 0 auto;}
+  .stephint{font-size:11px;color:var(--txt-3);margin:var(--s2) 2px 0;line-height:1.5;}
+  .prevcard{background:var(--glass),var(--e1);border-radius:16px;padding:var(--s4);box-shadow:var(--hi),var(--sh-1);}
+  .prev-hero{display:flex;align-items:flex-start;gap:12px;}
+  .prev-hero .mav{width:52px;height:52px;font-size:15px;border-radius:14px;}
+  .prev-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;}
+  .prev-line{display:flex;align-items:center;gap:9px;min-width:0;}
+  .prev-call{font-size:19px;font-weight:800;font-family:var(--mono);color:var(--accent-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .vacant{background:var(--green-t);color:var(--green-f);font-size:9.5px;font-weight:800;border-radius:999px;padding:3px 9px;letter-spacing:.06em;text-transform:uppercase;flex:0 0 auto;box-shadow:var(--hi);}
+  .prev-rank{font-size:13px;font-weight:700;}
+  .prev-name{font-size:11.5px;color:var(--txt-3);}
+  .pkv{margin-top:var(--s3);}
+  .pkv-r{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 2px;box-shadow:0 1px 0 var(--hair);font-size:12px;}
+  .pkv-r:last-child{box-shadow:none;}
+  .pkv-k{color:var(--txt-3);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
+  .pkv-v{font-weight:650;text-align:right;min-width:0;}
+  .nextbox{margin-top:var(--s3);background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.03)),var(--e1);border-radius:14px;padding:12px 14px;font-size:11.5px;color:var(--txt-2);line-height:1.55;box-shadow:var(--hi);}
+  .nextbox b{color:var(--accent-2);display:block;margin-bottom:3px;font-size:12px;}
   .sdrop{position:relative;}
   .sdrop-btn{width:100%;display:flex;align-items:center;gap:10px;background:var(--e2);border:none;color:var(--txt);
     border-radius:var(--r-md);padding:9px 12px;font-size:13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);
@@ -620,31 +635,42 @@
     <div class="addhead"><h2 class="addtitle">Seat a member</h2>
       <p class="addsub">Fill an existing open slot — this never inserts a row or disturbs your section layout.</p></div>
 
-    <div class="addcard" id="addPreview">
-      <span class="mav" id="apAv" aria-hidden="true">—</span>
-      <div class="ap-meta"><b id="apName">New member</b><span id="apSub">Pick an open slot to begin</span></div>
+    <div class="addcols">
+      <div class="addform">
+        <div class="stepcard">
+          <div class="step-h"><span class="stepn">1</span>Assignment</div>
+          <label class="lbl" for="slotBtn">Open slot</label>
+          <div class="sdrop" id="slotDrop">
+            <button type="button" class="sdrop-btn" id="slotBtn" aria-haspopup="listbox" aria-expanded="false">
+              <span class="sdrop-cur ph" id="slotCur">Select slot</span>
+              <svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="sdrop-menu" id="slotMenu" role="listbox" hidden></div>
+          </div>
+          <p class="stephint">The member inherits this slot&rsquo;s rank and callsign.</p>
+        </div>
+        <div class="stepcard">
+          <div class="step-h"><span class="stepn">2</span>Member details</div>
+          <div class="addgrid">
+            <div><label class="lbl" for="addName">Name</label>
+              <input class="field" id="addName" placeholder="e.g. J. Smith" autocomplete="off"></div>
+            <div><label class="lbl" for="addId">Discord ID <span class="lopt">· 17-19 digits</span></label>
+              <input class="field mono" id="addId" placeholder="123456789012345678" inputmode="numeric" autocomplete="off"></div>
+          </div>
+        </div>
+        <div class="stepcard">
+          <div class="step-h"><span class="stepn">3</span>Employment</div>
+          <label class="lbl" for="addJoin">Join date <span class="lopt">· optional</span></label>
+          <input class="field" id="addJoin" type="date">
+        </div>
+        <button class="btn addbtn" id="addBtn">Seat member in slot</button>
+        <p class="hint">New members start as <b>Inactive</b> with 0 hours.</p>
+      </div>
+      <div class="addprev">
+        <div class="prevcard"><div class="pc-lbl">Slot preview</div><div id="prevBody"></div></div>
+        <div class="nextbox"><b>What happens next</b>The member is seated into this slot and appears on the roster immediately. Set their status or schedule leave from their profile on the Members tab.</div>
+      </div>
     </div>
-
-    <label class="lbl">Open slot</label>
-    <div class="sdrop" id="slotDrop">
-      <button type="button" class="sdrop-btn" id="slotBtn" aria-haspopup="listbox" aria-expanded="false">
-        <span class="sdrop-cur ph" id="slotCur">— choose an open slot —</span>
-        <svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-      </button>
-      <div class="sdrop-menu" id="slotMenu" role="listbox" hidden></div>
-    </div>
-
-    <div class="addgrid">
-      <div><label class="lbl" for="addName">Name</label>
-        <input class="field" id="addName" placeholder="e.g. J. Smith" autocomplete="off"></div>
-      <div><label class="lbl" for="addJoin">Join date <span class="lopt">· optional</span></label>
-        <input class="field" id="addJoin" type="date"></div>
-    </div>
-    <label class="lbl" for="addId">Discord ID <span class="lopt">· 17-19 digits</span></label>
-    <input class="field mono" id="addId" placeholder="123456789012345678" inputmode="numeric" autocomplete="off">
-
-    <button class="btn addbtn" id="addBtn">Seat member in slot</button>
-    <p class="hint">New members start as <b>Inactive</b> with 0 hours. Their rank &amp; callsign come from the open slot you pick.</p>
   </div>
 
   <div class="pane" id="pane-tools">
@@ -1146,21 +1172,32 @@
     var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null, cur=$('slotCur');
     if(cur){
       if(m){ cur.className='sdrop-cur'; cur.innerHTML=rankAvatar(m.rank)+'<span>'+esc(m.callsign||('Row '+m.row))+' · '+esc(m.rank)+'</span>'; }
-      else { cur.className='sdrop-cur ph'; cur.textContent='— choose an open slot —'; }
+      else { cur.className='sdrop-cur ph'; cur.textContent='Select slot'; }
     }
     var menu=$('slotMenu'); if(menu) menu.querySelectorAll('.sdrop-opt').forEach(function(b){ b.classList.toggle('sel', Number(b.dataset.slotrow)===STATE.addSlot); });
     updateAddPreview();
   }
   function openSlotMenu(on){ var d=$('slotDrop'),menu=$('slotMenu'),btn=$('slotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false'); }
   function updateAddPreview(){
-    var av=$('apAv'); if(!av) return;
+    var host=$('prevBody'); if(!host) return;
     var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null;
-    var name=($('addName')&&$('addName').value.trim())||'', rank=m?m.rank:'';
-    var ic=(rank&&STATE.rankIcons&&STATE.rankIcons[rank])||'';
-    if(ic){ av.className='mav mav-has'; av.innerHTML='<img class="mav-img" src="'+esc(ic)+'" alt="">'; }
-    else { av.className='mav'; av.textContent=name?mInitials(name):(rank?rankInitials(rank):'—'); }
-    $('apName').textContent=name||'New member';
-    $('apSub').innerHTML=m?(esc(rank)+' · <span class="mono">'+esc(m.callsign||('Row '+m.row))+'</span>'):'Pick an open slot to begin';
+    var name=($('addName')&&$('addName').value.trim())||'';
+    if(!m){ host.innerHTML='<div class="empty" style="margin-top:var(--s2)"><span class="ei">'+IEMPTY+'</span><div><b>No slot selected</b><br>Pick an open slot to preview the assignment.</div></div>'; return; }
+    var ic=(STATE.rankIcons&&STATE.rankIcons[m.rank])||'';
+    var av=ic?('<span class="mav mav-has"><img class="mav-img" src="'+esc(ic)+'" alt=""></span>')
+             :('<span class="mav">'+esc(name?mInitials(name):rankInitials(m.rank))+'</span>');
+    var kv=function(k,v){ return '<div class="pkv-r"><span class="pkv-k">'+k+'</span><span class="pkv-v">'+v+'</span></div>'; };
+    host.innerHTML='<div class="prev-hero">'+av
+      +'<div class="prev-id"><div class="prev-line"><span class="prev-call">'+esc(m.callsign||('Row '+m.row))+'</span><span class="vacant">Vacant</span></div>'
+      +'<div class="prev-rank">'+esc(m.rank)+'</div>'
+      +'<div class="prev-name">'+(name?esc(name):'New member')+'</div></div></div>'
+      +'<div class="pkv">'
+      +kv('Rank',esc(m.rank))
+      +kv('Callsign','<span class="mono">'+esc(m.callsign||'—')+'</span>')
+      +kv('Sheet row','<span class="mono">'+m.row+'</span>')
+      +kv('Status after seating',pill('Inactive'))
+      +kv('Starting hours','<span class="mono">0.00</span>')
+      +'</div>';
   }
   function addMember(){
     var row=STATE.addSlot; if(row==null){ toast('Pick an open slot first.','err'); openSlotMenu(true); return; }
