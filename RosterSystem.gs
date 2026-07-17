@@ -629,7 +629,7 @@ function statTagValue_(s, key) {
   const tks = Object.keys(tcs);
   for (let i = 0; i < tks.length; i++) { if (tks[i].toLowerCase().replace(/[^a-z]/g, '') === k) return tcs[tks[i]]; }
   const gks = Object.keys(s.groups);
-  for (let i = 0; i < gks.length; i++) { if (gks[i].toLowerCase() === k) return s.groups[gks[i]]; }
+  for (let i = 0; i < gks.length; i++) { if (gks[i].toLowerCase().replace(/[^a-z]/g, '') === k) return s.groups[gks[i]]; } // strip like tiers do — "Command Staff" answers #commandstaff
   return null;
 }
 

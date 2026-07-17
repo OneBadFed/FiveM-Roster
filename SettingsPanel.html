@@ -164,6 +164,7 @@
   .rlt .rldel{cursor:pointer;margin-left:5px;opacity:.7;} .rlt .rldel:hover{opacity:1;}
   .rlrow .rkbtns{flex:0 0 auto;}
   .rlrow.rkbusy{opacity:.55;pointer-events:none;}
+  .tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
   .setting.err .serr{display:block;}
   .setting.err .in,.setting.err .ddbtn{box-shadow:var(--hi),0 0 0 3px var(--red-soft) !important;}
 
@@ -523,7 +524,7 @@
     'Data tabs':'sheets','System tabs':'server','Roster layout':'table','Training sections':'grad','Patrol logs → hours':'clock',
     '1 · Request':'inbox','2 · Approval':'check','3 · Ending':'cycle','Early returns · optional':'leave',
     'Canvas & frame':'window','Text':'ftext','Status colours':'theme',
-    'Reset schedule':'clock','Nightly job':'moon','Logging':'file','Dashboard':'dashboard','Formats':'clock',
+    'Reset schedule':'clock','Nightly job':'moon','Logging':'file','Dashboard':'dashboard','Live dashboard':'dashboard','Formats':'clock',
     'Engine flags':'flag','Retention limits':'archive'
   };
   function cardIcon(title,gid){ var k=CARD_ICONS[title]; return (k&&ICONS[k])?ICONS[k]:(ICONS[gid]||ICONS.table); }
@@ -546,7 +547,13 @@
     'LEAVE.RETURN_TYPE':'EARLY-RETURN FORM ANSWER','LEAVE.RETURN_STATUS':'RETURNING STATUS',
     'THEME.CANVAS':'BACKGROUND','THEME.BANNER':'BANNER FILL','THEME.GRID':'GRID LINES','THEME.ACCENT':'ACCENT',
     'THEME.TEXT':'BODY TEXT','THEME.TEXT_STRONG':'HEADING TEXT','THEME.SUBHEAD':'TABLE HEADER FILL','THEME.SUBHEAD_TEXT':'TABLE HEADER TEXT',
-    'THEME.PASS':'SUCCESS','THEME.FAIL':'ERROR','THEME.INFO':'INFO','THEME.PROCESSING':'PROCESSING'};
+    'THEME.PASS':'SUCCESS','THEME.FAIL':'ERROR','THEME.INFO':'INFO','THEME.PROCESSING':'PROCESSING',
+    'DASHBOARD.ENABLE':'LIVE DASHBOARD'};
+  // Display-only overrides for table cards (title / help), same idea as LABELS/HELPS for kv settings.
+  var TBLTITLE={'DASHBOARD_GROUPS':'Headcount groups · priority order'};
+  var TBLHELP={
+    'SECTION_TAGS':'Colours + type for each divider keyword — a divider matches when its text CONTAINS the keyword. Tone must be one of: exec, admin, super, cadet, training, patrol, aux.',
+    'DASHBOARD_GROUPS':'Rows are PRIORITY ORDER — each member counts under the first group matching their rank or section. Everyday label editing is easier in the Ranks section; each group is also a #tag.'};
   var HELPS={'SHEETS.FORM_RESPONSES':'Google Form responses for LOAs.','SHEETS.PATROL_RESPONSES':'Google Form responses for Patrol Logs.',
     'ROSTER_LAYOUT.HEADER_ROW':'The row with your column titles (RANK, NAME, HOURS…).',
     'ROSTER_LAYOUT.DATA_START_ROW':'The first row that can hold a member — rows above it are ignored.',
@@ -582,7 +589,8 @@
     'THEME.PASS':'Green — success and done rows.',
     'THEME.FAIL':'Red — errors and failures.',
     'THEME.INFO':'Blue — informational rows.',
-    'THEME.PROCESSING':'Tint for form rows still being processed.'};
+    'THEME.PROCESSING':'Tint for form rows still being processed.',
+    'DASHBOARD.ENABLE':'Master switch — when off, #tags stop updating everywhere.'};
   var SECTIONS=[
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES','SHEETS.PATROL_RESPONSES']},
@@ -600,13 +608,13 @@
       cards:[{t:'Canvas & frame', keys:['THEME.CANVAS','THEME.BANNER','THEME.GRID','THEME.ACCENT']},
              {t:'Text', keys:['THEME.TEXT','THEME.TEXT_STRONG','THEME.SUBHEAD','THEME.SUBHEAD_TEXT']},
              {t:'Status colours', keys:['THEME.PASS','THEME.FAIL','THEME.INFO','THEME.PROCESSING']}]},
-    {id:'dashboard', a:'var(--cyan)', title:'Dashboard & sections', desc:'The section tags that colour the Dividers view, the headcount buckets, and the KPI cells the live dashboard fills.',
-      tablesMulti:['SECTION_TAGS','DASHBOARD_GROUPS','DASHBOARD_CELLS']},
+    {id:'dashboard', a:'var(--cyan)', title:'Dashboard & sections', desc:'The live #tags the dashboard keeps filled, the headcount groups behind them, and the tags that colour the Dividers view.',
+      cards:[{t:'Live dashboard', keys:['DASHBOARD.ENABLE']}],
+      tablesMulti:['SECTION_TAGS','DASHBOARD_GROUPS']},
     {id:'automation', a:'var(--amber)', title:'Automation & logging', desc:'How often the hours reset runs, when the nightly job fires, and what the engine writes to its diagnostics log.',
       cards:[{t:'Reset schedule', keys:['SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR']},
              {t:'Nightly job', keys:['SCHEDULE.NIGHTLY_HOUR','SCHEDULE.TIMEZONE']},
              {t:'Logging', keys:['LOGGING.LOG_LEVEL','LOGGING.LOG_MAX_ROWS','LOGGING.EMAIL_ON_ERROR','LOGGING.DIAG_INCLUDE_NAMES']},
-             {t:'Dashboard', keys:['DASHBOARD.ENABLE','DASHBOARD.SEARCH_ROWS']},
              {t:'Formats', keys:['FORMATS.DATE_DISPLAY','FORMATS.TIMESTAMP_DISPLAY']}]},
     {id:'advanced', a:'var(--red)', title:'Advanced', desc:'Engine flags, retention limits and the structural mappings that tell the engine how to read your sheet.', warn:true,
       note:'Column classes (SLOT / MEMBER) are edited on the Control Panel ▸ Columns tab, which shows live samples and fill counts.',
@@ -930,8 +938,9 @@
   function genericTableCard(name, accent){
     var meta=TBLMETA[name]||{cols:[],help:''}, cols=meta.cols||[], rows=TBL[name]||[];
     var gcs='grid-template-columns:repeat('+cols.length+',minmax(0,1fr)) 34px';
-    var h='<div class="card" style="--a:'+(accent||'var(--accent)')+'"><div class="card-h"><span class="cico">'+ICONS.table+'</span><b>'+esc(prettyBlock(name))+'</b><small>['+esc(name)+']</small></div>';
-    if(meta.help) h+='<div class="sdesc" style="margin:-8px 0 14px;max-width:74ch;-webkit-line-clamp:3">'+esc(meta.help)+'</div>';
+    var h='<div class="card" style="--a:'+(accent||'var(--accent)')+'"><div class="card-h"><span class="cico">'+ICONS.table+'</span><b>'+esc(TBLTITLE[name]||prettyBlock(name))+'</b><small>['+esc(name)+']</small></div>';
+    var thelp=TBLHELP[name]||meta.help;
+    if(thelp) h+='<div class="sdesc" style="margin:-8px 0 14px;max-width:74ch;-webkit-line-clamp:3" title="'+esc(meta.help)+'">'+esc(thelp)+'</div>';
     h+='<div class="gtbl">';
     if(rows.length){
       h+='<div class="gthead" style="'+gcs+'">'; cols.forEach(function(c){ h+='<span>'+esc(c)+'</span>'; }); h+='</div>';
@@ -961,6 +970,7 @@
     if(g.note) h+='<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+esc(g.note)+'</div>';
     if(g.id==='leave') h+='<div class="callout" id="leaveStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+leaveStoryText()+'</div>';
     if(g.id==='theme') h+=sheetPreview();
+    if(g.id==='dashboard') h+='<div class="callout" id="tagCheat" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+tagCheatText()+'</div>';
     if(g.cards){
       g.cards.forEach(function(c){
         var rows=''; c.keys.forEach(function(bk){ rows+=setting(bk); });
@@ -1025,8 +1035,18 @@
              :('it stays until ended by hand (auto-end is OFF); ended rows are marked <b>'+esc(ex)+'</b>.'));
   }
   function refreshLeaveStory(){ var el=$('leaveStory'); if(el) el.innerHTML=leaveStoryText(); }
+  /* Every #tag that works RIGHT NOW: built-ins, one per status tier, one per headcount group. Click to copy. */
+  function tagCheatText(){
+    var tags=['members','active','semi','inactive','onleave','openslots','hours'];
+    var add=function(nm){ var k=String(nm||'').replace(/[^A-Za-z]/g,'').toLowerCase(); if(k&&tags.indexOf(k)===-1) tags.push(k); };
+    tierNames().forEach(add);
+    (TBL.DASHBOARD_GROUPS||[]).forEach(function(r){ add(r[0]); });
+    return '<b>Type any of these in a cell — the engine keeps the number live</b><div class="tagrow">'
+      +tags.map(function(t){ return '<span class="rlt" data-tagcopy="#'+esc(t)+'" title="Click to copy">#'+esc(t)+'</span>'; }).join('')+'</div>';
+  }
+  function refreshTagCheat(){ var el=$('tagCheat'); if(el) el.innerHTML=tagCheatText(); }
   function updateBar(){
-    applyPatrolVis(); refreshLeaveStory();
+    applyPatrolVis(); refreshLeaveStory(); refreshTagCheat();
     var n=0;
     for(var bk in KV){ if(kvChanged(bk)) n++; }
     Object.keys(TBL).forEach(function(t){ if(tblChanged(t)) n++; });
@@ -1272,6 +1292,11 @@
     if(gadd){ var gn=gadd.dataset.gtadd; var w=((TBLMETA[gn]||{}).cols||[]).length; var nr=[]; for(var gi=0;gi<w;gi++) nr.push(''); (TBL[gn]=TBL[gn]||[]).push(nr); renderSection(); updateBar(); return; }
     var gdel=e.target.closest('[data-gtdel]');
     if(gdel){ var grow=gdel.closest('[data-gt]'); if(grow){ TBL[grow.dataset.gt].splice(Number(grow.dataset.gr),1); renderSection(); updateBar(); } return; }
+    var tcp=e.target.closest('[data-tagcopy]');
+    if(tcp){ var tta=document.createElement('textarea'); tta.value=tcp.dataset.tagcopy; tta.style.position='fixed'; tta.style.opacity='0';
+      document.body.appendChild(tta); tta.select();
+      try{ document.execCommand('copy'); toast(tcp.dataset.tagcopy+' copied — paste it into a cell.','ok'); }catch(err){ toast('Copy failed — type it by hand.','err'); }
+      document.body.removeChild(tta); return; }
     var rld=e.target.closest('[data-rldel]');
     if(rld){ TBL.DASHBOARD_GROUPS.splice(Number(rld.dataset.rldel),1); renderRankLabels(); updateBar(); return; }
     var rlt=e.target.closest('[data-rltog]');

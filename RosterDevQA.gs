@@ -1777,6 +1777,7 @@ function devPanelTests_() {
   (() => {
     const s = { total: 30, active: 18, semi: 2, inactive: 10, leaves: 1, openSlots: 5, totalHours: 266.81, groups: { Supervisors: 14, Troopers: 10, Auxiliary: 6 } };
     devEq_(R, 'statTagValue_ #members', statTagValue_(s, 'members'), 30);
+    devEq_(R, 'statTagValue_ multi-word group name answers its stripped tag', statTagValue_({ tierCounts: {}, groups: { 'Command Staff': 4 } }, 'commandstaff'), 4);
     devEq_(R, 'statTagValue_ #active', statTagValue_(s, 'active'), 18);
     devEq_(R, 'statTagValue_ #onleave alias', statTagValue_(s, 'onleave'), 1);
     devEq_(R, 'statTagValue_ #hours', statTagValue_(s, 'hours'), 266.81);
