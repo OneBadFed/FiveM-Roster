@@ -561,16 +561,20 @@ function seedDemoRoster() {
 
     // ---- Identify the member rows (rank + callsign are the OPERATOR's; we only read them) ----
     const n = lastRow - start + 1;
-    const ranks = roster.getRange(start, RC.rank, n, 1).getDisplayValues();     // col B — rank label OR (on a divider) a section title
-    const calls = roster.getRange(start, RC.unit, n, 1).getDisplayValues();     // col D — callsign; blank on divider rows (merged into B)
-    const names0 = roster.getRange(start, RC.name, n, 1).getDisplayValues();    // col C — existing names (overwrite guard)
+    const ranks = roster.getRange(start, RC.rank, n, 1).getDisplayValues();     // rank label OR (on a legacy divider) a section title
+    const calls = roster.getRange(start, RC.unit, n, 1).getDisplayValues();     // callsign; blank on divider rows
+    const names0 = roster.getRange(start, RC.name, n, 1).getDisplayValues();    // existing names (overwrite guard)
+    const bandCol = RC.rank > 1 ? RC.rank - 1 : 0;                              // the merged RANK GROUP column sits just left of RANK
+    const bands = bandCol ? roster.getRange(start, bandCol, n, 1).getDisplayValues() : null;
     const memberRows = [];                                                      // { r, rank, section } for every real member row
     let currentSection = '';
     for (let i = 0; i < n; i++) {
       const rank = String(ranks[i][0] || '').trim();
       const call = String(calls[i][0] || '').trim();
+      const band = bands ? String(bands[i][0] || '').trim() : '';               // merged label only in the band's top row → forward-fill
+      if (band) currentSection = band;                                          // RANK GROUP band label tags the rows beneath it
       if (call || (rank && isMemberSlot_(rank))) memberRows.push({ r: start + i, rank: rank || 'Member', section: currentSection }); // member row
-      else if (rank && !isMemberSlot_(rank)) currentSection = rank;             // an ALL-CAPS section-divider label → tag the rows beneath it
+      else if (rank && !isMemberSlot_(rank)) currentSection = rank;             // legacy: ALL-CAPS section-divider label in the rank column
     }
     if (!memberRows.length) { ui.alert('🎬 Load Demo Roster', 'No member rows found — make sure your rows have ranks and/or callsigns filled in.', ui.ButtonSet.OK); return; }
 

@@ -47,7 +47,7 @@ const DISCORD_ID_RE = /^\d{17,19}$/;
 
 /* ======================================================================
  * HEADER-BASED COLUMN RESOLUTION
- * Resolves the roster's key columns by their HEADER NAME (row 5) so columns
+ * Resolves the roster's key columns by their HEADER NAME (the configured HEADER_ROW) so columns
  * can be reordered without breaking the code. Falls back to the CONFIG.roster
  * positions when a header can't be matched. Cached per sheet for the execution.
  * ====================================================================== */
@@ -68,13 +68,13 @@ function rosterCols_(sheet) {
     if (lastCol >= 1 && sheet.getLastRow() >= ROSTER_HEADER_ROW) {
       const hdr = sheet.getRange(ROSTER_HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
       const match = {
-        rank: (h) => h.indexOf('RANK') !== -1,
-        name: (h) => h.indexOf('NAME') !== -1,
+        rank: (h) => h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1,        // the real RANK column, not a "RANK GROUP" band header
+        name: (h) => h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1,          // the canonical NAME, not "OOC NAME"
         unit: (h) => /^UNIT\b/.test(h) || h.indexOf('CALLSIGN') !== -1,
-        discord: (h) => h.indexOf('DISCORD') !== -1,
+        discord: (h) => h.indexOf('DISCORD') !== -1 || h.indexOf('UNIQUE') !== -1, // a Discord ID OR a community "UNIQUE ID"
         join: (h) => h.indexOf('JOIN') !== -1,
         promo: (h) => h.indexOf('PROMOT') !== -1,
-        activity: (h) => h.indexOf('ACTIVITY') !== -1,
+        activity: (h) => h.indexOf('ACTIVITY') !== -1 || h.indexOf('STATUS') !== -1, // "STATUS" is the new label for the activity tier
         hours: (h) => h.indexOf('HOURS') !== -1,
       };
       Object.keys(match).forEach((k) => {
