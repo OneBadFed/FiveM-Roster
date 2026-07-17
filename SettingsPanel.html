@@ -181,15 +181,33 @@
   .dcbtn:active{transform:scale(.96);}
   .dcbtn.primary{background:linear-gradient(155deg,#5a97ec,#3d7cd9);color:#fff;box-shadow:var(--hi),0 4px 14px -6px var(--accent);}
   .dcbtn.danger{color:var(--red);} .dcbtn.danger:hover{background:rgba(224,87,79,.12);color:var(--red);}
-  /* embed builder */
+  /* embed builder — stacked collapsible sections, preview at the bottom */
   .dcseg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;}
-  .dclb{display:block;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:10px 0 5px;}
-  .dcta{min-height:74px;resize:vertical;font-family:inherit;line-height:1.5;width:100%;}
-  .dcrow2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;}
-  .dcfr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto 34px;gap:6px;margin-bottom:6px;align-items:center;}
-  .dcbuild{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start;margin-top:4px;}
-  @media(max-width:920px){ .dcbuild{grid-template-columns:1fr;} }
-  .dcmock{background:#313338;border-radius:12px;padding:14px 16px;position:sticky;top:10px;}
+  .dclb{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:10px 0 5px;}
+  .dccnt{margin-left:auto;font-family:var(--mono);font-size:9.5px;color:var(--txt-3);text-transform:none;letter-spacing:0;font-weight:500;}
+  .dcta{min-height:70px;resize:vertical;font-family:inherit;line-height:1.5;width:100%;}
+  .dcta-sm{min-height:46px;resize:vertical;font-family:inherit;line-height:1.5;width:100%;}
+  .dcsec{border:1px solid var(--hair);border-radius:12px;margin-bottom:8px;background:var(--e1);overflow:hidden;}
+  .dcsec>summary{list-style:none;cursor:pointer;padding:11px 14px;font-size:10.5px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--accent-2);display:flex;align-items:center;gap:8px;user-select:none;}
+  .dcsec>summary::-webkit-details-marker{display:none;}
+  .dcsec>summary::before{content:"";width:7px;height:7px;border-right:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg);transition:transform .18s var(--ease);opacity:.8;}
+  .dcsec[open]>summary::before{transform:rotate(45deg);}
+  .dcsec>summary:hover{background:var(--e2);}
+  .dcsec-b{padding:2px 14px 14px;}
+  .dctog-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:6px 0;}
+  .dctog-row small{color:var(--txt-3);font-weight:500;}
+  .dccolor{display:flex;align-items:center;gap:10px;flex-wrap:wrap;}
+  .dccolin{width:120px;flex:0 0 auto;font-family:var(--mono);}
+  .dcsws{display:flex;gap:6px;flex-wrap:wrap;}
+  .dcsw{width:22px;height:22px;border-radius:7px;border:2px solid rgba(255,255,255,.14);cursor:pointer;padding:0;box-shadow:var(--hi);transition:transform var(--t) var(--ease);}
+  .dcsw:hover{transform:scale(1.12);border-color:#fff;}
+  .dcfr{background:var(--e2);border-radius:12px;padding:10px 12px 12px;margin-bottom:8px;box-shadow:var(--hi),var(--sh-1);}
+  .dcfr-h{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;margin-bottom:2px;}
+  .dcfr-pv{color:var(--txt-3);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;}
+  .dcfr-h .gtdel{margin-left:auto;}
+  .dcfr .tgl{margin-top:8px;}
+  .dcm-content{color:#dbdee1;font-size:13.5px;line-height:1.45;white-space:pre-wrap;word-break:break-word;margin-bottom:6px;}
+  .dcmock{background:#313338;border-radius:12px;padding:14px 16px;}
   .dcm-msg{display:flex;gap:14px;}
   .dcm-av{width:40px;height:40px;flex:0 0 auto;border-radius:50%;background:linear-gradient(155deg,#5b8def,#3d5bd9);display:flex;align-items:center;justify-content:center;}
   .dcm-av svg{width:22px;height:22px;}
@@ -1236,19 +1254,20 @@
 
   /* ── embed builder: per-event templates stored as JSON rows in [EMBEDS], with a Discord-accurate live preview ── */
   var DC_EVENTS={
-    AUDIT:[{id:'audit',label:'Audit entry',ph:['editor','sheet','cell','member','old','new','action']}],
-    LOA:[{id:'loaSubmitted',label:'Submitted',ph:['name','rank','callsign','type','start','end','length']},
-         {id:'loaApproved',label:'Approved',ph:['name','rank','type','start','end']},
-         {id:'loaStarted',label:'Started',ph:['name','rank','type']},
-         {id:'loaExpired',label:'Expired',ph:['name','rank','type']}],
-    PATROL:[{id:'patrolLogged',label:'Hours credited',ph:['name','hours','total']},
+    AUDIT:[{id:'audit',label:'Audit entry',ph:['user','editor','sheet','cell','member','old','new','action']}],
+    LOA:[{id:'loaSubmitted',label:'Submitted',ph:['user','name','rank','callsign','type','start','end','length']},
+         {id:'loaApproved',label:'Approved',ph:['user','name','rank','type','start','end']},
+         {id:'loaStarted',label:'Started',ph:['user','name','rank','type']},
+         {id:'loaExpired',label:'Expired',ph:['user','name','rank','type']}],
+    PATROL:[{id:'patrolLogged',label:'Hours credited',ph:['user','name','hours','total']},
             {id:'patrolFlagged',label:'Flagged logs',ph:['count','rows']}],
     ERRORS:[{id:'error',label:'Engine error',ph:['code','message','hint','function']}],
   };
-  var DC_SAMPLE={editor:'admin@example.com',sheet:'Member Information',cell:'F14',member:'J. Bennett',old:'Active','new':'LOA',action:'Status change',
+  var DC_SAMPLE={user:'<@1234567890123456789>',editor:'admin@example.com',sheet:'Member Information',cell:'F14',member:'J. Bennett',old:'Active','new':'LOA',action:'Status change',
     name:'J. Bennett',rank:'Sergeant',callsign:'S-07',type:'LOA',start:'21 Jul 2026',end:'4 Aug 2026',length:'14 days',
     hours:'6.5',total:'18.75',count:'2',rows:'• Row 14 — no matching member\n• Row 17 — bad or missing time',
     code:'E-102',message:'Config has 1 error.',hint:'Open ⚙️ Config and fix the red cell.','function':'cfg_'};
+  var DC_SWATCH=['#00458E','#8a1f1f','#c2691c','#c9a227','#e64bb0','#2ea043','#a68a00','#b02a2a','#7c5cff','#4f8ee8'];
   var DCEV={}, LASTEMB=null;
   function embGet_(ev){ var rows=TBL.EMBEDS||[]; for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ try{ var o=JSON.parse(rows[i][1]||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } } } return null; }
   function embSet_(ev,obj){ TBL.EMBEDS=TBL.EMBEDS||[]; var rows=TBL.EMBEDS, j=JSON.stringify(obj);
@@ -1272,36 +1291,49 @@
     var seg=m.evs.map(function(x){ return '<button type="button" class="rlt'+(x.id===m.cur?' on':'')+'" data-dcev="'+esc(x.id)+'">'+esc(x.label)+'</button>'; }).join('');
     var chips=m.meta.ph.map(function(p){ return '<span class="rlt" data-dcph="{'+esc(p)+'}" title="Click to insert into the focused field">{'+esc(p)+'}</span>'; }).join('');
     var f=function(k,ph){ return '<input class="in" data-emb="'+k+'" value="'+esc(t[k]||'')+'" placeholder="'+esc(ph)+'" autocomplete="off" spellcheck="false">'; };
-    var fieldRows=(t.fields||[]).map(function(fl,i){
-      return '<div class="dcfr"><input class="in" data-embf="n" value="'+esc(fl.n||'')+'" placeholder="Field name" autocomplete="off" spellcheck="false">'
-        +'<input class="in" data-embf="v" value="'+esc(fl.v||'')+'" placeholder="Value" autocomplete="off" spellcheck="false">'
-        +'<button type="button" class="rlt'+(fl.inline?' on':'')+'" data-embinl="'+i+'" title="Inline fields share a row">inline</button>'
-        +'<button type="button" class="gtdel" data-embdel="'+i+'">'+ICONS.x+'</button></div>';
+    var ta=function(k,ph){ return '<textarea class="in dcta" data-emb="'+k+'" placeholder="'+esc(ph)+'" spellcheck="false">'+esc(t[k]||'')+'</textarea>'; };
+    var sec=function(label,inner,open){ return '<details class="dcsec"'+(open===false?'':' open')+'><summary>'+esc(label)+'</summary><div class="dcsec-b">'+inner+'</div></details>'; };
+    var sendOn=t.sendEmbed!==false;
+    var toggle=function(attr,checked,onlbl){ return '<label class="tgl"><input type="checkbox" '+attr+(checked?' checked':'')+'><span class="tr"></span><span class="tv">'+(checked?(onlbl||'On'):'Off')+'</span></label>'; };
+    var swatches=DC_SWATCH.map(function(c){ return '<button type="button" class="dcsw" data-dccol="'+c+'" style="background:'+c+'" title="'+c+'"></button>'; }).join('');
+    var colorCtl='<div class="dccolor"><input class="in dccolin" data-emb="color" value="'+esc(t.color||'')+'" placeholder="#5865F2" maxlength="7" spellcheck="false"><div class="dcsws">'+swatches+'</div></div>';
+    var fieldCards=(t.fields||[]).map(function(fl,i){
+      return '<div class="dcfr">'
+        +'<div class="dcfr-h"><b>Field '+(i+1)+'</b>'+((fl.n||fl.v)?'<span class="dcfr-pv">'+esc(String(fl.n||fl.v).slice(0,44))+'</span>':'')+'<button type="button" class="gtdel" data-embdel="'+i+'" title="Remove field">'+ICONS.x+'</button></div>'
+        +'<label class="dclb">Field name <span class="dccnt">'+String(fl.n||'').length+'/256</span></label>'
+        +'<input class="in" data-embf="n" value="'+esc(fl.n||'')+'" placeholder="Field name" autocomplete="off" spellcheck="false">'
+        +'<label class="dclb">Field value <span class="dccnt">'+String(fl.v||'').length+'/1024</span></label>'
+        +'<textarea class="in dcta-sm" data-embf="v" placeholder="Value" spellcheck="false">'+esc(fl.v||'')+'</textarea>'
+        +toggle('data-embinl="'+i+'"',!!fl.inline,'Inline')
+        +'</div>';
     }).join('');
-    host.innerHTML='<div class="dcseg">'+seg
+    var h='<div class="dcseg">'+seg
       +(saved!==null
         ?'<button type="button" class="rlt" style="margin-left:auto;color:var(--red)" data-dcreset="1">Reset to default</button>'
         :'<span class="sdesc" style="margin-left:auto">Built-in embed in use — edit any field to override</span>')+'</div>'
-      +'<div class="tagrow" style="margin:6px 0 12px">'+chips+'</div>'
-      +'<div class="dcbuild"><div>'
-        +'<label class="dclb">Title</label>'+f('title','e.g. ✅ {type} Approved')
-        +'<label class="dclb">Description</label><textarea class="in dcta" data-emb="desc" placeholder="Markdown supported — **bold**, *italics*, __underline__, [links](https://…), > quotes, `code`" spellcheck="false">'+esc(t.desc||'')+'</textarea>'
-        +'<div class="dcrow2"><div><label class="dclb">Colour</label>'+f('color','#5865F2')+'</div><div><label class="dclb">Author</label>'+f('author','Author name')+'</div></div>'
-        +'<div class="dcrow2"><div><label class="dclb">Author icon URL</label>'+f('authorIcon','https://…')+'</div><div><label class="dclb">Thumbnail URL</label>'+f('thumb','https://…')+'</div></div>'
-        +'<div class="dcrow2"><div><label class="dclb">Image URL</label>'+f('image','https://…')+'</div><div><label class="dclb">Footer</label>'+f('footer','Footer text')+'</div></div>'
-        +'<label class="dclb">Footer icon URL</label>'+f('footerIcon','https://…')
-        +'<label class="dclb" style="margin-top:12px">Fields</label><div id="dcFields">'+fieldRows+'</div>'
-        +'<button type="button" class="gtadd" data-dcaddf="1" style="margin-top:6px">+ Add field</button>'
-      +'</div><div id="dcPrev">'+dcMock_(t)+'</div></div>';
+      +'<div class="tagrow" style="margin:6px 0 12px">'+chips+'</div>';
+    h+=sec('Message', '<label class="dclb">Message text (above the embed)</label>'+ta('content','Posted above the embed. {user} pings the member.'));
+    h+=sec('Embed', '<div class="dctog-row"><span>Send the embed <small>(off = message text only)</small></span>'+toggle('data-embtoggle="1"',sendOn)+'</div>');
+    h+=sec('Embed author', '<label class="dclb">Author name</label>'+f('author','Author name')+'<label class="dclb">Author link URL</label>'+f('authorUrl','https://…')+'<label class="dclb">Author icon URL</label>'+f('authorIcon','https://…'));
+    h+=sec('Embed body', '<label class="dclb">Title</label>'+f('title','e.g. ✅ {type} Approved')+'<label class="dclb">Description</label>'+ta('desc','Markdown — **bold**, *italics*, __underline__, [links](https://…), > quotes, `code`')+'<label class="dclb">Accent colour</label>'+colorCtl);
+    h+=sec('Embed images', '<label class="dclb">Image URL</label>'+f('image','https://…')+'<label class="dclb">Thumbnail URL</label>'+f('thumb','https://…'));
+    h+=sec('Embed fields', '<div id="dcFields">'+fieldCards+'</div><button type="button" class="gtadd" data-dcaddf="1" style="margin-top:8px">+ Add field ('+((t.fields||[]).length)+'/25)</button>');
+    h+=sec('Embed footer', '<label class="dclb">Footer text</label>'+f('footer','Footer text')+'<label class="dclb">Footer icon URL</label>'+f('footerIcon','https://…'));
+    h+=sec('Preview', '<div id="dcPrev">'+dcMock_(t)+'</div>');
+    host.innerHTML=h;
   }
   function dcSyncFromForm_(){
     var m=dcCurMeta(); if(!m) return;
     var t={};
     document.querySelectorAll('#dcBuild [data-emb]').forEach(function(el){ var v=el.value; if(String(v).trim()!=='') t[el.dataset.emb]=v; });
+    var tg=document.querySelector('#dcBuild [data-embtoggle]'); if(tg){ if(!tg.checked) t.sendEmbed=false; var tv=tg.parentNode.querySelector('.tv'); if(tv) tv.textContent=tg.checked?'On':'Off'; }
     var fl=[];
     document.querySelectorAll('#dcBuild .dcfr').forEach(function(r){
-      var n=r.querySelector('[data-embf="n"]').value, v=r.querySelector('[data-embf="v"]').value;
-      var inl=r.querySelector('[data-embinl]').classList.contains('on');
+      var nEl=r.querySelector('[data-embf="n"]'), vEl=r.querySelector('[data-embf="v"]');
+      var n=nEl?nEl.value:'', v=vEl?vEl.value:'';
+      var inEl=r.querySelector('[data-embinl]'), inl=inEl?inEl.checked:false;
+      var cnts=r.querySelectorAll('.dccnt'); if(cnts[0]) cnts[0].textContent=n.length+'/256'; if(cnts[1]) cnts[1].textContent=v.length+'/1024';
+      if(inEl){ var itv=inEl.parentNode.querySelector('.tv'); if(itv) itv.textContent='Inline'; }
       if(String(n).trim()!==''||String(v).trim()!=='') fl.push({n:n,v:v,inline:inl});
     });
     if(fl.length) t.fields=fl;
@@ -1326,19 +1358,23 @@
     var md=function(s){ return dcRender(sub(s)); };
     var col=/^#[0-9a-fA-F]{6}$/.test(String(t.color||'').trim())?String(t.color).trim():'#5865F2';
     var botName=(KV['SYSTEM.SYSTEM_NAME']&&KV['SYSTEM.SYSTEM_NAME'].value)||'Roster System';
-    var hasAny=t.title||t.desc||t.author||t.footer||t.footerIcon||t.thumb||t.image||(t.fields&&t.fields.length);
+    var sendEmbed=t.sendEmbed!==false;
+    var hasEmbed=sendEmbed&&(t.title||t.desc||t.author||t.footer||t.footerIcon||t.thumb||t.image||(t.fields&&t.fields.length));
+    var hasContent=!!(t.content&&String(t.content).trim());
 
-    // Discord message chrome: bot avatar + name + APP badge + timestamp, then the embed beneath (matches a real post).
+    // Discord message chrome: bot avatar + name + APP badge + timestamp, then content + the embed beneath.
     var head='<div class="dcm-av"><svg viewBox="0 0 24 24" fill="none" stroke="#cfe0ff" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6l7-3z"/></svg></div>'
       +'<div class="dcm-body"><div class="dcm-head"><span class="dcm-user">'+esc(botName)+'</span><span class="dcm-app">APP</span><span class="dcm-ts">'+dcNowStamp_()+'</span></div>';
 
-    if(!hasAny){
+    if(!hasContent&&!hasEmbed){
       return '<div class="dcmock"><div class="dcm-msg">'+head
         +'<div class="dcm-embed"><div class="dcm-wrap"><div class="dcm-main"><div class="dcm-desc" style="color:#949ba4">Live preview — the built-in embed is used until you edit a field. Markdown and {placeholders} render here as you type.</div></div></div></div>'
         +'</div></div></div>';
     }
-    var h='<div class="dcmock"><div class="dcm-msg">'+head
-      +'<div class="dcm-embed" style="border-left-color:'+esc(col)+'"><div class="dcm-wrap"><div class="dcm-main">';
+    var h='<div class="dcmock"><div class="dcm-msg">'+head;
+    if(hasContent) h+='<div class="dcm-content">'+md(t.content)+'</div>';
+    if(!hasEmbed){ return h+'</div></div></div>'; }
+    h+='<div class="dcm-embed" style="border-left-color:'+esc(col)+'"><div class="dcm-wrap"><div class="dcm-main">';
     if(t.author) h+='<div class="dcm-author">'+(t.authorIcon?('<img class="dc-eaic" src="'+esc(sub(t.authorIcon))+'" alt="">'):'')+'<span>'+md(t.author)+'</span></div>';
     if(t.title) h+='<div class="dcm-title">'+md(t.title)+'</div>';
     if(t.desc) h+='<div class="dcm-desc">'+md(t.desc)+'</div>';
@@ -1504,7 +1540,9 @@
   }
 
   /* ── events ── */
-  $('content').addEventListener('change',function(e){ var f=e.target; if(f&&f.matches&&f.matches('input[data-rankfile]')) handleRankUpload(f); });
+  $('content').addEventListener('change',function(e){ var f=e.target; if(!f) return;
+    if(f.matches&&f.matches('input[data-rankfile]')){ handleRankUpload(f); return; }
+    if(f.closest&&f.closest('#dcBuild')&&(f.hasAttribute('data-embtoggle')||f.hasAttribute('data-embinl'))) dcSyncFromForm_(); });
   $('content').addEventListener('focusin',function(e){ var f=e.target; if(f&&f.closest&&f.closest('#dcBuild')&&f.dataset&&(f.dataset.emb!==undefined||f.dataset.embf!==undefined)) LASTEMB=f; }); // placeholder chips insert here
   $('content').addEventListener('error',function(e){ var t=e.target; if(t&&t.tagName==='IMG'&&/\bdc-(thumb|img|eaic|ficon)\b/.test(t.className||'')) t.style.display='none'; },true); // hide broken embed-preview images (capture phase — error doesn't bubble)
   $('content').addEventListener('click',function(e){ var d=e.target.closest&&e.target.closest('[data-rankdel]'); if(d) handleRankDelete(d.getAttribute('data-rankdel')); });
@@ -1578,8 +1616,8 @@
     if(daf){ var mA=dcCurMeta(); if(mA){ var tA=embGet_(mA.cur)||{}; tA.fields=(tA.fields||[]).concat([{n:'',v:'',inline:true}]); embSet_(mA.cur,tA); renderDcBuilder(); } return; }
     var ddl=e.target.closest('[data-embdel]');
     if(ddl){ var mD=dcCurMeta(); if(mD){ var tD=embGet_(mD.cur)||{}; (tD.fields||[]).splice(Number(ddl.dataset.embdel),1); embSet_(mD.cur,tD); renderDcBuilder(); } return; }
-    var dil=e.target.closest('[data-embinl]');
-    if(dil){ dil.classList.toggle('on'); dcSyncFromForm_(); return; }
+    var dsw=e.target.closest('[data-dccol]');
+    if(dsw){ var ci=document.querySelector('#dcBuild [data-emb="color"]'); if(ci){ ci.value=dsw.dataset.dccol; } dcSyncFromForm_(); return; }
     var dph=e.target.closest('[data-dcph]');
     if(dph){ var tgt=(LASTEMB&&document.body.contains(LASTEMB))?LASTEMB:document.querySelector('#dcBuild [data-emb="title"]');
       if(tgt){ insertAt_(tgt,dph.dataset.dcph); dcSyncFromForm_(); } return; }

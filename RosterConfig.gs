@@ -134,14 +134,18 @@ function maybeErrorWebhook_(ae, fnName) {
     };
     // Template override, memo-safe: embedFromTemplate_ reads CONFIG (may be broken on an error path) inside its
     // own try/catch and falls back to the built-in embed — an error notification is never lost to a bad template.
-    const embed = (typeof embedFromTemplate_ === 'function')
-      ? embedFromTemplate_('error', { code: ae.code || 'E-601', message: String(ae.message || ''), hint: String(ae.hint || ''), 'function': fnName || 'engine' }, fallbackEmbed)
-      : fallbackEmbed;
+    const eVars = { code: ae.code || 'E-601', message: String(ae.message || ''), hint: String(ae.hint || ''), 'function': fnName || 'engine' };
+    let tpl = null; try { tpl = CFG_ && CFG_.legacy && CFG_.legacy.embedTpl && CFG_.legacy.embedTpl.error; } catch (e) { tpl = null; } // memo only — never force a config load on an error path
+    const embed = (typeof embedFromTemplate_ === 'function') ? embedFromTemplate_('error', eVars, fallbackEmbed) : fallbackEmbed;
+    const body = { username: `${sysName} — errors` };
+    if (tpl && tpl.content) { try { body.content = String(fill_(String(tpl.content), eVars)).slice(0, 2000); } catch (e) { /* ignore */ } }
+    if (!tpl || tpl.sendEmbed !== false) body.embeds = [embed];
+    if (!body.content && !body.embeds) body.embeds = [fallbackEmbed]; // never post an empty message
     const res = UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
       muteHttpExceptions: true, // a webhook failure must not throw into the caller's error path
-      payload: JSON.stringify({ username: `${sysName} — errors`, embeds: [embed] }),
+      payload: JSON.stringify(body),
     });
     // F-044: surface an otherwise-muted delivery failure (never throw — mirrors the "never fatal" contract). slog_ reads CFG_.
     const code = res.getResponseCode();

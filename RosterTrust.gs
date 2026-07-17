@@ -575,9 +575,7 @@ function auditNotify_(editor, sheetName, cellA1, oldV, newV, type, member) {
       fields,
       footer: { text: `${CONFIG.systemName} • audit` },
     };
-    sendWebhookPayloadCh_('AUDIT', {
-      embeds: [Object.assign({ timestamp: new Date().toISOString() }, embedFromTemplate_('audit', vars, fallback))],
-    });
+    notifyEvent_('AUDIT', true, 'audit', vars, fallback, '');
   } catch (e) { /* the audit trail itself already saved — a Discord failure must never surface */ }
 }
 

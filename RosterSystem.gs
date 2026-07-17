@@ -1637,14 +1637,14 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
   if (sendWebhooks) {
     if (CONFIG.notify && CONFIG.notify.leaveStarted) {
       summary.started.forEach((s) => {
-        notify_(true, embedFromTemplate_('loaStarted', { name: s.name, rank: s.rank, type: s.type }, {
+        notifyEvent_('LOA', true, 'loaStarted', { name: s.name, rank: s.rank, type: s.type }, {
           title: fill_(CONFIG.notify.startedTitle, { type: s.type }),
           color: hexToInt_(CONFIG.notify.startedColor, 5154774),
           fields: [
             { name: '👤 Name', value: clamp_(dash_(s.name), 1000), inline: true },
             { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(s.rank)), 1000), inline: true },
           ],
-        }), mention_(s.id));
+        }, mention_(s.id));
         Utilities.sleep(300);
       });
     }
@@ -1850,7 +1850,7 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   // Notifications fire AFTER all writes (never block a credit). Off by default.
   if (sendWebhooks && CONFIG.notify && CONFIG.notify.patrolLogged) {
     summary.credited.forEach((c) => {
-      notifyCh_('PATROL', true, embedFromTemplate_('patrolLogged', { name: c.name, hours: String(c.hours), total: String(c.total) }, {
+      notifyEvent_('PATROL', true, 'patrolLogged', { name: c.name, hours: String(c.hours), total: String(c.total) }, {
         title: fill_(CONFIG.notify.patrolTitle, { name: c.name, hours: c.hours, total: c.total }),
         color: hexToInt_(CONFIG.notify.patrolColor, 5154774),
         fields: [
@@ -1858,7 +1858,7 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
           { name: '🚔 Patrol', value: `${c.hours} hr${c.hours === 1 ? '' : 's'}`, inline: true },
           { name: '⏱️ New total', value: `${c.total} hrs`, inline: true },
         ],
-      }), mention_(c.discord));
+      }, mention_(c.discord));
       Utilities.sleep(200); // stay under Discord's webhook rate limit on a batch
     });
   }
@@ -1866,11 +1866,11 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   if (sendWebhooks && summary.flags.length && webhookFor_('PATROL')) {
     const lines = summary.flags.slice(0, 15).map((f) => `• Row ${f.row} — ${f.reason}`);
     if (summary.flags.length > 15) lines.push(`…and ${summary.flags.length - 15} more`);
-    notifyCh_('PATROL', true, embedFromTemplate_('patrolFlagged', { count: String(summary.flags.length), rows: lines.join('\n') }, {
+    notifyEvent_('PATROL', true, 'patrolFlagged', { count: String(summary.flags.length), rows: lines.join('\n') }, {
       title: `⚠️ ${summary.flags.length} patrol log${summary.flags.length === 1 ? '' : 's'} flagged`,
       description: clamp_(lines.join('\n') + `\n\nFlagged rows are red on "${CONFIG.sheets.patrol}" — fix them and re-run 🚔 Sync Patrol Hours.`, 4000),
       color: hexToInt_('#e0a52c', 14721324),
-    }));
+    }, '');
   }
   summary.hoursAdded = Math.round(summary.hoursAdded * 100) / 100;
   return summary;
@@ -2112,10 +2112,7 @@ function sendDiscordWebhook(name, rank, callsign, type, start, end, duration, di
     ],
   };
   const vars = { name, rank, callsign, type: typeStr, start, end, length: duration };
-  sendWebhookPayload_({
-    content: mention_(discordId),
-    embeds: [Object.assign({ timestamp: new Date().toISOString() }, embedFromTemplate_('loaSubmitted', vars, fallback), embedChrome_())], // v2.5.0: optional chrome from config
-  });
+  notifyEvent_('LOA', true, 'loaSubmitted', vars, fallback, mention_(discordId));
 }
 
 function sendExpirationWebhook(name, rank, discordId, type) {
@@ -2129,10 +2126,7 @@ function sendExpirationWebhook(name, rank, discordId, type) {
       { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
     ],
   };
-  sendWebhookPayload_({
-    content: mention_(discordId),
-    embeds: [Object.assign({ timestamp: new Date().toISOString() }, embedFromTemplate_('loaExpired', { name, rank, type }, fallback), embedChrome_())],
-  });
+  notifyEvent_('LOA', true, 'loaExpired', { name, rank, type }, fallback, mention_(discordId));
 }
 
 /** Builds the webhook content line (pings the member only if the ID is valid). */
@@ -2199,6 +2193,7 @@ function embedFromTemplate_(event, vars, fallback) {
     if (t.color) e.color = hexToInt_(t.color, 5793266);
     if (t.author) {
       e.author = { name: clamp_(F(t.author), 256) };
+      const au = embedUrl_(t.authorUrl); if (au) e.author.url = au;
       const ai = embedUrl_(t.authorIcon); if (ai) e.author.icon_url = ai;
     }
     const th = embedUrl_(t.thumb); if (th) e.thumbnail = { url: th };
@@ -2225,6 +2220,35 @@ function notifyCh_(channel, on, embed, content) {
   } catch (e) { log_('notify_', e); }
 }
 
+/**
+ * Post a builder-driven event: the template's Message text (placeholders filled) above the embed, the embed itself
+ * (skipped when the template's "Send the embed" toggle is off), and any mention — all combined into ONE Discord
+ * message on `channel`. A user template owns its own author/thumbnail/image/footer, so [DISCORD] chrome is applied
+ * ONLY to the built-in fallback embed. Never throws; sends nothing when there's neither content nor an embed.
+ */
+function notifyEvent_(channel, on, event, vars, fallbackEmbed, mention) {
+  if (!on) return;
+  try {
+    const m = String(mention || '');
+    const v = Object.assign({ user: m, mention: m }, vars || {}); // {user}/{mention} resolve to the ping everywhere
+    const tpl = (CONFIG.embedTpl && CONFIG.embedTpl[event]) || null;
+    let content = m; // no template → just the ping (classic behaviour)
+    if (tpl && tpl.content) {
+      const raw = String(tpl.content);
+      // If the message text positions the ping itself ({user}/{mention}), don't also append it; otherwise append.
+      content = /\{(user|mention)\}/.test(raw) ? fill_(raw, v) : (m ? `${fill_(raw, v)}\n${m}` : fill_(raw, v));
+    }
+    const payload = {};
+    if (content) payload.content = clamp_(content, 2000);
+    if (!tpl || tpl.sendEmbed !== false) {
+      const base = { timestamp: new Date().toISOString() };
+      const embed = embedFromTemplate_(event, v, fallbackEmbed);
+      payload.embeds = [tpl ? Object.assign(base, embed) : Object.assign(base, embed, embedChrome_())];
+    }
+    if (payload.content || payload.embeds) sendWebhookPayload_(payload, channel);
+  } catch (e) { log_('notifyEvent_', e); }
+}
+
 /** Post the "leave approved" embed for a tracker row (reads the row fresh). Called from onEdit on the Pending→Approved transition. */
 function notifyLeaveApproved_(sheet, row) {
   if (!CONFIG.notify || !CONFIG.notify.leaveApproved) return;
@@ -2232,7 +2256,7 @@ function notifyLeaveApproved_(sheet, row) {
     const g = (col) => String(sheet.getRange(row, col).getDisplayValue());
     const type = g(CONFIG.tracker.type) || 'Leave';
     const vars = { name: g(CONFIG.tracker.name), rank: g(CONFIG.tracker.rank), type, start: g(CONFIG.tracker.start), end: g(CONFIG.tracker.end) };
-    notify_(true, embedFromTemplate_('loaApproved', vars, {
+    notifyEvent_('LOA', true, 'loaApproved', vars, {
       title: fill_(CONFIG.notify.approvedTitle, { type: type }),
       color: hexToInt_(CONFIG.notify.approvedColor, 5749594),
       fields: [
@@ -2241,7 +2265,7 @@ function notifyLeaveApproved_(sheet, row) {
         { name: '▶️ Start Date', value: clamp_(dash_(vars.start), 1000), inline: true },
         { name: '⏹️ End Date', value: clamp_(dash_(vars.end), 1000), inline: true },
       ],
-    }), mention_(g(CONFIG.tracker.discord)));
+    }, mention_(g(CONFIG.tracker.discord)));
   } catch (e) { log_('notifyLeaveApproved_', e); }
 }
 
