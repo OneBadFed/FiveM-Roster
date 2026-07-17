@@ -1760,7 +1760,7 @@ function patrolMarkerCol_(sheet) {
  */
 function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   const sendWebhooks = opts.sendWebhooks !== false;
-  const summary = { credited: [], hoursAdded: 0, errored: 0, scanned: 0 };
+  const summary = { credited: [], hoursAdded: 0, errored: 0, scanned: 0, flags: [] };
   const last = patrolSheet.getLastRow();
   if (last < 2) return summary; // header only
   const RC = rosterCols_(roster);
@@ -1778,11 +1778,14 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
     summary.scanned++;
     const rowIndex = 2 + i;
     const cell = (c) => (c > 0 && c <= width) ? grid[i][c - 1] : '';
-    const markErr = () => { try { patrolSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); } catch (e) { /* best-effort */ } summary.errored++; };
+    const markErr = (reason) => {
+      try { patrolSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); } catch (e) { /* best-effort */ }
+      summary.errored++; summary.flags.push({ row: rowIndex, reason: reason || 'invalid log' });
+    };
     const hours = patrolDuration_(cell(cols.start), cell(cols.end), cell(cols.duration));
-    if (hours === null) { markErr(); continue; }
+    if (hours === null) { markErr('bad or missing time (unparseable, zero, or over the max)'); continue; }
     const memberRow = patrolFindRow_(roster, cell(cols.discord), cell(cols.callsign));
-    if (memberRow === -1) { markErr(); continue; }
+    if (memberRow === -1) { markErr('no matching member (unknown Discord ID / callsign)'); continue; }
     try {
       // 1) DURABLE dedup key FIRST (+ flush): once written, this log can never be credited again — even if the credit
       //    below, the status recompute, or the green paint throws / is killed by the 6-min limit. Rare cost: a crash in
@@ -1815,6 +1818,16 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
         ],
       }, mention_(c.discord));
       Utilities.sleep(200); // stay under Discord's webhook rate limit on a batch
+    });
+  }
+  // Flagged rows → ONE summary embed on the PATROL channel (webhook presence = the opt-in; never per-row spam).
+  if (sendWebhooks && summary.flags.length && webhookFor_('PATROL')) {
+    const lines = summary.flags.slice(0, 15).map((f) => `• Row ${f.row} — ${f.reason}`);
+    if (summary.flags.length > 15) lines.push(`…and ${summary.flags.length - 15} more`);
+    notifyCh_('PATROL', true, {
+      title: `⚠️ ${summary.flags.length} patrol log${summary.flags.length === 1 ? '' : 's'} flagged`,
+      description: clamp_(lines.join('\n') + `\n\nFlagged rows are red on "${CONFIG.sheets.patrol}" — fix them and re-run 🚔 Sync Patrol Hours.`, 4000),
+      color: hexToInt_('#e0a52c', 14721324),
     });
   }
   summary.hoursAdded = Math.round(summary.hoursAdded * 100) / 100;

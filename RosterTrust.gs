@@ -517,6 +517,7 @@ function auditEdit(e) {
     const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
     log.appendRow([new Date(), email || 'unknown', sheetName, e.range.getA1Notation(), oldV, newV, '', '']);
     const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v2.5.0: config cap)
+    auditNotify_(email || 'unknown', sheetName, e.range.getA1Notation(), oldV, newV, 'edit', ''); // AUDIT channel mirror (webhook presence = opt-in)
   } catch (err) {
     log_('auditEdit', err);
   }
@@ -540,9 +541,43 @@ function auditEvent_(type, oldText, newText, cellA1, member) {
     try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* not available */ }
     log.appendRow([new Date(), email || 'unknown', CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || '', member || '']);
     const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // v2.5.0: config cap
+    auditNotify_(email || 'unknown', CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || 'action', member || ''); // AUDIT channel mirror
   } catch (err) {
     log_('auditEvent_', err);
   }
+}
+
+/** Human label for an audit type — shared by the Discord mirror. */
+function auditTypeLabel_(t) {
+  const m = { add: 'Member added', status: 'Status change', bulk: 'Bulk status change', leave: 'Leave scheduled', move: 'Member moved', patrol: 'Patrol hours credited', action: 'System action', snapshot: 'Snapshot taken', restore: 'Snapshot restored', cert: 'Certification change', hours: 'Hours change', edit: 'Sheet edit' };
+  return m[String(t || '').toLowerCase()] || 'Sheet edit';
+}
+
+/**
+ * Mirror an audit entry to the AUDIT Discord channel. Webhook presence IS the opt-in (like the errors channel);
+ * no webhook (or no admin-file access for this account) = silent no-op. Never throws into the edit that fired it.
+ */
+function auditNotify_(editor, sheetName, cellA1, oldV, newV, type, member) {
+  try {
+    if (!webhookFor_('AUDIT')) return; // memoized per execution — cheap when unset
+    const fields = [];
+    const add = (n, v) => { if (String(v == null ? '' : v).trim() !== '') fields.push({ name: n, value: clamp_(dash_(String(v)), 1000), inline: true }); };
+    add('👤 Editor', editor);
+    add('📄 Sheet', sheetName);
+    add('📍 Cell', cellA1);
+    add('🧾 Member', member);
+    add('◀️ Old', oldV);
+    add('▶️ New', newV);
+    sendWebhookPayloadCh_('AUDIT', {
+      embeds: [{
+        title: `📝 ${auditTypeLabel_(type)}`,
+        color: 5793266,
+        fields,
+        timestamp: new Date().toISOString(),
+        footer: { text: `${CONFIG.systemName} • audit` },
+      }],
+    });
+  } catch (e) { /* the audit trail itself already saved — a Discord failure must never surface */ }
 }
 
 /** @return {boolean} whether an installable onEdit audit trigger is active. */
