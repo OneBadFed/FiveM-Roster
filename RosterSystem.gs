@@ -912,16 +912,26 @@ function refreshDashboard() {
     let cells = 0;
     try { cells = refreshDashboard_(true); } catch (e) { log_('refreshDashboard.dash', e); }
     try { renderPromotions_(); } catch (e) { log_('refreshDashboard.promos', e); }
+    // 5) Integrity scan — duplicate/malformed IDs, status-vs-hours mismatches, orphaned/mis-targeted leaves.
+    //    Guarded (the checks live in RosterExtras.gs); logs to the Integrity Log + posts a Discord summary.
+    let issues = null;
+    try { if (typeof scanIntegrityCore_ === 'function') issues = scanIntegrityCore_(); } catch (e) { log_('refreshDashboard.integrity', e); }
 
     const started = sched ? sched.started.length : 0;
     const expired = sched ? sched.expired.length : 0;
     const changed = recompute ? recompute.changed.length : 0;
     const total = recompute ? recompute.total : 0;
+    const intLine = issues == null
+      ? '\n• Integrity scan skipped (Extras file not loaded)'
+      : (issues.length
+        ? `\n\n⚠️ ${issues.length} integrity issue${issues.length === 1 ? '' : 's'}:\n${issues.slice(0, 8).join('\n')}${issues.length > 8 ? `\n…and ${issues.length - 8} more (see the Integrity Log tab)` : ''}`
+        : '\n• Integrity scan: clean');
     ui.alert('✅ Refresh & update complete.\n\n' +
       `• ${newLeaves.length} new leave form${newLeaves.length === 1 ? '' : 's'} synced\n` +
       `• ${started} leave${started === 1 ? '' : 's'} started · ${expired} expired\n` +
       `• ${total} member${total === 1 ? '' : 's'} checked — ${changed} status change${changed === 1 ? '' : 's'}\n` +
-      `• Dashboard, promotions & leaderboard updated${cells ? ` (${cells} cell${cells === 1 ? '' : 's'})` : ''}`);
+      `• Dashboard, promotions & leaderboard updated${cells ? ` (${cells} cell${cells === 1 ? '' : 's'})` : ''}` +
+      intLine);
   });
 }
 

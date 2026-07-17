@@ -329,14 +329,7 @@ function buildCoverage() {
 /** Menu/trigger: run the integrity checks, log them, and post if any issues. */
 function scanIntegrity() {
   runAction_('Integrity Scan', () => {
-    const issues = runIntegritySummary_();
-    const ss = SpreadsheetApp.getActive();
-    const log = ss.getSheetByName(EXTRAS.integritySheet) || ss.insertSheet(EXTRAS.integritySheet);
-    if (log.getLastRow() === 0) log.appendRow(['Time', '# Issues', 'Detail']);
-    log.appendRow([new Date(), issues.length, issues.join(' | ')]);
-    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // bound growth (v2.5.0: config cap)
-    if (issues.length) postSummary_(`🔍 Integrity Scan — ${issues.length} issue(s)`, issues.slice(0, 12).join('\n'), 15548997);
-    logInfo_('scanIntegrity', `${issues.length} issue(s) found.`);
+    const issues = scanIntegrityCore_();
     try {
       SpreadsheetApp.getUi().alert(issues.length
         ? `🔍 ${issues.length} integrity issue(s) found:\n\n${issues.slice(0, 12).join('\n')}` +
@@ -345,6 +338,19 @@ function scanIntegrity() {
         : '✅ No integrity issues found — the roster and tracker look clean.');
     } catch (e) { /* no UI in a time-driven run */ }
   });
+}
+
+/** Run the integrity checks, log them to the Integrity Log, and post a Discord summary. @return {Array<string>} issues. Shared by the menu scan, the daily trigger, and Refresh & Update All. */
+function scanIntegrityCore_() {
+  const issues = runIntegritySummary_();
+  const ss = SpreadsheetApp.getActive();
+  const log = ss.getSheetByName(EXTRAS.integritySheet) || ss.insertSheet(EXTRAS.integritySheet);
+  if (log.getLastRow() === 0) log.appendRow(['Time', '# Issues', 'Detail']);
+  log.appendRow([new Date(), issues.length, issues.join(' | ')]);
+  const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // bound growth (v2.5.0: config cap)
+  if (issues.length) postSummary_(`🔍 Integrity Scan — ${issues.length} issue(s)`, issues.slice(0, 12).join('\n'), 15548997);
+  logInfo_('scanIntegrity', `${issues.length} issue(s) found.`);
+  return issues;
 }
 
 /** Read-only integrity checks. Returns an array of human-readable issue strings. */
