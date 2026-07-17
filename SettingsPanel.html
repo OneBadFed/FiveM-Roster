@@ -524,9 +524,12 @@
   // Friendlier display labels/help for keys whose config names read wrong in the UI (display only — keys unchanged).
   var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_RESPONSES':'PATROL FORM RESPONSES'};
   var HELPS={'SHEETS.FORM_RESPONSES':'Google Form responses for LOAs.','SHEETS.PATROL_RESPONSES':'Google Form responses for Patrol Logs.',
-    'ROSTER_LAYOUT.DIVIDER_MODE':'ALLCAPS_RANK = all-caps labels are dividers. EXPLICIT_LIST = use the Ranks & dividers list.',
-    'ROSTER_LAYOUT.UNIT_FORMAT':'Callsign template — {00} = slot number, zero-padded: "S-{00}" → S-01.',
-    'ROSTER_LAYOUT.LAST_ACTIVITY_STYLE':'MATCH mirrors the status colours; NEUTRAL keeps the column a calm grey chip.'};
+    'ROSTER_LAYOUT.HEADER_ROW':'The row with your column titles (RANK, NAME, HOURS…).',
+    'ROSTER_LAYOUT.DATA_START_ROW':'The first row that can hold a member — rows above it are ignored.',
+    'ROSTER_LAYOUT.TRACKER_START_ROW':'The first leave-entry row on the LOA Tracker tab.',
+    'ROSTER_LAYOUT.DIVIDER_MODE':'ALL-CAPS labels count as section dividers (default) — or use your Ranks & dividers list.',
+    'ROSTER_LAYOUT.UNIT_FORMAT':'How callsigns are numbered — {00} becomes the slot number: "S-{00}" → S-01, S-02…',
+    'ROSTER_LAYOUT.LAST_ACTIVITY_STYLE':'MATCH = coloured like the current status; NEUTRAL = plain grey.'};
   var SECTIONS=[
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES','SHEETS.PATROL_RESPONSES']},
