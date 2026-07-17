@@ -232,31 +232,33 @@ function syncColumnConfig() {
 function buildMenus_(prefix) {
   const p = prefix || '';
   try {
+    // Grouped by WORKFLOW (panels → members → leave → hours → presentation → setup), not by feature age —
+    // an admin scans for the job they're doing, so each separator block is one job family.
     SpreadsheetApp.getUi().createMenu('📋 Roster')
       .addItem('🎛️ Open Control Panel', p + 'openControlPanel')
       .addItem('⚙️ Engine Settings', p + 'openSettingsPanel')
       .addSeparator()
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
-      .addItem('🔄 Fix All Unit Numbers', p + 'updateUnitNumbers')
-      .addSeparator()
       .addItem('📊 Update All Statuses', p + 'updateAllStatuses')
+      .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
+      .addItem('🔎 Check Duplicate Discord IDs', p + 'checkDuplicateDiscordIds')
+      .addSeparator()
+      .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
+      .addItem('🌙 Run Daily Schedule Check', p + 'processDailyLOAs')
+      .addSeparator()
+      .addItem('🚔 Sync Patrol Hours', p + 'manualSyncPatrol')
+      .addItem('♻️ Reset Weekly Hours (saves history)', p + 'resetWeeklyStats')
+      .addSeparator()
       .addItem('📈 Refresh Dashboard', p + 'refreshDashboard')
-      .addItem('🗑️ Reset Weekly Hours', p + 'resetWeeklyStats')
       .addSubMenu(SpreadsheetApp.getUi().createMenu('📸 Last Activity')
         .addItem('📸 Capture (snapshot current → last)', p + 'captureLastActivity')
         .addItem('🎨 Colours → Neutral', p + 'lastActivityNeutral')
         .addItem('🎨 Colours → Match Current', p + 'lastActivityMatch'))
+      .addItem('🎨 Style Form Responses', p + 'styleFormResponsesNow')
       .addSeparator()
-      .addItem('🔗 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
-      .addItem('🚔 Sync Patrol Hours', p + 'manualSyncPatrol')
-      .addItem('✨ Style Form Responses', p + 'styleFormResponsesNow')
-      .addItem('📅 Force Run Daily Schedule Check', p + 'processDailyLOAs')
-      .addSeparator()
-      .addItem('🔎 Check Duplicate Discord IDs', p + 'checkDuplicateDiscordIds')
       .addItem('🧩 Sync Column Config', p + 'syncColumnConfig')
-      .addSeparator()
       .addItem('🚀 First-Run Setup', p + 'setupWizard')
-      .addItem('⚙️ Install Triggers', p + 'installTriggers')
+      .addItem('🔌 Install Triggers', p + 'installTriggers')
       .addToUi();
   } catch (err) {
     log_('onOpen', err);

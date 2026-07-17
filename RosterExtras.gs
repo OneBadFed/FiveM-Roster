@@ -46,7 +46,7 @@ function addExtrasMenu_(prefix) {
   SpreadsheetApp.getUi().createMenu('🛠️ Extras')
     .addItem('🗓️ Rebuild Leave Coverage', p + 'buildCoverage')
     .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
-    .addItem('🗑️ Weekly Reset (saves history)', p + 'weeklyResetWithHistory')
+    .addItem('♻️ Weekly Reset (saves history)', p + 'weeklyResetWithHistory')
     .addSeparator()
     .addItem('🎬 Load Demo Roster (preview)', p + 'seedDemoRoster')
     .addToUi();
