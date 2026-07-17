@@ -32,6 +32,8 @@ function addDevMenu_(prefix) {
   const p = prefix || ''; // '' bound; 'RE.' in library mode (Phase 2)
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🧪 Dev / QA')
+    .addItem('🎬 Load Demo Roster (preview)', p + 'seedDemoRoster')
+    .addSeparator()
     .addItem('▶️ Run ALL Tests', p + 'devRunAllTests')
     .addSubMenu(ui.createMenu('🔬 Run one section')
       .addItem('1 · Unit / pure functions', p + 'devRunSection1')

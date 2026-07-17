@@ -45,8 +45,6 @@ function addExtrasMenu_(prefix) {
   const p = prefix || '';
   SpreadsheetApp.getUi().createMenu('🛠️ Extras')
     .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
-    .addSeparator()
-    .addItem('🎬 Load Demo Roster (preview)', p + 'seedDemoRoster')
     .addToUi();
 }
 

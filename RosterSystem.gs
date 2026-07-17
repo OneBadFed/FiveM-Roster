@@ -235,16 +235,19 @@ function buildMenus_(prefix) {
     // Grouped by WORKFLOW (panels → members → leave → hours → presentation → setup), not by feature age —
     // an admin scans for the job they're doing, so each separator block is one job family.
     SpreadsheetApp.getUi().createMenu('📋 Roster')
+      // Open
       .addItem('🎛️ Open Control Panel', p + 'openControlPanel')
       .addItem('⚙️ Engine Settings', p + 'openSettingsPanel')
       .addSeparator()
+      // Daily operations
+      .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
+      .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
+      .addSeparator()
+      // Roster editing
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
       .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
       .addSeparator()
-      .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
-      .addSeparator()
-      .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
-      .addSeparator()
+      // Setup & wiring (run rarely)
       .addItem('🧩 Sync Column Config', p + 'syncColumnConfig')
       .addItem('🚀 First-Run Setup', p + 'setupWizard')
       .addItem('🔌 Install Triggers', p + 'installTriggers')
