@@ -913,12 +913,14 @@ function cpMoveMember(payload) {
   return { moved: true, name: res.name, fromRank: res.fromRank, toRank: res.toRank, wiped: res.wiped, toRow: res.member.row, member: res.member };
 }
 
-/** Activate the roster tab and select a member's row (jump-to). */
+/** Activate the roster tab and select a member's row (jump-to). Starts at the RANK column so a merged RANK GROUP band to its left never pulls the whole section into the selection. */
 function cpJumpTo(row) {
   const ss = SpreadsheetApp.getActive();
   const roster = cpRoster_();
   ss.setActiveSheet(roster);
-  roster.getRange(row, 2, 1, 8).activate();
+  const startCol = rosterCols_(roster).rank || 3;                 // never column B — that band is merged across the section's rows
+  const width = Math.min(8, Math.max(1, roster.getMaxColumns() - startCol + 1));
+  roster.getRange(row, startCol, 1, width).activate();
   return true;
 }
 
