@@ -241,7 +241,6 @@ function buildMenus_(prefix) {
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
       .addItem('📊 Update All Statuses', p + 'updateAllStatuses')
       .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
-      .addItem('🔎 Check Duplicate Discord IDs', p + 'checkDuplicateDiscordIds')
       .addSeparator()
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
       .addItem('🌙 Run Daily Schedule Check', p + 'processDailyLOAs')
