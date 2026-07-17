@@ -126,19 +126,22 @@ function maybeErrorWebhook_(ae, fnName) {
     let desc = String(ae.message || '');
     if (ae.hint) desc += `\n\n**Fix:** ${ae.hint}`;
     desc = desc.slice(0, 1500) + '\n\n_See SYS Log for the complete record._'; // F-044: one safe bound on the whole description + pointer
+    const fallbackEmbed = {
+      title: `⚠️ ${ae.code} — ${fnName || 'engine'}`,
+      description: desc,
+      color: 14702415, // #e0574f — semantic red
+      footer: { text: `${sysName} • ${ENGINE_VERSION}` },
+    };
+    // Template override, memo-safe: embedFromTemplate_ reads CONFIG (may be broken on an error path) inside its
+    // own try/catch and falls back to the built-in embed — an error notification is never lost to a bad template.
+    const embed = (typeof embedFromTemplate_ === 'function')
+      ? embedFromTemplate_('error', { code: ae.code || 'E-601', message: String(ae.message || ''), hint: String(ae.hint || ''), 'function': fnName || 'engine' }, fallbackEmbed)
+      : fallbackEmbed;
     const res = UrlFetchApp.fetch(url, {
       method: 'post',
       contentType: 'application/json',
       muteHttpExceptions: true, // a webhook failure must not throw into the caller's error path
-      payload: JSON.stringify({
-        username: `${sysName} — errors`,
-        embeds: [{
-          title: `⚠️ ${ae.code} — ${fnName || 'engine'}`,
-          description: desc,
-          color: 14702415, // #e0574f — semantic red
-          footer: { text: `${sysName} • ${ENGINE_VERSION}` },
-        }],
-      }),
+      payload: JSON.stringify({ username: `${sysName} — errors`, embeds: [embed] }),
     });
     // F-044: surface an otherwise-muted delivery failure (never throw — mirrors the "never fatal" contract). slog_ reads CFG_.
     const code = res.getResponseCode();
@@ -435,11 +438,13 @@ const BLOCK_SPECS_ = Object.freeze({
       ['AUXILIARY', 'right', 'group:Auxiliary'], ['TOTAL', 'right', 'total'],
     ],
     help: 'Fixed KPI boxes: the engine finds each Label by text and writes the Stat value below/right of it.' },
+  EMBEDS: { type: 'table', cols: ['Event', 'Json'], seed: [],
+    help: 'Per-event Discord embed templates (JSON), managed by Engine Settings ▸ Discord. EMPTY = the built-in embeds. Edit through the builder — hand-broken JSON rows are ignored.' },
 });
 
 const BLOCK_ORDER_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'RANKS', 'COLUMNS', 'SECTIONS', 'SECTION_TAGS',
   'STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'LEAVE', 'FORM_MAP', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME',
-  'DASHBOARD', 'DASHBOARD_GROUPS', 'DASHBOARD_CELLS']);
+  'DASHBOARD', 'DASHBOARD_GROUPS', 'DASHBOARD_CELLS', 'EMBEDS']);
 
 /* ======================================================================
  * PARSING — one bulk read of the Config tab into raw blocks.
@@ -867,6 +872,13 @@ function materialize_(c, fromTab) {
   c.tables.DASHBOARD_GROUPS.forEach((r) => { if (r.Group) groups[r.Group] = String(r.Categories).split(',').map((x) => x.trim()).filter(Boolean); });
   const cells = c.tables.DASHBOARD_CELLS.filter((r) => r.Label).map((r) => ({ label: r.Label, dir: (norm_(r.Dir) === 'BELOW' ? 'below' : 'right'), stat: r.Stat }));
 
+  // Per-event Discord embed templates (the Settings Studio's builder writes valid JSON; a hand-broken row is ignored).
+  const embedTpl = {};
+  (c.tables.EMBEDS || []).forEach((r) => {
+    const ev = String(r.Event || '').trim(); if (!ev) return;
+    try { const o = JSON.parse(String(r.Json || '')); if (o && typeof o === 'object') embedTpl[ev] = o; } catch (e) { /* ignored */ }
+  });
+
   const sectionCategories = c.tables.SECTION_TAGS.filter((r) => r.Label).map((r) => ({
     label: r.Label, keywords: String(r.Keywords).split(',').map((x) => norm_(x)).filter(Boolean), tone: r.Tone || 'aux',
   }));
@@ -949,6 +961,7 @@ function materialize_(c, fromTab) {
     rankList,                                                                    // v2.5.0: {ranks:[NORM], dividers:[NORM]} — for EXPLICIT_LIST mode
     columns: { configSheet: '_Columns', slotKeywords, trainingCheckboxCols: [] }, // configSheet retained for the one-time import
     dashboard: { searchRows: kv.DASHBOARD.SEARCH_ROWS, groups, cells },
+    embedTpl,
   };
 
   return {

@@ -171,6 +171,28 @@
   .dcdot{width:9px;height:9px;border-radius:50%;background:var(--red);}
   .dcdot.on{background:#57b85a;box-shadow:0 0 8px 0 rgba(87,184,90,.5);}
   .dcev{margin:0;padding-left:18px;color:var(--txt-2);font-size:12.5px;line-height:1.9;}
+  /* embed builder */
+  .dcseg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;}
+  .dclb{display:block;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:10px 0 5px;}
+  .dcta{min-height:74px;resize:vertical;font-family:inherit;line-height:1.5;width:100%;}
+  .dcrow2{display:grid;grid-template-columns:1fr 1fr;gap:0 12px;}
+  .dcfr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto 34px;gap:6px;margin-bottom:6px;align-items:center;}
+  .dcbuild{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start;margin-top:4px;}
+  @media(max-width:920px){ .dcbuild{grid-template-columns:1fr;} }
+  .dcmock{background:#313338;border-radius:12px;padding:12px;position:sticky;top:10px;}
+  .dcm-embed{background:#2b2d31;border-radius:6px;border-left:4px solid #5865F2;padding:10px 12px;color:#dbdee1;overflow:hidden;}
+  .dcm-wrap{display:flex;gap:10px;} .dcm-main{flex:1;min-width:0;}
+  .dcm-author{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#fff;margin-bottom:4px;}
+  .dcm-author img{width:20px;height:20px;border-radius:50%;object-fit:cover;}
+  .dcm-title{font-size:14.5px;font-weight:700;color:#fff;margin-bottom:4px;word-break:break-word;}
+  .dcm-desc{font-size:13px;line-height:1.45;white-space:pre-wrap;word-break:break-word;}
+  .dcm-fields{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:6px 10px;margin-top:6px;}
+  .dcm-f{min-width:0;} .dcm-f.full{grid-column:1/-1;}
+  .dcm-fn{font-size:12px;font-weight:700;color:#fff;} .dcm-fv{font-size:12.5px;white-space:pre-wrap;word-break:break-word;}
+  .dcm-thumb{width:64px;height:64px;border-radius:6px;object-fit:cover;flex:0 0 auto;}
+  .dcm-img{width:100%;max-height:220px;object-fit:cover;border-radius:6px;margin-top:8px;display:block;}
+  .dcm-footer{display:flex;align-items:center;gap:7px;margin-top:8px;font-size:11px;color:#949ba4;}
+  .dcm-footer img{width:16px;height:16px;border-radius:50%;object-fit:cover;}
   .setting.err .serr{display:block;}
   .setting.err .in,.setting.err .ddbtn{box-shadow:var(--hi),0 0 0 3px var(--red-soft) !important;}
 
@@ -690,6 +712,7 @@
     if(g.tables && (tblChanged('STATUSES')||tblChanged('STATUS_OVERRIDES')||tblChanged('STATUS_RULES'))) return true;
     if(g.table && tblChanged(g.table)) return true;
     if(g.custom==='ranklabels' && tblChanged('DASHBOARD_GROUPS')) return true;
+    if(g.custom==='discord' && tblChanged('EMBEDS')) return true;
     if(g.tablesMulti && g.tablesMulti.some(function(n){return tblChanged(n);})) return true;
     if(g.cards){ for(var bk in KV){ if(sectionOf(bk)===id && kvChanged(bk)) return true; } }
     return false;
@@ -1188,8 +1211,117 @@
   /* ── Discord sections: per-channel webhook management (URLs live in the ADMIN spreadsheet) ── */
   function discordShell(g){
     return '<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+(ICONS[g.id]||ICONS.table)+'</span><b>Webhook</b><small>['+esc(g.channel)+']</small></div><div id="dcwh"></div></div>'
+      +'<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+ICONS.theme+'</span><b>Embed builder</b><small>[EMBEDS]</small></div><div id="dcBuild"></div></div>'
       +'<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+ICONS.check+'</span><b>What posts here</b></div><ul class="dcev">'
       +g.events.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('')+'</ul></div>';
+  }
+
+  /* ── embed builder: per-event templates stored as JSON rows in [EMBEDS], with a Discord-accurate live preview ── */
+  var DC_EVENTS={
+    AUDIT:[{id:'audit',label:'Audit entry',ph:['editor','sheet','cell','member','old','new','action']}],
+    LOA:[{id:'loaSubmitted',label:'Submitted',ph:['name','rank','callsign','type','start','end','length']},
+         {id:'loaApproved',label:'Approved',ph:['name','rank','type','start','end']},
+         {id:'loaStarted',label:'Started',ph:['name','rank','type']},
+         {id:'loaExpired',label:'Expired',ph:['name','rank','type']}],
+    PATROL:[{id:'patrolLogged',label:'Hours credited',ph:['name','hours','total']},
+            {id:'patrolFlagged',label:'Flagged logs',ph:['count','rows']}],
+    ERRORS:[{id:'error',label:'Engine error',ph:['code','message','hint','function']}],
+  };
+  var DC_SAMPLE={editor:'admin@example.com',sheet:'Member Information',cell:'F14',member:'J. Bennett',old:'Active','new':'LOA',action:'Status change',
+    name:'J. Bennett',rank:'Sergeant',callsign:'S-07',type:'LOA',start:'21 Jul 2026',end:'4 Aug 2026',length:'14 days',
+    hours:'6.5',total:'18.75',count:'2',rows:'• Row 14 — no matching member\n• Row 17 — bad or missing time',
+    code:'E-102',message:'Config has 1 error.',hint:'Open ⚙️ Config and fix the red cell.','function':'cfg_'};
+  var DCEV={}, LASTEMB=null;
+  function embGet_(ev){ var rows=TBL.EMBEDS||[]; for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ try{ var o=JSON.parse(rows[i][1]||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } } } return null; }
+  function embSet_(ev,obj){ TBL.EMBEDS=TBL.EMBEDS||[]; var rows=TBL.EMBEDS, j=JSON.stringify(obj);
+    for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ rows[i][1]=j; updateBar(); return; } }
+    rows.push([ev,j]); updateBar(); }
+  function embReset_(ev){ var rows=TBL.EMBEDS||[]; for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ rows.splice(i,1); break; } } updateBar(); }
+  function dcCurMeta(){
+    var g=SECTIONS.filter(function(x){return x.id===CUR;})[0];
+    if(!g||g.custom!=='discord') return null;
+    var evs=DC_EVENTS[g.channel]||[]; if(!evs.length) return null;
+    var cur=DCEV[g.id]||evs[0].id, meta=null;
+    evs.forEach(function(x){ if(x.id===cur) meta=x; });
+    if(!meta){ meta=evs[0]; cur=meta.id; }
+    DCEV[g.id]=cur;
+    return { g:g, evs:evs, cur:cur, meta:meta };
+  }
+  function renderDcBuilder(){
+    var host=$('dcBuild'); if(!host) return;
+    var m=dcCurMeta(); if(!m){ host.innerHTML=''; return; }
+    var saved=embGet_(m.cur), t=saved||{};
+    var seg=m.evs.map(function(x){ return '<button type="button" class="rlt'+(x.id===m.cur?' on':'')+'" data-dcev="'+esc(x.id)+'">'+esc(x.label)+'</button>'; }).join('');
+    var chips=m.meta.ph.map(function(p){ return '<span class="rlt" data-dcph="{'+esc(p)+'}" title="Click to insert into the focused field">{'+esc(p)+'}</span>'; }).join('');
+    var f=function(k,ph){ return '<input class="in" data-emb="'+k+'" value="'+esc(t[k]||'')+'" placeholder="'+esc(ph)+'" autocomplete="off" spellcheck="false">'; };
+    var fieldRows=(t.fields||[]).map(function(fl,i){
+      return '<div class="dcfr"><input class="in" data-embf="n" value="'+esc(fl.n||'')+'" placeholder="Field name" autocomplete="off" spellcheck="false">'
+        +'<input class="in" data-embf="v" value="'+esc(fl.v||'')+'" placeholder="Value" autocomplete="off" spellcheck="false">'
+        +'<button type="button" class="rlt'+(fl.inline?' on':'')+'" data-embinl="'+i+'" title="Inline fields share a row">inline</button>'
+        +'<button type="button" class="gtdel" data-embdel="'+i+'">'+ICONS.x+'</button></div>';
+    }).join('');
+    host.innerHTML='<div class="dcseg">'+seg
+      +(saved!==null
+        ?'<button type="button" class="rlt" style="margin-left:auto;color:var(--red)" data-dcreset="1">Reset to default</button>'
+        :'<span class="sdesc" style="margin-left:auto">Built-in embed in use — edit any field to override</span>')+'</div>'
+      +'<div class="tagrow" style="margin:6px 0 12px">'+chips+'</div>'
+      +'<div class="dcbuild"><div>'
+        +'<label class="dclb">Title</label>'+f('title','e.g. ✅ {type} Approved')
+        +'<label class="dclb">Description</label><textarea class="in dcta" data-emb="desc" placeholder="Markdown supported — **bold**, *italics*, __underline__, [links](https://…), > quotes, `code`" spellcheck="false">'+esc(t.desc||'')+'</textarea>'
+        +'<div class="dcrow2"><div><label class="dclb">Colour</label>'+f('color','#5865F2')+'</div><div><label class="dclb">Author</label>'+f('author','Author name')+'</div></div>'
+        +'<div class="dcrow2"><div><label class="dclb">Author icon URL</label>'+f('authorIcon','https://…')+'</div><div><label class="dclb">Thumbnail URL</label>'+f('thumb','https://…')+'</div></div>'
+        +'<div class="dcrow2"><div><label class="dclb">Image URL</label>'+f('image','https://…')+'</div><div><label class="dclb">Footer</label>'+f('footer','Footer text')+'</div></div>'
+        +'<label class="dclb">Footer icon URL</label>'+f('footerIcon','https://…')
+        +'<label class="dclb" style="margin-top:12px">Fields</label><div id="dcFields">'+fieldRows+'</div>'
+        +'<button type="button" class="gtadd" data-dcaddf="1" style="margin-top:6px">+ Add field</button>'
+      +'</div><div id="dcPrev">'+dcMock_(t)+'</div></div>';
+  }
+  function dcSyncFromForm_(){
+    var m=dcCurMeta(); if(!m) return;
+    var t={};
+    document.querySelectorAll('#dcBuild [data-emb]').forEach(function(el){ var v=el.value; if(String(v).trim()!=='') t[el.dataset.emb]=v; });
+    var fl=[];
+    document.querySelectorAll('#dcBuild .dcfr').forEach(function(r){
+      var n=r.querySelector('[data-embf="n"]').value, v=r.querySelector('[data-embf="v"]').value;
+      var inl=r.querySelector('[data-embinl]').classList.contains('on');
+      if(String(n).trim()!==''||String(v).trim()!=='') fl.push({n:n,v:v,inline:inl});
+    });
+    if(fl.length) t.fields=fl;
+    if(Object.keys(t).length) embSet_(m.cur,t); else embReset_(m.cur);
+    var pv=$('dcPrev'); if(pv) pv.innerHTML=dcMock_(t);
+  }
+  function insertAt_(el,txt){
+    var s=(el.selectionStart!=null)?el.selectionStart:el.value.length, en=(el.selectionEnd!=null)?el.selectionEnd:s;
+    el.value=el.value.slice(0,s)+txt+el.value.slice(en);
+    try{ el.selectionStart=el.selectionEnd=s+txt.length; }catch(e){ /* number inputs */ }
+    el.focus();
+  }
+  /* Discord-accurate mock (matches the bot's preview): sidebar colour, author, blue-less title, markdown body,
+     3-across inline fields, thumbnail right, image below, footer + timestamp. Placeholders show SAMPLE values. */
+  function dcMock_(t){
+    t=t||{};
+    var sub=function(s){ return String(s==null?'':s).replace(/\{(\w+)\}/g,function(mm,k){ return DC_SAMPLE[k]!=null?String(DC_SAMPLE[k]):mm; }); };
+    var md=function(s){ return dcRender(sub(s)); };
+    var col=/^#[0-9a-fA-F]{6}$/.test(String(t.color||'').trim())?String(t.color).trim():'#5865F2';
+    var hasAny=t.title||t.desc||t.author||t.footer||t.footerIcon||t.thumb||t.image||(t.fields&&t.fields.length);
+    if(!hasAny) return '<div class="dcmock"><div class="dcm-embed"><div class="dcm-desc" style="color:#949ba4">Live preview — the built-in embed is used until you edit a field. Markdown and {placeholders} render here as you type.</div></div></div>';
+    var h='<div class="dcmock"><div class="dcm-embed" style="border-left-color:'+esc(col)+'"><div class="dcm-wrap"><div class="dcm-main">';
+    if(t.author) h+='<div class="dcm-author">'+(t.authorIcon?('<img class="dc-eaic" src="'+esc(sub(t.authorIcon))+'" alt="">'):'')+'<span>'+md(t.author)+'</span></div>';
+    if(t.title) h+='<div class="dcm-title">'+md(t.title)+'</div>';
+    if(t.desc) h+='<div class="dcm-desc">'+md(t.desc)+'</div>';
+    if(t.fields&&t.fields.length){
+      h+='<div class="dcm-fields">';
+      t.fields.forEach(function(fl){ if(String(fl.n||'').trim()===''&&String(fl.v||'').trim()==='') return;
+        h+='<div class="dcm-f'+(fl.inline?'':' full')+'"><div class="dcm-fn">'+md(fl.n)+'</div><div class="dcm-fv">'+md(fl.v)+'</div></div>'; });
+      h+='</div>';
+    }
+    h+='</div>';
+    if(t.thumb) h+='<img class="dcm-thumb dc-thumb" src="'+esc(sub(t.thumb))+'" alt="">';
+    h+='</div>';
+    if(t.image) h+='<img class="dcm-img dc-img" src="'+esc(sub(t.image))+'" alt="">';
+    if(t.footer||t.footerIcon) h+='<div class="dcm-footer">'+(t.footerIcon?('<img class="dc-ficon" src="'+esc(sub(t.footerIcon))+'" alt="">'):'')+'<span>'+md(t.footer||'')+'</span><span>•</span><span>Today at 12:00 PM</span></div>';
+    h+='</div></div>';
+    return h;
   }
   function renderDiscordSec(g){
     var host=$('dcwh'); if(!host) return;
@@ -1205,6 +1337,7 @@
       +'</div>'
       +'<div class="sdesc" style="margin-top:10px;max-width:74ch">The URL is write-only — stored in the admin spreadsheet, never shown again. <b>Remove ALL</b> wipes every channel at once (the abuse kill switch); only accounts with admin-file access can change any of this.</div>';
     host.innerHTML=h;
+    renderDcBuilder();
   }
 
   /* ── ranks & labels (a friendlier editor over [DASHBOARD_GROUPS] rank entries) ── */
@@ -1339,6 +1472,7 @@
 
   /* ── events ── */
   $('content').addEventListener('change',function(e){ var f=e.target; if(f&&f.matches&&f.matches('input[data-rankfile]')) handleRankUpload(f); });
+  $('content').addEventListener('focusin',function(e){ var f=e.target; if(f&&f.closest&&f.closest('#dcBuild')&&f.dataset&&(f.dataset.emb!==undefined||f.dataset.embf!==undefined)) LASTEMB=f; }); // placeholder chips insert here
   $('content').addEventListener('error',function(e){ var t=e.target; if(t&&t.tagName==='IMG'&&/\bdc-(thumb|img|eaic|ficon)\b/.test(t.className||'')) t.style.display='none'; },true); // hide broken embed-preview images (capture phase — error doesn't bubble)
   $('content').addEventListener('click',function(e){ var d=e.target.closest&&e.target.closest('[data-rankdel]'); if(d) handleRankDelete(d.getAttribute('data-rankdel')); });
   $('nav').addEventListener('click',function(e){ var b=e.target.closest('[data-sec]'); if(!b) return; CUR=b.dataset.sec; renderNav(); renderSection(); });
@@ -1360,6 +1494,7 @@
   $('content').addEventListener('input',function(e){
     var t=e.target;
     if(t.dataset.bk && !t.dataset.role && t.type!=='checkbox'){ onKv(t.dataset.bk, t.value); return; }
+    if(t.closest && t.closest('#dcBuild') && (t.dataset.emb!==undefined || t.dataset.embf!==undefined)){ dcSyncFromForm_(); return; }
     if(t.classList.contains('gtc')){ var gr=t.closest('[data-gt]'); if(gr){ TBL[gr.dataset.gt][Number(gr.dataset.gr)][Number(t.dataset.gc)]=t.value; updateBar(); } return; }
     var cw=t.closest('.cwrap');
     if(cw && cw.dataset.bk){
@@ -1402,6 +1537,19 @@
     if(gadd){ var gn=gadd.dataset.gtadd; var w=((TBLMETA[gn]||{}).cols||[]).length; var nr=[]; for(var gi=0;gi<w;gi++) nr.push(''); (TBL[gn]=TBL[gn]||[]).push(nr); renderSection(); updateBar(); return; }
     var gdel=e.target.closest('[data-gtdel]');
     if(gdel){ var grow=gdel.closest('[data-gt]'); if(grow){ TBL[grow.dataset.gt].splice(Number(grow.dataset.gr),1); renderSection(); updateBar(); } return; }
+    var dev=e.target.closest('[data-dcev]');
+    if(dev){ DCEV[CUR]=dev.dataset.dcev; renderDcBuilder(); return; }
+    var drs=e.target.closest('[data-dcreset]');
+    if(drs){ var mR=dcCurMeta(); if(mR){ embReset_(mR.cur); renderDcBuilder(); } return; }
+    var daf=e.target.closest('[data-dcaddf]');
+    if(daf){ var mA=dcCurMeta(); if(mA){ var tA=embGet_(mA.cur)||{}; tA.fields=(tA.fields||[]).concat([{n:'',v:'',inline:true}]); embSet_(mA.cur,tA); renderDcBuilder(); } return; }
+    var ddl=e.target.closest('[data-embdel]');
+    if(ddl){ var mD=dcCurMeta(); if(mD){ var tD=embGet_(mD.cur)||{}; (tD.fields||[]).splice(Number(ddl.dataset.embdel),1); embSet_(mD.cur,tD); renderDcBuilder(); } return; }
+    var dil=e.target.closest('[data-embinl]');
+    if(dil){ dil.classList.toggle('on'); dcSyncFromForm_(); return; }
+    var dph=e.target.closest('[data-dcph]');
+    if(dph){ var tgt=(LASTEMB&&document.body.contains(LASTEMB))?LASTEMB:document.querySelector('#dcBuild [data-emb="title"]');
+      if(tgt){ insertAt_(tgt,dph.dataset.dcph); dcSyncFromForm_(); } return; }
     var dsv=e.target.closest('[data-dcsave]');
     if(dsv){ var du=($('dcUrl')&&$('dcUrl').value.trim())||''; if(!du){ toast('Paste a webhook URL first (or use Clear).','err'); return; }
       dsv.disabled=true;

@@ -1595,14 +1595,14 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
   if (sendWebhooks) {
     if (CONFIG.notify && CONFIG.notify.leaveStarted) {
       summary.started.forEach((s) => {
-        notify_(true, {
+        notify_(true, embedFromTemplate_('loaStarted', { name: s.name, rank: s.rank, type: s.type }, {
           title: fill_(CONFIG.notify.startedTitle, { type: s.type }),
           color: hexToInt_(CONFIG.notify.startedColor, 5154774),
           fields: [
             { name: '👤 Name', value: clamp_(dash_(s.name), 1000), inline: true },
             { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(s.rank)), 1000), inline: true },
           ],
-        }, mention_(s.id));
+        }), mention_(s.id));
         Utilities.sleep(300);
       });
     }
@@ -1808,7 +1808,7 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   // Notifications fire AFTER all writes (never block a credit). Off by default.
   if (sendWebhooks && CONFIG.notify && CONFIG.notify.patrolLogged) {
     summary.credited.forEach((c) => {
-      notifyCh_('PATROL', true, {
+      notifyCh_('PATROL', true, embedFromTemplate_('patrolLogged', { name: c.name, hours: String(c.hours), total: String(c.total) }, {
         title: fill_(CONFIG.notify.patrolTitle, { name: c.name, hours: c.hours, total: c.total }),
         color: hexToInt_(CONFIG.notify.patrolColor, 5154774),
         fields: [
@@ -1816,7 +1816,7 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
           { name: '🚔 Patrol', value: `${c.hours} hr${c.hours === 1 ? '' : 's'}`, inline: true },
           { name: '⏱️ New total', value: `${c.total} hrs`, inline: true },
         ],
-      }, mention_(c.discord));
+      }), mention_(c.discord));
       Utilities.sleep(200); // stay under Discord's webhook rate limit on a batch
     });
   }
@@ -1824,11 +1824,11 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   if (sendWebhooks && summary.flags.length && webhookFor_('PATROL')) {
     const lines = summary.flags.slice(0, 15).map((f) => `• Row ${f.row} — ${f.reason}`);
     if (summary.flags.length > 15) lines.push(`…and ${summary.flags.length - 15} more`);
-    notifyCh_('PATROL', true, {
+    notifyCh_('PATROL', true, embedFromTemplate_('patrolFlagged', { count: String(summary.flags.length), rows: lines.join('\n') }, {
       title: `⚠️ ${summary.flags.length} patrol log${summary.flags.length === 1 ? '' : 's'} flagged`,
       description: clamp_(lines.join('\n') + `\n\nFlagged rows are red on "${CONFIG.sheets.patrol}" — fix them and re-run 🚔 Sync Patrol Hours.`, 4000),
       color: hexToInt_('#e0a52c', 14721324),
-    });
+    }));
   }
   summary.hoursAdded = Math.round(summary.hoursAdded * 100) / 100;
   return summary;
@@ -2056,38 +2056,39 @@ function sendDiscordWebhook(name, rank, callsign, type, start, end, duration, di
   const typeStr = String(type == null ? '' : type).trim() || 'Leave';
   const isReturn = CONFIG.returnStatus && norm_(typeStr) === norm_(CONFIG.returnStatus); // ROA-style returning leave → warmer color
   const E = CONFIG.embed; // v2.5.0: configurable title/colour
+  const fallback = {
+    title: String(E.submitTitle).replace(/\{type\}/g, typeStr),
+    color: isReturn ? hexToInt_(E.returnColor, 15105570) : hexToInt_(E.submitColor, 3447003),
+    fields: [
+      { name: '👤 Name', value: clamp_(dash_(name), 1000), inline: true },
+      { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
+      { name: '🎙️ Callsign', value: clamp_(dash_(callsign), 1000), inline: true },
+      { name: '▶️ Start Date', value: clamp_(dash_(start), 1000), inline: true },
+      { name: '⏹️ End Date', value: clamp_(dash_(end), 1000), inline: true },
+      { name: '⏳ Length', value: clamp_(dash_(duration), 1000), inline: true },
+    ],
+  };
+  const vars = { name, rank, callsign, type: typeStr, start, end, length: duration };
   sendWebhookPayload_({
     content: mention_(discordId),
-    embeds: [Object.assign({
-      title: String(E.submitTitle).replace(/\{type\}/g, typeStr),
-      color: isReturn ? hexToInt_(E.returnColor, 15105570) : hexToInt_(E.submitColor, 3447003),
-      fields: [
-        { name: '👤 Name', value: clamp_(dash_(name), 1000), inline: true },
-        { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
-        { name: '🎙️ Callsign', value: clamp_(dash_(callsign), 1000), inline: true },
-        { name: '▶️ Start Date', value: clamp_(dash_(start), 1000), inline: true },
-        { name: '⏹️ End Date', value: clamp_(dash_(end), 1000), inline: true },
-        { name: '⏳ Length', value: clamp_(dash_(duration), 1000), inline: true },
-      ],
-      timestamp: new Date().toISOString(),
-    }, embedChrome_())], // v2.5.0: optional author/thumbnail/image/footer from config
+    embeds: [Object.assign({ timestamp: new Date().toISOString() }, embedFromTemplate_('loaSubmitted', vars, fallback), embedChrome_())], // v2.5.0: optional chrome from config
   });
 }
 
 function sendExpirationWebhook(name, rank, discordId, type) {
   const E = CONFIG.embed; // v2.5.0: configurable title/colour
+  const fallback = {
+    title: String(E.expireTitle).replace(/\{type\}/g, type),
+    description: clamp_(`This member's **${type}** has ended. Their status has been updated on the roster.`, 4000),
+    color: hexToInt_(E.expireColor, 15548997),
+    fields: [
+      { name: '👤 Name', value: clamp_(dash_(name), 1000), inline: true },
+      { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
+    ],
+  };
   sendWebhookPayload_({
     content: mention_(discordId),
-    embeds: [Object.assign({
-      title: String(E.expireTitle).replace(/\{type\}/g, type),
-      description: clamp_(`This member's **${type}** has ended. Their status has been updated on the roster.`, 4000),
-      color: hexToInt_(E.expireColor, 15548997),
-      fields: [
-        { name: '👤 Name', value: clamp_(dash_(name), 1000), inline: true },
-        { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
-      ],
-      timestamp: new Date().toISOString(),
-    }, embedChrome_())],
+    embeds: [Object.assign({ timestamp: new Date().toISOString() }, embedFromTemplate_('loaExpired', { name, rank, type }, fallback), embedChrome_())],
   });
 }
 
@@ -2139,6 +2140,38 @@ function fill_(template, vars) {
  */
 function notify_(on, embed, content) { notifyCh_('LOA', on, embed, content); }
 
+/**
+ * Build an embed from the admin-edited [EMBEDS] template for `event`, with {token} placeholders filled from
+ * `vars` — or return `fallback` (the built-in embed) when no template exists or anything at all goes wrong.
+ * Templates come from the Settings Studio's builder; every text part is clamped to Discord's limits.
+ */
+function embedFromTemplate_(event, vars, fallback) {
+  try {
+    const t = (CONFIG.embedTpl && CONFIG.embedTpl[event]) || null;
+    if (!t) return fallback;
+    const F = (s) => fill_(String(s == null ? '' : s), vars || {});
+    const e = {};
+    if (t.title) e.title = clamp_(F(t.title), 256);
+    if (t.desc) e.description = clamp_(F(t.desc), 4000);
+    if (t.color) e.color = hexToInt_(t.color, 5793266);
+    if (t.author) {
+      e.author = { name: clamp_(F(t.author), 256) };
+      const ai = embedUrl_(t.authorIcon); if (ai) e.author.icon_url = ai;
+    }
+    const th = embedUrl_(t.thumb); if (th) e.thumbnail = { url: th };
+    const im = embedUrl_(t.image); if (im) e.image = { url: im };
+    if (t.footer || t.footerIcon) {
+      e.footer = { text: clamp_(F(t.footer || ''), 2048) };
+      const fi = embedUrl_(t.footerIcon); if (fi) e.footer.icon_url = fi;
+    }
+    if (Array.isArray(t.fields)) {
+      e.fields = t.fields.filter((f) => f && (String(f.n || '').trim() || String(f.v || '').trim())).slice(0, 25)
+        .map((f) => ({ name: clamp_(F(f.n) || '​', 256), value: clamp_(F(f.v) || '​', 1024), inline: !!f.inline }));
+    }
+    return (e.title || e.description || (e.fields && e.fields.length)) ? e : fallback;
+  } catch (err) { return fallback; } // a broken template (or broken config) must never eat the notification
+}
+
 /** notify_ with an explicit channel first — call-site friendly (the trailing content/mention arg stays last). */
 function notifyCh_(channel, on, embed, content) {
   if (!on) return;
@@ -2155,16 +2188,17 @@ function notifyLeaveApproved_(sheet, row) {
   try {
     const g = (col) => String(sheet.getRange(row, col).getDisplayValue());
     const type = g(CONFIG.tracker.type) || 'Leave';
-    notify_(true, {
+    const vars = { name: g(CONFIG.tracker.name), rank: g(CONFIG.tracker.rank), type, start: g(CONFIG.tracker.start), end: g(CONFIG.tracker.end) };
+    notify_(true, embedFromTemplate_('loaApproved', vars, {
       title: fill_(CONFIG.notify.approvedTitle, { type: type }),
       color: hexToInt_(CONFIG.notify.approvedColor, 5749594),
       fields: [
-        { name: '👤 Name', value: clamp_(dash_(g(CONFIG.tracker.name)), 1000), inline: true },
-        { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(g(CONFIG.tracker.rank))), 1000), inline: true },
-        { name: '▶️ Start Date', value: clamp_(dash_(g(CONFIG.tracker.start)), 1000), inline: true },
-        { name: '⏹️ End Date', value: clamp_(dash_(g(CONFIG.tracker.end)), 1000), inline: true },
+        { name: '👤 Name', value: clamp_(dash_(vars.name), 1000), inline: true },
+        { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(vars.rank)), 1000), inline: true },
+        { name: '▶️ Start Date', value: clamp_(dash_(vars.start), 1000), inline: true },
+        { name: '⏹️ End Date', value: clamp_(dash_(vars.end), 1000), inline: true },
       ],
-    }, mention_(g(CONFIG.tracker.discord)));
+    }), mention_(g(CONFIG.tracker.discord)));
   } catch (e) { log_('notifyLeaveApproved_', e); }
 }
 

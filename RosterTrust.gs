@@ -568,14 +568,15 @@ function auditNotify_(editor, sheetName, cellA1, oldV, newV, type, member) {
     add('🧾 Member', member);
     add('◀️ Old', oldV);
     add('▶️ New', newV);
+    const vars = { editor, sheet: sheetName, cell: cellA1, member, old: oldV, 'new': newV, action: auditTypeLabel_(type) };
+    const fallback = {
+      title: `📝 ${auditTypeLabel_(type)}`,
+      color: 5793266,
+      fields,
+      footer: { text: `${CONFIG.systemName} • audit` },
+    };
     sendWebhookPayloadCh_('AUDIT', {
-      embeds: [{
-        title: `📝 ${auditTypeLabel_(type)}`,
-        color: 5793266,
-        fields,
-        timestamp: new Date().toISOString(),
-        footer: { text: `${CONFIG.systemName} • audit` },
-      }],
+      embeds: [Object.assign({ timestamp: new Date().toISOString() }, embedFromTemplate_('audit', vars, fallback))],
     });
   } catch (e) { /* the audit trail itself already saved — a Discord failure must never surface */ }
 }
