@@ -1,0 +1,10 @@
+# Never push the shim with the engine (D1: it ships only inside community templates)
+TEMPLATE-SHIM.gs
+# Non-script assets
+_gallery/**
+_files/**
+docs/**
+**/*.md
+.gitignore
+.claspignore
+.clasp.json
