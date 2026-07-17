@@ -448,7 +448,7 @@
 
 <script>
   /* ════ data layer — identical server contract (dispatch → cpGetConfig / cpApplyConfig) ════ */
-  var DATA=null, KV={}, BASE={}, TBL={}, TBLBASE={}, TBLMETA={}, CUR='identity', Q='', LASTSAVED=null;
+  var DATA=null, KV={}, BASE={}, TBL={}, TBLBASE={}, TBLMETA={}, CUR='sheets', Q='', LASTSAVED=null;
   var DD={}, DDSEQ=0, DDOPEN=null; // custom-dropdown registry + open menu
   function $(id){ return document.getElementById(id); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
@@ -457,7 +457,7 @@
   function onError(e){ toast((e&&e.message)?e.message:'Something went wrong.','err'); }
 
   var GROUPS=[
-    {label:'System', ids:['identity','sheets']},
+    {label:'System', ids:['sheets']},
     {label:'Configuration', ids:['statuses','ranks','rankicons','leave','theme']},
     {label:'Dashboard', ids:['dashboard']},
     {label:'Operations', ids:['automation','advanced']},
@@ -522,8 +522,6 @@
     return ICONS.ftext;
   }
   var SECTIONS=[
-    {id:'identity', a:'var(--accent)', title:'Identity', desc:'How the system presents itself — the white-label name shown on the Control Panel and on everything the engine writes.',
-      cards:[{t:'Identity', keys:['SYSTEM.SYSTEM_NAME']}]},
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']},
