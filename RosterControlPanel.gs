@@ -849,6 +849,7 @@ function cpMoveMember(payload) {
     cpAudit_('move', r.fromRank, r.toRank, roster.getRange(Number(payload.toRow), rosterCols_(roster).name).getA1Notation(), r.name);
     return r;
   });
+  promoRecord_(Number(payload && payload.fromRow), Number(payload && payload.toRow), res.name, res.fromRank, res.toRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
   notify_(CONFIG.notify.transfer, { // v2.5.0 optional embed — after the lock releases, only on a successful move
     title: fill_(CONFIG.notify.transferTitle, { name: res.name, from: res.fromRank, to: res.toRank }),
     color: hexToInt_(CONFIG.notify.transferColor, 5793266),

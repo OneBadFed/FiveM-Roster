@@ -675,8 +675,96 @@ function renderDashboardOnSheet_(sheet, s) {
   return written;
 }
 
+/* ======================================================================
+ * RECENT-PROMOTIONS FEED — a rolling "last N promotions" table on any
+ * dashboard-eligible tab. A move counts as a PROMOTION when the member
+ * lands on an EARLIER row (the roster is ordered top = highest) AND the
+ * rank label actually changed; demotions and same-rank shuffles are not
+ * recorded. History lives in Document Properties (PROMO_STORE_PROP_) so
+ * the table can be moved or restyled freely and refilled at any time;
+ * it is found by its title cell + a DATE / NAME / NEW RANK header row.
+ * ====================================================================== */
+const PROMO_STORE_PROP_ = 'RE_PROMOS';
+const PROMO_TITLE_ = 'RECENT PROMOTIONS';
+const PROMO_MAX_ = 20;
+
+/** Pure predicate: does this move qualify as a promotion? (Injectable — DevQA drives it directly.) */
+function promoIsPromotion_(srcRow, dstRow, fromRank, toRank) {
+  if (!(Number(dstRow) < Number(srcRow))) return false; // up the sheet = up the ladder
+  const f = norm_(fromRank), t = norm_(toRank);
+  return !!t && t !== 'UNKNOWN' && f !== t;             // the rank label must actually change
+}
+
+/** Record a promotion (newest first, capped at PROMO_MAX_) and re-render the feed. Never throws into the move. */
+function promoRecord_(srcRow, dstRow, name, fromRank, toRank) {
+  try {
+    if (!promoIsPromotion_(srcRow, dstRow, fromRank, toRank)) return;
+    const P = PropertiesService.getDocumentProperties();
+    let list; try { list = JSON.parse(P.getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
+    if (!Array.isArray(list)) list = [];
+    list.unshift({ t: Date.now(), n: String(name || '').trim(), r: String(toRank).trim() });
+    P.setProperty(PROMO_STORE_PROP_, JSON.stringify(list.slice(0, PROMO_MAX_)));
+    renderPromotions_();
+  } catch (e) { logWarn_('promoRecord_', String((e && e.message) || e)); }
+}
+
 /**
- * Live wrapper: compute the stats from the member roster, then render the dashboard (fixed KPI boxes + #stat tags)
+ * Injectable core: render `list` into THIS sheet's RECENT PROMOTIONS table, if it carries one. The title cell is
+ * matched anywhere on the sheet (case-insensitive); the DATE / NAME / NEW RANK header row must sit within 3 rows
+ * below it (any columns — merged bands are fine, the header text anchors each column). The full PROMO_MAX_ block
+ * is rewritten every time so removed entries clear, and every cell is '@'-formatted BEFORE the write (a member
+ * named "=X" must never execute as a formula). @return {boolean} true when a table was found and filled.
+ */
+function renderPromotionsOnSheet_(sheet, list) {
+  const lastRow = sheet.getLastRow(), lastCol = sheet.getLastColumn();
+  if (lastRow < 2 || lastCol < 3) return false;
+  const grid = sheet.getRange(1, 1, lastRow, lastCol).getDisplayValues();
+  let tr = 0;
+  for (let r = 0; r < lastRow && !tr; r++) {
+    for (let c = 0; c < lastCol; c++) {
+      if (String(grid[r][c]).trim().toUpperCase() === PROMO_TITLE_) { tr = r + 1; break; }
+    }
+  }
+  if (!tr) return false;
+  let hr = 0, dateCol = 0, nameCol = 0, rankCol = 0;
+  for (let r = tr; r < Math.min(tr + 3, lastRow) && !hr; r++) {
+    let d = 0, n = 0, k = 0;
+    for (let c = 0; c < lastCol; c++) {
+      const v = String(grid[r][c]).trim().toUpperCase();
+      if (v === 'DATE') d = c + 1; else if (v === 'NAME') n = c + 1; else if (v === 'NEW RANK') k = c + 1;
+    }
+    if (d && n && k) { hr = r + 1; dateCol = d; nameCol = n; rankCol = k; }
+  }
+  if (!hr) { logWarn_('renderPromotionsOnSheet_', `"${PROMO_TITLE_}" title on "${sheet.getName()}" has no DATE / NAME / NEW RANK header row beneath it.`); return false; }
+  const n = Math.min(PROMO_MAX_, sheet.getMaxRows() - hr);
+  if (n < 1) return false;
+  const dates = [], names = [], ranks = [];
+  for (let i = 0; i < n; i++) {
+    const p = list[i];
+    dates.push([p ? fmtDisplay_(new Date(Number(p.t))) : '']);
+    names.push([p ? p.n : '']);
+    ranks.push([p ? p.r : '']);
+  }
+  [[dateCol, dates], [nameCol, names], [rankCol, ranks]].forEach((w) => {
+    sheet.getRange(hr + 1, w[0], n, 1).setNumberFormat('@').setValues(w[1]);
+  });
+  return true;
+}
+
+/** Live wrapper: refill the promotions table on every visible, dashboard-eligible tab. @return {number} tables found. */
+function renderPromotions_() {
+  let list; try { list = JSON.parse(PropertiesService.getDocumentProperties().getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  let found = 0;
+  SpreadsheetApp.getActive().getSheets().forEach((sh) => {
+    if (sh.isSheetHidden() || dashboardSkip_(sh.getName())) return;
+    try { if (renderPromotionsOnSheet_(sh, list)) found++; } catch (e) { logWarn_('renderPromotions_', String((e && e.message) || e)); }
+  });
+  return found;
+}
+
+/**
+ * Live wrapper: compute the stats from the member roster, then render the dashboard (#stat tags)
  * onto EVERY visible tab except the data feeds and system/hidden tabs. The banner can live on its own tab — the
  * stats still come from the full roster ("Member Information"); the labels/tags just have to be wherever they are.
  * @return {number} total cells written across all tabs.
@@ -753,6 +841,7 @@ function refreshDashboard() {
       return;
     }
     const n = refreshDashboard_(true); // menu = explicit FULL rescan (re-discovers boxes/#tags on any tab)
+    renderPromotions_(); // re-find + refill the RECENT PROMOTIONS table too (it may have moved during a redesign)
     ui.alert(n
       ? `✅ Dashboard refreshed — ${n} value${n === 1 ? '' : 's'} updated across your tabs.`
       : 'Stats computed, but no KPI boxes or #tags were found to fill. Make sure a banner label matches CONFIG.dashboard.cells exactly (e.g. "TOTAL HOURS"), or just type a tag like #members in a cell.');
@@ -2212,6 +2301,7 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   } finally {
     lock.releaseLock();
   }
+  promoRecord_(sourceRow, targetRow, memberName, sourceRank, targetRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
   notify_(CONFIG.notify.transfer, { // v2.5.0 optional embed — after the lock is released, only reached on a successful move
     title: fill_(CONFIG.notify.transferTitle, { name: memberName, from: sourceRank, to: targetRank }),
     color: hexToInt_(CONFIG.notify.transferColor, 5793266),

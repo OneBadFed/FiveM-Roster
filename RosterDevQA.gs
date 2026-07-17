@@ -2461,6 +2461,22 @@ function devDashboardRenderTests_() {
       devEq_(R, 'stat tag #members → live value', String(sh.getRange(2, 3).getDisplayValue()), '30');
       devCheck_(R, 'tag cell carries the roster-stat marker', String(sh.getRange(2, 3).getNote()).indexOf('roster-stat:') === 0);
     })();
+    // RECENT-PROMOTIONS feed — the pure promotion predicate + the injectable table renderer (sandbox tab).
+    (() => {
+      devCheck_(R, 'promoIsPromotion_ up-sheet + rank change → true', promoIsPromotion_(20, 8, 'Trooper', 'Sergeant'));
+      devCheck_(R, 'promoIsPromotion_ down-sheet (demotion) → false', !promoIsPromotion_(8, 20, 'Sergeant', 'Trooper'));
+      devCheck_(R, 'promoIsPromotion_ same-rank shuffle → false', !promoIsPromotion_(20, 8, 'Trooper', 'Trooper'));
+      const sh = devFreshSheet_('Promos');
+      sh.getRange(1, 2).setValue('Recent Promotions'); // mixed case — the finder is case-insensitive
+      sh.getRange(2, 1, 1, 4).setValues([['DATE', '', 'NAME', 'NEW RANK']]);
+      const list = [{ t: Date.now(), n: '=SUM(A1)', r: 'Sergeant' }, { t: Date.now(), n: 'B. Chen', r: 'Lieutenant' }];
+      devCheck_(R, 'renderPromotionsOnSheet_ finds the table by title + headers', renderPromotionsOnSheet_(sh, list));
+      devEq_(R, 'promotions: newest first, formula-safe name stays literal text', String(sh.getRange(3, 3).getDisplayValue()), '=SUM(A1)');
+      devEq_(R, 'promotions: new rank written beside the name', String(sh.getRange(3, 4).getDisplayValue()), 'Sergeant');
+      devCheck_(R, 'promotions: date cell filled', String(sh.getRange(3, 1).getDisplayValue()) !== '');
+      devEq_(R, 'promotions: second entry on the next row', String(sh.getRange(4, 3).getDisplayValue()), 'B. Chen');
+      devEq_(R, 'promotions: unused rows are cleared', String(sh.getRange(5, 3).getDisplayValue()), '');
+    })();
   });
 
   return R;
