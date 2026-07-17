@@ -492,10 +492,13 @@
   .ltag{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--txt-2);white-space:nowrap;}
   /* recent activity checks (last 4 weekly status snapshots) */
   .chkrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:6px;}
-  .chk{background:var(--e2);border-radius:11px;padding:9px 10px;box-shadow:var(--hi),var(--sh-1);display:flex;flex-direction:column;gap:6px;align-items:flex-start;animation:rise .28s var(--ease) both;}
+  .chk{background:var(--e2);border-radius:11px;padding:9px 11px;box-shadow:var(--hi),var(--sh-1);display:flex;flex-direction:column;gap:7px;align-items:flex-start;animation:rise .28s var(--ease) both;}
   .chk-wk{font-size:9.5px;font-weight:700;color:var(--txt-3);text-transform:uppercase;letter-spacing:.06em;}
-  .chk-hr{font-size:10px;color:var(--txt-3);font-family:var(--mono);}
-  .chk-note{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--txt-2);margin-top:10px;font-weight:550;}
+  .chk-top{display:flex;align-items:center;justify-content:space-between;width:100%;gap:6px;}
+  .chk-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
+  .chk-big{font-size:16px;font-weight:800;font-family:var(--mono);}
+  .chk-big em{font-style:normal;font-size:10px;font-weight:700;color:var(--txt-3);margin-left:3px;}
+  .chk-st{font-size:10px;color:var(--txt-2);font-weight:650;}
 
   /* profile hero + two-column layout */
   .pc-hero{display:flex;align-items:center;gap:var(--s4);padding:var(--s4);}
@@ -898,7 +901,7 @@
             +groups[r].map(function(s){ return '<button type="button" class="sdrop-opt'+(sel&&sel.row===s.row?' sel':'')+'" data-mvrow="'+s.row+'" role="option"><span class="so-call">'+esc(s.callsign||('Row '+s.row))+'</span><span class="so-rank">'+esc(r)+'</span></button>'; }).join('')
             +'</div>';
         }).join('');
-        var cur=sel?(rankAvatar(sel.rank)+'<span>'+esc(sel.callsign||('Row '+sel.row))+' · '+esc(sel.rank)+'</span>'):'<span>— choose an open slot —</span>';
+        var cur=sel?(rankAvatar(sel.rank)+'<span>'+esc(sel.callsign||('Row '+sel.row))+' · '+esc(sel.rank)+'</span>'):'<span>Select slot</span>';
         return '<div class="pc-sec"><div class="pc-lbl">'+PIC.move+'Move / transfer</div>'
           +'<div class="mvrow"><button type="button" class="sdrop-btn mv-trigger" data-mvbtn="1" aria-haspopup="listbox" aria-expanded="false"><span class="sdrop-cur'+(sel?'':' ph')+'" id="mvCur">'+cur+'</span>'
             +'<svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>'
@@ -1065,14 +1068,16 @@
   function isLeaveSt(st){ var k=String(st||'').replace(/[^A-Za-z]/g,''); return k==='LOA'||k==='ROA'||k==='Reserve'; }
   function activityChecks(series){
     if(!series||!series.length) return '<span class="muted2">No activity checks yet — they build up from the weekly reset that saves history.</span>';
-    var last=series.slice(-4), leaveN=0;
-    var chips=last.map(function(c){ if(isLeaveSt(c.status)) leaveN++;
+    var last=series.slice(-4);
+    // Hours carry the chip; status shrinks to a coloured dot (full status in the tooltip). Only the exceptional
+    // case — a leave-kind week — earns a text label, so four "Active" pills never repeat side by side.
+    var chips=last.map(function(c){ var lv=isLeaveSt(c.status);
       return '<div class="chk" title="'+esc(shortWeek(c.week))+' · '+esc(c.status||'—')+' · '+esc(String(c.hours))+' hrs">'
-        +'<span class="chk-wk">'+esc(shortWeek(c.week))+'</span>'+pill(c.status)
-        +'<span class="chk-hr">'+esc(String(c.hours))+' hrs</span></div>'; }).join('');
-    return '<div class="chkrow">'+chips+'</div>'
-      +'<div class="chk-note"><span class="pdot" style="background:'+(leaveN?'#4ea7d6':'#57b85a')+'"></span>'
-      +(leaveN?(leaveN+' of the last '+last.length+' check'+(last.length===1?'':'s')+' on leave'):'Present at all of the last '+last.length+' check'+(last.length===1?'':'s'))+'</div>';
+        +'<span class="chk-top"><span class="chk-wk">'+esc(shortWeek(c.week))+'</span><span class="chk-dot" style="background:'+statusDot(c.status)+'"></span></span>'
+        +'<span class="chk-big">'+esc(String(c.hours))+'<em>hrs</em></span>'
+        +(lv?('<span class="chk-st">'+esc(c.status)+'</span>'):'')
+        +'</div>'; }).join('');
+    return '<div class="chkrow">'+chips+'</div>';
   }
   function setStatus(row,st){
     api(function(m){
@@ -1104,7 +1109,7 @@
     var m=(STATE.moveTo!=null)?slotByRow(STATE.moveTo):null, cur=$('mvCur');
     if(cur){
       if(m){ cur.className='sdrop-cur'; cur.innerHTML=rankAvatar(m.rank)+'<span>'+esc(m.callsign||('Row '+m.row))+' · '+esc(m.rank)+'</span>'; }
-      else { cur.className='sdrop-cur ph'; cur.innerHTML='<span>— choose an open slot —</span>'; }
+      else { cur.className='sdrop-cur ph'; cur.innerHTML='<span>Select slot</span>'; }
     }
     var menu=$('mvMenu'); if(menu) menu.querySelectorAll('.sdrop-opt').forEach(function(b){ b.classList.toggle('sel', Number(b.dataset.mvrow)===STATE.moveTo); });
   }
