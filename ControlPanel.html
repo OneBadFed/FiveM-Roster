@@ -541,9 +541,43 @@
        cursor:pointer;margin-top:var(--s4);box-shadow:var(--hi),0 8px 22px -8px rgba(79,142,232,.9);transition:transform var(--t) var(--ease),box-shadow var(--t),filter var(--t);}
   .btn:hover{filter:brightness(1.07);transform:translateY(-1px);box-shadow:var(--hi),0 12px 28px -8px rgba(79,142,232,1);}
   .btn:active{transform:scale(.98);} .btn:disabled{opacity:.5;cursor:default;transform:none;}
-  #pane-tools.active{display:grid;grid-template-columns:repeat(auto-fill,minmax(380px,1fr));gap:8px 10px;align-items:start;}
-  #pane-tools>*:not(.toolbtn){grid-column:1/-1;}
-  #pane-tools .toolbtn{margin-bottom:0;}
+  /* ── tools: sections, health chips, action cards, connection cards ── */
+  .tsec{margin-bottom:var(--s5);}
+  .tsec-h{display:flex;align-items:baseline;gap:10px;margin-bottom:var(--s3);}
+  .tsec-h b{font-size:14px;font-weight:800;letter-spacing:-.01em;}
+  .tsec-h small{color:var(--txt-3);font-size:11px;font-weight:500;}
+  .tstat{display:flex;flex-wrap:wrap;gap:var(--s2);}
+  .hchip{display:inline-flex;align-items:center;gap:8px;background:var(--e1);border-radius:11px;padding:8px 12px;font-size:11.5px;font-weight:650;box-shadow:var(--hi),var(--sh-1);}
+  .hchip small{color:var(--amber-f);font-weight:600;}
+  .hchip .dot{width:8px;height:8px;}
+  .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:var(--s3);}
+  .tcard{display:flex;align-items:center;gap:var(--s3);background:var(--glass),var(--e1);border-radius:14px;padding:var(--s3) var(--s4);box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),box-shadow var(--t);}
+  .tcard:hover{transform:translateY(-2px);box-shadow:var(--hi),var(--sh-2),0 0 18px -10px var(--a,var(--accent));}
+  .tcard .ico{width:36px;height:36px;border-radius:11px;background:color-mix(in srgb,var(--a,#4f8ee8) 14%,var(--e2));color:var(--a,#c4dbff);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:var(--hi);}
+  .tcard .ico svg{width:18px;height:18px;}
+  .tcard .tt{flex:1;min-width:0;}
+  .tcard .tt b{display:block;font-size:13px;font-weight:700;}
+  .tcard .tt small{display:block;color:var(--txt-3);font-size:11px;font-weight:450;margin-top:2px;line-height:1.4;}
+  .runbtn{flex:0 0 auto;position:relative;background:var(--e2);border:none;color:var(--txt);border-radius:10px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease);}
+  .runbtn:hover{background:var(--e3);color:var(--accent-2);transform:translateY(-1px);}
+  .runbtn:active{transform:scale(.96);}
+  .runbtn:disabled{opacity:.55;cursor:default;}
+  .runbtn.busy{color:transparent;}
+  .runbtn.busy::after{content:'';position:absolute;inset:0;margin:auto;width:13px;height:13px;border-radius:50%;border:2px solid rgba(255,255,255,.22);border-top-color:var(--accent-2);animation:spin .7s linear infinite;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+  .runbtn.ok2{background:var(--green-t);color:var(--green-f);}
+  .tconns{display:grid;grid-template-columns:repeat(auto-fit,minmax(340px,1fr));gap:var(--s3);align-items:start;}
+  .conn{background:var(--glass),var(--e1);border-radius:16px;padding:var(--s4);box-shadow:var(--hi),var(--sh-1);}
+  .conn-h{display:flex;align-items:center;gap:10px;margin-bottom:var(--s2);}
+  .conn-h .ico{width:32px;height:32px;border-radius:10px;background:color-mix(in srgb,var(--a,#4f8ee8) 14%,var(--e2));color:var(--a,#c4dbff);display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:var(--hi);}
+  .conn-h .ico svg{width:16px;height:16px;}
+  .conn-h b{font-size:13.5px;font-weight:800;flex:1;}
+  .crow{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:7px 2px;box-shadow:0 1px 0 var(--hair);font-size:12px;}
+  .crow:last-of-type{box-shadow:none;}
+  .crow-k{color:var(--txt-3);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
+  .crow-v{display:inline-flex;align-items:center;gap:7px;font-weight:650;text-align:right;}
+  .crow-v .dot{width:8px;height:8px;}
+  .conn .hint{margin-top:var(--s2);}
   .toolbtn{display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;background:var(--glass),var(--e1);border:none;
            color:var(--txt);border-radius:14px;padding:var(--s3) var(--s4);font-size:13.5px;font-weight:650;cursor:pointer;
            margin-bottom:var(--s2);box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),background var(--t),box-shadow var(--t);}
@@ -671,30 +705,51 @@
   </div>
 
   <div class="pane" id="pane-tools">
-    <button class="toolbtn" data-act="updateStatuses"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 21V11M12 21V5M19 21v-7"/></svg></span><span class="tt">Update all statuses<small>Recompute every member from hours</small></span></button>
-    <button class="toolbtn" data-act="processLeaves"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span><span class="tt">Run schedule check<small>Start due leaves, expire ended ones</small></span></button>
-    <button class="toolbtn" data-act="syncForms"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66L11 6"/><path d="M14 11a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66L13 18"/></svg></span><span class="tt">Sync leave forms<small>Pull new form responses to tracker</small></span></button>
-    <button class="toolbtn" data-act="fixUnits"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/></svg></span><span class="tt">Fix callsign numbers<small>Renumber S-01, S-02, …</small></span></button>
-    <button class="toolbtn" data-act="checkDuplicates"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></span><span class="tt">Check duplicate IDs<small>Find repeated / malformed IDs</small></span></button>
-    <button class="toolbtn" id="openSettingsBtn"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></span><span class="tt">Engine settings<small>Open the Settings Studio (replaces this dialog)</small></span></button>
-    <div class="pc-lbl" style="margin-top:var(--s4)">Discord webhooks</div>
-    <!-- SECURITY INVARIANT: #whUrl is WRITE-ONLY. Never populate it with the stored URL — the secret lives in
-         Script Properties and must never round-trip back into the page. The save handler clears it after use. -->
-    <div style="display:flex;gap:var(--s2);align-items:stretch">
-      <select class="fselect" id="whChan" aria-label="Webhook channel" style="flex:0 0 auto">
-        <option value="MAIN">Main</option>
-        <option value="ERRORS">Errors</option>
-      </select>
-      <input type="password" class="field mono" id="whUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" style="flex:1;min-width:0">
-      <button class="linkbtn" id="whSave">Save</button>
-      <button class="linkbtn" id="whTest">Send test</button>
+    <div class="tsec">
+      <div class="tsec-h"><b>System health</b><small>from the last health check — full details &amp; fixes on the System tab</small></div>
+      <div class="tstat" id="toolsHealth"><span class="muted2">Loading…</span></div>
     </div>
-    <p class="hint"><b>Main</b> = leave notifications &amp; summaries. <b>Errors</b> (optional) = coded engine errors, throttled to one per code per 5 minutes. URLs are stored privately in Script Properties and never shown again; save with the field empty to clear a channel.</p>
-    <div class="wh"><span class="dot" id="whDot"></span><span id="whTxt">Discord webhook: checking…</span></div>
 
-    <div class="pc-lbl" style="margin-top:var(--s4)">Admin roster · private member data</div>
-    <div id="admSetup"><span class="muted2">Loading…</span></div>
-    <p class="hint">A <b>separate</b> spreadsheet holding each member's email, date of birth, private notes and disciplinary history, keyed by Discord ID. <b>Google's file sharing is the access control</b> — only accounts that file is shared with can see or load this data (the panel opens it as <i>you</i>, so Google enforces it). It must be its own file because anyone who can view THIS sheet can read every tab in it.</p>
+    <div class="tsec">
+      <div class="tsec-h"><b>Maintenance</b><small>one-click engine actions — each reports what it changed</small></div>
+      <div class="tgrid">
+        <div class="tcard" style="--a:var(--blue)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 21V11M12 21V5M19 21v-7"/></svg></span><span class="tt"><b>Update all statuses</b><small>Recompute every member from hours</small></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
+        <div class="tcard" style="--a:var(--green)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span><span class="tt"><b>Run schedule check</b><small>Start due leaves, expire ended ones</small></span><button class="runbtn" data-act="processLeaves">Run</button></div>
+        <div class="tcard" style="--a:var(--green)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66L11 6"/><path d="M14 11a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66L13 18"/></svg></span><span class="tt"><b>Sync leave forms</b><small>Pull new form responses to the tracker</small></span><button class="runbtn" data-act="syncForms">Run</button></div>
+        <div class="tcard" style="--a:var(--blue)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/></svg></span><span class="tt"><b>Fix callsign numbers</b><small>Renumber S-01, S-02, …</small></span><button class="runbtn" data-act="fixUnits">Run</button></div>
+        <div class="tcard" style="--a:var(--amber)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></span><span class="tt"><b>Check duplicate IDs</b><small>Find repeated or malformed IDs</small></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
+        <div class="tcard" style="--a:var(--gray)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></span><span class="tt"><b>Engine settings</b><small>Open the Settings Studio (replaces this dialog)</small></span><button class="runbtn" id="openSettingsBtn">Open</button></div>
+      </div>
+    </div>
+
+    <div class="tsec">
+      <div class="tsec-h"><b>Connections</b><small>services and data sources</small></div>
+      <div class="tconns">
+        <div class="conn" style="--a:var(--purple)">
+          <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><b>Discord integration</b></div>
+          <div class="crow"><span class="crow-k">Main channel</span><span class="crow-v" id="whMainV"><span class="dot"></span>checking…</span></div>
+          <div class="crow"><span class="crow-k">Errors channel</span><span class="crow-v" id="whErrV"><span class="dot"></span>checking…</span></div>
+          <div class="crow" id="whTestRow" hidden><span class="crow-k">Last test</span><span class="crow-v" id="whTestV"></span></div>
+          <!-- SECURITY INVARIANT: #whUrl is WRITE-ONLY. Never populate it with the stored URL — the secret lives in
+               Script Properties and must never round-trip back into the page. The save handler clears it after use. -->
+          <div style="display:flex;gap:var(--s2);align-items:stretch;flex-wrap:wrap;margin-top:var(--s3)">
+            <select class="fselect" id="whChan" aria-label="Webhook channel" style="flex:0 0 auto">
+              <option value="MAIN">Main</option>
+              <option value="ERRORS">Errors</option>
+            </select>
+            <input type="password" class="field mono" id="whUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" style="flex:1;min-width:160px">
+            <button class="linkbtn" id="whSave">Save</button>
+            <button class="linkbtn" id="whTest">Send test</button>
+          </div>
+          <p class="hint"><b>Main</b> = notifications · <b>Errors</b> = coded engine errors, throttled. URLs are write-only — stored in Script Properties, never shown again. Save with the field empty to clear a channel.</p>
+        </div>
+        <div class="conn" style="--a:var(--accent)">
+          <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><b>Admin roster</b></div>
+          <div id="admSetup"><span class="muted2">Loading…</span></div>
+          <p class="hint">A separate spreadsheet for private member data (email, DOB, notes, discipline), keyed by Discord ID. <b>Google file sharing is the access control</b> — only accounts the file is shared with can read it.</p>
+        </div>
+      </div>
+    </div>
   </div>
 
   <div class="pane" id="pane-system">
@@ -827,7 +882,7 @@
     STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
     renderAdminSetup();
     whStatus(b.webhookSet, b.errorsWebhookSet);
-    apply(b); setHealthPill(b.health); setLoading(false);
+    apply(b); setHealthPill(b.health); renderToolsHealth(b.health); setLoading(false);
     api(function(res){ // PERF: heavy base64 icons arrive after first paint; initials → icons swap. Endpoint shape = {ranks:[{rank,icon,…}]}
       var map={}; (((res||{}).ranks)||[]).forEach(function(r){ if(r&&r.icon) map[r.rank]=r.icon; });
       if(Object.keys(map).length){ STATE.rankIcons=map; renderMembers(); renderSlots(); }
@@ -1031,22 +1086,20 @@
   function renderAdminSetup(){
     var el=$('admSetup'); if(!el) return;
     var A=STATE.admin||{};
-    var who=A.linkedBy?(' Linked by <b>'+esc(A.linkedBy)+'</b>'+(A.linkedAt?(' on '+esc(A.linkedAt)):'')+'.'):''; // provenance — a rogue link is visible to everyone
-    var status='';
-    if(A.linked&&A.access){
-      status='<div class="wh"><span class="dot on"></span><span>Admin roster linked — you have access.'+who+(A.url?(' <a href="'+esc(A.url)+'" target="_blank" rel="noopener" style="color:var(--accent-2,#7fb0ff)">Open it</a> to manage sharing.'):'')+'</span></div>';
-    } else if(A.linked){
-      status='<div class="wh"><span class="dot off"></span><span>An admin roster is linked, but your Google account does not have access to it.'+who+' Ask an admin to share the file with you.</span></div>';
-    }
-    // The link controls ALWAYS render — first-time setup uses them, and once linked they double as the recovery /
+    // Status rows first (provenance stays visible — a rogue link must be noticeable), then the link controls.
+    // The controls ALWAYS render: first-time setup uses them, and once linked they double as the recovery /
     // relink path (the SERVER gate decides who may actually change it: a current admin or the sheet owner).
+    var rows='<div class="crow"><span class="crow-k">Status</span><span class="crow-v"><span class="dot'+(A.linked?' on':'')+'"></span>'+(A.linked?'Linked':'Not linked')+'</span></div>'
+      +(A.linked?('<div class="crow"><span class="crow-k">Your access</span><span class="crow-v"><span class="dot '+(A.access?'on':'off')+'"></span>'+(A.access?'You have access':'No access — ask an admin to share the file')+'</span></div>'):'')
+      +(A.linkedBy?('<div class="crow"><span class="crow-k">Linked by</span><span class="crow-v">'+esc(A.linkedBy)+(A.linkedAt?(' · '+esc(A.linkedAt)):'')+'</span></div>'):'');
     var verb=A.linked?'Replace with a new admin roster':'Create &amp; link a new admin roster';
-    el.innerHTML=status
-      +'<div style="display:flex;gap:var(--s2);align-items:stretch;flex-wrap:wrap;margin-top:'+(status?'var(--s2)':'0')+'">'
+    el.innerHTML=rows
+      +'<div style="display:flex;gap:var(--s2);align-items:stretch;flex-wrap:wrap;margin-top:var(--s3)">'
+      +((A.linked&&A.access&&A.url)?('<a class="linkbtn" href="'+esc(A.url)+'" target="_blank" rel="noopener" style="text-decoration:none">Open spreadsheet</a>'):'')
       +'<button class="linkbtn" id="admCreate">'+verb+'</button>'
-      +'<input class="field mono" id="admUrl" placeholder="…or paste an existing sheet URL / ID" autocomplete="off" style="flex:1;min-width:220px">'
+      +'<input class="field mono" id="admUrl" placeholder="…or paste a sheet URL / ID" autocomplete="off" style="flex:1;min-width:180px">'
       +'<button class="linkbtn" id="admLinkBtn">'+(A.linked?'Relink':'Link')+'</button></div>'
-      +(A.linked?'<p class="hint" style="margin-top:6px">Changing the link is restricted to current admins and the sheet owner, and every change is logged.</p>':'');
+      +(A.linked?'<p class="hint" style="margin-top:6px">Relinking is restricted to current admins and the sheet owner; every change is logged.</p>':'');
     var go=function(payload,btn){
       btn.disabled=true;
       api(function(r){ btn.disabled=false; STATE.admin={linked:true,access:true,url:r.url,linkedBy:'you',linkedAt:''};
@@ -1206,7 +1259,15 @@
       toast('Seated '+m.name+' as '+m.rank+'.','ok'); refresh(); document.querySelector('.tab[data-tab="members"]').click();
     }, function(e){ $('addBtn').disabled=false; onError(e); }, "cpAssignMember", {row:row,name:name,discord:discord,joinDate:$('addJoin').value});
   }
-  function runAction(act,btn){ btn.disabled=true; api(function(msg){ btn.disabled=false; toast(msg||'Done.','ok'); refresh(); }, function(e){ btn.disabled=false; onError(e); }, "cpRunAction", act); }
+  function runAction(act,btn){
+    btn.disabled=true; btn.classList.add('busy');
+    api(function(msg){
+      btn.disabled=false; btn.classList.remove('busy');
+      btn.classList.add('ok2'); btn.textContent='Done ✓';
+      setTimeout(function(){ btn.classList.remove('ok2'); btn.textContent='Run'; },1800);
+      toast(msg||'Done.','ok'); refresh();
+    }, function(e){ btn.disabled=false; btn.classList.remove('busy'); onError(e); }, "cpRunAction", act);
+  }
 
   /* system tab */
   function setHealthPill(h){
@@ -1325,8 +1386,15 @@
     toast(slot ? 'Open slot pre-selected — fill in the new member.' : 'Opened Add member — choose an open slot.','ok');
     setTimeout(function(){ var n=$('addName'); if(n) n.focus(); }, 70);
   }
+  function renderToolsHealth(h){
+    var el=$('toolsHealth'); if(!el) return;
+    if(!h||!h.checks||!h.checks.length){ el.innerHTML='<span class="muted2">Health data unavailable — open the System tab to run a check.</span>'; return; }
+    el.innerHTML=h.checks.map(function(c){
+      return '<span class="hchip" title="'+esc(c.detail||'')+'"><span class="dot '+(c.ok?'on':'off')+'"></span>'+esc(c.label)+(c.ok?'':' <small>· needs attention</small>')+'</span>';
+    }).join('');
+  }
   function renderHealth(h){
-    setHealthPill(h);
+    setHealthPill(h); renderToolsHealth(h);
     if(!h||!h.checks){ $('healthBody').innerHTML='<span class="muted2">Unavailable.</span>'; return; }
     var needFix=false;
     var html=h.checks.map(function(c){
@@ -1501,11 +1569,11 @@
     var st=e.target.closest('[data-st]'); if(st){ setStatus(Number(st.closest('.mrow').dataset.row),st.dataset.st); return; }
     var head=e.target.closest('.mhead'); if(head){ toggleDetail(Number(head.closest('.mrow').dataset.row)); }
   });
-  document.querySelectorAll('.toolbtn[data-act]').forEach(function(b){ b.addEventListener('click',function(){ runAction(b.dataset.act,b); }); });
+  document.querySelectorAll('.runbtn[data-act]').forEach(function(b){ b.addEventListener('click',function(){ runAction(b.dataset.act,b); }); });
   $('openSettingsBtn').addEventListener('click',function(){ var b=this; b.disabled=true; api(function(){ /* the Settings Studio replaces this dialog */ }, function(e){ b.disabled=false; onError(e); }, "cpOpenSettings"); });
   function whStatus(mainSet, errorsSet){
-    $('whDot').className='dot '+(mainSet?'on':'off');
-    $('whTxt').textContent='Discord webhooks — main: '+(mainSet?'configured':'not set')+' · errors: '+(errorsSet?'configured':'not set');
+    var f=function(id,on){ var e=$(id); if(e) e.innerHTML='<span class="dot '+(on?'on':'off')+'"></span>'+(on?'Configured':'Not set'); };
+    f('whMainV',mainSet); f('whErrV',errorsSet);
   }
   $('whSave').addEventListener('click',function(){
     var ch=$('whChan').value;
@@ -1516,7 +1584,9 @@
   });
   $('whTest').addEventListener('click',function(){
     var btn=this, ch=$('whChan').value; btn.disabled=true;
-    api(function(){ btn.disabled=false; toast("Test sent to the "+(ch==='ERRORS'?'errors':'main')+" channel — check Discord.","ok"); }, function(e){ btn.disabled=false; onError(e); }, "cpTestWebhook", ch);
+    api(function(){ btn.disabled=false; toast("Test sent to the "+(ch==='ERRORS'?'errors':'main')+" channel — check Discord.","ok");
+      var r=$('whTestRow'); if(r){ r.hidden=false; $('whTestV').innerHTML='<span class="dot on"></span>'+(ch==='ERRORS'?'Errors':'Main')+' · sent this session'; }
+    }, function(e){ btn.disabled=false; onError(e); }, "cpTestWebhook", ch);
   });
 
   boot();
