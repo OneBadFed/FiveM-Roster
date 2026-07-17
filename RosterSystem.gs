@@ -65,8 +65,8 @@ function rosterCols_(sheet) {
   const cols = { rank: d.rank, name: d.name, unit: d.unit, discord: d.discord, join: 6, promo: 7, activity: d.activity, hours: d.hours };
   try {
     const lastCol = sheet.getLastColumn();
-    if (lastCol >= 1 && sheet.getLastRow() >= ROSTER_HEADER_ROW) {
-      const hdr = sheet.getRange(ROSTER_HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
+    const lastRow = sheet.getLastRow();
+    if (lastCol >= 1 && lastRow >= 1) {
       const match = {
         rank: (h) => h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1,        // the real RANK column, not a "RANK GROUP" band header
         name: (h) => h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1,          // the canonical NAME, not "OOC NAME"
@@ -77,9 +77,20 @@ function rosterCols_(sheet) {
         activity: (h) => h.indexOf('ACTIVITY') !== -1 || h.indexOf('STATUS') !== -1, // "STATUS" is the new label for the activity tier
         hours: (h) => h.indexOf('HOURS') !== -1,
       };
-      Object.keys(match).forEach((k) => {
-        for (let c = 0; c < hdr.length; c++) { if (match[k](hdr[c])) { cols[k] = c + 1; break; } }
-      });
+      const readRow = (r) => sheet.getRange(r, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
+      const looksHdr = (row) => !!row && row.some((h) => match.rank(h)) && row.some((h) => match.hours(h) || match.name(h));
+      // Prefer the configured HEADER_ROW; but if it isn't the real label row (e.g. it points at a two-row header's
+      // group-banner row, or wasn't updated for this layout), auto-find the label row in the top rows so resolution
+      // still works. Back-compatible: a correctly-configured header row matches on the first try — no scan.
+      let hdr = (ROSTER_HEADER_ROW >= 1 && ROSTER_HEADER_ROW <= lastRow) ? readRow(ROSTER_HEADER_ROW) : null;
+      if (!looksHdr(hdr)) {
+        for (let r = 1; r <= Math.min(15, lastRow); r++) { const row = readRow(r); if (looksHdr(row)) { hdr = row; break; } }
+      }
+      if (hdr) {
+        Object.keys(match).forEach((k) => {
+          for (let c = 0; c < hdr.length; c++) { if (match[k](hdr[c])) { cols[k] = c + 1; break; } }
+        });
+      }
     }
   } catch (e) { log_('rosterCols_', e); }
   _rosterColCache[id] = cols;
