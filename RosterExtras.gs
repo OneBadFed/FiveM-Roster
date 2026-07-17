@@ -452,6 +452,16 @@ function demoDay_(d) { const t = todayInSheetTz_(); t.setDate(t.getDate() + d); 
 /** The Sunday on/before today, `k` weeks earlier, at midnight. */
 function demoSunday_(k) { const t = todayInSheetTz_(); t.setDate(t.getDate() - t.getDay() - 7 * k); return t; }
 
+/** Deterministic pseudo-random in [0,1) for slot `i` (salted) — organic-looking demo numbers that reseed identically. */
+function demoRand_(i, salt) {
+  let h = (i * 374761393 + salt * 668265263) >>> 0;
+  h = ((h ^ (h >>> 13)) * 1274126177) >>> 0;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+/** Round to the nearest quarter hour — demo hours read as log-derived (12.75), not synthetic (12). */
+function demoQuarter_(x) { return Math.round(x * 4) / 4; }
+
 /** A believable 4-week hours series that ENDS at the member's current hours. */
 function demoHours_(cur) {
   const c = Number(cur) || 0;
@@ -469,7 +479,8 @@ function demoName_(i) {
 
 /**
  * Build a believable demo member for member-slot index `i` (0-based), given the rank already in the row.
- * Deterministic (no RNG). Hours land inside the intended status's tier band so recompute is a no-op;
+ * Deterministic (salted hash, no RNG — reseeding the same layout reproduces the same demo).
+ * Hours land inside the intended status's tier band so recompute is a no-op;
  * LOA/ROA carry an active leave; a few active members carry a recently-expired leave for history variety.
  */
 function demoPerson_(i, rank, total) {
@@ -477,11 +488,12 @@ function demoPerson_(i, rank, total) {
   const DIST = ['Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Semi-Active', 'Semi-Active', 'Semi-Active', 'Inactive', 'Inactive', 'Inactive', 'LOA', 'ROA'];
   const act = DIST[(i * 7) % DIST.length];
   let hours, last = act, leave = null, pastLeave = null, checks = null;
-  if (act === 'Active') hours = 10 + (i % 11);            // 10–20  (tier: ≥ 10)
-  else if (act === 'Semi-Active') hours = 5 + (i % 5);    // 5–9    (tier: ≥ 5)
-  else if (act === 'Inactive') hours = 1 + (i % 4);       // 1–4    (tier: ≥ 0)
+  const r = demoRand_(i, 1), r2 = demoRand_(i, 2);
+  if (act === 'Active') hours = demoQuarter_(10 + r * r * 15 + (r2 > 0.93 ? 6 : 0)); // 10–25, right-skewed; rare ~30h grinder (tier: ≥ 10)
+  else if (act === 'Semi-Active') hours = demoQuarter_(5 + r * 4.7);                 // 5–9.75  (tier: ≥ 5, < 10)
+  else if (act === 'Inactive') hours = demoQuarter_(r * r * 4.7);                    // 0–4.75, clustered low (tier: < 5)
   else if (act === 'LOA') { hours = 0; last = 'Active'; leave = { type: 'LOA', from: -(2 + i % 6), to: 5 + (i % 10), status: 'Approved' }; checks = ['Active', 'Active', 'LOA', 'LOA']; }
-  else { hours = 5 + (i % 4); last = 'Inactive'; leave = { type: 'ROA', from: -(2 + i % 5), to: 6 + (i % 9), status: 'Approved' }; checks = ['Inactive', 'ROA', 'ROA', 'ROA']; } // ROA
+  else { hours = demoQuarter_(5 + r * 3.7); last = 'Inactive'; leave = { type: 'ROA', from: -(2 + i % 5), to: 6 + (i % 9), status: 'Approved' }; checks = ['Inactive', 'ROA', 'ROA', 'ROA']; } // ROA
   // Sprinkle a few recently-EXPIRED leaves onto active members (tracker + activity-check variety).
   if (!leave && i % 17 === 5) { pastLeave = { type: (i % 2 ? 'LOA' : 'ROA'), from: -(48 + i % 10), to: -(30 + i % 8) }; checks = [pastLeave.type, pastLeave.type, 'Active', act]; }
   const tenure = 1600 - Math.round((i / Math.max(total, 1)) * 1200); // seniority: earlier rows = longer tenure
