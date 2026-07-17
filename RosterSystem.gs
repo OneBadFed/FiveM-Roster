@@ -2458,14 +2458,30 @@ function addMemberRow() {
     count = Math.min(count, 100);
     let currentRow = sheet.getActiveCell().getRow();
     if (currentRow < CONFIG.rosterStartRow) currentRow = CONFIG.rosterStartRow;
+    const RC = rosterCols_(sheet);
+    // TEMPLATE row: the nearest REAL member row at/above the cursor (then below, then the cursor itself) —
+    // copying a section-divider band would stamp its merged banner formatting onto every new row.
+    const isMemberRowAt = (r) => {
+      if (r < CONFIG.rosterStartRow || r > sheet.getLastRow()) return false;
+      const rk = String(sheet.getRange(r, RC.rank).getDisplayValue()).trim();
+      return rk !== '' && !isDividerValue_(rk);
+    };
+    let template = 0;
+    for (let r = currentRow; r >= CONFIG.rosterStartRow && !template; r--) { if (isMemberRowAt(r)) template = r; }
+    for (let r = currentRow + 1; r <= sheet.getLastRow() && !template; r++) { if (isMemberRowAt(r)) template = r; }
+    if (!template) template = currentRow;
     sheet.insertRowsAfter(currentRow, count);
-    const w = Math.max(1, sheet.getLastColumn() - 1); // cols 2..lastCol — covers any added columns, not a hardcoded 20
-    const src = sheet.getRange(currentRow, 2, 1, w);
-    const tgt = sheet.getRange(currentRow + 1, 2, count, w);
-    src.copyTo(tgt, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);          // copyTo tiles the source row's format across every new row
-    src.copyTo(tgt, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+    const tRow = template > currentRow ? template + count : template; // a below-cursor template shifted down with the insert
+    const w = Math.max(1, sheet.getLastColumn()); // FULL width incl. col A — the new rows should look exactly like a member row
+    const src = sheet.getRange(tRow, 1, 1, w);
+    const tgt = sheet.getRange(currentRow + 1, 1, count, w);
+    try { tgt.breakApart(); } catch (e) { /* nothing merged */ }
+    src.copyTo(tgt, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);          // copyTo tiles the template row's format across every new row
+    src.copyTo(tgt, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false); // dropdowns (status etc.) carry over too
     tgt.clearContent();
-    sheet.getRange(currentRow + 1, rosterCols_(sheet).rank, count, 1).setValue('Rank');
+    const th = sheet.getRowHeight(tRow);
+    for (let i = 0; i < count; i++) sheet.setRowHeight(currentRow + 1 + i, th); // copyTo doesn't carry row height
+    sheet.getRange(currentRow + 1, RC.rank, count, 1).setValue('Rank');
     updateUnitNumbers_(); // renumber using the configured [ROSTER_LAYOUT].UNIT_FORMAT (call the core, avoid nesting the error wrapper)
     ui.alert(`✅ Added ${count} member row${count === 1 ? '' : 's'} after row ${currentRow}.\n\nFill in each rank + name — callsigns are assigned automatically.`);
   });
