@@ -1751,6 +1751,8 @@ function devPanelTests_() {
     devEq_(R, 'dashboardStats_ Auxiliary bucket', s.groups.Auxiliary, 1);
     devEq_(R, 'dashboardStats_ open slots counted', s.openSlots, 1);
     devEq_(R, 'dashboardStats_ total = sum of buckets', s.groups.Supervisors + s.groups.Troopers + s.groups.Auxiliary, s.total);
+    devEq_(R, 'dashboardStats_ top hours: leader first', s.top[0] && s.top[0].n, 'A');
+    devEq_(R, 'dashboardStats_ top hours: zero-hour members excluded', s.top.length, 3);
   })();
   // dashboardStats_ — RANK-NAME bucket entries: a Categories entry that isn't a section tag matches members by
   // exact rank (case-insensitive) and WINS over the row's section ("Sergeant and up" style groups).
@@ -2476,6 +2478,19 @@ function devDashboardRenderTests_() {
       devCheck_(R, 'promotions: date cell filled', String(sh.getRange(3, 1).getDisplayValue()) !== '');
       devEq_(R, 'promotions: second entry on the next row', String(sh.getRange(4, 3).getDisplayValue()), 'B. Chen');
       devEq_(R, 'promotions: unused rows are cleared', String(sh.getRange(5, 3).getDisplayValue()), '');
+    })();
+    // PATROL LEADERBOARD — title + NAME/HOURS header; names/hours fill top-down, the RANK labels stay untouched.
+    (() => {
+      const sh = devFreshSheet_('Leader');
+      sh.getRange(1, 1).setValue('Patrol Leaderboard'); // mixed case — the finder is case-insensitive
+      sh.getRange(2, 1, 1, 3).setValues([['RANK', 'NAME', 'HOURS']]);
+      sh.getRange(3, 1, 5, 1).setValues([[1], [2], [3], [4], [5]]);
+      renderDashboardOnSheet_(sh, Object.assign({}, s, { top: [{ n: '=BAD()', h: 12.5 }, { n: 'Y', h: 9 }] }));
+      devEq_(R, 'leaderboard: top name is formula-safe literal text', String(sh.getRange(3, 2).getDisplayValue()), '=BAD()');
+      devEq_(R, 'leaderboard: top hours written as a number', Number(sh.getRange(3, 3).getValue()), 12.5);
+      devEq_(R, 'leaderboard: second entry on the next row', String(sh.getRange(4, 2).getDisplayValue()), 'Y');
+      devEq_(R, 'leaderboard: unused rows are cleared', String(sh.getRange(5, 2).getDisplayValue()), '');
+      devEq_(R, 'leaderboard: RANK labels untouched', String(sh.getRange(5, 1).getDisplayValue()), '3');
     })();
   });
 

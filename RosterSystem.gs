@@ -554,8 +554,9 @@ function installDataValidation_() {
  * [SECTION_TAGS] label is treated as a RANK (case/space-insensitive, e.g. "Sergeant and up" spelled out), and a
  * rank match wins over the row's section — every member still lands in exactly one bucket.
  * @return {{totalHours:number, leaves:number, total:number, active:number, semi:number, inactive:number,
- *   openSlots:number, tierCounts:Object, groups:Object}} tierCounts = a headcount per configured TIER name;
- *   active/semi/inactive are back-compat aliases (highest / in-between / lowest tier); groups = per dashboard bucket.
+ *   openSlots:number, tierCounts:Object, groups:Object, top:Array}} tierCounts = a headcount per configured TIER
+ *   name; active/semi/inactive are back-compat aliases (highest / in-between / lowest tier); groups = per dashboard
+ *   bucket; top = the LEADER_MAX_ highest-hours members ({n:name, h:hours}, zero-hour members excluded).
  */
 function dashboardStats_(roster) {
   const RC = rosterCols_(roster);
@@ -574,7 +575,8 @@ function dashboardStats_(roster) {
   const tierByNorm = {}; const tierCounts = {};
   CONFIG.tiers.forEach((t) => { tierByNorm[norm_(t.name)] = t.name; tierCounts[t.name] = 0; });
   const leaveSet = {}; CONFIG.leaveTypes.forEach((t) => { leaveSet[norm_(t)] = true; });
-  const out = { totalHours: 0, leaves: 0, total: 0, active: 0, semi: 0, inactive: 0, openSlots: 0, tierCounts, groups };
+  const out = { totalHours: 0, leaves: 0, total: 0, active: 0, semi: 0, inactive: 0, openSlots: 0, tierCounts, groups, top: [] };
+  const tops = [];
   if (n > 0) {
     const block = roster.getRange(scanStart, 1, n, roster.getLastColumn()).getDisplayValues();
     let curGroup = null;
@@ -585,7 +587,9 @@ function dashboardStats_(roster) {
       if (isMemberSlot_(rank) && !name) out.openSlots++;
       if (!isValidMemberValues_(rank, name)) continue;
       out.total++;
-      out.totalHours += parseHours_(block[i][RC.hours - 1]);
+      const hrs = parseHours_(block[i][RC.hours - 1]);
+      out.totalHours += hrs;
+      if (hrs > 0) tops.push({ n: name, h: hrs }); // leaderboard candidates — zero-hour members never "lead"
       const st = String(block[i][RC.activity - 1]).trim();
       const stn = norm_(st);
       if (leaveSet[stn]) out.leaves++;
@@ -594,6 +598,7 @@ function dashboardStats_(roster) {
       if (rankBucket) out.groups[rankBucket]++;
       else if (curGroup) out.groups[curGroup]++;
     }
+    out.top = tops.sort((a, b) => b.h - a.h).slice(0, LEADER_MAX_);
   }
   // Back-compat aliases: active = highest tier, inactive = lowest tier, semi = every tier in between.
   const tn = CONFIG.tierNames;
@@ -639,8 +644,9 @@ function dashboardSkip_(name) {
  * Render the dashboard onto ONE sheet given pre-computed stats: free-form STAT TAGS, written as plain VALUES (no
  * formula to break), position-independent — a cell that is just "#<stat>" (e.g. #members, #active, #troopers,
  * #hours) becomes the live number; the key is remembered in the cell's NOTE so it keeps refreshing wherever the
- * cell moves. Clearing the cell's value stops it being managed. Unknown #tags are left untouched. Tags are the
- * ONLY render mechanism: the engine never writes a dashboard cell the user didn't explicitly tag.
+ * cell moves. Clearing the cell's value stops it being managed. Unknown #tags are left untouched. Tags plus the
+ * PATROL LEADERBOARD table are the only render mechanisms: the engine never writes a dashboard cell the user
+ * didn't explicitly tag or title.
  * @return {number} cells written on this sheet.
  */
 function renderDashboardOnSheet_(sheet, s) {
@@ -672,7 +678,49 @@ function renderDashboardOnSheet_(sheet, s) {
       }
     }
   }
+
+  // PATROL LEADERBOARD — rendered from the same stats pass whenever this sheet carries the table.
+  written += renderLeaderboardOnSheet_(sheet, grid, s);
   return written;
+}
+
+const LEADER_TITLE_ = 'PATROL LEADERBOARD';
+const LEADER_MAX_ = 5;
+
+/**
+ * Render the hours leaderboard into THIS sheet's PATROL LEADERBOARD table, if it carries one: the title cell is
+ * matched anywhere (case-insensitive) with a NAME + HOURS header row within 3 rows below it (any columns — the
+ * header text anchors each column, so merged bands are fine). The RANK column's 1–5 labels are user styling and
+ * never touched; NAME/HOURS rewrite all LEADER_MAX_ rows so departed leaders clear. Names are '@'-formatted
+ * BEFORE the write (a member named "=X" must never execute); hours stay numbers. @return {number} cells written.
+ */
+function renderLeaderboardOnSheet_(sheet, grid, s) {
+  const top = s.top || [];
+  const lastRow = grid.length, lastCol = lastRow ? grid[0].length : 0;
+  let tr = 0;
+  for (let r = 0; r < lastRow && !tr; r++) {
+    for (let c = 0; c < lastCol; c++) {
+      if (String(grid[r][c]).trim().toUpperCase() === LEADER_TITLE_) { tr = r + 1; break; }
+    }
+  }
+  if (!tr) return 0;
+  let hr = 0, nameCol = 0, hoursCol = 0;
+  for (let r = tr; r < Math.min(tr + 3, lastRow) && !hr; r++) {
+    let nm = 0, hh = 0;
+    for (let c = 0; c < lastCol; c++) {
+      const v = String(grid[r][c]).trim().toUpperCase();
+      if (v === 'NAME') nm = c + 1; else if (v === 'HOURS') hh = c + 1;
+    }
+    if (nm && hh) { hr = r + 1; nameCol = nm; hoursCol = hh; }
+  }
+  if (!hr) { logWarn_('renderLeaderboardOnSheet_', `"${LEADER_TITLE_}" title on "${sheet.getName()}" has no NAME / HOURS header row beneath it.`); return 0; }
+  const n = Math.min(LEADER_MAX_, sheet.getMaxRows() - hr);
+  if (n < 1) return 0;
+  const names = [], hours = [];
+  for (let i = 0; i < n; i++) { const p = top[i]; names.push([p ? p.n : '']); hours.push([p ? p.h : '']); }
+  sheet.getRange(hr + 1, nameCol, n, 1).setNumberFormat('@').setValues(names);
+  sheet.getRange(hr + 1, hoursCol, n, 1).setValues(hours);
+  return n * 2;
 }
 
 /* ======================================================================
