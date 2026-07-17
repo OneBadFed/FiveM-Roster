@@ -2489,32 +2489,12 @@ function addMemberRow() {
 
 /** Menu action: set the callsign/unit format (persisted to config so new members inherit it) and renumber, skipping dividers. */
 function updateUnitNumbers() {
-  runAction_('Fix Unit Numbers', () => {
+  runAction_('Fix Callsign Numbers', () => {
+    // No input prompt: the format is config ([ROSTER_LAYOUT].UNIT_FORMAT), edited in Engine Settings ▸ Sheets & layout.
     const ui = SpreadsheetApp.getUi();
-    let cur = 'S-{00}';
-    try { cur = CONFIG.unitFormat || 'S-{00}'; } catch (e) { /* config unreadable — fall back to default */ }
-    const resp = ui.prompt('🔄 Fix All Unit Numbers',
-      'Callsign / unit-number format. Put {0}, {00}, {000}… where the number goes (the braces set how many digits to zero-pad to):\n\n' +
-      '  •  S-{00}   →  S-01, S-02, …\n' +
-      '  •  TRP-{000}  →  TRP-001, TRP-002\n' +
-      '  •  {00}   →  01, 02  (no prefix)\n\n' +
-      'Current format:  ' + cur + '\n\n' +
-      'Type a new format, or leave blank to keep the current one and just renumber.',
-      ui.ButtonSet.OK_CANCEL);
-    if (resp.getSelectedButton() !== ui.Button.OK) return;
-    const fmt = String(resp.getResponseText()).trim();
-    let saved = false;
-    if (fmt && fmt !== cur) {
-      const ss = SpreadsheetApp.getActive();
-      let configSheet = findConfigSheet_(ss);
-      if (!configSheet) { seedConfigTab_(ss); configSheet = findConfigSheet_(ss); } // create the ⚙️ Config tab so the format persists
-      if (configSheet) saved = setKvValue_(configSheet, 'ROSTER_LAYOUT', 'UNIT_FORMAT', fmt); // setKvValue_ invalidates the cfg cache itself
-    }
-    const count = updateUnitNumbers_(); // reads CONFIG.unitFormat via formatUnit_ — now reflects the saved format
+    const count = updateUnitNumbers_(); // reads CONFIG.unitFormat via formatUnit_
     if (!count) { ui.alert('No member slots found to renumber.\n\n(Add member rows first, or check that the roster tab is correct.)'); return; }
-    const sample = ` — ${formatUnit_(1)} … ${formatUnit_(count)}`;
-    ui.alert(`✅ Renumbered ${count} callsign${count === 1 ? '' : 's'}${sample}.` +
-      (saved ? `\n\nFormat "${fmt}" saved — rows you add later will use it automatically.` : ` (format "${cur}")`));
+    ui.alert(`✅ Renumbered ${count} callsign${count === 1 ? '' : 's'} — ${formatUnit_(1)} … ${formatUnit_(count)}.\n\nThe format comes from Engine Settings ▸ Sheets & layout ▸ UNIT FORMAT.`);
   });
 }
 
