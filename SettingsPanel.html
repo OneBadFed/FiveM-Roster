@@ -147,6 +147,7 @@
   .setting .sdesc{font-size:12px;color:var(--txt-3);font-weight:450;line-height:1.55;margin-bottom:10px;max-width:46ch;
         display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .setting .serr{display:none;font-size:10.5px;color:var(--red);line-height:1.45;margin-top:7px;font-weight:550;}
+  .setting.modehide{display:none;} /* hidden because the selected PATROL.MODE doesn't use this field */
   .setting.err .serr{display:block;}
   .setting.err .in,.setting.err .ddbtn{box-shadow:var(--hi),0 0 0 3px var(--red-soft) !important;}
 
@@ -522,14 +523,24 @@
     return ICONS.ftext;
   }
   // Friendlier display labels/help for keys whose config names read wrong in the UI (display only — keys unchanged).
-  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_RESPONSES':'PATROL FORM RESPONSES'};
+  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_RESPONSES':'PATROL FORM RESPONSES',
+    'PATROL.COL_DISCORD':'DISCORD COLUMN','PATROL.COL_CALLSIGN':'CALLSIGN COLUMN','PATROL.COL_START':'START TIME COLUMN','PATROL.COL_END':'END TIME COLUMN','PATROL.COL_DURATION':'HOURS COLUMN'};
   var HELPS={'SHEETS.FORM_RESPONSES':'Google Form responses for LOAs.','SHEETS.PATROL_RESPONSES':'Google Form responses for Patrol Logs.',
     'ROSTER_LAYOUT.HEADER_ROW':'The row with your column titles (RANK, NAME, HOURS…).',
     'ROSTER_LAYOUT.DATA_START_ROW':'The first row that can hold a member — rows above it are ignored.',
     'ROSTER_LAYOUT.TRACKER_START_ROW':'The first leave-entry row on the LOA Tracker tab.',
     'ROSTER_LAYOUT.DIVIDER_MODE':'ALL-CAPS labels count as section dividers (default) — or use your Ranks & dividers list.',
     'ROSTER_LAYOUT.UNIT_FORMAT':'How callsigns are numbered — {00} becomes the slot number, so "S-{00}" gives S-01.',
-    'ROSTER_LAYOUT.LAST_ACTIVITY_STYLE':'MATCH = coloured like the current status; NEUTRAL = plain grey.'};
+    'ROSTER_LAYOUT.LAST_ACTIVITY_STYLE':'MATCH = coloured like the current status; NEUTRAL = plain grey.',
+    'PATROL.MODE':'START_END = hours from start and end times. DURATION = one "hours patrolled" number.',
+    'PATROL.MAX_HOURS':'Reject any single log longer than this (catches typos).',
+    'PATROL.OVERNIGHT':'If the end time is before the start, assume the shift crossed midnight (+24h).',
+    'PATROL.RECOMPUTE':'Update the member\'s activity status right after crediting the hours.',
+    'PATROL.COL_DISCORD':'Text the Discord question\'s header contains on your patrol form.',
+    'PATROL.COL_CALLSIGN':'Text the callsign question\'s header contains (used when the ID is blank).',
+    'PATROL.COL_START':'Text the start-time question\'s header contains.',
+    'PATROL.COL_END':'Text the end-time question\'s header contains.',
+    'PATROL.COL_DURATION':'Text the hours-patrolled question\'s header contains.'};
   var SECTIONS=[
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES','SHEETS.PATROL_RESPONSES']},
@@ -910,6 +921,7 @@
         var rows=''; c.keys.forEach(function(bk){ rows+=setting(bk); });
         h+='<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+cardIcon(c.t,g.id)+'</span><b>'+esc(c.t)+'</b>'
           +'<small>'+esc(c.keys.map(function(k){return '['+k.split('.')[0]+']';}).filter(function(x,i,a){return a.indexOf(x)===i;}).join(' · '))+'</small></div>'
+          +(c.t==='Patrol logs → hours'?'<div class="callout" id="patrolOffNote" hidden><b>Patrol sync is off</b>Pick a PATROL FORM RESPONSES tab under Data tabs to turn it on.</div>':'')
           +'<div class="grid2">'+rows+'</div>'
           +(c.preview==='embed'?embedPreview():'')
           +(c.preview==='sheet'?sheetPreview():'')
@@ -922,6 +934,20 @@
     $('content').innerHTML=h;
     $('content').scrollTop=0;
     renderIssues(DATA.problems||[], false);
+    applyPatrolVis();
+  }
+  /* Patrol card: only the fields the selected MODE uses are shown, and an off-note appears while no
+     patrol responses tab is picked. Cheap + null-safe, so it can run after every change from updateBar. */
+  function applyPatrolVis(){
+    var md=KV['PATROL.MODE'];
+    if(md){
+      var dur=String(md.value).trim().toUpperCase()==='DURATION';
+      [['PATROL.COL_START',!dur],['PATROL.COL_END',!dur],['PATROL.OVERNIGHT',!dur],['PATROL.COL_DURATION',dur]].forEach(function(p){
+        document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(el.dataset.row===p[0]) el.classList.toggle('modehide',!p[1]); });
+      });
+    }
+    var pr=KV['SHEETS.PATROL_RESPONSES'], note=$('patrolOffNote');
+    if(note) note.hidden=!(pr && String(pr.value).trim()==='');
   }
   function renderIssues(problems,isRefusal){
     var el=$('issues'); if(!el) return;
@@ -942,6 +968,7 @@
     });
   }
   function updateBar(){
+    applyPatrolVis();
     var n=0;
     for(var bk in KV){ if(kvChanged(bk)) n++; }
     Object.keys(TBL).forEach(function(t){ if(tblChanged(t)) n++; });
