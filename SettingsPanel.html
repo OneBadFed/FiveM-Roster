@@ -171,6 +171,16 @@
   .dcdot{width:9px;height:9px;border-radius:50%;background:var(--red);}
   .dcdot.on{background:#57b85a;box-shadow:0 0 8px 0 rgba(87,184,90,.5);}
   .dcev{margin:0;padding-left:18px;color:var(--txt-2);font-size:12.5px;line-height:1.9;}
+  /* compact webhook row: status · url · action buttons on one line, wrapping only when narrow */
+  .dcwrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
+  .dcwrow .dcst{flex:0 0 auto;font-size:11.5px;font-weight:650;white-space:nowrap;margin:0;}
+  .dcwrow .dcurl{flex:1 1 220px;min-width:160px;margin:0;font-family:var(--mono);font-size:11.5px;}
+  .dcbtn{flex:0 0 auto;background:var(--e2);border:none;color:var(--txt-2);border-radius:9px;padding:8px 13px;font-size:12px;font-weight:650;
+         cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease);}
+  .dcbtn:hover{background:var(--e3);color:var(--txt);transform:translateY(-1px);}
+  .dcbtn:active{transform:scale(.96);}
+  .dcbtn.primary{background:linear-gradient(155deg,#5a97ec,#3d7cd9);color:#fff;box-shadow:var(--hi),0 4px 14px -6px var(--accent);}
+  .dcbtn.danger{color:var(--red);} .dcbtn.danger:hover{background:rgba(224,87,79,.12);color:var(--red);}
   /* embed builder */
   .dcseg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;}
   .dclb{display:block;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;font-weight:700;margin:10px 0 5px;}
@@ -1326,16 +1336,15 @@
   function renderDiscordSec(g){
     var host=$('dcwh'); if(!host) return;
     var on=!!(DATA.webhooks&&DATA.webhooks[g.channel]);
-    var h='<div class="dcst"><span class="dcdot'+(on?' on':'')+'"></span>'+(on?'Configured':'Not set')+'</div>';
-    if(!DATA.adminLinked) h+='<div class="callout" style="margin:12px 0 4px">Webhooks are stored in the <b>admin roster</b> — link one first (Control Panel ▸ Tools ▸ Admin roster).</div>';
-    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
-      +'<input type="password" class="in" id="dcUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" style="flex:1;min-width:220px">'
-      +'<button type="button" class="gtadd" data-dcsave="'+esc(g.channel)+'">Save</button>'
-      +'<button type="button" class="gtadd" data-dctest="'+esc(g.channel)+'">Send test</button>'
-      +'<button type="button" class="gtadd" data-dcclear="'+esc(g.channel)+'">Clear</button>'
-      +'<button type="button" class="gtadd" data-dcpurge="1" style="color:var(--red)" title="Abuse kill switch — silences every channel">Remove ALL</button>'
-      +'</div>'
-      +'<div class="sdesc" style="margin-top:10px;max-width:74ch">The URL is write-only — stored in the admin spreadsheet, never shown again. <b>Remove ALL</b> wipes every channel at once (the abuse kill switch); only accounts with admin-file access can change any of this.</div>';
+    var h='<div class="dcwrow"><span class="dcst"><span class="dcdot'+(on?' on':'')+'"></span>'+(on?'Configured':'Not set')+'</span>'
+      +'<input type="password" class="in dcurl" id="dcUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off">'
+      +'<button type="button" class="dcbtn primary" data-dcsave="'+esc(g.channel)+'">Save</button>'
+      +'<button type="button" class="dcbtn" data-dctest="'+esc(g.channel)+'">Test</button>'
+      +'<button type="button" class="dcbtn" data-dcclear="'+esc(g.channel)+'">Clear</button>'
+      +'<button type="button" class="dcbtn danger" data-dcpurge="1" title="Abuse kill switch — silences every channel">Remove all</button>'
+      +'</div>';
+    if(!DATA.adminLinked) h+='<div class="callout" style="margin:10px 0 0">Webhooks are stored in the <b>admin roster</b> — link one first (Control Panel ▸ Tools ▸ Admin roster).</div>';
+    h+='<div class="sdesc" style="margin-top:8px;max-width:74ch">Write-only — stored in the admin spreadsheet, never shown again. <b>Remove all</b> wipes every channel (the abuse kill switch); only accounts with admin-file access can change this.</div>';
     host.innerHTML=h;
     renderDcBuilder();
   }
