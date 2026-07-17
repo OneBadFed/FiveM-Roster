@@ -165,6 +165,7 @@
   .rlrow .rkbtns{flex:0 0 auto;}
   .rlrow.rkbusy{opacity:.55;pointer-events:none;}
   .tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
+  .fmtex{font-family:var(--mono);font-size:11px;color:var(--txt-2);margin-top:7px;}
   .setting.err .serr{display:block;}
   .setting.err .in,.setting.err .ddbtn{box-shadow:var(--hi),0 0 0 3px var(--red-soft) !important;}
 
@@ -524,7 +525,7 @@
     'Data tabs':'sheets','System tabs':'server','Roster layout':'table','Training sections':'grad','Patrol logs → hours':'clock',
     '1 · Request':'inbox','2 · Approval':'check','3 · Ending':'cycle','Early returns · optional':'leave',
     'Canvas & frame':'window','Text':'ftext','Status colours':'theme',
-    'Reset schedule':'clock','Nightly job':'moon','Logging':'file','Dashboard':'dashboard','Live dashboard':'dashboard','Formats':'clock',
+    'Hours reset':'clock','Nightly leave check':'moon','Logging':'file','Dashboard':'dashboard','Live dashboard':'dashboard','Formats':'clock',
     'Engine flags':'flag','Retention limits':'archive'
   };
   function cardIcon(title,gid){ var k=CARD_ICONS[title]; return (k&&ICONS[k])?ICONS[k]:(ICONS[gid]||ICONS.table); }
@@ -548,7 +549,10 @@
     'THEME.CANVAS':'BACKGROUND','THEME.BANNER':'BANNER FILL','THEME.GRID':'GRID LINES','THEME.ACCENT':'ACCENT',
     'THEME.TEXT':'BODY TEXT','THEME.TEXT_STRONG':'HEADING TEXT','THEME.SUBHEAD':'TABLE HEADER FILL','THEME.SUBHEAD_TEXT':'TABLE HEADER TEXT',
     'THEME.PASS':'SUCCESS','THEME.FAIL':'ERROR','THEME.INFO':'INFO','THEME.PROCESSING':'PROCESSING',
-    'DASHBOARD.ENABLE':'LIVE DASHBOARD'};
+    'DASHBOARD.ENABLE':'LIVE DASHBOARD',
+    'SCHEDULE.RESET_CADENCE':'RESET FREQUENCY','SCHEDULE.WEEKLY_HOURS_RESET':'RESET DAY','SCHEDULE.WEEKLY_RESET_HOUR':'RESET TIME','SCHEDULE.RESET_DOM':'DAY OF MONTH',
+    'SCHEDULE.NIGHTLY_HOUR':'NIGHTLY LEAVE CHECK','LOGGING.LOG_LEVEL':'LOG DETAIL','LOGGING.LOG_MAX_ROWS':'LOG SIZE (ROWS)','LOGGING.PERF_TIMING':'TIMING LOG',
+    'FORMATS.DATE_DISPLAY':'DATE FORMAT','FORMATS.TIMESTAMP_DISPLAY':'DATE + TIME FORMAT'};
   // Display-only overrides for table cards (title / help), same idea as LABELS/HELPS for kv settings.
   var TBLTITLE={'DASHBOARD_GROUPS':'Headcount groups · priority order'};
   var TBLHELP={
@@ -590,7 +594,17 @@
     'THEME.FAIL':'Red — errors and failures.',
     'THEME.INFO':'Blue — informational rows.',
     'THEME.PROCESSING':'Tint for form rows still being processed.',
-    'DASHBOARD.ENABLE':'Master switch — when off, #tags stop updating everywhere.'};
+    'DASHBOARD.ENABLE':'Master switch — when off, #tags stop updating everywhere.',
+    'SCHEDULE.RESET_CADENCE':'How often hours reset to zero. MANUAL = only when you run it yourself.',
+    'SCHEDULE.WEEKLY_HOURS_RESET':'Which day the reset runs — history is saved first. OFF disables the reset.',
+    'SCHEDULE.WEEKLY_RESET_HOUR':'What time the reset fires.',
+    'SCHEDULE.RESET_DOM':'Day of the month the reset runs (monthly frequency).',
+    'SCHEDULE.NIGHTLY_HOUR':'When the daily check runs — starts due leaves and ends finished ones.',
+    'LOGGING.LOG_LEVEL':'How much the engine writes to its SYS Log.',
+    'LOGGING.LOG_MAX_ROWS':'Oldest log rows are trimmed past this.',
+    'LOGGING.PERF_TIMING':'Log how long each action takes. Turn on briefly to find slow spots, then off.',
+    'FORMATS.DATE_DISPLAY':'How dates are shown in embeds, the panel and coverage.',
+    'FORMATS.TIMESTAMP_DISPLAY':'How date + time stamps are shown.'};
   var SECTIONS=[
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES','SHEETS.PATROL_RESPONSES']},
@@ -611,10 +625,10 @@
     {id:'dashboard', a:'var(--cyan)', title:'Dashboard & sections', desc:'The live #tags the dashboard keeps filled, the headcount groups behind them, and the tags that colour the Dividers view.',
       cards:[{t:'Live dashboard', keys:['DASHBOARD.ENABLE']}],
       tablesMulti:['SECTION_TAGS','DASHBOARD_GROUPS']},
-    {id:'automation', a:'var(--amber)', title:'Automation & logging', desc:'How often the hours reset runs, when the nightly job fires, and what the engine writes to its diagnostics log.',
-      cards:[{t:'Reset schedule', keys:['SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR']},
-             {t:'Nightly job', keys:['SCHEDULE.NIGHTLY_HOUR','SCHEDULE.TIMEZONE']},
-             {t:'Logging', keys:['LOGGING.LOG_LEVEL','LOGGING.LOG_MAX_ROWS','LOGGING.EMAIL_ON_ERROR','LOGGING.DIAG_INCLUDE_NAMES']},
+    {id:'automation', a:'var(--amber)', title:'Automation & logging', desc:'When the hours reset and the nightly leave check run, and what the engine writes to its diagnostics log.',
+      cards:[{t:'Hours reset', keys:['SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR']},
+             {t:'Nightly leave check', keys:['SCHEDULE.NIGHTLY_HOUR']},
+             {t:'Logging', keys:['LOGGING.LOG_LEVEL','LOGGING.LOG_MAX_ROWS','LOGGING.PERF_TIMING']},
              {t:'Formats', keys:['FORMATS.DATE_DISPLAY','FORMATS.TIMESTAMP_DISPLAY']}]},
     {id:'advanced', a:'var(--red)', title:'Advanced', desc:'Engine flags, retention limits and the structural mappings that tell the engine how to read your sheet.', warn:true,
       note:'Column classes (SLOT / MEMBER) are edited on the Control Panel ▸ Columns tab, which shows live samples and fill counts.',
@@ -971,6 +985,7 @@
     if(g.id==='leave') h+='<div class="callout" id="leaveStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+leaveStoryText()+'</div>';
     if(g.id==='theme') h+=sheetPreview();
     if(g.id==='dashboard') h+='<div class="callout" id="tagCheat" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+tagCheatText()+'</div>';
+    if(g.id==='automation') h+='<div class="callout" id="schedStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+schedStoryText()+'</div>';
     if(g.cards){
       g.cards.forEach(function(c){
         var rows=''; c.keys.forEach(function(bk){ rows+=setting(bk); });
@@ -989,7 +1004,7 @@
     $('content').innerHTML=h;
     $('content').scrollTop=0;
     renderIssues(DATA.problems||[], false);
-    applyPatrolVis();
+    applyPatrolVis(); applySchedVis(); refreshFmtExamples();
   }
   /* Patrol card: only the fields the selected MODE uses are shown, and an off-note appears while no
      patrol responses tab is picked. Cheap + null-safe, so it can run after every change from updateBar. */
@@ -1045,8 +1060,53 @@
       +tags.map(function(t){ return '<span class="rlt" data-tagcopy="#'+esc(t)+'" title="Click to copy">#'+esc(t)+'</span>'; }).join('')+'</div>';
   }
   function refreshTagCheat(){ var el=$('tagCheat'); if(el) el.innerHTML=tagCheatText(); }
+  /* Automation narrates itself too: what runs when, from the live values. */
+  function schedStoryText(){
+    var gv=function(k,d){ var m=KV['SCHEDULE.'+k]; var v=m&&String(m.value).trim(); return v||d; };
+    var cad=gv('RESET_CADENCE','WEEKLY').toUpperCase(), day=gv('WEEKLY_HOURS_RESET','SUN').toUpperCase();
+    var hr=Number(gv('WEEKLY_RESET_HOUR','23')), dom=gv('RESET_DOM','1'), nh=Number(gv('NIGHTLY_HOUR','0'));
+    var DAYN={SUN:'Sunday',MON:'Monday',TUE:'Tuesday',WED:'Wednesday',THU:'Thursday',FRI:'Friday',SAT:'Saturday'};
+    var t12=function(h){ return h===0?'midnight':(h===12?'noon':(h<12?h+' AM':(h-12)+' PM')); };
+    var reset;
+    if(cad==='MANUAL') reset='Hours never reset automatically (manual mode)';
+    else if(day==='OFF' && cad!=='MONTHLY') reset='The hours reset is <b>OFF</b> (reset day is OFF)';
+    else if(cad==='MONTHLY') reset='Hours reset <b>monthly on day '+esc(dom)+'</b> at <b>'+t12(hr)+'</b> — history is saved first';
+    else reset='Hours reset <b>'+(cad==='BIWEEKLY'?'every second ':'every ')+esc(DAYN[day]||day)+'</b> at <b>'+t12(hr)+'</b> — history is saved first';
+    return '<b>What runs when</b>'+reset+' · the nightly leave check runs at <b>'+t12(nh)+'</b>.';
+  }
+  function refreshSchedStory(){ var el=$('schedStory'); if(el) el.innerHTML=schedStoryText(); }
+  function applySchedVis(){
+    var c=KV['SCHEDULE.RESET_CADENCE']; if(!c) return;
+    var v=String(c.value).trim().toUpperCase(), man=(v==='MANUAL'), mon=(v==='MONTHLY');
+    [['SCHEDULE.WEEKLY_HOURS_RESET',!man&&!mon],['SCHEDULE.RESET_DOM',mon],['SCHEDULE.WEEKLY_RESET_HOUR',!man]].forEach(function(p){
+      document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(el.dataset.row===p[0]) el.classList.toggle('modehide',!p[1]); });
+    });
+  }
+  /* Tiny Java-date-pattern subset (d/dd, MM/MMM/MMMM, yy/yyyy, h/hh/HH, mm, a) — enough to preview today. */
+  function fmtExample(pat){
+    var now=new Date();
+    var MS=['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    var ML=['January','February','March','April','May','June','July','August','September','October','November','December'];
+    var d=now.getDate(), mo=now.getMonth(), y=now.getFullYear(), H=now.getHours(), mi=now.getMinutes();
+    var h12=(H%12)||12, ap=H<12?'AM':'PM', pad=function(n){ return (n<10?'0':'')+n; };
+    return String(pat||'').replace(/yyyy/g,String(y)).replace(/yy/g,String(y).slice(-2))
+      .replace(/MMMM/g,'\u0001').replace(/MMM/g,'\u0002').replace(/MM/g,pad(mo+1))
+      .replace(/dd/g,pad(d)).replace(/d/g,String(d))
+      .replace(/HH/g,pad(H)).replace(/hh/g,pad(h12)).replace(/h/g,String(h12))
+      .replace(/mm/g,pad(mi)).replace(/a/g,ap)
+      .replace(/\u0001/g,ML[mo]).replace(/\u0002/g,MS[mo]);
+  }
+  function refreshFmtExamples(){
+    [['FORMATS.DATE_DISPLAY'],['FORMATS.TIMESTAMP_DISPLAY']].forEach(function(p){
+      var row=null; document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(!row&&el.dataset.row===p[0]) row=el; });
+      if(!row) return;
+      var ex=row.querySelector('.fmtex');
+      if(!ex){ ex=document.createElement('div'); ex.className='fmtex'; row.appendChild(ex); }
+      var m=KV[p[0]]; ex.textContent='Today → '+fmtExample(m&&m.value);
+    });
+  }
   function updateBar(){
-    applyPatrolVis(); refreshLeaveStory(); refreshTagCheat();
+    applyPatrolVis(); refreshLeaveStory(); refreshTagCheat(); applySchedVis(); refreshSchedStory(); refreshFmtExamples();
     var n=0;
     for(var bk in KV){ if(kvChanged(bk)) n++; }
     Object.keys(TBL).forEach(function(t){ if(tblChanged(t)) n++; });
