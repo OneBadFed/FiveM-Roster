@@ -44,7 +44,6 @@ const EXTRAS = Object.freeze({
 function addExtrasMenu_(prefix) {
   const p = prefix || '';
   SpreadsheetApp.getUi().createMenu('🛠️ Extras')
-    .addItem('🗓️ Rebuild Leave Coverage', p + 'buildCoverage')
     .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
     .addSeparator()
     .addItem('🎬 Load Demo Roster (preview)', p + 'seedDemoRoster')
