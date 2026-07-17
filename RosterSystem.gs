@@ -244,7 +244,6 @@ function buildMenus_(prefix) {
       .addSeparator()
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
       .addSeparator()
-      .addItem('🚔 Sync Patrol Hours', p + 'manualSyncPatrol')
       .addItem('♻️ Reset Weekly Hours (saves history)', p + 'resetWeeklyStats')
       .addSeparator()
       .addItem('📈 Refresh Dashboard', p + 'refreshDashboard')
