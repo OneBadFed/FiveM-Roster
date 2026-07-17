@@ -1,10 +1,10 @@
 # Roster Engine v2 — System Documentation
 
 > **Version:** Engine **v2.5.0** · Config schema **v2** · Control Panel **v1.4.0** · 33 whitelisted endpoints
-> **Updated:** 2026-07-16 · Release record: `CHANGELOG.md` · Feature pitch: `ROSTER-ENGINE-FEATURES.md` · Staff manual: `STAFF-GUIDE.md` *(staff guide prose is June-era; this file is current)*
+> **Updated:** 2026-07-16 · Release record: `CHANGELOG.md` · Feature pitch: `ROSTER-ENGINE-FEATURES.md` · Staff manual: `STAFF-GUIDE.md` *(companion docs live outside this folder; staff-guide prose is June-era — this file is current)*
 >
 > A white-label, schema-driven personnel-management engine for Google Sheets, built in Google Apps Script.
-> Everything below describes the code in this folder; the live project is these files pasted into the Apps Script editor.
+> Everything below describes the code in this folder; the live project is these files synced into the Apps Script editor (`clasp push`, or paste). The folder is a git repo — commit before every sync.
 
 ---
 
@@ -24,7 +24,7 @@
 | `SettingsPanel.html` | Settings Studio UI (full-screen config editor) |
 | `TEMPLATE-SHIM.gs` | **Library mode only** — the public template's entire bound script: endpoint whitelist mirror + trigger forwarders. Never paste alongside the engine |
 
-**Two deployment modes.** *Bound:* paste files 1–8 into a sheet's own Apps Script project. *Library:* files 1–8 live in a standalone project deployed as a versioned library (identifier must be `RE`); each community template carries only `TEMPLATE-SHIM.gs`. See `ROSTER-ENGINE-V2-RUNBOOK.md`.
+**Two deployment modes.** *Bound:* the 8 engine files (all but `TEMPLATE-SHIM.gs`) in a sheet's own Apps Script project. *Library:* the same 8 files in a standalone project deployed as a versioned library (identifier must be `RE`); each community template carries only `TEMPLATE-SHIM.gs`. See `ROSTER-ENGINE-V2-RUNBOOK.md`.
 
 **One global scope.** All `.gs` files share a single namespace — file boundaries are organisational. A syntax error anywhere breaks everything (the DevQA suite and the Node syntax check exist for this).
 
@@ -195,8 +195,8 @@ Every action reports what it actually did (counts, names, changes).
 
 ## 14 · Maintenance
 
-**Release recipe:** bump `ENGINE_VERSION` → write `CHANGELOG.md` → regen bundles (`FULL-SOURCE.md`, `Roster-Engine-<ver>-full-source.txt`, `_files/*.txt` — the regen script fence-checks and control-byte-scans) → deploy a library version → bump the template's pinned version → sync the web changelog (`web/lib/roster-engine.ts`).
+**Release recipe:** bump `ENGINE_VERSION` → write `CHANGELOG.md` → commit → `clasp push` → deploy a library version → bump the template's pinned version → sync the web changelog (`web/lib/roster-engine.ts`). *(The `_files/*.txt` paste bundles are retired — git history + clasp replace them.)*
 
-**Re-paste rules:** all engine `.gs` files + changed HTML; library users also re-paste `TEMPLATE-SHIM.gs` whenever the endpoint list changes. After schema-affecting changes: run 🚀 First-Run Setup once (idempotent), then 🧪 Run ALL Tests.
+**Sync rules:** `clasp push` syncs every engine file (`.claspignore` keeps `TEMPLATE-SHIM.gs` out — it ships only inside community templates); manual fallback = re-paste all engine `.gs` files + changed HTML. Library users re-paste `TEMPLATE-SHIM.gs` into the template whenever the endpoint list changes. After schema-affecting changes: run 🚀 First-Run Setup once (idempotent), then 🧪 Run ALL Tests.
 
-**Docs set:** this file (current, 2026-07-16) · `STAFF-GUIDE.md` (user manual — June-era prose) · `ROSTER-ENGINE-FEATURES.md` (presentation) · `MENU-REFERENCE.md` / `ROSTER-CELL-REFERENCE.md` · `ROSTER-ENGINE-V2-BRIEF.md` (design contract) · `ROSTER-ENGINE-V2-RUNBOOK.md` (publish/deploy). Keep-current rule: when code changes, update the matching section here and regen the bundle.
+**Docs set:** this file (current, 2026-07-16) · `STAFF-GUIDE.md` (user manual — June-era prose) · `ROSTER-ENGINE-FEATURES.md` (presentation) · `MENU-REFERENCE.md` / `ROSTER-CELL-REFERENCE.md` · `ROSTER-ENGINE-V2-BRIEF.md` (design contract) · `ROSTER-ENGINE-V2-RUNBOOK.md` (publish/deploy) — all companions live outside this folder. Keep-current rule: when code changes, update the matching section here.
