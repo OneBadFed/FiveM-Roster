@@ -40,13 +40,8 @@ const EXTRAS = Object.freeze({
  * MENU & INSTALL
  * ====================================================================== */
 
-/** Called by buildMenus_ (core). `prefix` is '' bound, 'RE.' in library mode (Phase 2). */
-function addExtrasMenu_(prefix) {
-  const p = prefix || '';
-  SpreadsheetApp.getUi().createMenu('🛠️ Extras')
-    .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
-    .addToUi();
-}
+// The Extras menu is retired — its actions moved into the 👥 Roster menu (Run Integrity Scan) and 🧪 Dev / QA
+// (Load Demo Roster). The functions below still power the daily/6am triggers and those relocated menu items.
 
 /** Creates the extras' time-driven triggers (replacing any duplicates). */
 /**

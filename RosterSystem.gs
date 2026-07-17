@@ -234,7 +234,7 @@ function buildMenus_(prefix) {
   try {
     // Grouped by WORKFLOW (panels → members → leave → hours → presentation → setup), not by feature age —
     // an admin scans for the job they're doing, so each separator block is one job family.
-    SpreadsheetApp.getUi().createMenu('📋 Roster')
+    SpreadsheetApp.getUi().createMenu('👥 Roster')
       // Open
       .addItem('🎛️ Open Control Panel', p + 'openControlPanel')
       .addItem('⚙️ Engine Settings', p + 'openSettingsPanel')
@@ -242,6 +242,7 @@ function buildMenus_(prefix) {
       // Daily operations
       .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
+      .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
       .addSeparator()
       // Roster editing
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
@@ -255,8 +256,7 @@ function buildMenus_(prefix) {
   } catch (err) {
     log_('onOpen', err);
   }
-  // Companion-file menus (guarded with typeof so a not-yet-pasted add-on never breaks the core menu).
-  try { if (typeof addExtrasMenu_ === 'function') addExtrasMenu_(p); } catch (err) { log_('onOpen.extras', err); }   // 🛠️ Extras  (RosterExtras.gs)
+  // Companion-file menu (guarded with typeof so a not-yet-pasted add-on never breaks the core menu).
   try { if (typeof addDevMenu_ === 'function') addDevMenu_(p); } catch (err) { log_('onOpen.devqa', err); }           // 🧪 Dev / QA (RosterDevQA.gs)
 }
 
