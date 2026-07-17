@@ -243,7 +243,6 @@ function buildMenus_(prefix) {
       .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
       .addSeparator()
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
-      .addItem('🌙 Run Daily Schedule Check', p + 'processDailyLOAs')
       .addSeparator()
       .addItem('🚔 Sync Patrol Hours', p + 'manualSyncPatrol')
       .addItem('♻️ Reset Weekly Hours (saves history)', p + 'resetWeeklyStats')
