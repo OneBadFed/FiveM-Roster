@@ -162,6 +162,8 @@
   .rlt:hover{color:var(--txt);background:var(--e3);transform:translateY(-1px);}
   .rlt.on{background:var(--green-t);color:var(--green-f);}
   .rlt .rldel{cursor:pointer;margin-left:5px;opacity:.7;} .rlt .rldel:hover{opacity:1;}
+  .rlrow .rkbtns{flex:0 0 auto;}
+  .rlrow.rkbusy{opacity:.55;pointer-events:none;}
   .setting.err .serr{display:block;}
   .setting.err .in,.setting.err .ddbtn{box-shadow:var(--hi),0 0 0 3px var(--red-soft) !important;}
 
@@ -473,7 +475,7 @@
 
   var GROUPS=[
     {label:'System', ids:['sheets']},
-    {label:'Configuration', ids:['statuses','ranks','rankicons','leave','theme']},
+    {label:'Configuration', ids:['statuses','ranks','leave','theme']},
     {label:'Dashboard', ids:['dashboard']},
     {label:'Operations', ids:['automation','advanced']},
   ];
@@ -562,8 +564,7 @@
              {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
              {t:'Patrol logs → hours', keys:['PATROL.MODE','PATROL.MAX_HOURS','PATROL.OVERNIGHT','PATROL.RECOMPUTE','PATROL.COL_DISCORD','PATROL.COL_CALLSIGN','PATROL.COL_START','PATROL.COL_END','PATROL.COL_DURATION']}]},
     {id:'statuses', a:'var(--amber)', title:'Statuses & tiers', desc:'The activity ladder and every status the engine may write — plus per-rank overrides and stateless status rules.', tables:true},
-    {id:'ranks', a:'var(--green)', title:'Ranks & labels', desc:'Every rank found in your roster’s rank column, and the labels that group them. Each label is also a live #tag — a "Supervisors" label makes #supervisors count everyone labeled with it.', custom:'ranklabels'},
-    {id:'rankicons', a:'var(--cyan)', title:'Rank icons', desc:'Give each rank a small badge shown in the Control Panel in place of a member’s initials. Ranks are detected from your roster automatically — upload one image per rank and everyone with that rank shows it. Changes save immediately.', custom:'rankicons'},
+    {id:'ranks', a:'var(--green)', title:'Ranks', desc:'Every rank found in your roster’s rank column — its badge icon, and the labels that group ranks together. Each label is also a live #tag: a "Supervisors" label makes #supervisors count everyone labeled with it.', custom:'ranklabels'},
     {id:'leave', a:'var(--purple)', title:'Leave engine', desc:'How leaves are requested, approved, activated and expired.',
       cards:[{t:'Request types', keys:['LEAVE.LEAVE_TYPES','LEAVE.RETURN_TYPE']},
              {t:'Approval flow', keys:['LEAVE.STATUS_FLOW','LEAVE.APPROVED_STATUS','LEAVE.EXPIRED_STATUS']},
@@ -1037,7 +1038,7 @@
   /* ── ranks & labels (a friendlier editor over [DASHBOARD_GROUPS] rank entries) ── */
   var RANKLIST=null;
   function rankLabelsShell(){
-    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Toggle a label on every rank it covers — a rank may carry several labels, but headcounts put each member under their FIRST label. Section-based entries (Dashboard &amp; sections) keep working alongside; deleting a label removes its whole group.</div>'
+    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Toggle a label on every rank it covers — a rank may carry several labels, but headcounts put each member under their FIRST label. <b>Icons save immediately; label changes save with the Save button.</b> A square PNG with transparency looks best; images are resized automatically.</div>'
       +'<div id="ranklabelsHost"><div class="rkloading">Loading ranks…</div></div>';
   }
   function loadRanksList(){
@@ -1061,8 +1062,12 @@
         var on=listOf(g[1]).some(function(x){return x.toUpperCase()===String(r.rank).toUpperCase();});
         return '<span class="rlt'+(on?' on':'')+'" data-rltog="1" data-gi="'+gi+'" data-rank="'+esc(r.rank)+'">'+esc(g0)+'</span>'; }).join('');
       return '<div class="rlrow"><span class="rlav">'+av+'</span><span class="rlnm">'+esc(r.rank)
-        +'<small>'+(r.members===1?'1 member':((r.members||0)+' members'))+'</small></span>'
-        +'<div class="rlchips">'+chips+'</div></div>';
+        +'<small>'+(r.members===1?'1 member':((r.members||0)+' members'))+(r.icon?' · icon set':'')+'</small></span>'
+        +'<div class="rlchips">'+chips+'</div>'
+        +'<div class="rkbtns"><label class="rkbtn rkup">'+(r.icon?'Replace':'Upload')
+          +'<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-rankfile="'+esc(r.rank)+'" hidden></label>'
+          +(r.icon?'<button type="button" class="rkbtn rkdel" data-rankdel="'+esc(r.rank)+'">Remove</button>':'')
+        +'</div></div>';
     }).join('');
   }
   function rlToggle(gi,rank){
@@ -1102,14 +1107,16 @@
     input.value=''; // let the same file be re-picked later
     if(!file) return;
     if(!/^image\//.test(file.type||'')){ toast('Please choose an image file.','err'); return; }
-    var card=input.closest('.rkcard'); if(card) card.classList.add('rkbusy');
+    var card=input.closest('.rkcard,.rlrow'); if(card) card.classList.add('rkbusy');
     processIcon(file, function(uri){
-      api(function(){ toast('Icon set for '+rank+'.','ok'); loadRankIcons(); },
+      api(function(){ toast('Icon set for '+rank+'.','ok'); rankIconsChanged(); },
           function(e){ if(card) card.classList.remove('rkbusy'); onError(e); },
           'cpSetRankIcon', rank, uri);
     }, function(msg){ if(card) card.classList.remove('rkbusy'); toast(msg,'err'); });
   }
-  function handleRankDelete(rank){ api(function(){ toast('Icon removed for '+rank+'.','ok'); loadRankIcons(); }, onError, 'cpDeleteRankIcon', rank); }
+  function handleRankDelete(rank){ api(function(){ toast('Icon removed for '+rank+'.','ok'); rankIconsChanged(); }, onError, 'cpDeleteRankIcon', rank); }
+  /* Icons changed server-side — drop the cached rank list and refresh whichever view is on screen. */
+  function rankIconsChanged(){ RANKLIST=null; if($('rankiconsHost')) loadRankIcons(); if($('ranklabelsHost')) loadRanksList(); }
   // Normalise an upload to a UNIFORM SQUARE that fits the icon area: draw the whole image CONTAINED + centred on a
   // transparent square canvas (never cropped/stretched), then compress to fit script storage while PRESERVING
   // TRANSPARENCY where possible — PNG (lossless) for simple icons, else WebP (lossy but keeps alpha) for detailed
