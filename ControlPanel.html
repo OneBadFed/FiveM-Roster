@@ -706,11 +706,6 @@
 
   <div class="pane" id="pane-tools">
     <div class="tsec">
-      <div class="tsec-h"><b>System health</b><small>from the last health check — full details &amp; fixes on the System tab</small></div>
-      <div class="tstat" id="toolsHealth"><span class="muted2">Loading…</span></div>
-    </div>
-
-    <div class="tsec">
       <div class="tsec-h"><b>Maintenance</b><small>one-click engine actions — each reports what it changed</small></div>
       <div class="tgrid">
         <div class="tcard" style="--a:var(--blue)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 21V11M12 21V5M19 21v-7"/></svg></span><span class="tt"><b>Update all statuses</b><small>Recompute every member from hours</small></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
@@ -882,7 +877,7 @@
     STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
     renderAdminSetup();
     whStatus(b.webhookSet, b.errorsWebhookSet);
-    apply(b); setHealthPill(b.health); renderToolsHealth(b.health); setLoading(false);
+    apply(b); setHealthPill(b.health); setLoading(false);
     api(function(res){ // PERF: heavy base64 icons arrive after first paint; initials → icons swap. Endpoint shape = {ranks:[{rank,icon,…}]}
       var map={}; (((res||{}).ranks)||[]).forEach(function(r){ if(r&&r.icon) map[r.rank]=r.icon; });
       if(Object.keys(map).length){ STATE.rankIcons=map; renderMembers(); renderSlots(); }
@@ -1386,21 +1381,15 @@
     toast(slot ? 'Open slot pre-selected — fill in the new member.' : 'Opened Add member — choose an open slot.','ok');
     setTimeout(function(){ var n=$('addName'); if(n) n.focus(); }, 70);
   }
-  function renderToolsHealth(h){
-    var el=$('toolsHealth'); if(!el) return;
-    if(!h||!h.checks||!h.checks.length){ el.innerHTML='<span class="muted2">Health data unavailable — open the System tab to run a check.</span>'; return; }
-    el.innerHTML=h.checks.map(function(c){
-      return '<span class="hchip" title="'+esc(c.detail||'')+'"><span class="dot '+(c.ok?'on':'off')+'"></span>'+esc(c.label)+(c.ok?'':' <small>· needs attention</small>')+'</span>';
-    }).join('');
-  }
   function renderHealth(h){
-    setHealthPill(h); renderToolsHealth(h);
+    setHealthPill(h);
     if(!h||!h.checks){ $('healthBody').innerHTML='<span class="muted2">Unavailable.</span>'; return; }
     var needFix=false;
-    var html=h.checks.map(function(c){
+    // Compact chips: passing checks tuck their detail into the tooltip; only a FAILING check spends space inline.
+    var html='<div class="tstat">'+h.checks.map(function(c){
       if(c.fix==='fixTriggers'&&!c.ok) needFix=true;
-      return '<div class="hck '+(c.ok?'ok':'bad')+'"><span class="hic">'+(c.ok?'✓':'✕')+'</span><span class="hlbl"><b>'+esc(c.label)+'</b>'+(c.detail?'<small>'+esc(c.detail)+'</small>':'')+'</span></div>';
-    }).join('');
+      return '<span class="hchip" title="'+esc(c.detail||'')+'"><span class="dot '+(c.ok?'on':'off')+'"></span>'+esc(c.label)+(c.ok?'':' <small>· '+esc(c.detail||'needs attention')+'</small>')+'</span>';
+    }).join('')+'</div>';
     if(needFix) html+='<button class="btn" id="fixTrg">Install missing triggers</button>';
     $('healthBody').innerHTML=html;
     if(needFix) $('fixTrg').addEventListener('click',function(){ var b=this; b.disabled=true; api(function(msg){ b.disabled=false; toast(msg,'ok'); loadSystem(); }, function(e){ b.disabled=false; onError(e); }, "cpFixTriggers"); });
