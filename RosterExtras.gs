@@ -496,8 +496,11 @@ function demoPerson_(i, rank, total) {
   // Sprinkle a few recently-EXPIRED leaves onto active members (tracker + activity-check variety).
   if (!leave && i % 17 === 5) { pastLeave = { type: (i % 2 ? 'LOA' : 'ROA'), from: -(48 + i % 10), to: -(30 + i % 8) }; checks = [pastLeave.type, pastLeave.type, 'Active', act]; }
   const tenure = 1600 - Math.round((i / Math.max(total, 1)) * 1200); // seniority: earlier rows = longer tenure
+  const shift = ['Day', 'Swings', 'Nights'][Math.floor(demoRand_(i, 8) * 3)];
+  const may = demoQuarter_(demoRand_(i, 3) * demoRand_(i, 6) * 30); // prior-month totals — right-skewed 0–30h
+  const jun = demoQuarter_(demoRand_(i, 4) * demoRand_(i, 7) * 30);
   return {
-    name: demoName_(i), id: demoId_(i),
+    name: demoName_(i), id: demoId_(i), shift: shift, may: may, jun: jun,
     join: demoDay_(-tenure), promo: demoDay_(-(20 + (i % 10) * 16)),
     hours: hours, act: act, last: last, leave: leave, pastLeave: pastLeave,
     checks: checks || [act, act, act, act],
@@ -512,7 +515,7 @@ function demoIsOpen_(i, total) {
 }
 
 /** A blank "open position" — the row keeps the operator's rank + callsign but carries no member data. */
-function demoBlank_() { return { open: true, name: '', id: '', join: '', promo: '', hours: '', act: '', last: '', leave: null, pastLeave: null, checks: null }; }
+function demoBlank_() { return { open: true, name: '', id: '', shift: '', may: '', jun: '', join: '', promo: '', hours: '', act: '', last: '', leave: null, pastLeave: null, checks: null }; }
 
 /** Classify a member into a stats group by their section label (rank as fallback). Supervisors = command/staff tiers, Auxiliary = reserve, else Troopers. */
 function demoGroupOf_(section, rank) {
@@ -526,6 +529,12 @@ function demoGroupOf_(section, rank) {
   if (/RESERVE|AUXILIAR/.test(R)) return 'auxiliary';
   if (/CHIEF|COMMANDER|CAPTAIN|LIEUTENANT|COLONEL|MAJOR|SERGEANT/.test(R)) return 'supervisors';
   return 'troopers';
+}
+
+/** "James Bennett" → "James B." (first name + last initial — the OOC-name style). */
+function demoOocName_(name) {
+  const parts = String(name || '').trim().split(/\s+/);
+  return parts.length < 2 ? String(name || '') : parts[0] + ' ' + parts[parts.length - 1].charAt(0) + '.';
 }
 
 /** "James Bennett" → "J. Bennett" (leadership-box style). */
@@ -608,6 +617,17 @@ function seedDemoRoster() {
       roster.getRange(run.startRow, RC.hours, len, 1).setValues(s.map((p) => [p.hours]));
       roster.getRange(run.startRow, RC.activity, len, 1).setValues(s.map((p) => [p.act]));
       if (laCol > 0) roster.getRange(run.startRow, laCol, len, 1).setValues(s.map((p) => [p.last]));
+      // Optional display columns — filled only when the sheet has them (RC.* is 0 when absent).
+      if (RC.ooc) roster.getRange(run.startRow, RC.ooc, len, 1).setValues(s.map((p) => [p.name ? demoOocName_(p.name) : '']));
+      if (RC.shift) roster.getRange(run.startRow, RC.shift, len, 1).setValues(s.map((p) => [p.shift]));
+      if (RC.mayHours) roster.getRange(run.startRow, RC.mayHours, len, 1).setValues(s.map((p) => [p.may]));
+      if (RC.junHours) roster.getRange(run.startRow, RC.junHours, len, 1).setValues(s.map((p) => [p.jun]));
+      if (RC.timeInRank && RC.promo) { // live "days since last promotion" — recalculates daily
+        const pc = (typeof cpColLetter_ === 'function') ? cpColLetter_(RC.promo) : String.fromCharCode(64 + RC.promo);
+        roster.getRange(run.startRow, RC.timeInRank, len, 1)
+          .setFormulas(s.map((p, k) => [`=IF(${pc}${run.startRow + k}="","",TODAY()-INT(${pc}${run.startRow + k}))`]))
+          .setNumberFormat('0" days"');
+      }
     });
 
     // ---- TRACKER (in place: clear old data rows, keep header / formatting) ----

@@ -57,12 +57,13 @@ try {
 } catch (e) { console.error('ROSTER_HEADER_ROW bridge install failed: ' + e); }
 let _rosterColCache = {};
 
-/** @return {{rank,name,unit,discord,join,promo,activity,hours}} resolved 1-based columns. */
+/** @return {{rank,name,unit,discord,join,promo,activity,hours,ooc,shift,mayHours,junHours,timeInRank}} resolved 1-based columns (optional ones are 0 when absent). */
 function rosterCols_(sheet) {
   const id = (sheet && sheet.getSheetId) ? String(sheet.getSheetId()) : 'def';
   if (_rosterColCache[id]) return _rosterColCache[id];
   const d = CONFIG.roster;
-  const cols = { rank: d.rank, name: d.name, unit: d.unit, discord: d.discord, join: 6, promo: 7, activity: d.activity, hours: d.hours };
+  const cols = { rank: d.rank, name: d.name, unit: d.unit, discord: d.discord, join: 6, promo: 7, activity: d.activity, hours: d.hours,
+    ooc: 0, shift: 0, mayHours: 0, junHours: 0, timeInRank: 0 }; // optional display columns — 0 = not present on this sheet
   try {
     const lastCol = sheet.getLastColumn();
     const lastRow = sheet.getLastRow();
@@ -76,6 +77,11 @@ function rosterCols_(sheet) {
         promo: (h) => h.indexOf('PROMOT') !== -1,
         activity: (h) => h.indexOf('ACTIVITY') !== -1 || h.indexOf('STATUS') !== -1, // "STATUS" is the new label for the activity tier
         hours: (h) => h.indexOf('HOURS') !== -1,
+        ooc: (h) => h.indexOf('OOC') !== -1,
+        shift: (h) => h.indexOf('SHIFT') !== -1,
+        mayHours: (h) => h.indexOf('MAY') !== -1 && h.indexOf('HOUR') !== -1,
+        junHours: (h) => h.indexOf('JUN') !== -1 && h.indexOf('HOUR') !== -1,
+        timeInRank: (h) => h.indexOf('TIME') !== -1 && h.indexOf('RANK') !== -1,
       };
       const readRow = (r) => sheet.getRange(r, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
       const looksHdr = (row) => !!row && row.some((h) => match.rank(h)) && row.some((h) => match.hours(h) || match.name(h));
