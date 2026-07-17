@@ -485,6 +485,31 @@
   .chk-hr{font-size:10px;color:var(--txt-3);font-family:var(--mono);}
   .chk-note{display:flex;align-items:center;gap:7px;font-size:11px;color:var(--txt-2);margin-top:10px;font-weight:550;}
 
+  /* profile hero + two-column layout */
+  .pc-hero{display:flex;align-items:center;gap:var(--s4);padding:var(--s4);}
+  .pav{width:64px;height:64px;border-radius:18px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;letter-spacing:.02em;color:var(--txt);overflow:hidden;background:color-mix(in srgb,var(--rank,#8a929e) 16%,var(--e3));}
+  .pav.mav-has{background:var(--e3);padding:3px;}
+  .pav .mav-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:inherit;}
+  .pc-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;align-items:flex-start;}
+  .pc-name{font-size:19px;font-weight:800;letter-spacing:.01em;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pc-rank{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;}
+  .pc-rank .rk{color:var(--accent-2);font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .callchip{background:var(--e2);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);box-shadow:var(--hi);flex:0 0 auto;}
+  .pc-stat{flex:0 0 auto;align-self:stretch;background:var(--e2);border-radius:14px;padding:10px 14px;box-shadow:var(--hi),var(--sh-1);display:flex;flex-direction:column;gap:3px;justify-content:center;min-width:130px;}
+  .ps-k{font-size:9.5px;font-weight:700;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;}
+  .ps-v{font-size:20px;font-weight:800;color:var(--accent-2);font-family:var(--mono);}
+  .ps-v em{font-style:normal;font-size:11px;font-weight:700;color:var(--txt-2);}
+  .ps-d{font-size:10px;color:var(--txt-3);min-height:12px;}
+  .ps-d.up{color:var(--green-f);} .ps-d.dn{color:var(--amber-f);}
+  .pc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--hair);box-shadow:0 -1px 0 var(--hair);}
+  .pc-statusrow{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;}
+  .pc-statusrow .segmented{margin-bottom:0;}
+  .pc-cols{display:grid;grid-template-columns:290px 1fr;gap:1px;background:var(--hair);align-items:stretch;}
+  .pc-col{display:flex;flex-direction:column;min-width:0;background:rgba(18,22,29,.4);}
+  .pc-col .pc-sec{background:transparent;box-shadow:none;}
+  .pc-col .pc-sec+.pc-sec{box-shadow:0 -1px 0 var(--hair);}
+  @media (max-width:900px){.pc-cols{grid-template-columns:1fr;}}
+
   /* buttons + tools */
   .btn{width:100%;background:linear-gradient(155deg,#5a97ec,#3d7cd9);border:none;color:#fff;border-radius:var(--r-md);padding:11px;font-size:13.5px;font-weight:700;
        cursor:pointer;margin-top:var(--s4);box-shadow:var(--hi),0 8px 22px -8px rgba(79,142,232,.9);transition:transform var(--t) var(--ease),box-shadow var(--t),filter var(--t);}
@@ -835,14 +860,23 @@
     var c=stripe(m.color);
     var segs=STATE.statuses.map(function(s){ return '<button class="seg'+(s===m.status?' cur':'')+'" data-st="'+esc(s)+'">'+esc(s)+'</button>'; }).join('');
     var idv=m.discord?('<span class="mono">'+esc(m.discord)+'</span><button class="copybtn" data-copy="'+esc(m.discord)+'" title="Copy ID" aria-label="Copy Discord ID">'+SVG.copy+'</button>'):'<span class="mono">—</span>';
+    var ic=(STATE.rankIcons&&STATE.rankIcons[m.rank])||'';
+    var avin=ic?('<img class="mav-img" src="'+esc(ic)+'" alt="'+esc(m.rank)+'">'):esc(mInitials(m.name));
     return '<div class="pc" style="border-top:2px solid '+c+'">'
-      +'<div class="pc-grid">'
-        +'<div class="kvc"><span class="k">'+PIC.hours+'Hours</span><span class="v mono">'+esc(m.hours||'0')+'</span></div>'
+      +'<div class="pc-hero">'
+        +'<span class="pav'+(ic?' mav-has':'')+'" style="box-shadow:var(--hi),var(--sh-1),0 0 18px -6px '+c+'">'+avin+'</span>'
+        +'<div class="pc-id"><b class="pc-name">'+esc(m.name)+'</b>'
+          +'<div class="pc-rank"><span class="rk">'+esc(m.rank)+'</span>'+(m.callsign?('<span class="callchip">'+esc(m.callsign)+'</span>'):'')+'</div>'
+          +'<div>'+pill(m.status)+'</div></div>'
+        +'<div class="pc-stat"><span class="ps-k">Current hours</span><span class="ps-v">'+esc(m.hours||'0')+' <em>hrs</em></span><span class="ps-d" id="psd'+m.row+'"></span></div>'
+      +'</div>'
+      +'<div class="pc-meta">'
         +'<div class="kvc"><span class="k">'+PIC.cal+'Joined</span><span class="v">'+esc(m.joinDate||'—')+'</span></div>'
         +'<div class="kvc"><span class="k">'+PIC.promo+'Last promotion</span><span class="v">'+esc(m.lastPromo||'—')+'</span></div>'
         +'<div class="kvc idcell"><span class="k">'+PIC.id+'Discord ID</span><span class="v">'+idv+'</span></div>'
       +'</div>'
-      +'<div class="pc-sec"><div class="pc-lbl">'+PIC.status+'Set status</div><div class="segmented">'+segs+'</div><button class="linkbtn" data-jump="'+m.row+'">'+SVG.jump+' Jump to row in sheet</button></div>'
+      +'<div class="pc-sec pc-statusrow"><div class="segmented">'+segs+'</div><button class="linkbtn" data-jump="'+m.row+'">'+SVG.jump+' View on roster</button></div>'
+      +'<div class="pc-cols"><div class="pc-col">'
       +(function(){ // Move / transfer — relocate this member into an open slot (of any rank), styled like the Add-member picker
         var open=STATE.members.filter(function(s){ return !s.filled && s.row!==m.row; });
         if(!open.length){ return '<div class="pc-sec"><div class="pc-lbl">'+PIC.move+'Move / transfer</div><span class="muted2">No open slots to move into. Add a row under the target rank first (Add member ▸ Add rows, or the sheet).</span></div>'; }
@@ -875,10 +909,13 @@
           +'<button class="btn" data-schedgo="'+m.row+'">Schedule leave</button>'
         +'</div></div>';
       })()
-      +(STATE.admin&&STATE.admin.access?('<div class="pc-sec pc-adm"><div class="pc-lbl">'+PIC.lock+'Admin · private</div><div id="adm'+m.row+'"><span class="muted2">Loading…</span></div></div>'):'')
+      +'</div>'
+      +'<div class="pc-col">'
       +'<div class="pc-sec"><div class="pc-lbl">'+PIC.checks+'Recent activity checks</div><div id="chk'+m.row+'" class="checks"><span class="muted2">Loading…</span></div></div>'
       +'<div class="pc-sec"><div class="pc-lbl">'+PIC.trend+'Weekly hours trend</div><div id="spk'+m.row+'" class="spk"><span class="muted2">Loading…</span></div></div>'
+      +(STATE.admin&&STATE.admin.access?('<div class="pc-sec pc-adm"><div class="pc-lbl">'+PIC.lock+'Admin · private</div><div id="adm'+m.row+'"><span class="muted2">Loading…</span></div></div>'):'')
       +'<div class="pc-sec"><div class="pc-lbl">'+PIC.history+'Leave history</div><div id="lv'+m.row+'" class="leaves"><span class="muted2">Loading…</span></div></div>'
+      +'</div></div>'
     +'</div>';
   }
   function toggleDetail(row){ STATE.moveTo=null; STATE.openRow=(STATE.openRow===row?null:row); renderMembers(); }
@@ -886,6 +923,14 @@
     api(function(p){
       var chk=$('chk'+m.row); if(chk) chk.innerHTML=activityChecks(p.history);
       var spk=$('spk'+m.row); if(spk) spk.innerHTML=sparkline(p.history);
+      var psd=$('psd'+m.row); // hero stat box: current hours vs this member's own recent weekly average
+      if(psd && p.history && p.history.length>=2){
+        var vs=p.history.map(function(x){return Number(x.hours)||0;});
+        var pavg=vs.reduce(function(a,b){return a+b;},0)/vs.length;
+        var cur=parseFloat(String(m.hours||'0').replace(/[^0-9.\-]/g,''))||0, d=cur-pavg;
+        psd.className='ps-d '+(d>=0.05?'up':(d<=-0.05?'dn':''));
+        psd.textContent=(d>=0.05?'▲ ':(d<=-0.05?'▼ ':'· '))+Math.abs(d).toFixed(1)+' hrs vs '+vs.length+'-week avg';
+      }
       var lv=$('lv'+m.row);
       if(lv){ if(!p.leaves||!p.leaves.length){ lv.innerHTML='<span class="muted2">No leave records.</span>'; }
         else lv.innerHTML=p.leaves.map(function(l){ return '<div class="lr"><span><b>'+esc(l.type||'—')+'</b> &nbsp;'+esc(l.start||'?')+' → '+esc(l.end||'?')+'</span><span class="ltag"><span class="pdot" style="background:'+leaveDot(l.status)+'"></span>'+esc(l.status||'')+'</span></div>'; }).join(''); }
@@ -990,12 +1035,30 @@
   }
   function sparkline(series){
     if(!series||series.length<2) return '<span class="muted2">Not enough history yet'+(series&&series.length?(' ('+series.length+' week)'):'')+'. It builds up from weekly resets that save history.</span>';
-    var vals=series.map(function(p){return p.hours;}), max=Math.max.apply(null,vals), min=Math.min.apply(null,vals), span=(max-min)||1;
-    var w=480,h=46,pad=5,step=(w-2*pad)/(series.length-1);
-    var pts=series.map(function(p,i){ return [pad+i*step, h-pad-((p.hours-min)/span)*(h-2*pad)]; });
+    var vals=series.map(function(p){return Number(p.hours)||0;});
+    var avg=vals.reduce(function(a,b){return a+b;},0)/vals.length;
+    var max=Math.max(5,Math.ceil(Math.max.apply(null,vals.concat([avg]))/5)*5); // 0-based axis, headroom rounded to 5s
+    var w=520,h=132,L=30,R=10,T=10,B=20,iw=w-L-R,ih=h-T-B,step=iw/(series.length-1);
+    var X=function(i){return L+i*step;}, Y=function(v){return T+ih-(v/max)*ih;};
+    var pts=series.map(function(p,i){ return [X(i),Y(Number(p.hours)||0)]; });
     var poly=pts.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ');
-    return '<svg width="100%" height="46" viewBox="0 0 '+w+' '+h+'" preserveAspectRatio="none"><polyline points="'+poly+'" fill="none" stroke="#4f8ee8" stroke-width="2" vector-effect="non-scaling-stroke" stroke-linejoin="round" stroke-linecap="round"/></svg>'
-      +'<div class="spk-meta"><span>min '+min.toFixed(1)+'</span><span>now '+vals[vals.length-1].toFixed(1)+' hrs</span><span>max '+max.toFixed(1)+'</span></div>';
+    var area=L+','+(T+ih)+' '+poly+' '+pts[pts.length-1][0].toFixed(1)+','+(T+ih);
+    var grid='';
+    for(var g=0;g<=4;g++){ var gv=max*g/4, gy=Y(gv);
+      grid+='<line x1="'+L+'" y1="'+gy.toFixed(1)+'" x2="'+(w-R)+'" y2="'+gy.toFixed(1)+'" stroke="rgba(255,255,255,.06)"/>'
+        +'<text x="'+(L-6)+'" y="'+(gy+3).toFixed(1)+'" text-anchor="end" font-size="8.5" fill="#727b89" font-family="monospace">'+gv.toFixed(0)+'</text>'; }
+    var xl='', every=Math.ceil(series.length/8);
+    series.forEach(function(p,i){ if(i%every!==0 && i!==series.length-1) return;
+      xl+='<text x="'+X(i).toFixed(1)+'" y="'+(h-6)+'" text-anchor="middle" font-size="8.5" fill="#727b89" font-family="monospace">'+esc(shortWeek(p.week))+'</text>'; });
+    var dots=pts.map(function(p,i){ var lastP=(i===pts.length-1);
+      return '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="'+(lastP?3.5:2.2)+'" fill="'+(lastP?'#8db7f2':'#4f8ee8')+'"'+(lastP?' stroke="rgba(141,183,242,.3)" stroke-width="5"':'')+'/>'; }).join('');
+    return '<svg width="100%" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Weekly hours trend">'
+      +grid+xl
+      +'<polygon points="'+area+'" fill="rgba(79,142,232,.10)"/>'
+      +'<line x1="'+L+'" y1="'+Y(avg).toFixed(1)+'" x2="'+(w-R)+'" y2="'+Y(avg).toFixed(1)+'" stroke="rgba(224,165,44,.55)" stroke-dasharray="4 4"/>'
+      +'<polyline points="'+poly+'" fill="none" stroke="#4f8ee8" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+      +dots+'</svg>'
+      +'<div class="spk-meta"><span>avg '+avg.toFixed(2)+' hrs</span><span>now '+vals[vals.length-1].toFixed(2)+' hrs</span><span>'+series.length+' wks</span></div>';
   }
   function shortWeek(w){ var m=String(w||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return String(w||''); return String(Number(m[3]))+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2])-1]; }
   function isLeaveSt(st){ var k=String(st||'').replace(/[^A-Za-z]/g,''); return k==='LOA'||k==='ROA'||k==='Reserve'; }
