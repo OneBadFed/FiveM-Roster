@@ -244,8 +244,6 @@ function buildMenus_(prefix) {
       .addSeparator()
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
       .addSeparator()
-      .addItem('♻️ Reset Weekly Hours (saves history)', p + 'resetWeeklyStats')
-      .addSeparator()
       .addItem('📈 Refresh Dashboard', p + 'refreshDashboard')
       .addSubMenu(SpreadsheetApp.getUi().createMenu('📸 Last Activity')
         .addItem('📸 Capture (snapshot current → last)', p + 'captureLastActivity')
