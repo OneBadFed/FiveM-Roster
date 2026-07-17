@@ -383,6 +383,8 @@ function cpBootstrap() {
     systemName: CONFIG.systemName,
     webhooks: cpWebhookStatus_(), // per-channel booleans — read via THIS user's admin-file access
     statuses: cpStatuses_(),
+    leaveTypes: CONFIG.leaveTypes.slice(),                                       // the [LEAVE].LEAVE_TYPES list — drives the schedule-leave dropdown
+
     members: snap.members,
     stats: snap.stats,
     updatedAt: snap.updatedAt,

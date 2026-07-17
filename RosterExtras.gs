@@ -647,7 +647,7 @@ function seedDemoRoster() {
       leaveCount = leaves.length;
     }
 
-    // ---- HOURS HISTORY (hidden engine tab: 4 weekly activity checks per member) ----
+    // ---- HOURS HISTORY (hidden engine tab: 4 fortnightly activity checks per member) ----
     const hist = ss.getSheetByName(CONFIG.sheets.hoursHistory) || ss.insertSheet(CONFIG.sheets.hoursHistory);
     hist.clear();
     hist.getRange(1, 1, 1, 6).setValues([['WeekOf', 'DiscordID', 'Name', 'Rank', 'Hours', 'Status']]);
@@ -656,7 +656,7 @@ function seedDemoRoster() {
       const p = people[i];
       if (p.open) return; // open positions carry no history
       const hs = demoHours_(p.hours);
-      for (let k = 0; k < 4; k++) hrows.push([demoSunday_(3 - k), p.id, p.name, m.rank, hs[k], p.checks[k] || p.act]);
+      for (let k = 0; k < 4; k++) hrows.push([demoSunday_((3 - k) * 2), p.id, p.name, m.rank, hs[k], p.checks[k] || p.act]); // *2 = fortnightly cadence
     });
     if (hrows.length) {
       hist.getRange(2, 2, hrows.length, 1).setNumberFormat('@');

@@ -499,6 +499,9 @@
   .linkbtn.on{color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 12px -5px var(--accent);}
   .spk{background:var(--e2);border:none;border-radius:11px;padding:var(--s2) var(--s3);box-shadow:var(--hi);}
   .spk-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--txt-3);margin-top:6px;font-family:var(--mono);}
+  .spk-plot{position:relative;}
+  .spk-hit{cursor:pointer;}
+  .spk-tip{position:absolute;transform:translate(-50%,calc(-100% - 12px));background:var(--e3);color:var(--txt);font-size:11px;font-family:var(--mono);white-space:nowrap;padding:5px 9px;border-radius:8px;box-shadow:var(--sh-1);border:1px solid var(--hair);pointer-events:none;z-index:6;}
   .muted2{color:var(--txt-3);font-size:11px;line-height:1.5;}
   .leaves .lr{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);padding:var(--s2) 0;box-shadow:0 1px 0 var(--hair);font-size:12px;}
   .leaves .lr:last-child{box-shadow:none;}
@@ -748,7 +751,7 @@
         <div class="conn" style="--a:var(--accent)">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><b>Admin roster</b></div>
           <div id="admSetup"><span class="muted2">Loading…</span></div>
-          <p class="hint">A separate spreadsheet for private member data (email, DOB, notes, discipline), keyed by Discord ID. <b>Google file sharing is the access control</b> — only accounts the file is shared with can read it.</p>
+          <p class="hint">A separate spreadsheet that stores your Discord webhook URLs. <b>Google file sharing is the access control</b> — only accounts the file is shared with can view, change or post through them.</p>
         </div>
       </div>
     </div>
@@ -804,7 +807,7 @@
 
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
-  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],rankIcons:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{}};
+  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],rankIcons:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{}};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
   var SVG={
@@ -880,6 +883,7 @@
     $('verLbl').textContent=b.version||'';
     STATE.version=b.version||'';
     if(b.statuses) STATE.statuses=b.statuses;
+    if(b.leaveTypes&&b.leaveTypes.length) STATE.leaveTypes=b.leaveTypes;
     STATE.rankIcons=b.rankIcons||{}; // bootstrap ships {} — icons lazy-load below so the panel paints immediately
     STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
     renderAdminSetup();
@@ -994,7 +998,7 @@
         return '<div class="pc-sec"><div class="pc-lbl">'+PIC.leave+'Schedule leave</div>'
         +'<button class="linkbtn" data-sched="'+m.row+'">+ New LOA</button>'
         +'<div class="sform" id="sf'+m.row+'"'+(STATE.formOpen===m.row?'':' hidden')+'>'
-          +'<div class="srow"><select class="field sf-mini" id="sft'+m.row+'">'+op('LOA',fd.t)+op('ROA',fd.t)+'</select>'
+          +'<div class="srow"><select class="field sf-mini" id="sft'+m.row+'">'+STATE.leaveTypes.map(function(t){return op(t,fd.t);}).join('')+'</select>'
             +'<select class="field sf-mini" id="sfs'+m.row+'">'+op('Pending',fd.s)+op('Approved',fd.s)+'</select></div>'
           +'<div class="srow"><input type="date" class="field sf-mini" id="sfst'+m.row+'" value="'+esc(fd.st||'')+'" aria-label="Start date"><input type="date" class="field sf-mini" id="sfen'+m.row+'" value="'+esc(fd.en||'')+'" aria-label="End date"></div>'
           +'<input class="field" id="sfn'+m.row+'" value="'+esc(fd.n||'')+'" placeholder="Notes (optional)" autocomplete="off">'
@@ -1004,8 +1008,7 @@
       +'</div>'
       +'<div class="pc-col">'
       +'<div class="pc-sec"><div class="pc-lbl">'+PIC.checks+'Recent activity checks</div><div id="chk'+m.row+'" class="checks"><span class="muted2">Loading…</span></div></div>'
-      +'<div class="pc-sec"><div class="pc-lbl">'+PIC.trend+'Weekly hours trend</div><div id="spk'+m.row+'" class="spk"><span class="muted2">Loading…</span></div></div>'
-      +(STATE.admin&&STATE.admin.access?('<div class="pc-sec pc-adm"><div class="pc-lbl">'+PIC.lock+'Admin · private</div><div id="adm'+m.row+'"><span class="muted2">Loading…</span></div></div>'):'')
+      +'<div class="pc-sec"><div class="pc-lbl">'+PIC.trend+'Hours trend</div><div id="spk'+m.row+'" class="spk"><span class="muted2">Loading…</span></div></div>'
       +'<div class="pc-sec"><div class="pc-lbl">'+PIC.history+'Leave history</div><div id="lv'+m.row+'" class="leaves"><span class="muted2">Loading…</span></div></div>'
       +'</div></div>'
     +'</div>';
@@ -1019,15 +1022,6 @@
       if(lv){ if(!p.leaves||!p.leaves.length){ lv.innerHTML='<span class="muted2">No leave records.</span>'; }
         else lv.innerHTML=p.leaves.map(function(l){ return '<div class="lr"><span><b>'+esc(l.type||'—')+'</b> &nbsp;'+esc(l.start||'?')+' → '+esc(l.end||'?')+'</span><span class="ltag"><span class="pdot" style="background:'+leaveDot(l.status)+'"></span>'+esc(l.status||'')+'</span></div>'; }).join(''); }
     }, onError, "cpGetProfile", m.discord);
-    if(STATE.admin&&STATE.admin.access){ // admin section — Google's ACL enforces this server-side; the flag only gates UI
-      var ael=$('adm'+m.row);
-      if(ael){
-        if(!m.discord){ ael.innerHTML='<span class="muted2">This member has no Discord ID — admin records key off the ID.</span>'; }
-        else api(function(a){ var el=$('adm'+m.row); if(el) el.innerHTML=admHtml(m,a); },
-          function(e){ var el=$('adm'+m.row); if(el) el.innerHTML='<span class="muted2">Admin data unavailable ('+esc((e&&e.message)||'no access')+').</span>'; },
-          "cpAdminInfo", m.discord);
-      }
-    }
   }
   /* admin section — draft-aware (typed edits survive a re-render, like the leave form / F-026).
      SCALABLE: fields come from the admin sheet's header row — add a column there and it renders here automatically. */
@@ -1116,7 +1110,8 @@
     $('admLinkBtn').addEventListener('click',function(){ var u=$('admUrl').value.trim(); if(!u){ toast('Paste the admin sheet link or ID first.','err'); return; } go({url:u},this); });
   }
   function sparkline(series){
-    if(!series||series.length<2) return '<span class="muted2">Not enough history yet'+(series&&series.length?(' ('+series.length+' week)'):'')+'. It builds up from weekly resets that save history.</span>';
+    series=(series||[]).slice(-3); // the latest activity check + the previous two (checks run fortnightly)
+    if(series.length<2) return '<span class="muted2">Not enough history yet'+(series.length?(' ('+series.length+' check)'):'')+'. It builds up from the fortnightly activity checks.</span>';
     var vals=series.map(function(p){return Number(p.hours)||0;});
     var avg=vals.reduce(function(a,b){return a+b;},0)/vals.length;
     var max=Math.max(5,Math.ceil(Math.max.apply(null,vals.concat([avg]))/5)*5); // 0-based axis, headroom rounded to 5s
@@ -1129,23 +1124,26 @@
     for(var g=0;g<=4;g++){ var gv=max*g/4, gy=Y(gv);
       grid+='<line x1="'+L+'" y1="'+gy.toFixed(1)+'" x2="'+(w-R)+'" y2="'+gy.toFixed(1)+'" stroke="rgba(255,255,255,.06)"/>'
         +'<text x="'+(L-6)+'" y="'+(gy+3).toFixed(1)+'" text-anchor="end" font-size="8.5" fill="#727b89" font-family="monospace">'+gv.toFixed(0)+'</text>'; }
-    var xl='', every=Math.ceil(series.length/8);
-    series.forEach(function(p,i){ if(i%every!==0 && i!==series.length-1) return;
-      xl+='<text x="'+X(i).toFixed(1)+'" y="'+(h-6)+'" text-anchor="middle" font-size="8.5" fill="#727b89" font-family="monospace">'+esc(shortWeek(p.week))+'</text>'; });
+    var xl='';
+    series.forEach(function(p,i){ xl+='<text x="'+X(i).toFixed(1)+'" y="'+(h-6)+'" text-anchor="middle" font-size="8.5" fill="#727b89" font-family="monospace">'+esc(shortWeek(p.week))+'</text>'; });
     var dots=pts.map(function(p,i){ var lastP=(i===pts.length-1);
       return '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="'+(lastP?3.5:2.2)+'" fill="'+(lastP?'#8db7f2':'#4f8ee8')+'"'+(lastP?' stroke="rgba(141,183,242,.3)" stroke-width="5"':'')+'/>'; }).join('');
-    return '<svg width="100%" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Weekly hours trend">'
+    var hits=pts.map(function(p,i){ var c=series[i]; // generous transparent hit target per point → hover shows the tooltip
+      var tip=esc(shortWeek(c.week))+' · '+esc(String(c.hours))+' hrs'+(c.status?(' · '+esc(c.status)):'');
+      return '<circle class="spk-hit" cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="16" fill="transparent" data-tip="'+tip+'"/>'; }).join('');
+    return '<div class="spk-plot">'
+      +'<svg width="100%" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Hours trend">'
       +grid+xl
       +'<polygon points="'+area+'" fill="rgba(79,142,232,.10)"/>'
       +'<line x1="'+L+'" y1="'+Y(avg).toFixed(1)+'" x2="'+(w-R)+'" y2="'+Y(avg).toFixed(1)+'" stroke="rgba(224,165,44,.55)" stroke-dasharray="4 4"/>'
       +'<polyline points="'+poly+'" fill="none" stroke="#4f8ee8" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
-      +dots+'</svg>'
-      +'<div class="spk-meta"><span>avg '+avg.toFixed(2)+' hrs</span><span>now '+vals[vals.length-1].toFixed(2)+' hrs</span><span>'+series.length+' wks</span></div>';
+      +dots+hits+'</svg><div class="spk-tip" hidden></div></div>'
+      +'<div class="spk-meta"><span>avg '+avg.toFixed(2)+' hrs</span><span>now '+vals[vals.length-1].toFixed(2)+' hrs</span><span>'+series.length+' checks</span></div>';
   }
   function shortWeek(w){ var m=String(w||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return String(w||''); return String(Number(m[3]))+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2])-1]; }
   function isLeaveSt(st){ var k=String(st||'').replace(/[^A-Za-z]/g,''); return k==='LOA'||k==='ROA'||k==='Reserve'; }
   function activityChecks(series){
-    if(!series||!series.length) return '<span class="muted2">No activity checks yet — they build up from the weekly reset that saves history.</span>';
+    if(!series||!series.length) return '<span class="muted2">No activity checks yet — they build up from the fortnightly activity checks.</span>';
     var last=series.slice(-4);
     // Hours carry the chip; status shrinks to a coloured dot (full status in the tooltip). Only the exceptional
     // case — a leave-kind week — earns a text label, so four "Active" pills never repeat side by side.
@@ -1543,6 +1541,15 @@
   document.addEventListener('click',function(e){ if(!e.target.closest('#slotDrop')) openSlotMenu(false); });
   document.addEventListener('click',function(e){ if(!e.target.closest('.mv-trigger') && !e.target.closest('#mvMenu')) openMvMenu(false); });
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ openSlotMenu(false); openMvMenu(false); } });
+  // Interactive hours-trend: hover a point → floating tooltip with its date, hours and status.
+  $('mlist').addEventListener('mousemove',function(e){
+    var hit=e.target.closest?e.target.closest('.spk-hit'):null;
+    if(!hit){ var open=$('mlist').querySelector('.spk-tip:not([hidden])'); if(open) open.hidden=true; return; }
+    var plot=hit.closest('.spk-plot'), tip=plot&&plot.querySelector('.spk-tip'); if(!tip) return;
+    tip.innerHTML=hit.getAttribute('data-tip');
+    var r=plot.getBoundingClientRect();
+    tip.style.left=Math.round(e.clientX-r.left)+'px'; tip.style.top=Math.round(e.clientY-r.top)+'px'; tip.hidden=false;
+  });
   // F-026: capture schedule-leave inputs live so a re-render (status change / auto-refresh) can rehydrate them.
   $('mlist').addEventListener('input',function(e){
     var mm=String(e.target.id||'').match(/^sf(st|en|t|s|n)(\d+)$/);
