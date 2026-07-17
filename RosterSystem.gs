@@ -686,7 +686,7 @@ function renderDashboardOnSheet_(sheet, s) {
  * ====================================================================== */
 const PROMO_STORE_PROP_ = 'RE_PROMOS';
 const PROMO_TITLE_ = 'RECENT PROMOTIONS';
-const PROMO_MAX_ = 20;
+const PROMO_MAX_ = 21; // history + render cap — sized to the Welcome-page table (21 data rows)
 
 /** Pure predicate: does this move qualify as a promotion? (Injectable — DevQA drives it directly.) */
 function promoIsPromotion_(srcRow, dstRow, fromRank, toRank) {
