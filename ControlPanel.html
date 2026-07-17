@@ -548,6 +548,9 @@
   .tsec-h small{color:var(--txt-3);font-size:11px;font-weight:500;}
   .tstat{display:flex;flex-wrap:wrap;gap:var(--s2);}
   .hchip{display:inline-flex;align-items:center;gap:8px;background:var(--e1);border-radius:11px;padding:8px 12px;font-size:11.5px;font-weight:650;box-shadow:var(--hi),var(--sh-1);}
+  /* System tab: chips stretch as an even grid so rows fill the full width instead of wrapping ragged */
+  #healthBody .tstat{display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));}
+  #healthBody .hchip{width:100%;}
   .hchip small{color:var(--amber-f);font-weight:600;}
   .hchip .dot{width:8px;height:8px;}
   .tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(320px,1fr));gap:var(--s3);}
