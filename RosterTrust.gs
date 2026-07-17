@@ -94,8 +94,9 @@ function cpHealthCheck_() {
   add('Form-submit trigger', handlers.onFormSubmit, handlers.onFormSubmit ? '' : 'New leave forms won’t auto-sync.', 'fixTriggers');
   add('Daily schedule trigger', handlers.processDailyLOAs, handlers.processDailyLOAs ? '' : 'Leaves won’t auto-start or expire.', 'fixTriggers');
 
-  const wh = !!getWebhookUrl_();
-  add('Discord webhook set', wh, wh ? '' : 'Run setWebhookUrl() once to enable notifications.');
+  const whs = (typeof cpWebhookStatus_ === 'function') ? cpWebhookStatus_() : {};
+  const whn = Object.keys(whs).filter((k) => whs[k]).length;
+  add('Discord webhooks', whn > 0, whn > 0 ? `${whn} channel(s) configured.` : 'No channels visible to your account — set them on Tools (stored in the admin roster).');
 
   let bad = 0;
   if (roster && roster.getLastRow() >= CONFIG.rosterStartRow) {

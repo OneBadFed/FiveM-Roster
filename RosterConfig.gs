@@ -101,9 +101,9 @@ function docsLink_(code) {
   return DOCS_URL ? `\nDocs: ${DOCS_URL}#${String(code).toLowerCase()}` : '';
 }
 
-/** The optional errors-channel webhook (Script Property WEBHOOK_ERRORS). Empty = feature off. */
+/** The optional errors-channel webhook — the ERRORS row of the admin file's Webhooks tab. Empty = feature off. */
 function getErrorsWebhookUrl_() {
-  try { return PropertiesService.getScriptProperties().getProperty(ERRORS_WEBHOOK_PROP) || ''; } catch (e) { return ''; }
+  try { return webhookFor_('ERRORS'); } catch (e) { return ''; }
 }
 
 /**
@@ -116,11 +116,11 @@ function getErrorsWebhookUrl_() {
 function maybeErrorWebhook_(ae, fnName) {
   try {
     if (!ae || ae.sev !== 'ERROR') return;
-    const url = getErrorsWebhookUrl_();
-    if (!url) return;
     const key = 'errwh:' + (ae.code || 'E-601') + ':' + (fnName || ''); // F-045: throttle per code AND function, not code alone
     const cache = CacheService.getScriptCache();
-    if (cache.get(key)) return;
+    if (cache.get(key)) return; // throttle FIRST — the URL now lives in the admin file, so don't open it during a storm
+    const url = getErrorsWebhookUrl_();
+    if (!url) return;
     cache.put(key, '1', 300);
     const sysName = (CFG_ && CFG_.legacy) ? CFG_.legacy.systemName : 'Roster System';
     let desc = String(ae.message || '');

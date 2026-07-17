@@ -1805,7 +1805,7 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   // Notifications fire AFTER all writes (never block a credit). Off by default.
   if (sendWebhooks && CONFIG.notify && CONFIG.notify.patrolLogged) {
     summary.credited.forEach((c) => {
-      notify_(true, {
+      notifyCh_('PATROL', true, {
         title: fill_(CONFIG.notify.patrolTitle, { name: c.name, hours: c.hours, total: c.total }),
         color: hexToInt_(CONFIG.notify.patrolColor, 5154774),
         fields: [
@@ -1998,18 +1998,44 @@ function makeLeaveKey_(discordId, timestamp) {
  * DISCORD WEBHOOKS
  * ====================================================================== */
 
-function getWebhookUrl_() {
-  // Guarded like getErrorsWebhookUrl_ — PropertiesService can be unavailable in a LIMITED-auth simple trigger (F-032).
-  try { return PropertiesService.getScriptProperties().getProperty(CONFIG.webhookProp) || ''; } catch (e) { return ''; }
+const WEBHOOK_TAB_ = 'Webhooks';
+const WEBHOOK_CHANNELS_ = Object.freeze(['AUDIT', 'LOA', 'PATROL', 'ERRORS']);
+let _webhookMemo_ = null; // per-execution only — NEVER cached anywhere shared (the admin file's ACL is the gate)
+
+/** Normalize a channel name; unknown/legacy names map to LOA (the classic "main" traffic). */
+function webhookChannel_(ch) { const c = norm_(ch || ''); return WEBHOOK_CHANNELS_.indexOf(c) !== -1 ? c : 'LOA'; }
+
+/**
+ * The webhook URL for a channel, read from the ADMIN spreadsheet's Webhooks tab under the CURRENT user's Google
+ * permissions — file sharing IS the access control: unshare the admin file and a rogue admin loses every webhook.
+ * No admin file, no access, or no row = '' (that channel is off). Never throws; memoized per execution.
+ */
+function webhookFor_(channel) {
+  try {
+    if (_webhookMemo_ === null) {
+      _webhookMemo_ = {};
+      const id = String(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_) || '').trim();
+      if (id) {
+        const sh = SpreadsheetApp.openById(id).getSheetByName(WEBHOOK_TAB_);
+        if (sh && sh.getLastRow() >= 2) {
+          sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues().forEach((r) => {
+            const c = norm_(r[0]), u = String(r[1] || '').trim();
+            if (c && /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\//.test(u)) _webhookMemo_[c] = u;
+          });
+        }
+      }
+    }
+    return _webhookMemo_[webhookChannel_(channel)] || '';
+  } catch (e) { return ''; } // no access → silently off (that IS the permission model)
 }
 
-/** One-time setup: paste your webhook URL below, run once, then clear it. */
+/** Back-compat shim: the classic "main" webhook is the LOA channel now. */
+function getWebhookUrl_() { return webhookFor_('LOA'); }
+
+/** Retired one-time setup: webhooks live in the admin spreadsheet now. */
 function setWebhookUrl() {
   runAction_('Set Webhook URL', () => {
-    const url = ''; // paste here, run, then clear back to ''
-    if (!url) { SpreadsheetApp.getUi().alert('Paste your webhook URL into setWebhookUrl() first.'); return; }
-    PropertiesService.getScriptProperties().setProperty(CONFIG.webhookProp, url);
-    SpreadsheetApp.getUi().alert('✅ Webhook URL saved.'); // never log the URL itself
+    SpreadsheetApp.getUi().alert('Webhooks are stored in the ADMIN ROSTER now. Open 🎛️ Control Panel ▸ Tools ▸ Discord integration to set the per-channel URLs.');
   });
 }
 
@@ -2098,12 +2124,15 @@ function fill_(template, vars) {
  * timestamp + the shared [DISCORD] chrome (author/thumbnail/image/footer); `content` optionally pings a member.
  * Never throws — a notification must never break the action that triggered it.
  */
-function notify_(on, embed, content) {
+function notify_(on, embed, content) { notifyCh_('LOA', on, embed, content); }
+
+/** notify_ with an explicit channel first — call-site friendly (the trailing content/mention arg stays last). */
+function notifyCh_(channel, on, embed, content) {
   if (!on) return;
   try {
     const payload = { embeds: [Object.assign({ timestamp: new Date().toISOString() }, embed, embedChrome_())] };
     if (content) payload.content = content;
-    sendWebhookPayload_(payload);
+    sendWebhookPayload_(payload, channel);
   } catch (e) { log_('notify_', e); }
 }
 
@@ -2167,11 +2196,14 @@ function postToWebhook_(url, payload) {
 }
 
 /** Posts to the MAIN webhook. @return {{ok:boolean, code:number, error?:string}} (callers may ignore the return). */
-function sendWebhookPayload_(payload) {
-  const url = getWebhookUrl_();
-  if (!url) { console.log('Webhook URL not set. Run setWebhookUrl() once.'); return { ok: false, code: 0, error: 'no-url' }; }
+function sendWebhookPayload_(payload, channel) {
+  const url = webhookFor_(channel || 'LOA');
+  if (!url) return { ok: false, code: 0, error: 'no-url' }; // channel unconfigured, or this account can't read the admin file
   return postToWebhook_(url, payload);
 }
+
+/** sendWebhookPayload_ with the channel first — keeps multi-line payload call sites tidy. */
+function sendWebhookPayloadCh_(channel, payload) { return sendWebhookPayload_(payload, channel); }
 
 /* ======================================================================
  * ROSTER MANAGEMENT
@@ -2350,7 +2382,7 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
     lock.releaseLock();
   }
   promoRecord_(sourceRow, targetRow, memberName, sourceRank, targetRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
-  notify_(CONFIG.notify.transfer, { // v2.5.0 optional embed — after the lock is released, only reached on a successful move
+  notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; after the lock is released, only reached on a successful move
     title: fill_(CONFIG.notify.transferTitle, { name: memberName, from: sourceRank, to: targetRank }),
     color: hexToInt_(CONFIG.notify.transferColor, 5793266),
     fields: [

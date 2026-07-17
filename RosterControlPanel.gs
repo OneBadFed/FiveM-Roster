@@ -98,37 +98,77 @@ function cpPing() {
 }
 
 /**
- * Panel write: store a Discord webhook URL in Script Properties (never in cells; never logged).
+ * Panel write: store a Discord webhook URL in the ADMIN spreadsheet's Webhooks tab (never in the main file's
+ * cells; never logged). Google's file ACL is the permission system — only accounts that can WRITE the admin
+ * file can set or clear webhooks, and only accounts that can READ it can post through them.
  * @param {string} url - empty string clears the channel.
- * @param {string} [channel] - 'MAIN' (default: leave notifications etc.) or 'ERRORS' (Phase 3 engine-error feed).
+ * @param {string} [channel] - 'AUDIT' | 'LOA' | 'PATROL' | 'ERRORS'.
  */
 function cpSetWebhook(url, channel) {
   const u = String(url || '').trim();
-  const ch = norm_(channel || 'MAIN') === 'ERRORS' ? 'ERRORS' : 'MAIN';
+  const ch = webhookChannel_(channel);
   if (u !== '' && !/^https:\/\/(discord|discordapp)\.com\/api\/webhooks\//.test(u)) {
     throw new Error('That does not look like a Discord webhook URL (expected https://discord.com/api/webhooks/…).');
   }
-  const prop = ch === 'ERRORS' ? ERRORS_WEBHOOK_PROP : CONFIG.webhookProp;
-  const props = PropertiesService.getScriptProperties();
-  if (u === '') props.deleteProperty(prop);
-  else props.setProperty(prop, u);
-  cpAudit_('action', '', `Discord ${ch === 'ERRORS' ? 'ERRORS' : 'main'} webhook ${u === '' ? 'cleared' : 'updated'}`, '', ''); // the URL itself is never audited
-  try { if (typeof cpInvalidateHealth_ === 'function') cpInvalidateHealth_(); } catch (e) { /* Trust.gs may be absent */ } // webhook status changed
-  return { set: u !== '', channel: ch, mainSet: !!getWebhookUrl_(), errorsSet: !!getErrorsWebhookUrl_() };
+  const file = adminFile_();
+  if (!file) throw new Error('Webhooks are stored in the admin roster — link one first (Tools ▸ Admin roster).');
+  const sh = ensureWebhookTab_(file);
+  const last = sh.getLastRow();
+  let row = 0;
+  if (last >= 2) {
+    const chs = sh.getRange(2, 1, last - 1, 1).getDisplayValues();
+    for (let i = 0; i < chs.length; i++) { if (norm_(chs[i][0]) === ch) { row = i + 2; break; } }
+  }
+  let me = ''; try { me = Session.getActiveUser().getEmail() || ''; } catch (e) { /* consumer-account quirk */ }
+  if (u === '') {
+    if (row) sh.getRange(row, 2, 1, 3).setNumberFormat('@').setValues([['', me, fmtTs_(new Date())]]);
+  } else {
+    if (!row) { row = Math.max(2, last + 1); sh.getRange(row, 1).setNumberFormat('@').setValue(ch); }
+    sh.getRange(row, 2, 1, 3).setNumberFormat('@').setValues([[u, me, fmtTs_(new Date())]]);
+  }
+  cpAudit_('action', '', `Discord ${ch} webhook ${u === '' ? 'cleared' : 'updated'}`, '', ''); // the URL itself is never audited
+  try { if (typeof cpInvalidateHealth_ === 'function') cpInvalidateHealth_(); } catch (e) { /* Trust.gs may be absent */ }
+  _webhookMemo_ = null; // this execution re-reads the tab
+  return { set: u !== '', channel: ch, channels: cpWebhookStatus_() };
 }
+
+/** Ensure the admin file's Webhooks tab exists with its header row. Idempotent. */
+function ensureWebhookTab_(file) {
+  let sh = file.getSheetByName(WEBHOOK_TAB_);
+  if (!sh) sh = file.insertSheet(WEBHOOK_TAB_);
+  if (sh.getLastRow() === 0) sh.appendRow(['Channel', 'URL', 'Updated By', 'Updated At']);
+  try {
+    sh.getRange(1, 1, 1, 4).setFontWeight('bold').setBackground(theme_('BANNER')).setFontColor(theme_('TEXT_STRONG'));
+    sh.getRange(1, 2, sh.getMaxRows(), 1).setNumberFormat('@'); // URLs stay literal text
+    if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
+  } catch (e) { /* cosmetic */ }
+  return sh;
+}
+
+/** Which channels have a webhook — as seen by THIS user (no admin-file access = all false). */
+function cpWebhookStatus_() {
+  const out = {};
+  WEBHOOK_CHANNELS_.forEach((c) => { out[c] = !!webhookFor_(c); });
+  return out;
+}
+
+const WH_TEST_DESC_ = Object.freeze({
+  AUDIT: 'Roster edits will post to this channel.',
+  LOA: 'Leave submissions, approvals and expiries will post to this channel.',
+  PATROL: 'Patrol log credits and flagged logs will post to this channel.',
+  ERRORS: 'Engine errors (coded, throttled) will post to this channel.',
+});
 
 /** Panel action: send a test message through the configured webhook for the given channel. */
 function cpTestWebhook(channel) {
-  const ch = norm_(channel || 'MAIN') === 'ERRORS' ? 'ERRORS' : 'MAIN';
-  const url = ch === 'ERRORS' ? getErrorsWebhookUrl_() : getWebhookUrl_();
-  if (!url) throw new Error(`No ${ch === 'ERRORS' ? 'errors' : 'main'} webhook configured yet — save a webhook URL first.`);
+  const ch = webhookChannel_(channel);
+  const url = webhookFor_(ch);
+  if (!url) throw new Error(`No ${ch} webhook configured yet — save a webhook URL first.`);
   const payload = {
-    username: ch === 'ERRORS' ? `${CONFIG.systemName} — errors` : CONFIG.systemName,
+    username: `${CONFIG.systemName} — ${ch.toLowerCase()}`,
     embeds: [{
       title: '✅ Webhook test',
-      description: ch === 'ERRORS'
-        ? 'Engine errors (coded, throttled) will post to this channel.'
-        : 'The roster system can post to this channel.',
+      description: WH_TEST_DESC_[ch] || 'The roster system can post to this channel.',
       footer: { text: `${CONFIG.systemName} • ${ENGINE_VERSION}` },
     }],
   };
@@ -339,8 +379,7 @@ function cpBootstrap() {
   return {
     version: CP_VERSION,
     systemName: CONFIG.systemName,
-    webhookSet: !!getWebhookUrl_(),
-    errorsWebhookSet: !!getErrorsWebhookUrl_(),
+    webhooks: cpWebhookStatus_(), // per-channel booleans — read via THIS user's admin-file access
     statuses: cpStatuses_(),
     members: snap.members,
     stats: snap.stats,
@@ -780,7 +819,7 @@ function cpAssignMember(payload) {
     cpAudit_('add', '', `${s.rank} · ${s.callsign}`, roster.getRange(Number(payload.row), rosterCols_(roster).name).getA1Notation(), s.name);
     return s;
   });
-  notify_(CONFIG.notify.memberAdded, { // v2.5.0 optional embed — after the lock releases, toggle off by default
+  notifyCh_('AUDIT', CONFIG.notify.memberAdded, { // roster-change traffic → AUDIT channel; after the lock releases
     title: fill_(CONFIG.notify.memberAddedTitle, { name: seated.name }),
     color: hexToInt_(CONFIG.notify.memberAddedColor, 5749594),
     fields: [
@@ -858,7 +897,7 @@ function cpMoveMember(payload) {
     return r;
   });
   promoRecord_(Number(payload && payload.fromRow), Number(payload && payload.toRow), res.name, res.fromRank, res.toRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
-  notify_(CONFIG.notify.transfer, { // v2.5.0 optional embed — after the lock releases, only on a successful move
+  notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; after the lock releases, only on a successful move
     title: fill_(CONFIG.notify.transferTitle, { name: res.name, from: res.fromRank, to: res.toRank }),
     color: hexToInt_(CONFIG.notify.transferColor, 5793266),
     fields: [
@@ -890,6 +929,18 @@ function cpRunAction(name) {
 }
 function cpRunActionCore_(name) {
   switch (name) {
+    case 'purgeWebhooks': {
+      // Kill switch for webhook abuse: wipes every channel (admin-file Webhooks tab + the legacy Script Properties).
+      // Google's ACL gates it — clearing the tab needs WRITE access to the admin file.
+      const file = adminFile_();
+      if (!file) throw new Error('No admin roster linked — there are no webhooks to remove.');
+      const sh = file.getSheetByName(WEBHOOK_TAB_);
+      if (sh && sh.getLastRow() >= 2) sh.getRange(2, 1, sh.getLastRow() - 1, Math.max(2, sh.getLastColumn())).clearContent();
+      try { const p = PropertiesService.getScriptProperties(); p.deleteProperty(CONFIG.webhookProp); p.deleteProperty(ERRORS_WEBHOOK_PROP); } catch (e) { /* legacy props may be gone */ }
+      _webhookMemo_ = null;
+      try { if (typeof cpInvalidateHealth_ === 'function') cpInvalidateHealth_(); } catch (e) { /* Trust.gs may be absent */ }
+      return 'All Discord webhooks removed — every channel is silent until new URLs are saved.';
+    }
     case 'updateStatuses': {
       const r = recomputeStatuses_(cpRoster_(), false);
       return `Recomputed ${r.total} member(s) from hours — ${r.changed.length} changed${r.protectedSkipped ? `, ${r.protectedSkipped} on leave left alone` : ''}.`;
@@ -1168,6 +1219,7 @@ function seedAdminSheet_(file) {
   };
   mk(ADMIN_DETAILS_TAB_, ['Discord ID', 'Name', 'Email', 'Date of Birth', 'Notes'], 1, 2); // cols 3+ are free-form fields
   mk(ADMIN_LOG_TAB_, ['Date', 'Discord ID', 'Name', 'Action', 'Reason', 'Issued By', 'Status'], 2);
+  ensureWebhookTab_(file); // per-channel Discord webhooks live here too — the file's ACL gates them
   const s1 = file.getSheetByName('Sheet1'); // drop the empty default tab on a freshly created file
   if (s1 && file.getSheets().length > 2 && s1.getLastRow() === 0) { try { file.deleteSheet(s1); } catch (e) { /* cosmetic */ } }
 }

@@ -164,9 +164,9 @@ function weekKey_(d) {
   return Utilities.formatDate(base, tz, 'yyyy-MM-dd');
 }
 
-/** Posts a simple summary embed to the configured webhook (no-op if none set). */
+/** Posts a simple summary embed to the AUDIT channel (no-op if none set). */
 function postSummary_(title, description, color) {
-  sendWebhookPayload_({
+  sendWebhookPayloadCh_('AUDIT', {
     embeds: [{
       title,
       description: clamp_(description, 4000),
@@ -232,7 +232,7 @@ function doWeeklyReset_() {
     const activeCount = after.filter((m) => m.activity !== lowestTier).length;
     logInfo_('doWeeklyReset_', `reset complete; ${dropped.length} dropped to ${lowestTier}.`);
     if (CONFIG.notify && CONFIG.notify.weeklyDigest) { // v2.5.0 richer opt-in digest supersedes the basic reset notice
-      notify_(true, {
+      notifyCh_('AUDIT', true, {
         title: fill_(CONFIG.notify.digestTitle, {}),
         color: hexToInt_(CONFIG.notify.digestColor, 5793266),
         description: `Hours have been zeroed and statuses recomputed for the new period.`,

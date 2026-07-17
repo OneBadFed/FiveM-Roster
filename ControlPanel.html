@@ -724,21 +724,26 @@
       <div class="tconns">
         <div class="conn" style="--a:var(--purple)">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><b>Discord integration</b></div>
-          <div class="crow"><span class="crow-k">Main channel</span><span class="crow-v" id="whMainV"><span class="dot"></span>checking…</span></div>
-          <div class="crow"><span class="crow-k">Errors channel</span><span class="crow-v" id="whErrV"><span class="dot"></span>checking…</span></div>
+          <div class="crow"><span class="crow-k">Audit log</span><span class="crow-v" id="whAUDIT"><span class="dot"></span>checking…</span></div>
+          <div class="crow"><span class="crow-k">LOAs</span><span class="crow-v" id="whLOA"><span class="dot"></span>checking…</span></div>
+          <div class="crow"><span class="crow-k">Patrol logs</span><span class="crow-v" id="whPATROL"><span class="dot"></span>checking…</span></div>
+          <div class="crow"><span class="crow-k">Errors</span><span class="crow-v" id="whERRORS"><span class="dot"></span>checking…</span></div>
           <div class="crow" id="whTestRow" hidden><span class="crow-k">Last test</span><span class="crow-v" id="whTestV"></span></div>
           <!-- SECURITY INVARIANT: #whUrl is WRITE-ONLY. Never populate it with the stored URL — the secret lives in
-               Script Properties and must never round-trip back into the page. The save handler clears it after use. -->
+               the admin spreadsheet and must never round-trip back into the page. The save handler clears it after use. -->
           <div style="display:flex;gap:var(--s2);align-items:stretch;flex-wrap:wrap;margin-top:var(--s3)">
             <select class="fselect" id="whChan" aria-label="Webhook channel" style="flex:0 0 auto">
-              <option value="MAIN">Main</option>
+              <option value="AUDIT">Audit log</option>
+              <option value="LOA">LOAs</option>
+              <option value="PATROL">Patrol logs</option>
               <option value="ERRORS">Errors</option>
             </select>
             <input type="password" class="field mono" id="whUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" style="flex:1;min-width:160px">
             <button class="linkbtn" id="whSave">Save</button>
             <button class="linkbtn" id="whTest">Send test</button>
+            <button class="linkbtn" id="whPurge" style="color:var(--red-f)" title="Remove every webhook — all channels go silent">Remove all</button>
           </div>
-          <p class="hint"><b>Main</b> = notifications · <b>Errors</b> = coded engine errors, throttled. URLs are write-only — stored in Script Properties, never shown again. Save with the field empty to clear a channel.</p>
+          <p class="hint">Each channel has its own webhook. URLs live in the <b>admin roster</b> — only accounts with access to that file can view, change or post through them. Save with the field empty to clear a channel; <b>Remove all</b> is the abuse kill switch.</p>
         </div>
         <div class="conn" style="--a:var(--accent)">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><b>Admin roster</b></div>
@@ -878,7 +883,7 @@
     STATE.rankIcons=b.rankIcons||{}; // bootstrap ships {} — icons lazy-load below so the panel paints immediately
     STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
     renderAdminSetup();
-    whStatus(b.webhookSet, b.errorsWebhookSet);
+    whStatus(b.webhooks||{});
     apply(b); setHealthPill(b.health); setLoading(false);
     api(function(res){ // PERF: heavy base64 icons arrive after first paint; initials → icons swap. Endpoint shape = {ranks:[{rank,icon,…}]}
       var map={}; (((res||{}).ranks)||[]).forEach(function(r){ if(r&&r.icon) map[r.rank]=r.icon; });
@@ -1563,22 +1568,30 @@
   });
   document.querySelectorAll('.runbtn[data-act]').forEach(function(b){ b.addEventListener('click',function(){ runAction(b.dataset.act,b); }); });
   $('openSettingsBtn').addEventListener('click',function(){ var b=this; b.disabled=true; api(function(){ /* the Settings Studio replaces this dialog */ }, function(e){ b.disabled=false; onError(e); }, "cpOpenSettings"); });
-  function whStatus(mainSet, errorsSet){
-    var f=function(id,on){ var e=$(id); if(e) e.innerHTML='<span class="dot '+(on?'on':'off')+'"></span>'+(on?'Configured':'Not set'); };
-    f('whMainV',mainSet); f('whErrV',errorsSet);
+  var WH_LABELS={AUDIT:'Audit log',LOA:'LOAs',PATROL:'Patrol logs',ERRORS:'Errors'};
+  function whStatus(map){
+    ['AUDIT','LOA','PATROL','ERRORS'].forEach(function(c){
+      var e=$('wh'+c); if(e) e.innerHTML='<span class="dot '+(map[c]?'on':'off')+'"></span>'+(map[c]?'Configured':'Not set');
+    });
   }
   $('whSave').addEventListener('click',function(){
     var ch=$('whChan').value;
     api(function(r){
-      toast((ch==='ERRORS'?'Errors':'Main')+' webhook '+(r.set?'saved.':'cleared.'),"ok"); $("whUrl").value="";
-      whStatus(r.mainSet, r.errorsSet);
+      toast((WH_LABELS[r.channel]||r.channel)+' webhook '+(r.set?'saved.':'cleared.'),"ok"); $("whUrl").value="";
+      whStatus(r.channels||{});
     }, onError, "cpSetWebhook", $("whUrl").value.trim(), ch);
   });
   $('whTest').addEventListener('click',function(){
     var btn=this, ch=$('whChan').value; btn.disabled=true;
-    api(function(){ btn.disabled=false; toast("Test sent to the "+(ch==='ERRORS'?'errors':'main')+" channel — check Discord.","ok");
-      var r=$('whTestRow'); if(r){ r.hidden=false; $('whTestV').innerHTML='<span class="dot on"></span>'+(ch==='ERRORS'?'Errors':'Main')+' · sent this session'; }
+    api(function(){ btn.disabled=false; toast("Test sent to the "+(WH_LABELS[ch]||ch)+" channel — check Discord.","ok");
+      var r=$('whTestRow'); if(r){ r.hidden=false; $('whTestV').innerHTML='<span class="dot on"></span>'+(WH_LABELS[ch]||ch)+' · sent this session'; }
     }, function(e){ btn.disabled=false; onError(e); }, "cpTestWebhook", ch);
+  });
+  $('whPurge').addEventListener('click',function(){
+    if(!window.confirm('Remove ALL Discord webhooks? Every channel goes silent until new URLs are saved.')) return;
+    var btn=this; btn.disabled=true;
+    api(function(msg){ btn.disabled=false; toast(msg||'Webhooks removed.','ok'); whStatus({}); },
+        function(e){ btn.disabled=false; onError(e); }, 'cpRunAction', 'purgeWebhooks');
   });
 
   boot();
