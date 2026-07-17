@@ -54,7 +54,8 @@ function addDevMenu_(prefix) {
       .addItem('16 · Config-tab robustness', p + 'devRunSection16')
       .addItem('17 · Dashboard render safety', p + 'devRunSection17')
       .addItem('18 · Settings apply', p + 'devRunSection18')
-      .addItem('19 · v2.5.0 config extensions', p + 'devRunSection19'))
+      .addItem('19 · v2.5.0 config extensions', p + 'devRunSection19')
+      .addItem('20 · New-layout column resolution', p + 'devRunSection20'))
     .addItem('🧹 Delete Sandbox / Results Tabs', p + 'devCleanup')
     .addToUi();
 }
@@ -91,6 +92,7 @@ const DEV_GROUPS = [
   ['Dashboard render safety (sandbox)', devDashboardRenderTests_],
   ['Settings apply (sandbox)', devSettingsApplyTests_],
   ['v2.5.0 config extensions (sandbox)', devV25Tests_],
+  ['New-layout column resolution (sandbox)', devNewLayoutTests_],
 ];
 
 /* ======================================================================
@@ -166,6 +168,7 @@ function devRunSection16() { devRunSectionByIndex_(16); }
 function devRunSection17() { devRunSectionByIndex_(17); }
 function devRunSection18() { devRunSectionByIndex_(18); }
 function devRunSection19() { devRunSectionByIndex_(19); }
+function devRunSection20() { devRunSectionByIndex_(20); }
 
 /* ======================================================================
  * RESULTS FRAMEWORK
@@ -226,27 +229,34 @@ function devWriteResults_(collectors) {
 
   const range = sh.getRange(1, 1, out.length, 3);
   range.setNumberFormat('@'); // force text BEFORE writing — the real #NAME? guard
-  range.setValues(out);
-
-  // Theme — dark command-console palette + fonts (all colors via theme_(); defaults equal the live palette)
-  range.setBackground(theme_('CANVAS')).setFontColor(theme_('TEXT')).setFontFamily('Roboto');
+  range.setValues(out).setFontFamily('Roboto');
   sh.getRange(1, 3, out.length, 1).setFontFamily('Roboto Mono'); // detail column = monospace
-  sh.getRange(1, 1, 1, 3).merge().setBackground(theme_('BANNER')).setFontColor(theme_('TEXT_STRONG')).setFontWeight('bold').setFontSize(18).setFontFamily('Squada One');
-  sh.getRange(3, 1, 1, 3).setBackground(totalFail === 0 ? theme_('PASS') : theme_('FAIL')).setFontColor(theme_('TEXT_STRONG')).setFontWeight('bold');
+
+  // Colour + weight the WHOLE grid in THREE bulk writes (setBackgrounds/setFontColors/setFontWeights) instead
+  // of a per-row setBackground loop — that loop (one Sheets round-trip per assertion) was by far the biggest
+  // slice of the run's wall-clock, and is what pushed a full run toward the ~6-min execution cap.
+  const cCANVAS = theme_('CANVAS'), cTXT = theme_('TEXT'), cSTRONG = theme_('TEXT_STRONG');
+  const cPASS = theme_('PASS'), cFAIL = theme_('FAIL'), cINFO = theme_('INFO');
+  const cBANNER = theme_('BANNER'), cSUB = theme_('SUBHEAD'), cSUBTX = theme_('SUBHEAD_TEXT');
+  const bg = new Array(out.length), fc = new Array(out.length), fw = new Array(out.length);
+  for (let r = 0; r < out.length; r++) {
+    const tag = out[r][0];
+    if (tag === 'FAIL') { bg[r] = [cFAIL, cFAIL, cFAIL]; fc[r] = [cSTRONG, cSTRONG, cSTRONG]; }
+    else {
+      bg[r] = [tag === 'PASS' ? cPASS : tag === 'INFO' ? cINFO : cCANVAS, cCANVAS, cCANVAS];
+      fc[r] = [(tag === 'PASS' || tag === 'INFO') ? cSTRONG : cTXT, cTXT, cTXT];
+    }
+    fw[r] = ['normal', 'normal', 'normal'];
+  }
+  const band = (i, b, f) => { bg[i] = [b, b, b]; fc[i] = [f, f, f]; fw[i] = ['bold', 'bold', 'bold']; };
+  band(0, cBANNER, cSTRONG);                                              // title row
+  band(2, totalFail === 0 ? cPASS : cFAIL, cSTRONG);                      // summary row
+  sectionRows.forEach((s) => band(s.row, s.type === 'section' ? cCANVAS : cSUB, s.type === 'section' ? cSTRONG : cSUBTX));
+  range.setBackgrounds(bg).setFontColors(fc).setFontWeights(fw);
+
+  sh.getRange(1, 1, 1, 3).merge().setFontSize(18).setFontFamily('Squada One'); // title = merged banner
   sh.setColumnWidth(1, 90); sh.setColumnWidth(2, 430); sh.setColumnWidth(3, 560);
   sh.setFrozenRows(3);
-
-  const tags = sh.getRange(1, 1, out.length, 1).getValues();
-  for (let r = 0; r < tags.length; r++) {
-    const tag = tags[r][0];
-    if (tag === 'PASS') sh.getRange(r + 1, 1).setBackground(theme_('PASS')).setFontColor(theme_('TEXT_STRONG'));
-    else if (tag === 'FAIL') sh.getRange(r + 1, 1, 1, 3).setBackground(theme_('FAIL')).setFontColor(theme_('TEXT_STRONG'));
-    else if (tag === 'INFO') sh.getRange(r + 1, 1).setBackground(theme_('INFO')).setFontColor(theme_('TEXT_STRONG'));
-  }
-  sectionRows.forEach((s) => {
-    if (s.type === 'section') sh.getRange(s.row, 1, 1, 3).setBackground(theme_('CANVAS')).setFontColor(theme_('TEXT_STRONG')).setFontWeight('bold');
-    else sh.getRange(s.row, 1, 1, 3).setBackground(theme_('SUBHEAD')).setFontColor(theme_('SUBHEAD_TEXT')).setFontWeight('bold');
-  });
 
   SpreadsheetApp.flush();
   return { pass: totalPass, fail: totalFail };
@@ -395,6 +405,66 @@ function devScanDuplicateIds_(roster) {
 function devActivity_(roster, idx) { return roster.getRange(CONFIG.rosterStartRow + idx, CONFIG.roster.activity).getValue(); }
 function devTrackerStatus_(tracker, idx) { return tracker.getRange(CONFIG.trackerStartRow + idx, CONFIG.tracker.status).getValue(); }
 function devDataRows_(sheet, startRow) { return Math.max(0, sheet.getLastRow() - startRow + 1); }
+
+/* ======================================================================
+ * SECTION 20 — NEW-LAYOUT COLUMN RESOLUTION
+ * Two-row header (group banners + labels), a merged RANK GROUP band, renamed
+ * labels (STATUS, UNIQUE ID) and the added display columns. Covers rosterCols_'s
+ * header auto-find + the optional columns that had no test before.
+ * ====================================================================== */
+function devNewLayoutTests_() {
+  const R = devNewResults_('New-layout column resolution (sandbox)');
+  const sh = devFreshSheet_('Layout');
+
+  // Group BANNERS on row 5, real labels on row 6, data from row 8. Row 5 deliberately does NOT look like a
+  // header (no RANK/HOURS) so this also exercises the auto-find scan when HEADER_ROW points at the banner row.
+  sh.getRange(5, 3, 1, 1).setValue('MEMBER INFORMATION');
+  sh.getRange(6, 2, 1, 14).setValues([[
+    'RANK GROUP', 'RANK', 'UNIT NUMBER', 'OOC NAME', 'NAME', 'UNIQUE ID', 'SHIFT',
+    'HOURS', 'STATUS', 'MAY HOURS', 'JUN. HOURS', 'JOIN DATE', 'TIME IN RANK', 'LAST PROMOTION',
+  ]]);
+  sh.getRange(8, 3, 1, 1).setValue('Chief of Police'); // one data row so getLastRow() clears the header
+
+  const RC = rosterCols_(sh);
+  devEq_(R, 'auto-finds label row → rank = C (RANK, skips RANK GROUP)', RC.rank, 3);
+  devEq_(R, 'unit = D (UNIT NUMBER)', RC.unit, 4);
+  devEq_(R, 'ooc = E (OOC NAME)', RC.ooc, 5);
+  devEq_(R, 'name = F (NAME, skips OOC NAME)', RC.name, 6);
+  devEq_(R, 'discord = G (UNIQUE ID — no "Discord" in the label)', RC.discord, 7);
+  devEq_(R, 'shift = H (SHIFT)', RC.shift, 8);
+  devEq_(R, 'hours = I (first HOURS, not MAY/JUN)', RC.hours, 9);
+  devEq_(R, 'activity = J (STATUS)', RC.activity, 10);
+  devEq_(R, 'mayHours = K (MAY HOURS)', RC.mayHours, 11);
+  devEq_(R, 'junHours = L (JUN. HOURS)', RC.junHours, 12);
+  devEq_(R, 'join = M (JOIN DATE)', RC.join, 13);
+  devEq_(R, 'timeInRank = N (TIME IN RANK)', RC.timeInRank, 14);
+  devEq_(R, 'promo = O (LAST PROMOTION)', RC.promo, 15);
+
+  // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.
+  const RCo = rosterCols_(devBuildRoster_([{ rank: 'Trooper', name: 'A', id: devId_(1), activity: 'Active', hours: 12 }]));
+  devEq_(R, 'classic layout: activity still col 8', RCo.activity, 8);
+  devEq_(R, 'classic layout: discord still col 5', RCo.discord, 5);
+  devEq_(R, 'optional OOC absent → 0', RCo.ooc, 0);
+  devEq_(R, 'optional SHIFT absent → 0', RCo.shift, 0);
+  devEq_(R, 'optional MAY HOURS absent → 0', RCo.mayHours, 0);
+  devEq_(R, 'optional TIME IN RANK absent → 0', RCo.timeInRank, 0);
+
+  // ACTIVITY and STATUS are interchangeable labels for the activity column.
+  const ac = devFreshSheet_('LayoutAct');
+  ac.getRange(6, 2, 1, 4).setValues([['RANK', 'NAME', 'HOURS', 'ACTIVITY']]);
+  ac.getRange(8, 2, 1, 1).setValue('Trooper');
+  devEq_(R, 'legacy "ACTIVITY" label still resolves as activity', rosterCols_(ac).activity, 5);
+
+  // Demo OOC-name helper (RosterExtras.gs — optional file, so guard it).
+  if (typeof demoOocName_ === 'function') {
+    devEq_(R, 'demoOocName_ "James Bennett" → "James B."', demoOocName_('James Bennett'), 'James B.');
+    devEq_(R, 'demoOocName_ three-part name uses the LAST initial', demoOocName_('Ana Maria Reyes'), 'Ana R.');
+    devEq_(R, 'demoOocName_ single name → unchanged', demoOocName_('Cher'), 'Cher');
+    devEq_(R, 'demoOocName_ blank → blank', demoOocName_(''), '');
+  } else { devInfo_(R, 'demoOocName_ not loaded', 'RosterExtras.gs absent — skipped'); }
+
+  return R;
+}
 
 /* ======================================================================
  * GROUP 1 — PURE / UNIT
