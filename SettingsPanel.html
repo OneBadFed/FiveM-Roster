@@ -457,7 +457,7 @@
   function onError(e){ toast((e&&e.message)?e.message:'Something went wrong.','err'); }
 
   var GROUPS=[
-    {label:'System', ids:['identity','events','sheets']},
+    {label:'System', ids:['identity','sheets']},
     {label:'Configuration', ids:['statuses','ranks','rankicons','leave','theme']},
     {label:'Dashboard', ids:['dashboard']},
     {label:'Operations', ids:['automation','advanced']},
@@ -522,20 +522,8 @@
     return ICONS.ftext;
   }
   var SECTIONS=[
-    {id:'identity', a:'var(--accent)', title:'Identity & Discord', desc:'How the system presents itself — the name on embeds, notification mentions, role pings and the leave-notification embeds.',
-      cards:[{t:'Identity', keys:['SYSTEM.SYSTEM_NAME']},
-             {t:'Discord notifications', keys:['DISCORD.MENTION_MEMBERS','DISCORD.PING_ROLES']},
-             {t:'Leave notifications', keys:['DISCORD.SUBMIT_TITLE','DISCORD.SUBMIT_COLOR','DISCORD.RETURN_COLOR','DISCORD.EXPIRE_TITLE','DISCORD.EXPIRE_COLOR']},
-             {t:'Embed appearance', keys:['DISCORD.EMBED_COLOR']},
-             {t:'Embed author', keys:['DISCORD.EMBED_AUTHOR','DISCORD.EMBED_AUTHOR_ICON']},
-             {t:'Embed images', keys:['DISCORD.EMBED_THUMBNAIL','DISCORD.EMBED_IMAGE']},
-             {t:'Embed footer', keys:['DISCORD.EMBED_FOOTER','DISCORD.EMBED_FOOTER_ICON'], preview:'embed'}]},
-    {id:'events', a:'var(--purple)', title:'Event notifications', desc:'Optional Discord embeds for roster events — a member seated, a transfer or promotion, a leave approved or started, and a weekly roster digest. All off by default; each posts to the webhook above and reuses the embed author, thumbnail, image and footer. Title tokens: {name}, {from} rank, {to} rank, {type} leave type.',
-      cards:[{t:'Member joined', keys:['NOTIFICATIONS.MEMBER_ADDED','NOTIFICATIONS.MEMBER_ADDED_TITLE','NOTIFICATIONS.MEMBER_ADDED_COLOR']},
-             {t:'Transfers & promotions', keys:['NOTIFICATIONS.TRANSFER','NOTIFICATIONS.TRANSFER_TITLE','NOTIFICATIONS.TRANSFER_COLOR']},
-             {t:'Leave approved', keys:['NOTIFICATIONS.LEAVE_APPROVED','NOTIFICATIONS.LEAVE_APPROVED_TITLE','NOTIFICATIONS.LEAVE_APPROVED_COLOR']},
-             {t:'Leave started', keys:['NOTIFICATIONS.LEAVE_STARTED','NOTIFICATIONS.LEAVE_STARTED_TITLE','NOTIFICATIONS.LEAVE_STARTED_COLOR']},
-             {t:'Weekly digest', keys:['NOTIFICATIONS.WEEKLY_DIGEST','NOTIFICATIONS.WEEKLY_DIGEST_TITLE','NOTIFICATIONS.WEEKLY_DIGEST_COLOR']}]},
+    {id:'identity', a:'var(--accent)', title:'Identity', desc:'How the system presents itself — the white-label name shown on the Control Panel and on everything the engine writes.',
+      cards:[{t:'Identity', keys:['SYSTEM.SYSTEM_NAME']}]},
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']},
