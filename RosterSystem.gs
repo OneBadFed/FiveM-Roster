@@ -550,6 +550,9 @@ function installDataValidation_() {
  * Injectable core: compute the live-dashboard numbers from a roster sheet. POSITION-INDEPENDENT — each member's
  * section is found by the nearest all-caps divider LABEL above it (via sectionCategory_), exactly like the rest
  * of the system, so reordering rows never changes the result. Hours summed via parseHours_ (tolerates "5h 30m").
+ * Buckets take section-tag labels AND exact rank names: a [DASHBOARD_GROUPS] Categories entry that matches no
+ * [SECTION_TAGS] label is treated as a RANK (case/space-insensitive, e.g. "Sergeant and up" spelled out), and a
+ * rank match wins over the row's section — every member still lands in exactly one bucket.
  * @return {{totalHours:number, leaves:number, total:number, active:number, semi:number, inactive:number,
  *   openSlots:number, tierCounts:Object, groups:Object}} tierCounts = a headcount per configured TIER name;
  *   active/semi/inactive are back-compat aliases (highest / in-between / lowest tier); groups = per dashboard bucket.
@@ -558,8 +561,14 @@ function dashboardStats_(roster) {
   const RC = rosterCols_(roster);
   const scanStart = ROSTER_HEADER_ROW + 1; // include a divider that sits in the gap row above rosterStartRow
   const n = Math.max(0, roster.getLastRow() - scanStart + 1);
-  const groupOf = {}; // section-category label -> bucket name
-  Object.keys(CONFIG.dashboard.groups).forEach((g) => CONFIG.dashboard.groups[g].forEach((cat) => { groupOf[cat] = g; }));
+  const groupOf = {};     // section-category label -> bucket name
+  const rankGroupOf = {}; // normalized rank -> bucket name (a Categories entry that matches no [SECTION_TAGS] label)
+  const tagByNorm = {}; (CONFIG.sectionCategories || []).forEach((t) => { tagByNorm[norm_(t.label)] = t.label; });
+  Object.keys(CONFIG.dashboard.groups).forEach((g) => CONFIG.dashboard.groups[g].forEach((cat) => {
+    const canon = tagByNorm[norm_(cat)];
+    if (canon) { groupOf[canon] = g; groupOf[cat] = g; }                // category entry (canonical + as-typed keys)
+    else if (!(norm_(cat) in rankGroupOf)) rankGroupOf[norm_(cat)] = g; // rank entry — the FIRST group listing it wins
+  }));
   const groups = {}; Object.keys(CONFIG.dashboard.groups).forEach((g) => { groups[g] = 0; });
   // Config-driven buckets: one per configured TIER, and a normalized leave-type set. No hardcoded status names.
   const tierByNorm = {}; const tierCounts = {};
@@ -581,7 +590,9 @@ function dashboardStats_(roster) {
       const stn = norm_(st);
       if (leaveSet[stn]) out.leaves++;
       else if (tierByNorm[stn]) tierCounts[tierByNorm[stn]]++;
-      if (curGroup) out.groups[curGroup]++;
+      const rankBucket = rankGroupOf[norm_(rank)]; // an exact-rank entry beats the section, so nobody counts twice
+      if (rankBucket) out.groups[rankBucket]++;
+      else if (curGroup) out.groups[curGroup]++;
     }
   }
   // Back-compat aliases: active = highest tier, inactive = lowest tier, semi = every tier in between.

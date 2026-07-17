@@ -1752,6 +1752,25 @@ function devPanelTests_() {
     devEq_(R, 'dashboardStats_ open slots counted', s.openSlots, 1);
     devEq_(R, 'dashboardStats_ total = sum of buckets', s.groups.Supervisors + s.groups.Troopers + s.groups.Auxiliary, s.total);
   })();
+  // dashboardStats_ — RANK-NAME bucket entries: a Categories entry that isn't a section tag matches members by
+  // exact rank (case-insensitive) and WINS over the row's section ("Sergeant and up" style groups).
+  (() => {
+    devWithConfig_({ DASHBOARD_GROUPS: { kind: 'table', header: ['Group', 'Categories'], rows: [
+      ['Brass', 'Executive, sergeant'], ['Rest', 'Patrol, Auxiliary'],
+    ] } }, () => {
+      const ro = devBuildRoster_([
+        { rank: 'EXECUTIVE COMMAND', name: '' },
+        { rank: 'Colonel', name: 'A', id: devId_(1), activity: 'Active', hours: 10 },
+        { rank: 'PATROL TROOPERS', name: '' },
+        { rank: 'Sergeant', name: 'B', id: devId_(2), activity: 'Active', hours: 5 }, // rank listed → Brass, not Rest
+        { rank: 'Trooper', name: 'C', id: devId_(3), activity: 'Active', hours: 2 },
+      ]);
+      const s = dashboardStats_(ro);
+      devEq_(R, 'rank entry: Sergeant under a Patrol divider lands in Brass (lowercase entry matches)', s.groups.Brass, 2);
+      devEq_(R, 'rank entry: unlisted ranks keep their section bucket', s.groups.Rest, 1);
+      devEq_(R, 'rank entry: no double count — total = sum of buckets', s.groups.Brass + s.groups.Rest, s.total);
+    });
+  })();
   // statTagValue_ — the "#stat" tag keys, aliases, and group-by-name lookups (case-insensitive)
   (() => {
     const s = { total: 30, active: 18, semi: 2, inactive: 10, leaves: 1, openSlots: 5, totalHours: 266.81, groups: { Supervisors: 14, Troopers: 10, Auxiliary: 6 } };

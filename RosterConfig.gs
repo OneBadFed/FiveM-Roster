@@ -427,7 +427,7 @@ const BLOCK_SPECS_ = Object.freeze({
   } },
   DASHBOARD_GROUPS: { type: 'table', cols: ['Group', 'Categories'],
     seed: [['Supervisors', 'Executive, Administrative, Supervisor'], ['Troopers', 'Patrol, Training, Cadet'], ['Auxiliary', 'Auxiliary']],
-    help: 'Headcount buckets: section-tag labels (from [SECTION_TAGS]) rolled into named groups. Each group is also a #tag.' },
+    help: 'Headcount buckets: section-tag labels (from [SECTION_TAGS]) and/or exact rank names rolled into named groups. An entry that matches no section tag counts members by RANK (case-insensitive) wherever they sit, and beats the section — list "Sergeant and up" by name for a rank-based group. Each group is also a #tag.' },
   DASHBOARD_CELLS: { type: 'table', cols: ['Label', 'Dir', 'Stat'],
     seed: [
       ['TOTAL HOURS', 'below', 'totalHours'], ['CURRENT LOAS/ROAS', 'below', 'leaves'],
