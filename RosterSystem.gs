@@ -910,7 +910,7 @@ function refreshDashboard() {
     const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
     const form = ss.getSheetByName(CONFIG.sheets.form);
 
-    let newLeaves = [], sched = null, recompute = null;
+    let newLeaves = [], sched = null, recompute = null, tir = 0;
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(10000)) { ui.alert('Another roster operation is running — try again in a moment.'); return; }
     try {
@@ -920,6 +920,8 @@ function refreshDashboard() {
       if (tracker) { try { sched = processDailyLOAs_(roster, tracker, todayInSheetTz_(), { sendWebhooks: true }); } catch (e) { log_('refreshDashboard.schedule', e); } }
       // 3) Recompute every member's status from current hours — leave/protected rows are left alone.
       try { recompute = recomputeStatuses_(roster, false); } catch (e) { log_('refreshDashboard.status', e); }
+      // 3b) Keep TIME IN RANK live for EVERY member (days since LAST PROMOTION) — fills empties + new rows.
+      try { tir = fillTimeInRank_(roster); } catch (e) { log_('refreshDashboard.tir', e); }
     } finally {
       lock.releaseLock();
     }
@@ -950,6 +952,7 @@ function refreshDashboard() {
       `• ${newLeaves.length} new leave form${newLeaves.length === 1 ? '' : 's'} synced\n` +
       `• ${started} leave${started === 1 ? '' : 's'} started · ${expired} expired\n` +
       `• ${total} member${total === 1 ? '' : 's'} checked — ${changed} status change${changed === 1 ? '' : 's'}\n` +
+      `• ${tir} member${tir === 1 ? '' : 's'} — TIME IN RANK kept live\n` +
       `• Dashboard, promotions & leaderboard updated${cells ? ` (${cells} cell${cells === 1 ? '' : 's'})` : ''}` +
       intLine);
   });
@@ -2525,6 +2528,33 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
 }
 
 /** Menu action: insert N blank member rows below the cursor (asks how many) and renumber units. */
+/**
+ * Fills the TIME IN RANK column with a live "days since LAST PROMOTION" formula for EVERY member slot, so it
+ * stays current on its own (TODAY() recalculates daily) and empty / newly-added rows get it too. Divider and
+ * blank-scaffolding rows are left empty. No-op when the sheet has no TIME IN RANK or LAST PROMOTION column.
+ * @return {number} member rows given the formula.
+ */
+function fillTimeInRank_(roster) {
+  const RC = rosterCols_(roster);
+  if (!RC.timeInRank || !RC.promo) return 0;                       // column not present on this layout → nothing to do
+  const lastRow = roster.getLastRow();
+  const n = lastRow - CONFIG.rosterStartRow + 1;
+  if (n <= 0) return 0;
+  let pc = '';                                                     // LAST PROMOTION column letter (cpColLetter_ lives in RosterTrust.gs — guard it)
+  if (typeof cpColLetter_ === 'function') pc = cpColLetter_(RC.promo);
+  else { let c = RC.promo; while (c > 0) { const m = (c - 1) % 26; pc = String.fromCharCode(65 + m) + pc; c = Math.floor((c - 1) / 26); } }
+  const ranks = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getValues();
+  const out = [];
+  let count = 0;
+  for (let r = 0; r < n; r++) {
+    const row = CONFIG.rosterStartRow + r;
+    if (isMemberSlot_(ranks[r][0])) { out.push([`=IF(${pc}${row}="","",TODAY()-INT(${pc}${row}))`]); count++; }
+    else out.push(['']);                                          // dividers / empty scaffolding rows stay blank (never #VALUE)
+  }
+  roster.getRange(CONFIG.rosterStartRow, RC.timeInRank, n, 1).setFormulas(out).setNumberFormat('0" days"');
+  return count;
+}
+
 function addMemberRow() {
   runAction_('Add Member Row', () => {
     const ui = SpreadsheetApp.getUi();
@@ -2565,6 +2595,7 @@ function addMemberRow() {
     for (let i = 0; i < count; i++) sheet.setRowHeight(currentRow + 1 + i, th); // copyTo doesn't carry row height
     sheet.getRange(currentRow + 1, RC.rank, count, 1).setValue('Rank');
     updateUnitNumbers_(); // renumber using the configured [ROSTER_LAYOUT].UNIT_FORMAT (call the core, avoid nesting the error wrapper)
+    try { fillTimeInRank_(sheet); } catch (e) { log_('addMemberRow.tir', e); } // new rows get the live TIME IN RANK formula
     ui.alert(`✅ Added ${count} member row${count === 1 ? '' : 's'} after row ${currentRow}.\n\nFill in each rank + name — callsigns are assigned automatically.`);
   });
 }

@@ -451,6 +451,12 @@ function devNewLayoutTests_() {
   devEq_(R, 'timeInRank = N (TIME IN RANK)', RC.timeInRank, 14);
   devEq_(R, 'promo = O (LAST PROMOTION)', RC.promo, 15);
 
+  // fillTimeInRank_ gives every member slot a live "days since LAST PROMOTION" formula; non-members stay blank.
+  sh.getRange(8, 15).setValue(devDay_(-30)); // LAST PROMOTION 30 days ago on the member row
+  const tirCount = fillTimeInRank_(sh);
+  devCheck_(R, 'fillTimeInRank_ writes a live TODAY() formula on the member row', /TODAY\(\)/.test(sh.getRange(8, 14).getFormula()));
+  devCheck_(R, 'fillTimeInRank_ reports the member as filled', tirCount >= 1);
+
   // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.
   const RCo = rosterCols_(devBuildRoster_([{ rank: 'Trooper', name: 'A', id: devId_(1), activity: 'Active', hours: 12 }]));
   devEq_(R, 'classic layout: activity still col 8', RCo.activity, 8);
