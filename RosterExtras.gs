@@ -437,6 +437,8 @@ function recordEdit(e) {
  *   • The stats/dashboard tab is populated too (seedDemoStats_): the TOTAL EMPLOYEES
  *     breakdown (Supervisors/Troopers/Auxiliary/Total, computed from the filled
  *     members) and the leadership box — both position-found and guarded.
+ *   • The RECENT PROMOTIONS feed is seeded too (seedDemoPromotions_): a spread of members "promoted" to the
+ *     rank they now hold over the last ~2 months, so the Welcome-page table demos full.
  *   • Guarded: confirms before overwriting rows that already hold a name.
  * Seeded hours sit inside each status's tier band (Active ≥ MinHours, etc.), so a
  * later "Update All Statuses" is a no-op; LOA/ROA are backed by an active tracker
@@ -655,13 +657,45 @@ function seedDemoRoster() {
     let statsFilled = false;
     try { statsFilled = seedDemoStats_(ss, groups, leaders); } catch (e) { log_('seedDemoRoster.stats', e); }
 
+    // ---- RECENT PROMOTIONS feed: a believable rolling history so the Welcome-page table demos full ----
+    let promoCount = 0;
+    try { promoCount = seedDemoPromotions_(memberRows, people); } catch (e) { log_('seedDemoRoster.promotions', e); }
+
     try { refreshDashboard_(); } catch (e) { log_('seedDemoRoster.dashboard', e); }
     try { if (typeof cpInvalidateHealth_ === 'function') cpInvalidateHealth_(); } catch (e) { /* Trust.gs may be absent */ }
-    logInfo_('seedDemoRoster', `demo filled ${filledCount}/${total} member rows (${total - filledCount} open); ${leaveCount} leave record(s); stats ${statsFilled ? 'populated' : 'not found'}.`);
+    logInfo_('seedDemoRoster', `demo filled ${filledCount}/${total} member rows (${total - filledCount} open); ${leaveCount} leave record(s); ${promoCount} promotion(s); stats ${statsFilled ? 'populated' : 'not found'}.`);
     ui.alert('🎬 Demo Roster Loaded',
-      `Filled ${filledCount} of ${total} member rows with names, Discord IDs, join/promotion dates, hours and activity status (${leaveCount} on active or recently-expired leave) — the other ${total - filledCount} are left as open positions. Added 4 weeks of activity-check history${statsFilled ? ', and populated the stats sheet (employee counts + leadership)' : ''}.\n\nYour ranks, callsigns, section dividers, colours and dropdowns were left untouched. Open 🎛️ Control Panel and click a member to see their recent activity checks.`,
+      `Filled ${filledCount} of ${total} member rows with names, Discord IDs, join/promotion dates, hours and activity status (${leaveCount} on active or recently-expired leave) — the other ${total - filledCount} are left as open positions. Added 4 weeks of activity-check history${statsFilled ? ', and populated the stats sheet (employee counts + leadership)' : ''}${promoCount ? `, and seeded ${promoCount} recent promotions` : ''}.\n\nYour ranks, callsigns, section dividers, colours and dropdowns were left untouched. Open 🎛️ Control Panel and click a member to see their recent activity checks.`,
       ui.ButtonSet.OK);
   });
+}
+
+/**
+ * Seed the RECENT PROMOTIONS feed (Document Properties) from the freshly-filled demo members: up to PROMO_MAX_
+ * entries, each "promoting" a member to the rank they now hold, newest a couple of days ago and spreading back
+ * ~2 months with 1–6 day gaps. Deterministic (demoRand_). Open slots, members on leave, and the very top command
+ * are skipped — a Chief promoted last Tuesday reads wrong. @return {number} entries seeded (0 without the engine file).
+ */
+function seedDemoPromotions_(memberRows, people) {
+  if (typeof promoRecord_ !== 'function') return 0; // RosterSystem.gs owns the feed
+  const cands = [];
+  memberRows.forEach((m, i) => {
+    const p = people[i];
+    if (p.open || p.leave || i < 2) return;
+    cands.push({ n: p.name, r: m.rank, i: i });
+  });
+  if (!cands.length) return 0;
+  cands.sort((a, b) => demoRand_(a.i, 5) - demoRand_(b.i, 5)); // deterministic shuffle — promotions shouldn't run in roster order
+  const picks = cands.slice(0, PROMO_MAX_);
+  let day = 1 + Math.round(demoRand_(0, 3) * 3); // newest entry 1–4 days ago
+  const list = picks.map((c, k) => {
+    const entry = { t: demoDay_(-day).getTime(), n: c.n, r: c.r };
+    day += 1 + Math.round(demoRand_(k, 4) * 5); // 1–6 day gaps walking back in time
+    return entry;
+  });
+  PropertiesService.getDocumentProperties().setProperty(PROMO_STORE_PROP_, JSON.stringify(list));
+  renderPromotions_();
+  return list.length;
 }
 
 /**
