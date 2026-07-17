@@ -6,11 +6,13 @@
  * Run devRunAllTests() (or 🧪 Dev / QA → Run ALL Tests). Add addDevMenu_() to
  * your core onOpen() to get the menu.
  *
- * SAFETY: every write-test runs against TEMPORARY "🧪SANDBOX_" tabs this file
- * creates and DELETES (guaranteed teardown in a finally). Your real
- * "Member Information" / "LOA/ROA Tracker" / "LOA/ROA Form Response" tabs are
- * never written to. Tests call the REAL injectable cores (processDailyLOAs_,
- * syncFormToTracker_, recomputeStatuses_, checkForMemberMove) — not copies.
+ * SAFETY: every write-test runs against "🧪SANDBOX_" tabs — never your real
+ * "Member Information" / "LOA/ROA Tracker" / "LOA/ROA Form Response" tabs (the
+ * SANDBOX_ naming is the guarantee, not teardown). For SPEED, the ~20 sandbox
+ * tabs are created once and then PERSIST HIDDEN, reused + cleared on each run so
+ * a repeated run pays no insert/delete churn. Remove them any time via
+ * 🧪 Dev / QA → "Delete Sandbox / Results Tabs". Tests call the REAL injectable
+ * cores (processDailyLOAs_, syncFormToTracker_, recomputeStatuses_, checkForMemberMove).
  *
  * Results go to a themed "🧪 Test Results" tab + a popup. Detail strings are
  * forced to plain text so nothing renders as a #NAME? formula.
@@ -114,7 +116,7 @@ function devRunAllTests() {
       }
     });
   } finally {
-    devDeleteSandbox_(); // teardown ALWAYS, even on a thrown group
+    devHideSandbox_(); // teardown ALWAYS — hide (not delete) so a repeated run reuses the tabs (no create/delete churn)
   }
   const totals = devWriteResults_(collectors);
   devPopup_(totals);
@@ -135,7 +137,7 @@ function devRunOne_(label, fn) {
       devCheck_(collector, 'group ran without throwing', false, String((e && e.stack) || e));
     }
   } finally {
-    devDeleteSandbox_(); // teardown ALWAYS, even on a thrown group
+    devHideSandbox_(); // teardown ALWAYS — hide (not delete) so a repeated run reuses the tabs (no create/delete churn)
   }
   const totals = devWriteResults_([collector]);
   devPopup_(totals);
@@ -277,14 +279,23 @@ function devFreshSheet_(suffix) {
   const name = SANDBOX_PREFIX + suffix;
   const existing = ss.getSheetByName(name);
   if (existing) {
-    // REUSE the tab (clear content + formats) instead of delete+insert. insertSheet/deleteSheet are
-    // the slowest Sheets ops and the suite builds ~140 sandboxes, so reuse is what keeps the run under
-    // the execution cap. Invalidate rosterCols_'s per-sheet-id cache, since the headers are about to change.
+    // REUSE the tab (clear content + formats) instead of delete+insert. insert/deleteSheet are the slowest
+    // Sheets ops; sandboxes now PERSIST (hidden) between runs, so a repeated run pays ZERO create/delete
+    // churn — the ~20 sandbox tabs are made once and reused. Invalidate rosterCols_'s per-sheet-id cache too.
     existing.clear();
+    if (!existing.isSheetHidden()) existing.hideSheet();
     try { if (typeof _rosterColCache === 'object' && _rosterColCache) delete _rosterColCache[String(existing.getSheetId())]; } catch (e) { /* cache is best-effort */ }
     return existing;
   }
-  return ss.insertSheet(name);
+  const sh = ss.insertSheet(name);
+  sh.hideSheet(); // hidden + persistent: reused on the next run, cleared each time, removed via the Cleanup menu
+  return sh;
+}
+
+/** Hides every sandbox tab (cheap — only touches ones still visible). Sandboxes persist between runs for reuse. */
+function devHideSandbox_() {
+  const ss = SpreadsheetApp.getActive();
+  ss.getSheets().forEach((sh) => { if (sh.getName().indexOf(SANDBOX_PREFIX) === 0 && !sh.isSheetHidden()) sh.hideSheet(); });
 }
 
 /** Applies the dark "command-console" theme (navy header, mono IDs) to a sandbox tab. */
