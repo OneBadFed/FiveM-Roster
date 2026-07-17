@@ -244,7 +244,7 @@ function buildMenus_(prefix) {
       .addSeparator()
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
       .addSeparator()
-      .addItem('📈 Refresh Dashboard', p + 'refreshDashboard')
+      .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
       .addSeparator()
       .addItem('🧩 Sync Column Config', p + 'syncColumnConfig')
       .addItem('🚀 First-Run Setup', p + 'setupWizard')
@@ -873,18 +873,56 @@ function refreshDashboardOnOneSheet_(sheet) {
 }
 
 /** Menu action: recompute the dashboard across all tabs now. */
+/**
+ * Menu "Refresh & Update All": one button that brings the whole roster current — pulls new leave-form
+ * submissions, starts/expires leaves for today, recomputes every status from hours (leave/protected preserved),
+ * then repaints the dashboard, promotions and leaderboard. The three mutating steps run under ONE script lock so
+ * they can't collide with a trigger or another run; webhooks/audit for the form path fire AFTER the lock releases.
+ */
 function refreshDashboard() {
-  runAction_('Refresh Dashboard', () => {
+  runAction_('Refresh & Update', () => {
     const ui = SpreadsheetApp.getUi();
-    if (!SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster)) {
-      ui.alert(`Member-data tab "${CONFIG.sheets.roster}" was not found, so there are no stats to show. Rename your roster tab to exactly "${CONFIG.sheets.roster}", or change CONFIG.sheets.roster to match its name.`);
+    const ss = SpreadsheetApp.getActive();
+    const roster = ss.getSheetByName(CONFIG.sheets.roster);
+    if (!roster) {
+      ui.alert(`Member-data tab "${CONFIG.sheets.roster}" was not found. Rename your roster tab to exactly "${CONFIG.sheets.roster}", or set it under Engine Settings ▸ Sheets & layout.`);
       return;
     }
-    const n = refreshDashboard_(true); // menu = explicit FULL rescan (re-discovers boxes/#tags on any tab)
-    renderPromotions_(); // re-find + refill the RECENT PROMOTIONS table too (it may have moved during a redesign)
-    ui.alert(n
-      ? `✅ Dashboard refreshed — ${n} value${n === 1 ? '' : 's'} updated across your tabs.`
-      : 'Stats computed, but no KPI boxes or #tags were found to fill. Make sure a banner label matches CONFIG.dashboard.cells exactly (e.g. "TOTAL HOURS"), or just type a tag like #members in a cell.');
+    const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
+    const form = ss.getSheetByName(CONFIG.sheets.form);
+
+    let newLeaves = [], sched = null, recompute = null;
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(10000)) { ui.alert('Another roster operation is running — try again in a moment.'); return; }
+    try {
+      // 1) Pull any new leave-form submissions onto the tracker (webhooks/audit deferred until the lock releases).
+      if (form && tracker) { try { newLeaves = syncFormToTracker_(form, tracker, { sendWebhooks: false }); } catch (e) { log_('refreshDashboard.sync', e); } }
+      // 2) Start due leaves + expire ended ones (matches the nightly schedule check).
+      if (tracker) { try { sched = processDailyLOAs_(roster, tracker, todayInSheetTz_(), { sendWebhooks: true }); } catch (e) { log_('refreshDashboard.schedule', e); } }
+      // 3) Recompute every member's status from current hours — leave/protected rows are left alone.
+      try { recompute = recomputeStatuses_(roster, false); } catch (e) { log_('refreshDashboard.status', e); }
+    } finally {
+      lock.releaseLock();
+    }
+    // Deferred side-effects for the form path (post after the lock, like manualSyncLOA does).
+    newLeaves.forEach((L) => { try { sendDiscordWebhook(L.name, L.rank, L.callsign, L.type, L.startStr, L.endStr, L.durationStr, L.discord); } catch (e) { log_('refreshDashboard.leafwh', e); } });
+    if (newLeaves.length && typeof auditEvent_ === 'function') {
+      newLeaves.forEach((L) => { try { auditEvent_('leave', '', `${L.type} ${L.startStr}–${L.endStr} (form)`, '', L.name); } catch (e) { /* best-effort */ } });
+    }
+    // 4) Repaint the dashboard (#tags), the promotions feed and the patrol leaderboard.
+    let cells = 0;
+    try { cells = refreshDashboard_(true); } catch (e) { log_('refreshDashboard.dash', e); }
+    try { renderPromotions_(); } catch (e) { log_('refreshDashboard.promos', e); }
+
+    const started = sched ? sched.started.length : 0;
+    const expired = sched ? sched.expired.length : 0;
+    const changed = recompute ? recompute.changed.length : 0;
+    const total = recompute ? recompute.total : 0;
+    ui.alert('✅ Refresh & update complete.\n\n' +
+      `• ${newLeaves.length} new leave form${newLeaves.length === 1 ? '' : 's'} synced\n` +
+      `• ${started} leave${started === 1 ? '' : 's'} started · ${expired} expired\n` +
+      `• ${total} member${total === 1 ? '' : 's'} checked — ${changed} status change${changed === 1 ? '' : 's'}\n` +
+      `• Dashboard, promotions & leaderboard updated${cells ? ` (${cells} cell${cells === 1 ? '' : 's'})` : ''}`);
   });
 }
 
