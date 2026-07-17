@@ -189,8 +189,16 @@
   .dcfr{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.4fr) auto 34px;gap:6px;margin-bottom:6px;align-items:center;}
   .dcbuild{display:grid;grid-template-columns:minmax(0,1fr) 360px;gap:16px;align-items:start;margin-top:4px;}
   @media(max-width:920px){ .dcbuild{grid-template-columns:1fr;} }
-  .dcmock{background:#313338;border-radius:12px;padding:12px;position:sticky;top:10px;}
-  .dcm-embed{background:#2b2d31;border-radius:6px;border-left:4px solid #5865F2;padding:10px 12px;color:#dbdee1;overflow:hidden;}
+  .dcmock{background:#313338;border-radius:12px;padding:14px 16px;position:sticky;top:10px;}
+  .dcm-msg{display:flex;gap:14px;}
+  .dcm-av{width:40px;height:40px;flex:0 0 auto;border-radius:50%;background:linear-gradient(155deg,#5b8def,#3d5bd9);display:flex;align-items:center;justify-content:center;}
+  .dcm-av svg{width:22px;height:22px;}
+  .dcm-body{flex:1;min-width:0;}
+  .dcm-head{display:flex;align-items:center;gap:8px;margin-bottom:5px;flex-wrap:wrap;}
+  .dcm-user{color:#f2f3f5;font-weight:600;font-size:15px;}
+  .dcm-app{background:#5865f2;color:#fff;font-size:9.5px;font-weight:700;line-height:1;border-radius:4px;padding:2px 5px 3px;text-transform:uppercase;letter-spacing:.02em;}
+  .dcm-ts{color:#949ba4;font-size:11.5px;}
+  .dcm-embed{max-width:520px;background:#2b2d31;border-radius:6px;border-left:4px solid #5865F2;padding:10px 12px;color:#dbdee1;overflow:hidden;}
   .dcm-wrap{display:flex;gap:10px;} .dcm-main{flex:1;min-width:0;}
   .dcm-author{display:flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;color:#fff;margin-bottom:4px;}
   .dcm-author img{width:20px;height:20px;border-radius:50%;object-fit:cover;}
@@ -1308,14 +1316,29 @@
   }
   /* Discord-accurate mock (matches the bot's preview): sidebar colour, author, blue-less title, markdown body,
      3-across inline fields, thumbnail right, image below, footer + timestamp. Placeholders show SAMPLE values. */
+  function dcNowStamp_(){
+    var n=new Date(), hh=n.getHours(), mm=n.getMinutes(), ap=hh<12?'AM':'PM', h12=(hh%12)||12;
+    return 'Today at '+h12+':'+(mm<10?'0':'')+mm+' '+ap;
+  }
   function dcMock_(t){
     t=t||{};
     var sub=function(s){ return String(s==null?'':s).replace(/\{(\w+)\}/g,function(mm,k){ return DC_SAMPLE[k]!=null?String(DC_SAMPLE[k]):mm; }); };
     var md=function(s){ return dcRender(sub(s)); };
     var col=/^#[0-9a-fA-F]{6}$/.test(String(t.color||'').trim())?String(t.color).trim():'#5865F2';
+    var botName=(KV['SYSTEM.SYSTEM_NAME']&&KV['SYSTEM.SYSTEM_NAME'].value)||'Roster System';
     var hasAny=t.title||t.desc||t.author||t.footer||t.footerIcon||t.thumb||t.image||(t.fields&&t.fields.length);
-    if(!hasAny) return '<div class="dcmock"><div class="dcm-embed"><div class="dcm-desc" style="color:#949ba4">Live preview — the built-in embed is used until you edit a field. Markdown and {placeholders} render here as you type.</div></div></div>';
-    var h='<div class="dcmock"><div class="dcm-embed" style="border-left-color:'+esc(col)+'"><div class="dcm-wrap"><div class="dcm-main">';
+
+    // Discord message chrome: bot avatar + name + APP badge + timestamp, then the embed beneath (matches a real post).
+    var head='<div class="dcm-av"><svg viewBox="0 0 24 24" fill="none" stroke="#cfe0ff" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6l7-3z"/></svg></div>'
+      +'<div class="dcm-body"><div class="dcm-head"><span class="dcm-user">'+esc(botName)+'</span><span class="dcm-app">APP</span><span class="dcm-ts">'+dcNowStamp_()+'</span></div>';
+
+    if(!hasAny){
+      return '<div class="dcmock"><div class="dcm-msg">'+head
+        +'<div class="dcm-embed"><div class="dcm-wrap"><div class="dcm-main"><div class="dcm-desc" style="color:#949ba4">Live preview — the built-in embed is used until you edit a field. Markdown and {placeholders} render here as you type.</div></div></div></div>'
+        +'</div></div></div>';
+    }
+    var h='<div class="dcmock"><div class="dcm-msg">'+head
+      +'<div class="dcm-embed" style="border-left-color:'+esc(col)+'"><div class="dcm-wrap"><div class="dcm-main">';
     if(t.author) h+='<div class="dcm-author">'+(t.authorIcon?('<img class="dc-eaic" src="'+esc(sub(t.authorIcon))+'" alt="">'):'')+'<span>'+md(t.author)+'</span></div>';
     if(t.title) h+='<div class="dcm-title">'+md(t.title)+'</div>';
     if(t.desc) h+='<div class="dcm-desc">'+md(t.desc)+'</div>';
@@ -1329,8 +1352,9 @@
     if(t.thumb) h+='<img class="dcm-thumb dc-thumb" src="'+esc(sub(t.thumb))+'" alt="">';
     h+='</div>';
     if(t.image) h+='<img class="dcm-img dc-img" src="'+esc(sub(t.image))+'" alt="">';
-    if(t.footer||t.footerIcon) h+='<div class="dcm-footer">'+(t.footerIcon?('<img class="dc-ficon" src="'+esc(sub(t.footerIcon))+'" alt="">'):'')+'<span>'+md(t.footer||'')+'</span><span>•</span><span>Today at 12:00 PM</span></div>';
-    h+='</div></div>';
+    if(t.footer||t.footerIcon) h+='<div class="dcm-footer">'+(t.footerIcon?('<img class="dc-ficon" src="'+esc(sub(t.footerIcon))+'" alt="">'):'')+'<span>'+md(t.footer||'')+'</span><span>•</span><span>'+dcNowStamp_()+'</span></div>';
+    h+='</div>'; // /dcm-embed
+    h+='</div></div></div>'; // /dcm-body /dcm-msg /dcmock
     return h;
   }
   function renderDiscordSec(g){
