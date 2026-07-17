@@ -312,7 +312,15 @@ function openControlPanel() {
   runAction_('Open Control Panel', () => {
     // A sidebar is locked to 300px; a modeless dialog can be wider and still
     // stays open while you work in the sheet.
-    const html = HtmlService.createHtmlOutputFromFile('ControlPanel')
+    // PERF: compute the bootstrap payload IN THIS execution and embed it in the served HTML — the dialog then
+    // paints with data immediately instead of spending a second round trip (a fresh server execution, often a
+    // cold start) on cpBootstrap. `</` is escaped so no member text can break out of the <script> context. Any
+    // failure embeds null and the client falls back to the classic cpBootstrap RPC.
+    let boot = 'null';
+    try { boot = JSON.stringify(cpBootstrap()).replace(/</g, '\\u003c'); } catch (e) { log_('openControlPanel.boot', e); }
+    const t = HtmlService.createTemplateFromFile('ControlPanel');
+    t.bootJson = boot;
+    const html = t.evaluate()
       .setWidth(1180)   // matches the Settings Studio shell (sidebar + content)
       .setHeight(760)
       .setTitle('Roster Control');

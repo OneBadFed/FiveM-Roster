@@ -685,6 +685,7 @@
 <div id="toast"></div>
 
 <script>
+  var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
   var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],rankIcons:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{}};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
@@ -756,23 +757,25 @@
   function setLoading(on){ $('progress').className='progress'+(on?' on':''); $('refreshBtn').disabled=!!on; }
   function copyText(t){ try{ var ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast('Discord ID copied.','ok'); return true; }catch(e){ toast('Copy failed — select it manually.','err'); return false; } }
 
+  function applyBoot(b){
+    $('sysName').textContent=b.systemName||'Roster System';
+    $('verLbl').textContent=b.version||'';
+    STATE.version=b.version||'';
+    if(b.statuses) STATE.statuses=b.statuses;
+    STATE.rankIcons=b.rankIcons||{}; // bootstrap ships {} — icons lazy-load below so the panel paints immediately
+    STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
+    renderAdminSetup();
+    whStatus(b.webhookSet, b.errorsWebhookSet);
+    apply(b); setHealthPill(b.health); setLoading(false);
+    api(function(res){ // PERF: heavy base64 icons arrive after first paint; initials → icons swap. Endpoint shape = {ranks:[{rank,icon,…}]}
+      var map={}; (((res||{}).ranks)||[]).forEach(function(r){ if(r&&r.icon) map[r.rank]=r.icon; });
+      if(Object.keys(map).length){ STATE.rankIcons=map; renderMembers(); renderSlots(); }
+    }, function(){}, "cpRankIcons");
+  }
   function boot(){
+    if(EMBED_BOOT){ applyBoot(EMBED_BOOT); return; } // PERF: server-embedded payload — the panel paints with data, zero extra round trips
     setLoading(true);
-    api(function(b){
-      $('sysName').textContent=b.systemName||'Roster System';
-      $('verLbl').textContent=b.version||'';
-      STATE.version=b.version||'';
-      if(b.statuses) STATE.statuses=b.statuses;
-      STATE.rankIcons=b.rankIcons||{}; // bootstrap ships {} — icons lazy-load below so the panel paints immediately
-      STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
-      renderAdminSetup();
-      whStatus(b.webhookSet, b.errorsWebhookSet);
-      apply(b); setHealthPill(b.health); setLoading(false);
-      api(function(res){ // PERF: heavy base64 icons arrive after first paint; initials → icons swap. Endpoint shape = {ranks:[{rank,icon,…}]}
-        var map={}; (((res||{}).ranks)||[]).forEach(function(r){ if(r&&r.icon) map[r.rank]=r.icon; });
-        if(Object.keys(map).length){ STATE.rankIcons=map; renderMembers(); renderSlots(); }
-      }, function(){}, "cpRankIcons");
-    }, onError, "cpBootstrap");
+    api(applyBoot, onError, "cpBootstrap");
   }
   function refresh(){ setLoading(true); api(function(s){ apply(s); if(STATE.systemLoaded) loadSystem(true); setLoading(false); toast('Refreshed.','ok'); }, onError, "cpRefresh"); }
   function apply(s){ STATE.members=s.members||[]; STATE.selected={}; renderStats(s.stats||{}); renderRankFilter(); renderMembers(); renderSlots(); if(s.updatedAt) $('foot').textContent='Updated '+s.updatedAt; } // version lives in the #verLbl pill — don't repeat it here // F-027: clear stale selections on refresh (rows may have shifted)
