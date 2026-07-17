@@ -262,6 +262,8 @@ function cpGetConfig_(ss) {
     sheetNames: s.getSheets().map((x) => x.getName()).filter((n) => n.indexOf('🧪') !== 0 && n.indexOf('_') !== 0),
     ranks: cpRosterRanks_(s), // live roster ranks — the override editor offers these as a dropdown instead of free text
     problems: v.problems.map((p) => ({ sev: p.sev, code: p.code, key: p.key, value: String(p.value == null ? '' : p.value), expected: p.expected || '' })),
+    webhooks: cpWebhookStatus_(), // per-channel booleans — read via THIS user's admin-file access
+    adminLinked: !!String(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_) || '').trim(),
     blocks,
   };
 }

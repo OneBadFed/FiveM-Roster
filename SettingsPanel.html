@@ -166,6 +166,11 @@
   .rlrow.rkbusy{opacity:.55;pointer-events:none;}
   .tagrow{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}
   .fmtex{font-family:var(--mono);font-size:11px;color:var(--txt-2);margin-top:7px;}
+  /* discord sections */
+  .dcst{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:650;}
+  .dcdot{width:9px;height:9px;border-radius:50%;background:var(--red);}
+  .dcdot.on{background:#57b85a;box-shadow:0 0 8px 0 rgba(87,184,90,.5);}
+  .dcev{margin:0;padding-left:18px;color:var(--txt-2);font-size:12.5px;line-height:1.9;}
   .setting.err .serr{display:block;}
   .setting.err .in,.setting.err .ddbtn{box-shadow:var(--hi),0 0 0 3px var(--red-soft) !important;}
 
@@ -479,6 +484,7 @@
     {label:'System', ids:['sheets']},
     {label:'Configuration', ids:['statuses','ranks','leave','theme']},
     {label:'Dashboard', ids:['dashboard']},
+    {label:'Discord', ids:['dcaudit','dcloa','dcpatrol','dcerrors']},
     {label:'Operations', ids:['automation','advanced']},
   ];
   var ICONS={
@@ -518,6 +524,7 @@
     flist:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
     fdrop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10l4 4 4-4"/></svg>',
   };
+  ICONS.dcaudit=ICONS.file; ICONS.dcloa=ICONS.leave; ICONS.dcpatrol=ICONS.clock; ICONS.dcerrors=ICONS.bell||ICONS.theme; // Discord section icons
   var CARD_ICONS={
     'Identity':'identity','Discord notifications':'bell','Embed appearance':'theme','Leave notifications':'leave',
     'Embed author':'identity','Embed images':'window','Embed footer':'file',
@@ -615,6 +622,18 @@
     'LIMITS.LOG_ROW_CAP':'Edit, integrity and history logs trim their oldest rows past this.',
     'LIMITS.VALIDATION_BUFFER':'Spare rows below the roster that keep dropdowns working — re-run First-Run Setup after big growth.'};
   var SECTIONS=[
+    {id:'dcaudit', a:'var(--accent)', title:'Discord · Audit log', channel:'AUDIT', custom:'discord',
+      desc:'Every roster edit — raw cell changes and panel actions — posts to this channel while its webhook is set.',
+      events:['Sheet edits (who, where, old → new)','Panel actions — status changes, moves, seats, snapshots','Transfer & member-added embeds, weekly digest, integrity summaries']},
+    {id:'dcloa', a:'var(--purple)', title:'Discord · LOAs', channel:'LOA', custom:'discord',
+      desc:'The leave lifecycle on Discord — submissions, approvals, starts and expiries.',
+      events:['Leave submitted (form or panel)','Leave approved','Leave started','Leave expired']},
+    {id:'dcpatrol', a:'var(--green)', title:'Discord · Patrol logs', channel:'PATROL', custom:'discord',
+      desc:'Patrol-hours traffic — every credited log, and a summary of anything the sync flags.',
+      events:['Patrol hours credited (opt-in embed per credit)','Flagged logs — bad or missing times, unknown members (one summary per sync)']},
+    {id:'dcerrors', a:'var(--red)', title:'Discord · Errors', channel:'ERRORS', custom:'discord',
+      desc:'Every coded error the engine raises, throttled to one per code per five minutes.',
+      events:['Coded engine errors (config, structure, permissions…) with their fix hints']},
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES','SHEETS.PATROL_RESPONSES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']},
@@ -988,6 +1007,7 @@
     h+='<div id="issues"></div>';
     if(g.custom==='rankicons'){ h+=rankIconsShell(); $('content').innerHTML=h; $('content').scrollTop=0; loadRankIcons(); return; }
     if(g.custom==='ranklabels'){ h+=rankLabelsShell(); $('content').innerHTML=h; $('content').scrollTop=0; loadRanksList(); return; }
+    if(g.custom==='discord'){ h+=discordShell(g); $('content').innerHTML=h; $('content').scrollTop=0; renderDiscordSec(g); return; }
     if(g.warn) h+='<div class="callout"><b>Advanced — validated, but handle with care</b>These map the engine onto your sheet. A save is refused when it is invalid, but a valid-but-wrong value can still stop parsing or notifications.</div>';
     if(g.note) h+='<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+esc(g.note)+'</div>';
     if(g.id==='leave') h+='<div class="callout" id="leaveStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+leaveStoryText()+'</div>';
@@ -1165,6 +1185,28 @@
   }
 
   /* ── rank icons (custom section: loads ranks from the roster, saves each icon immediately) ── */
+  /* ── Discord sections: per-channel webhook management (URLs live in the ADMIN spreadsheet) ── */
+  function discordShell(g){
+    return '<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+(ICONS[g.id]||ICONS.table)+'</span><b>Webhook</b><small>['+esc(g.channel)+']</small></div><div id="dcwh"></div></div>'
+      +'<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+ICONS.check+'</span><b>What posts here</b></div><ul class="dcev">'
+      +g.events.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('')+'</ul></div>';
+  }
+  function renderDiscordSec(g){
+    var host=$('dcwh'); if(!host) return;
+    var on=!!(DATA.webhooks&&DATA.webhooks[g.channel]);
+    var h='<div class="dcst"><span class="dcdot'+(on?' on':'')+'"></span>'+(on?'Configured':'Not set')+'</div>';
+    if(!DATA.adminLinked) h+='<div class="callout" style="margin:12px 0 4px">Webhooks are stored in the <b>admin roster</b> — link one first (Control Panel ▸ Tools ▸ Admin roster).</div>';
+    h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
+      +'<input type="password" class="in" id="dcUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" style="flex:1;min-width:220px">'
+      +'<button type="button" class="gtadd" data-dcsave="'+esc(g.channel)+'">Save</button>'
+      +'<button type="button" class="gtadd" data-dctest="'+esc(g.channel)+'">Send test</button>'
+      +'<button type="button" class="gtadd" data-dcclear="'+esc(g.channel)+'">Clear</button>'
+      +'<button type="button" class="gtadd" data-dcpurge="1" style="color:var(--red)" title="Abuse kill switch — silences every channel">Remove ALL</button>'
+      +'</div>'
+      +'<div class="sdesc" style="margin-top:10px;max-width:74ch">The URL is write-only — stored in the admin spreadsheet, never shown again. <b>Remove ALL</b> wipes every channel at once (the abuse kill switch); only accounts with admin-file access can change any of this.</div>';
+    host.innerHTML=h;
+  }
+
   /* ── ranks & labels (a friendlier editor over [DASHBOARD_GROUPS] rank entries) ── */
   var RANKLIST=null;
   function rankLabelsShell(){
@@ -1360,6 +1402,24 @@
     if(gadd){ var gn=gadd.dataset.gtadd; var w=((TBLMETA[gn]||{}).cols||[]).length; var nr=[]; for(var gi=0;gi<w;gi++) nr.push(''); (TBL[gn]=TBL[gn]||[]).push(nr); renderSection(); updateBar(); return; }
     var gdel=e.target.closest('[data-gtdel]');
     if(gdel){ var grow=gdel.closest('[data-gt]'); if(grow){ TBL[grow.dataset.gt].splice(Number(grow.dataset.gr),1); renderSection(); updateBar(); } return; }
+    var dsv=e.target.closest('[data-dcsave]');
+    if(dsv){ var du=($('dcUrl')&&$('dcUrl').value.trim())||''; if(!du){ toast('Paste a webhook URL first (or use Clear).','err'); return; }
+      dsv.disabled=true;
+      api(function(r){ dsv.disabled=false; if($('dcUrl'))$('dcUrl').value=''; DATA.webhooks=r.channels||{}; toast(r.channel+' webhook saved.','ok'); renderSection(); },
+          function(err){ dsv.disabled=false; onError(err); }, 'cpSetWebhook', du, dsv.dataset.dcsave); return; }
+    var dts=e.target.closest('[data-dctest]');
+    if(dts){ dts.disabled=true;
+      api(function(){ dts.disabled=false; toast('Test sent — check Discord.','ok'); },
+          function(err){ dts.disabled=false; onError(err); }, 'cpTestWebhook', dts.dataset.dctest); return; }
+    var dcl=e.target.closest('[data-dcclear]');
+    if(dcl){ dcl.disabled=true;
+      api(function(r){ dcl.disabled=false; DATA.webhooks=r.channels||{}; toast(r.channel+' webhook cleared.','ok'); renderSection(); },
+          function(err){ dcl.disabled=false; onError(err); }, 'cpSetWebhook', '', dcl.dataset.dcclear); return; }
+    var dpg=e.target.closest('[data-dcpurge]');
+    if(dpg){ if(!window.confirm('Remove ALL Discord webhooks? Every channel goes silent until new URLs are saved.')) return;
+      dpg.disabled=true;
+      api(function(msg){ dpg.disabled=false; DATA.webhooks={}; toast(msg||'Webhooks removed.','ok'); renderSection(); },
+          function(err){ dpg.disabled=false; onError(err); }, 'cpRunAction', 'purgeWebhooks'); return; }
     var tcp=e.target.closest('[data-tagcopy]');
     if(tcp){ var tta=document.createElement('textarea'); tta.value=tcp.dataset.tagcopy; tta.style.position='fixed'; tta.style.opacity='0';
       document.body.appendChild(tta); tta.select();
