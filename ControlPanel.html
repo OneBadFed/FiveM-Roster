@@ -242,8 +242,8 @@
   .bulkbar .bclear{background:none;border:none;color:var(--txt-2);border-radius:8px;padding:6px 11px;font-size:11px;font-weight:600;cursor:pointer;transition:color var(--t),background var(--t);}
   .bulkbar .bclear:hover{color:var(--txt);background:var(--e3);}
   .sform{margin-top:var(--s2);}
-  .srow{display:flex;gap:var(--s2);margin-bottom:var(--s2);}
-  .sf-mini{flex:1;padding:8px 10px;}
+  .srow{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s2);}
+  .sf-mini{flex:1 1 110px;min-width:0;padding:8px 10px;}
   .pc-adm{background:linear-gradient(155deg,rgba(224,87,79,.06),transparent),rgba(18,22,29,.4);}
   .pc-adm>.pc-lbl{color:#e08a84;}
   .adm-flex{display:flex;flex-wrap:wrap;gap:0 var(--s2);}
@@ -263,14 +263,14 @@
   .adm-add .sf-mini{flex:1;}
   .adm-ta{resize:vertical;min-height:52px;font-family:inherit;line-height:1.45;}
   .mvrow{display:flex;gap:var(--s2);margin-top:var(--s2);align-items:stretch;}
-  .mvrow .mv-trigger{flex:1;min-width:0;width:auto;}
+  .mvrow .mv-trigger{flex:1;min-width:0;width:auto;border:1px solid var(--hair-2);border-radius:12px;background:var(--e1);}
+  .mvrow .mv-trigger:hover{background:var(--e3);border-color:rgba(255,255,255,.14);}
   .mv-trigger .sdrop-chev{transition:transform var(--t) var(--ease);}
-  .mv-trigger.open{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
+  .mv-trigger.open{background:var(--e4);border-color:transparent;box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
   .mv-trigger.open .sdrop-chev{transform:rotate(180deg);}
-  .mvrow .mv-go{flex:0 0 auto;width:auto;padding:11px 22px;}
+  .mvrow .mv-go{flex:0 0 auto;width:auto;margin-top:0;padding:0 20px;border-radius:12px;font-size:12.5px;}
   .mvmenu{margin-top:8px;max-height:280px;overflow-y:auto;background:var(--e2);border:1px solid var(--hair-2);border-radius:var(--r-md);padding:6px;box-shadow:var(--sh-2);animation:slide .18s var(--ease);}
   .mvmenu[hidden]{display:none;}
-  .mv-note{margin-top:8px;color:var(--txt-3);font-size:11px;line-height:1.5;}
 
   /* system tab */
   .sys-h{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:var(--s2);font-weight:800;}
@@ -511,8 +511,6 @@
   .ps-k{font-size:9.5px;font-weight:700;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;}
   .ps-v{font-size:20px;font-weight:800;color:var(--accent-2);font-family:var(--mono);}
   .ps-v em{font-style:normal;font-size:11px;font-weight:700;color:var(--txt-2);}
-  .ps-d{font-size:10px;color:var(--txt-3);min-height:12px;}
-  .ps-d.up{color:var(--green-f);} .ps-d.dn{color:var(--amber-f);}
   .pc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--hair);box-shadow:0 -1px 0 var(--hair);}
   .pc-statusrow{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;}
   .pc-statusrow .segmented{margin-bottom:0;}
@@ -880,7 +878,7 @@
         +'<div class="pc-id"><b class="pc-name">'+esc(m.name)+'</b>'
           +'<div class="pc-rank"><span class="rk">'+esc(m.rank)+'</span>'+(m.callsign?('<span class="callchip">'+esc(m.callsign)+'</span>'):'')+'</div>'
           +'<div>'+pill(m.status)+'</div></div>'
-        +'<div class="pc-stat"><span class="ps-k">Current hours</span><span class="ps-v">'+esc(m.hours||'0')+' <em>hrs</em></span><span class="ps-d" id="psd'+m.row+'"></span></div>'
+        +'<div class="pc-stat"><span class="ps-k">Current hours</span><span class="ps-v">'+esc(m.hours||'0')+' <em>hrs</em></span></div>'
       +'</div>'
       +'<div class="pc-meta">'
         +'<div class="kvc"><span class="k">'+PIC.cal+'Joined</span><span class="v">'+esc(m.joinDate||'—')+'</span></div>'
@@ -905,14 +903,13 @@
           +'<div class="mvrow"><button type="button" class="sdrop-btn mv-trigger" data-mvbtn="1" aria-haspopup="listbox" aria-expanded="false"><span class="sdrop-cur'+(sel?'':' ph')+'" id="mvCur">'+cur+'</span>'
             +'<svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>'
           +'<button class="btn mv-go" data-movego="'+m.row+'">Move</button></div>'
-          +'<div class="mvmenu" id="mvMenu" role="listbox" hidden>'+menu+'</div>'
-          +'<div class="mv-note">Keeps hours, dates and Discord ID; takes on the destination slot’s rank and callsign.</div></div>';
+          +'<div class="mvmenu" id="mvMenu" role="listbox" hidden>'+menu+'</div></div>';
       })()
       +(function(){
         var fd=STATE.formData[m.row]||{}; // F-026: rehydrate typed values so a re-render (status change / refresh) never wipes an open form
         var op=function(v,cur){ return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(v)+'</option>'; };
         return '<div class="pc-sec"><div class="pc-lbl">'+PIC.leave+'Schedule leave</div>'
-        +'<button class="linkbtn" data-sched="'+m.row+'">+ New LOA / ROA</button>'
+        +'<button class="linkbtn" data-sched="'+m.row+'">+ New LOA</button>'
         +'<div class="sform" id="sf'+m.row+'"'+(STATE.formOpen===m.row?'':' hidden')+'>'
           +'<div class="srow"><select class="field sf-mini" id="sft'+m.row+'">'+op('LOA',fd.t)+op('ROA',fd.t)+'</select>'
             +'<select class="field sf-mini" id="sfs'+m.row+'">'+op('Pending',fd.s)+op('Approved',fd.s)+'</select></div>'
@@ -935,14 +932,6 @@
     api(function(p){
       var chk=$('chk'+m.row); if(chk) chk.innerHTML=activityChecks(p.history);
       var spk=$('spk'+m.row); if(spk) spk.innerHTML=sparkline(p.history);
-      var psd=$('psd'+m.row); // hero stat box: current hours vs this member's own recent weekly average
-      if(psd && p.history && p.history.length>=2){
-        var vs=p.history.map(function(x){return Number(x.hours)||0;});
-        var pavg=vs.reduce(function(a,b){return a+b;},0)/vs.length;
-        var cur=parseFloat(String(m.hours||'0').replace(/[^0-9.\-]/g,''))||0, d=cur-pavg;
-        psd.className='ps-d '+(d>=0.05?'up':(d<=-0.05?'dn':''));
-        psd.textContent=(d>=0.05?'▲ ':(d<=-0.05?'▼ ':'· '))+Math.abs(d).toFixed(1)+' hrs vs '+vs.length+'-week avg';
-      }
       var lv=$('lv'+m.row);
       if(lv){ if(!p.leaves||!p.leaves.length){ lv.innerHTML='<span class="muted2">No leave records.</span>'; }
         else lv.innerHTML=p.leaves.map(function(l){ return '<div class="lr"><span><b>'+esc(l.type||'—')+'</b> &nbsp;'+esc(l.start||'?')+' → '+esc(l.end||'?')+'</span><span class="ltag"><span class="pdot" style="background:'+leaveDot(l.status)+'"></span>'+esc(l.status||'')+'</span></div>'; }).join(''); }
