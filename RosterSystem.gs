@@ -1915,11 +1915,12 @@ function syncFormToTracker_(form, tracker, opts = {}) {
   const backgrounds = range.getBackgrounds();
   const synced = buildSyncedKeySet_(tracker);
   const tz = ssTz_();
+  const doneBg = String(CONFIG.bg.done).toLowerCase(); // lowercase once — a Studio-picked theme colour can be uppercase (getBackgrounds returns lowercase)
 
   for (let i = 0; i < values.length; i++) {
     const rowIndex = i + 2;
     const bg = String(backgrounds[i][0] || '').toLowerCase();
-    if (bg === CONFIG.bg.done || bg === '#00ff00') continue;
+    if (bg === doneBg || bg === '#00ff00') continue;
 
     try {
       const row = values[i];
