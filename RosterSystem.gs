@@ -239,7 +239,6 @@ function buildMenus_(prefix) {
       .addItem('⚙️ Engine Settings', p + 'openSettingsPanel')
       .addSeparator()
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
-      .addItem('📊 Update All Statuses', p + 'updateAllStatuses')
       .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
       .addSeparator()
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
