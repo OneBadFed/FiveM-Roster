@@ -469,25 +469,37 @@ function layoutGroupBands_(sh, dataRow, tabBandCol, roster, rosterBandCol, RC, g
   if (lastRow < start) return;
   const n = lastRow - start + 1;
   const disp = roster.getRange(start, 1, n, roster.getLastColumn()).getDisplayValues();
-  // Forward-fill the merged RANK GROUP column and remember each label's top row (its merge origin, for the format copy).
-  const filled = [];
-  const labelTop = {};
-  let cur = '';
-  for (let i = 0; i < n; i++) {
-    const raw = String(disp[i][rosterBandCol - 1]).trim();
-    if (raw) { cur = raw; if (!(raw in labelTop)) labelTop[raw] = start + i; }
-    filled.push(cur);
+  // Exact band per roster row, read from the merged RANK GROUP column. getMergedRanges gives each band's true top row
+  // and span, so a member's band is whatever merge actually covers their row — no forward-fill guessing that can drift.
+  const maxR = roster.getMaxRows();
+  const bandColVals = roster.getRange(1, rosterBandCol, maxR, 1).getValues();
+  const merges = roster.getRange(1, rosterBandCol, maxR, 1).getMergedRanges();
+  const rowBand = {};      // roster row → band label
+  const bandFirstRow = {}; // band label → the row that actually holds its label (the format source)
+  merges.forEach((m) => {
+    const top = m.getRow();
+    const label = String(bandColVals[top - 1][0]).trim();
+    if (!label) return;
+    if (!(label in bandFirstRow)) bandFirstRow[label] = top;
+    for (let r = top; r < top + m.getNumRows(); r++) rowBand[r] = label;
+  });
+  for (let r = 1; r <= maxR; r++) { // single-cell (unmerged) bands
+    if (r in rowBand) continue;
+    const v = String(bandColVals[r - 1][0]).trim();
+    if (v) { rowBand[r] = v; if (!(v in bandFirstRow)) bandFirstRow[v] = r; }
   }
+  let carry = '';
+  for (let r = 1; r <= maxR; r++) { if (r in rowBand) carry = rowBand[r]; else if (carry) rowBand[r] = carry; } // fill any gap rows between bands
   // Walk the matching members (same test as the FILTER) and collect contiguous runs per rank group.
   const runs = [];
   for (let i = 0; i < n; i++) {
     if (String(disp[i][RC.name - 1]) === '') continue;
     const cv = groupNorm_(disp[i][gCol - 1]);
     if (!wanted.some((w) => cv.indexOf(w) === 0)) continue; // "starts with", identical to the FILTER's REGEXMATCH(^…)
-    const g = filled[i] || '—';
+    const g = rowBand[start + i] || '—';
     const last = runs[runs.length - 1];
     if (last && last.label === g) last.count++;
-    else runs.push({ label: g, count: 1, fmtRow: labelTop[g] || (start + i) });
+    else runs.push({ label: g, count: 1, fmtRow: bandFirstRow[g] || (start + i) });
   }
   let cursor = dataRow;
   runs.forEach((run) => {
