@@ -890,7 +890,7 @@ function demoPerson_(i, rank, total) {
   // Sprinkle a few recently-EXPIRED leaves onto active members (tracker + activity-check variety).
   if (!leave && i % 17 === 5) { pastLeave = { type: (i % 2 ? 'LOA' : 'ROA'), from: -(48 + i % 10), to: -(30 + i % 8) }; checks = [pastLeave.type, pastLeave.type, 'Active', act]; }
   const tenure = 1600 - Math.round((i / Math.max(total, 1)) * 1200); // seniority: earlier rows = longer tenure
-  const shift = ['Day', 'Swings', 'Nights'][Math.floor(demoRand_(i, 8) * 3)];
+  const shift = ''; // real shift is assigned per-rank (evenly across the 3 shifts) once all people are built — see seedDemoRoster
   const may = demoQuarter_(demoRand_(i, 3) * demoRand_(i, 6) * 30); // prior-month totals — right-skewed 0–30h
   const jun = demoQuarter_(demoRand_(i, 4) * demoRand_(i, 7) * 30);
   return {
@@ -990,6 +990,22 @@ function seedDemoRoster() {
     const total = memberRows.length;
     const people = memberRows.map((m, i) => demoIsOpen_(i, total) ? demoBlank_() : demoPerson_(i, m.rank, total));
     const filledCount = people.filter((p) => !p.open).length;
+
+    // Spread each RANK's filled members as evenly as possible across the 3 shifts (round-robin within the rank), and
+    // rotate each rank's starting shift so any remainder doesn't always pile onto the same shift.
+    (function assignShiftsByRank() {
+      const SHIFTS = ['Day', 'Swings', 'Nights'];
+      const seen = {}; // rank → count assigned so far
+      const startAt = {}; // rank → starting offset (rotates per rank)
+      let ranksSeen = 0;
+      people.forEach((p, i) => {
+        if (p.open) return;
+        const rank = String(memberRows[i].rank || '').trim().toUpperCase();
+        if (!(rank in seen)) { startAt[rank] = ranksSeen % SHIFTS.length; seen[rank] = 0; ranksSeen++; }
+        p.shift = SHIFTS[(startAt[rank] + seen[rank]) % SHIFTS.length];
+        seen[rank]++;
+      });
+    })();
 
     // Group member rows into CONTIGUOUS runs — the merged section-divider rows fall BETWEEN runs and are never written.
     const runs = [];
