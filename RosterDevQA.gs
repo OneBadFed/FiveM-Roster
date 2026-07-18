@@ -497,6 +497,13 @@ function devNewLayoutTests_() {
       devEq_(R, 'suggestMarker_ "Troop A" → Troop = A', suggestMarker_('Troop A'), '#group: Troop = A');
       devEq_(R, 'suggestMarker_ "Academy" → Rank in …', suggestMarker_('Academy'), '#group: Rank in Police Cadet, Probationary Officer');
     }
+    if (typeof inferGroup_ === 'function') {
+      const iDay = inferGroup_('Day Shift');
+      devEq_(R, 'inferGroup_ "Day Shift" → column Shift', iDay.column, 'Shift');
+      devEq_(R, 'inferGroup_ "Day Shift" → value Day', iDay.values.join(','), 'Day');
+      devEq_(R, 'inferGroup_ "Academy" → 2 rank values', inferGroup_('Academy').values.length, 2);
+      devEq_(R, 'inferGroup_ bare name → no column (auto-find)', inferGroup_('Alpha').column, '');
+    }
   } else { devInfo_(R, 'groupMarker_ not loaded', 'RosterExtras.gs absent — skipped'); }
 
   // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.

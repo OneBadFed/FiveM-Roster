@@ -420,25 +420,51 @@ function suggestMarker_(name) {
   return '#group: ' + raw;
 }
 
+/** Find the header row on a group tab (the row holding a RANK + NAME label) and its uppercased labels. @return {{row:number, headers:string[]}} */
+function groupHeaderRow_(sh) {
+  const maxScan = Math.min(15, sh.getLastRow());
+  if (maxScan < 1) return { row: 0, headers: [] };
+  const w = Math.max(1, sh.getLastColumn());
+  const grid = sh.getRange(1, 1, maxScan, w).getDisplayValues();
+  for (let r = 0; r < maxScan; r++) {
+    const up = grid[r].map((x) => String(x).toUpperCase().trim());
+    const hasRank = up.some((h) => h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1);
+    const hasName = up.some((h) => h === 'NAME' || (h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1));
+    if (hasRank && hasName) return { row: r + 1, headers: up };
+  }
+  return { row: 0, headers: [] };
+}
+
+/** Infer a group filter from a tab name: "Day Shift" → {column:'Shift', values:['Day']}. @return {{column:string, values:string[]}} */
+function inferGroup_(name) {
+  const raw = String(name).trim();
+  if (/academy|cadet|recruit|training/i.test(raw)) return { column: 'Rank', values: ['Police Cadet', 'Probationary Officer'] };
+  const words = raw.split(/\s+/);
+  const noun = /^(shift|division|troop|district|squad|platoon|precinct|watch|beat|sector|zone)$/i;
+  if (words.length >= 2 && noun.test(words[words.length - 1])) return { column: words[words.length - 1], values: [words.slice(0, -1).join(' ')] };
+  if (words.length >= 2 && noun.test(words[0])) return { column: words[0], values: [words.slice(1).join(' ')] };
+  return { column: '', values: [raw] };
+}
+
 /**
- * For every tab carrying a "#group:" marker, rebuild it as a live mirror of the roster's MEMBER INFORMATION block —
- * the same columns, header banners/labels, widths and cell formatting — filtered to the members in that group, in
- * rank order (roster order = rank order). Hidden roster columns come along too, so group tabs can surface info the
- * main roster keeps tucked away. @return {{built:number, sheets:string[], noMarker:Array<{name,suggest}>}}
+ * FILL-ONLY. For each group tab (one carrying a "#group:" marker, or simply named like a group — "Day Shift",
+ * "Troop A", "Academy"), the engine leaves the tab's own header, banners, widths and formatting exactly as laid out
+ * and just drops ONE live FILTER into the first data row. The FILTER mirrors the roster's member block for that group,
+ * in rank order (roster order), and updates live. Nothing above the data area is touched.
+ * @return {{built:number, sheets:string[], skipped:Array<{name,why}>}}
  */
 function buildGroupSheets_() {
   const ss = SpreadsheetApp.getActive();
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
-  if (!roster) return { built: 0, sheets: [], noMarker: [] };
+  if (!roster) return { built: 0, sheets: [], skipped: [] };
   const RC = rosterCols_(roster);
-  if (!RC.headerRow || !RC.name || !RC.rank) return { built: 0, sheets: [], noMarker: [] };
+  if (!RC.headerRow || !RC.name || !RC.rank) return { built: 0, sheets: [], skipped: [] };
   const lastCol = roster.getLastColumn();
   const rHdrUp = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
   const rName = "'" + String(CONFIG.sheets.roster).replace(/'/g, "''") + "'";
   const start = CONFIG.rosterStartRow;
   const L = (c) => groupColLetter_(c);
-  const colRange = (c) => rName + '!' + L(c) + start + ':' + L(c);
-  // marker column name → roster column: exact match wins (so "NAME" beats "OOC NAME"), then a contains match.
+  // marker/inferred column name → roster column: exact match wins (so "NAME" beats "OOC NAME"), then a contains match.
   const colFor = (label) => {
     const key = String(label).toUpperCase().trim();
     if (!key) return 0;
@@ -446,77 +472,66 @@ function buildGroupSheets_() {
     for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c] && rHdrUp[c].indexOf(key) !== -1) return c + 1; }
     return 0;
   };
-  // The member-info block = every column from RANK to the last column (skips the merged RANK GROUP band in col B).
+  // The member block the FILTER pulls = every roster column from RANK to the last (skips the merged RANK GROUP band).
   const firstCol = RC.rank;
-  const width = lastCol - firstCol + 1;
-  const bannerRow = RC.headerRow > 1 ? RC.headerRow - 1 : RC.headerRow; // banner sits one row above the labels
-  const hdrRows = RC.headerRow - bannerRow + 1;                          // 2 (banner + labels) or 1
-  const fmtRows = Math.max(1, Math.min(300, roster.getLastRow() - start + 1));
-  // System tabs and non-group-looking tabs shouldn't be nagged about in the "no marker" help.
+  const rosterWidth = lastCol - firstCol + 1;
+  const block = rName + '!' + L(firstCol) + start + ':' + L(lastCol);
+  const nameRange = rName + '!' + L(RC.name) + start + ':' + L(RC.name);
+  // Don't touch the roster or the engine's own system tabs.
   const sysNames = {};
   Object.keys(CONFIG.sheets || {}).forEach((k) => { if (CONFIG.sheets[k]) sysNames[String(CONFIG.sheets[k]).toUpperCase()] = true; });
   ['CONTROL PANEL', 'CONFIG', '⚙️ CONFIG', 'DEV / QA', 'DEV/QA', 'DASHBOARD'].forEach((n) => { sysNames[n] = true; });
   const groupNoun = /(shift|division|troop|district|squad|platoon|academy|precinct|watch|beat|sector|zone)/i;
   const built = [];
-  const noMarker = [];
+  const skipped = [];
   ss.getSheets().forEach((sh) => {
     if (sh.getSheetId() === roster.getSheetId()) return;
+    const nm = sh.getName();
+    if (sysNames[nm.toUpperCase()]) return;
     const marker = groupMarker_(sh);
-    if (!marker) {
-      const nm = sh.getName();
-      if (!sysNames[nm.toUpperCase()] && groupNoun.test(nm)) noMarker.push({ name: nm, suggest: suggestMarker_(nm) });
-      return;
-    }
-    const gCol = marker.column ? colFor(marker.column) : findGroupColumn_(roster, start, marker.values[0]);
-    const hdrTop = marker.row + 1;    // header banner row on the group tab (marker stays on its own row above)
-    const dataRow = hdrTop + hdrRows; // first FILTER row
-    // Engine owns everything from the header down — wipe old merges/content/format so re-runs stay clean.
-    const clrW = Math.max(width, sh.getLastColumn(), 1);
-    if (sh.getMaxRows() >= hdrTop) {
-      const region = sh.getRange(hdrTop, 1, sh.getMaxRows() - hdrTop + 1, clrW);
-      region.breakApart(); region.clearContent(); region.clearFormat();
-    }
-    if (!gCol) {
-      sh.getRange(hdrTop, 1).setValue('⚠️ Couldn\'t match "' + marker.raw + '" to a roster column — try  #group: Shift = Day');
-      built.push(sh.getName()); return;
-    }
-    // Mirror the roster header (banner + labels) with its formatting and merges, then match column widths.
-    roster.getRange(bannerRow, firstCol, hdrRows, width)
-      .copyTo(sh.getRange(hdrTop, 1, hdrRows, width), SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
-    for (let i = 0; i < width; i++) { try { sh.setColumnWidth(1 + i, roster.getColumnWidth(firstCol + i)); } catch (e) { /* width copy is best-effort */ } }
-    // Give the data rows the roster's cell look + number formats so hours/dates/"N days" render right.
-    roster.getRange(start, firstCol, 1, width)
-      .copyTo(sh.getRange(dataRow, 1, fmtRows, width), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-    // One live FILTER pulls the whole block for members whose group column matches any listed value (case/space-tolerant).
+    // A tab counts as a group tab if it has an explicit marker OR its name reads like a group.
+    if (!marker && !groupNoun.test(nm)) return;
+    const grp = marker ? { column: marker.column, values: marker.values } : inferGroup_(nm);
+    const gCol = grp.column ? colFor(grp.column) : findGroupColumn_(roster, start, grp.values[0]);
+    // Find where the member rows begin on THIS tab (right below its own RANK/NAME header row) — never assume a position.
+    const hdr = groupHeaderRow_(sh);
+    if (!hdr.row) { skipped.push({ name: nm, why: 'no RANK/NAME header row found — lay out the columns first' }); return; }
+    let rankTabCol = 0;
+    for (let i = 0; i < hdr.headers.length; i++) { const h = hdr.headers[i]; if (h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1) { rankTabCol = i + 1; break; } }
+    if (!rankTabCol) rankTabCol = 1;
+    if (!gCol) { skipped.push({ name: nm, why: 'couldn\'t match "' + (marker ? marker.raw : nm) + '" to a roster column' }); return; }
+    const dataRow = hdr.row + 1;
+    const fillW = Math.min(rosterWidth, sh.getMaxColumns() - rankTabCol + 1);
+    if (fillW <= 0) { skipped.push({ name: nm, why: 'not enough columns to the right of RANK' }); return; }
+    // Fill-only: clear just the data CELLS we own (content, never formatting — the tab's layout stays put), then drop the FILTER.
+    if (sh.getMaxRows() >= dataRow) sh.getRange(dataRow, rankTabCol, sh.getMaxRows() - dataRow + 1, fillW).clearContent();
     const gRange = rName + '!' + L(gCol) + start + ':' + L(gCol);
-    const cond = marker.values.map((v) => 'LOWER(TRIM(' + gRange + '))="' + String(v).toLowerCase().trim().replace(/"/g, '""') + '"').join('+');
-    const block = rName + '!' + L(firstCol) + start + ':' + L(lastCol);
-    const formula = '=IFERROR(FILTER(' + block + ',(' + cond + '),' + colRange(RC.name) + '<>""),"No members in this group yet.")';
-    sh.getRange(dataRow, 1).setFormula(formula);
-    built.push(sh.getName());
+    const cond = grp.values.map((v) => 'LOWER(TRIM(' + gRange + '))="' + String(v).toLowerCase().trim().replace(/"/g, '""') + '"').join('+'); // any listed value (OR), case/space-tolerant
+    const formula = '=IFERROR(FILTER(' + block + ',(' + cond + '),' + nameRange + '<>""),"No members in this group yet.")';
+    sh.getRange(dataRow, rankTabCol).setFormula(formula);
+    built.push(nm);
   });
-  return { built: built.length, sheets: built, noMarker: noMarker };
+  return { built: built.length, sheets: built, skipped: skipped };
 }
 
-/** Menu action: build / refresh every #group tab. */
+/** Menu action: fill / refresh every group tab. */
 function buildGroupSheets() {
   runAction_('Build Group Sheets', () => {
     const ui = SpreadsheetApp.getUi();
     const res = buildGroupSheets_();
-    if (!res.built) {
-      let extra = '';
-      if (res.noMarker && res.noMarker.length) {
-        extra = '\n\nThese tabs look like group sheets but have no marker yet — put the marker in cell A1:\n' +
-          res.noMarker.map((n) => '• ' + n.name + '   →   ' + n.suggest).join('\n') + '\n';
-      }
-      ui.alert('🗂️ Build / Refresh Group Sheets',
-        'No group tabs built.' + extra + '\n\nHow it works: make a tab, put a marker in its top-left cell (A1), then run this again:\n\n  #group: Shift = Day\n  #group: District = 1\n  #group: Rank in Police Cadet, Probationary Officer\n\nThe tab fills with everyone in that group — the same columns and look as the roster — in rank order, and stays live.',
-        ui.ButtonSet.OK);
-      return;
+    let msg = '';
+    if (res.built) {
+      msg += 'Filled ' + res.built + ' group tab' + (res.built === 1 ? '' : 's') + ':\n• ' + res.sheets.join('\n• ') +
+        '\n\nThe member rows fill in live under the header you laid out — no formatting touched.\n';
     }
-    ui.alert('🗂️ Group Sheets Built',
-      'Filled ' + res.built + ' group tab' + (res.built === 1 ? '' : 's') + ':\n\n• ' + res.sheets.join('\n• ') + '\n\nEach mirrors the roster’s member columns for that group and updates live.',
-      ui.ButtonSet.OK);
+    if (res.skipped && res.skipped.length) {
+      msg += (msg ? '\n' : '') + 'Skipped:\n' + res.skipped.map((s) => '• ' + s.name + ' — ' + s.why).join('\n') + '\n';
+    }
+    if (!msg) {
+      msg = 'No group tabs found.\n\nName a tab after the group — e.g. “Day Shift”, “Troop A”, “Academy” — lay out the columns like the roster, then run this again.\n\n' +
+        'Prefer to be explicit? Put a marker in the tab instead:\n  #group: Shift = Day\n  #group: Rank in Police Cadet, Probationary Officer';
+    }
+    ui.alert('🗂️ Build / Refresh Group Sheets', msg, ui.ButtonSet.OK);
   });
 }
 
