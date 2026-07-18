@@ -552,14 +552,15 @@ function buildGroupSheets_() {
   const firstCol = RC.rank;
   const rosterWidth = lastCol - firstCol + 1;
   // Roster checkbox columns can't be REAL checkboxes in a live FILTER (the rule occupies the array's cells → #REF!), so
-  // render them as a ✓ (checked) / blank (unchecked) inside the block. If there are none, keep the simple contiguous range.
+  // mirror the roster's look with a filled box ☑ (checked) / empty box ☐ (unchecked) inside the block. No checkbox
+  // columns → keep the simple contiguous range.
   const cbSet = {}; checkboxOffsets_(roster, start, firstCol, rosterWidth).forEach((off) => { cbSet[firstCol + off] = true; });
   let block;
   if (!Object.keys(cbSet).length) {
     block = rName + '!' + L(firstCol) + start + ':' + L(lastCol);
   } else {
     const parts = [];
-    for (let c = firstCol; c <= lastCol; c++) { const r = rName + '!' + L(c) + start + ':' + L(c); parts.push(cbSet[c] ? ('IF(' + r + ',"✓","")') : r); }
+    for (let c = firstCol; c <= lastCol; c++) { const r = rName + '!' + L(c) + start + ':' + L(c); parts.push(cbSet[c] ? ('IF(' + r + ',"☑","☐")') : r); }
     block = '{' + parts.join(',') + '}';
   }
   const nameRange = rName + '!' + L(RC.name) + start + ':' + L(RC.name);
