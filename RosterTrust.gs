@@ -183,13 +183,17 @@ function cpRosterHeaderIssues_(roster) {
   return issues;
 }
 
-/** Validates the core tabs. Roster = required headers present (header-based); tracker/form = headers at fixed positions. */
+/** Validates the core tabs. Roster + tracker = required columns resolve by header (any layout); form = fixed positions. */
 function cpSchemaCheck_() {
   const ss = SpreadsheetApp.getActive();
   let issues = [];
   issues = issues.concat(cpRosterHeaderIssues_(ss.getSheetByName(CONFIG.sheets.roster)));
-  issues = issues.concat(cpHeaderIssues_(ss.getSheetByName(CONFIG.sheets.tracker), CONFIG.sheets.tracker, 6,
-    { 2: 'RANK', 5: 'NAME', 6: 'UNIQUE', 8: 'START', 9: 'END', 14: 'STATUS' }));
+  const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
+  if (tracker) { // the tracker resolves columns by header (trackerCols_) — verify the required ones are present
+    const TC = trackerCols_(tracker);
+    [['RANK', TC.rank], ['NAME', TC.name], ['UNIQUE ID / DISCORD', TC.discord], ['START DATE', TC.start], ['END DATE', TC.end], ['STATUS', TC.status]]
+      .forEach((x) => { if (!x[1]) issues.push(`${CONFIG.sheets.tracker}: no ${x[0]} column found — the tracker resolves columns by header, so a ${x[0]} label is required.`); });
+  }
   issues = issues.concat(cpHeaderIssues_(ss.getSheetByName(CONFIG.sheets.form), CONFIG.sheets.form, 1,
     { 1: 'TIME', 3: 'DISCORD', 6: 'STATUS', 7: 'START', 8: 'END' }));
   return issues;

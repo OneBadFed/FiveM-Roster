@@ -120,16 +120,17 @@ function activeLeaves_(tracker) {
   const last = tracker.getLastRow();
   if (last < CONFIG.trackerStartRow) return out;
   const n = last - CONFIG.trackerStartRow + 1;
-  const v = tracker.getRange(CONFIG.trackerStartRow, 2, n, 15).getValues(); // cols B..P
-  const ids = tracker.getRange(CONFIG.trackerStartRow, CONFIG.tracker.discord, n, 1).getDisplayValues(); // IDs EXACT — getValues rounds a 17-19 digit ID
+  const TC = trackerCols_(tracker);
+  const v = tracker.getRange(CONFIG.trackerStartRow, 2, n, TC.width - 1).getValues(); // cols B..(width)
+  const ids = tracker.getRange(CONFIG.trackerStartRow, TC.discord, n, 1).getDisplayValues(); // IDs EXACT — getValues rounds a 17-19 digit ID
   const today = todayInSheetTz_();
   for (let i = 0; i < n; i++) {
-    if (v[i][CONFIG.tracker.status - 2] !== CONFIG.approvedStatus) continue;
-    const start = startOfDay_(new Date(v[i][CONFIG.tracker.start - 2]));
-    const end = startOfDay_(new Date(v[i][CONFIG.tracker.end - 2]));
+    if (v[i][TC.status - 2] !== CONFIG.approvedStatus) continue;
+    const start = startOfDay_(new Date(v[i][TC.start - 2]));
+    const end = startOfDay_(new Date(v[i][TC.end - 2]));
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || today.getTime() > end.getTime()) continue;
     out.push({
-      name: v[i][CONFIG.tracker.name - 2],
+      name: v[i][TC.name - 2],
       type: trackerLeaveType_(),
       id: String(ids[i][0]).trim(),
       start, end,
@@ -1267,14 +1268,16 @@ function demoInitialName_(name) {
 
 /** Write one demo leave at tracker row `r` (mirrors the real append: dedup key + countdown formulas; keeps the tracker template). */
 function demoWriteLeave_(tracker, m, L, r) {
+  const TC = trackerCols_(tracker); // resolve columns by header (any layout)
   const start = demoDay_(L.from), end = demoDay_(L.to);
   const key = makeLeaveKey_(m.id, `${startOfDay_(start).getTime()}-${startOfDay_(end).getTime()}-${norm_(L.type)}`);
   const oi = rosterOocShift_(m.id); // OOC + shift from the already-filled demo roster
-  tracker.getRange(r, CONFIG.tracker.discord).setNumberFormat('@'); // keep the 17-19 digit ID exact
-  // A key · B rank · C unit · D OOC · E name · F unique-ID · G shift · H start · I end · J-M computed · N status · O approved-by · P notes
-  tracker.getRange(r, 1, 1, 16).setValues([[key, m.rank, '', oi.ooc, m.name, m.id, oi.shift, start, end, '', '', '', '', L.status || 'Approved', '', '']]);
-  tracker.getRange(r, CONFIG.tracker.start, 1, 2).setNumberFormat('d mmm. yyyy');
-  writeLeaveFormulas_(tracker, r);
+  if (TC.discord) tracker.getRange(r, TC.discord).setNumberFormat('@'); // keep the 17-19 digit ID exact
+  const row = buildTrackerRow_(TC, TC.width, { key: key, rank: m.rank, ooc: oi.ooc, name: m.name, discord: m.id, shift: oi.shift, start: start, end: end, status: L.status || 'Approved' });
+  tracker.getRange(r, 1, 1, TC.width).setValues([row]);
+  if (TC.start) tracker.getRange(r, TC.start).setNumberFormat('d mmm. yyyy');
+  if (TC.end) tracker.getRange(r, TC.end).setNumberFormat('d mmm. yyyy');
+  writeLeaveFormulas_(tracker, r, TC);
 }
 
 /** Menu / command: fill the member-info columns of the rows the operator already set up (see the header note). */

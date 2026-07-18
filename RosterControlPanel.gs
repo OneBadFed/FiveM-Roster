@@ -464,14 +464,15 @@ function cpSnapshot_() {
     const last = tracker.getLastRow();
     if (last >= CONFIG.trackerStartRow) {
       const n = last - CONFIG.trackerStartRow + 1;
-      const tvals = tracker.getRange(CONFIG.trackerStartRow, 2, n, 15).getValues(); // cols B..P
+      const TC = trackerCols_(tracker);
+      const tvals = tracker.getRange(CONFIG.trackerStartRow, 2, n, TC.width - 1).getValues(); // cols B..(width)
       const today = todayInSheetTz_().getTime();
       const weekMs = 7 * 86400000;
       for (let i = 0; i < n; i++) {
-        const status = tvals[i][CONFIG.tracker.status - 2];
+        const status = tvals[i][TC.status - 2];
         if (status === PENDING) stats.pending++;
         if (status === APPROVED) {
-          const end = new Date(tvals[i][CONFIG.tracker.end - 2]);
+          const end = new Date(tvals[i][TC.end - 2]);
           if (!isNaN(end.getTime())) {
             const e = startOfDay_(end).getTime();
             if (e >= today && e - today <= weekMs) stats.expiringSoon++;
@@ -613,15 +614,16 @@ function cpGetProfile(discordId) {
     const last = tracker.getLastRow();
     if (last >= CONFIG.trackerStartRow) {
       const n = last - CONFIG.trackerStartRow + 1;
-      const disp = tracker.getRange(CONFIG.trackerStartRow, 2, n, 15).getDisplayValues(); // B..P
-      const ids = tracker.getRange(CONFIG.trackerStartRow, CONFIG.tracker.discord, n, 1).getDisplayValues();
+      const TC = trackerCols_(tracker);
+      const disp = tracker.getRange(CONFIG.trackerStartRow, 2, n, TC.width - 1).getDisplayValues(); // B..(width)
+      const ids = tracker.getRange(CONFIG.trackerStartRow, TC.discord, n, 1).getDisplayValues();
       for (let i = 0; i < n; i++) {
         if (String(ids[i][0]).trim() !== id) continue;
         leaves.push({
           type: trackerLeaveType_(),
-          start: String(disp[i][CONFIG.tracker.start - 2]).trim(),
-          end: String(disp[i][CONFIG.tracker.end - 2]).trim(),
-          status: String(disp[i][CONFIG.tracker.status - 2]).trim(),
+          start: String(disp[i][TC.start - 2]).trim(),
+          end: String(disp[i][TC.end - 2]).trim(),
+          status: String(disp[i][TC.status - 2]).trim(),
         });
       }
     }
@@ -781,8 +783,9 @@ function cpScheduleLeave_(roster, tracker, p, opts) {
 
   // Append exactly like syncFormToTracker_ (real Date objects + the same countdown formulas).
   const oi = rosterOocShift_(m.discord); // auto-fill OOC name + shift from the roster (by Unique ID)
-  // Prepend the new leave at the TOP and re-group by status — a new Pending lands at the top of the list.
-  sortTracker_([dedupKey, m.rank, m.callsign, oi.ooc, m.name, m.discord, oi.shift, start, end, '', '', '', '', status, '', notes], tracker);
+  const TC = trackerCols_(tracker);
+  // Prepend the new leave at the TOP and re-group by status — fields placed by their resolved header column (any layout).
+  sortTracker_(buildTrackerRow_(TC, TC.width, { key: dedupKey, rank: m.rank, unit: m.callsign, ooc: oi.ooc, name: m.name, discord: m.discord, shift: oi.shift, start: start, end: end, status: status, notes: notes }), tracker);
 
   // Script writes don't fire onEdit, so apply an already-active approved leave to the roster now.
   let applied = false;

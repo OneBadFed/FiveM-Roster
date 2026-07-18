@@ -479,7 +479,7 @@ function setupWizard() {
     // 5. Force the ID columns to exact text so appends never coerce a 17-19 digit Discord ID to a rounded Number.
     try {
       const tr = ss.getSheetByName(CONFIG.sheets.tracker);
-      if (tr) tr.getRange(1, CONFIG.tracker.discord, tr.getMaxRows(), 1).setNumberFormat('@');
+      if (tr) { const tc = trackerCols_(tr).discord; if (tc) tr.getRange(1, tc, tr.getMaxRows(), 1).setNumberFormat('@'); }
       const fm = ss.getSheetByName(CONFIG.sheets.form);
       if (fm) fm.getRange(1, CONFIG.form.discord, fm.getMaxRows(), 1).setNumberFormat('@');
       steps.push('✅ ID columns locked to exact text (tracker + form Discord).');
@@ -560,20 +560,19 @@ function installDataValidation_() {
     }
   }
 
-  // Tracker (LOA/ROA Tracker) — fixed positions (position-based by design).
+  // Tracker (LOA/ROA Tracker) — columns resolved by header (any layout; absent columns are skipped).
   const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
   if (tracker) {
-    const T = CONFIG.tracker, start = CONFIG.trackerStartRow;
+    const T = trackerCols_(tracker), start = CONFIG.trackerStartRow;
     const n = Math.min(tracker.getMaxRows(), Math.max(tracker.getLastRow(), start - 1) + CONFIG.limits.validationBuffer) - start + 1; // F-042: live range + buffer (config), not all rows
     if (n > 0) {
-      const idCol = tracker.getRange(start, T.discord, n, 1);
-      idCol.setDataValidation(idRuleFor(idCol)); counts.tracker++;
-      tracker.getRange(start, T.start, n, 1).setDataValidation(dateRule('Enter a valid start date.')); counts.tracker++;
-      tracker.getRange(start, T.end, n, 1).setDataValidation(dateRule('Enter a valid end date.')); counts.tracker++;
+      if (T.discord) { const idCol = tracker.getRange(start, T.discord, n, 1); idCol.setDataValidation(idRuleFor(idCol)); counts.tracker++; }
+      if (T.start) { tracker.getRange(start, T.start, n, 1).setDataValidation(dateRule('Enter a valid start date.')); counts.tracker++; }
+      if (T.end) { tracker.getRange(start, T.end, n, 1).setDataValidation(dateRule('Enter a valid end date.')); counts.tracker++; }
       // STATUS dropdown values come from [LEAVE] on ⚙️ Config (defaults: Pending/Approved/Denied/Expired). LOA-only tracker: no TYPE column.
       let statusFlow = ['Pending', 'Approved', 'Denied', 'Expired'];
       try { const lv = cfg_().leave; if (lv.STATUS_FLOW.length) statusFlow = lv.STATUS_FLOW; } catch (e) { /* config broken — classic list */ }
-      tracker.getRange(start, T.status, n, 1).setDataValidation(listRule(statusFlow, 'Choose a leave status.')); counts.tracker++;
+      if (T.status) { tracker.getRange(start, T.status, n, 1).setDataValidation(listRule(statusFlow, 'Choose a leave status.')); counts.tracker++; }
     }
   }
   return counts;
@@ -1010,7 +1009,7 @@ function onEdit(e) {
         try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('onEdit.groups', e2); }
       }
     }
-    if (name === CONFIG.sheets.tracker && col === CONFIG.tracker.status && row >= CONFIG.trackerStartRow) {
+    if (name === CONFIG.sheets.tracker && row >= CONFIG.trackerStartRow && col === trackerCols_(sheet).status) {
       if (e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO the approved state — re-confirming it must not re-apply (would revert a manual roster override)
         checkImmediateLOAStart(sheet, row);
         notifyLeaveApproved_(sheet, row); // v2.5.0 optional embed (toggle off by default)
@@ -1610,9 +1609,10 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
   if (lastRow < CONFIG.trackerStartRow) return summary;
 
   const n = lastRow - CONFIG.trackerStartRow + 1;
-  const data = tracker.getRange(CONFIG.trackerStartRow, 2, n, 15).getValues(); // cols B..P
-  const trkIds = tracker.getRange(CONFIG.trackerStartRow, CONFIG.tracker.discord, n, 1).getDisplayValues(); // IDs as EXACT text — getValues would round a 17-19 digit ID
-  const statusOut = data.map((r) => [r[CONFIG.tracker.status - 2]]);
+  const TC = trackerCols_(tracker); // header-resolved TRACKER columns (any layout)
+  const data = tracker.getRange(CONFIG.trackerStartRow, 2, n, TC.width - 1).getValues(); // cols B..(width)
+  const trkIds = tracker.getRange(CONFIG.trackerStartRow, TC.discord, n, 1).getDisplayValues(); // IDs as EXACT text — getValues would round a 17-19 digit ID
+  const statusOut = data.map((r) => [r[TC.status - 2]]);
 
   const RC = rosterCols_(roster);
   const rCount = Math.max(0, roster.getLastRow() - CONFIG.rosterStartRow + 1);
@@ -1639,8 +1639,8 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
     summary.scanned++;
     const discordId = String(trkIds[i][0]).trim(); // exact ID text (not the coercion-prone getValues cell)
     if (!discordId) continue;
-    const status = data[i][CONFIG.tracker.status - 2];
-    const end = startOfDay_(new Date(data[i][CONFIG.tracker.end - 2]));
+    const status = data[i][TC.status - 2];
+    const end = startOfDay_(new Date(data[i][TC.end - 2]));
     if (status === APPROVED && isNaN(end.getTime())) {
       logWarn_('processDailyLOAs_', `tracker row ${CONFIG.trackerStartRow + i} is ${APPROVED} but has no valid End date; it will not auto-expire.`);
     }
@@ -1652,8 +1652,8 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
       activity[ri][0] = computeStatus_(rRank[ri][0], parseHours_(rHrs[ri][0]));
       changedRis.add(ri);
     }
-    expirations.push({ name: data[i][CONFIG.tracker.name - 2], rank: data[i][CONFIG.tracker.rank - 2], id: discordId, type });
-    summary.expired.push({ row: CONFIG.trackerStartRow + i, name: data[i][CONFIG.tracker.name - 2], id: discordId });
+    expirations.push({ name: data[i][TC.name - 2], rank: data[i][TC.rank - 2], id: discordId, type });
+    summary.expired.push({ row: CONFIG.trackerStartRow + i, name: data[i][TC.name - 2], id: discordId });
   }
 
   // PASS 2 — start approved leaves whose start date has arrived. Runs AFTER all expiries so a leave
@@ -1662,20 +1662,20 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
     if (statusOut[i][0] === EXPIRED) continue; // a leave that expired this run can't also "start"
     const discordId = String(trkIds[i][0]).trim();
     if (!discordId) continue;
-    const status = data[i][CONFIG.tracker.status - 2];
+    const status = data[i][TC.status - 2];
     if (status !== APPROVED) continue;
-    const start = startOfDay_(new Date(data[i][CONFIG.tracker.start - 2]));
+    const start = startOfDay_(new Date(data[i][TC.start - 2]));
     if (isNaN(start.getTime()) || today.getTime() < start.getTime()) continue;
     const type = trackerLeaveType_();
     const ri = idToIndex.has(discordId) ? idToIndex.get(discordId) : -1;
     if (okToChange(ri, type)) { activity[ri][0] = type; changedRis.add(ri); }
-    summary.started.push({ row: CONFIG.trackerStartRow + i, name: data[i][CONFIG.tracker.name - 2], rank: data[i][CONFIG.tracker.rank - 2], id: discordId, type });
+    summary.started.push({ row: CONFIG.trackerStartRow + i, name: data[i][TC.name - 2], rank: data[i][TC.rank - 2], id: discordId, type });
   }
 
   // F-007: guard both write-backs against a concurrent structural change during the (potentially slow) compute window.
   // If the tracker changed size, a bulk write of `n` rows would misalign — skip it; the run is idempotent and reconciles next time.
   if (tracker.getLastRow() === lastRow) {
-    tracker.getRange(CONFIG.trackerStartRow, CONFIG.tracker.status, n, 1).setValues(statusOut);
+    tracker.getRange(CONFIG.trackerStartRow, TC.status, n, 1).setValues(statusOut);
   } else {
     logWarn_('processDailyLOAs_', `the tracker changed size during the run (was ${lastRow}, now ${tracker.getLastRow()}); skipping the status write-back to avoid misaligning rows — it will reconcile on the next run.`);
   }
@@ -1714,10 +1714,11 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
 function checkImmediateLOAStart(sheet, row) {
   const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
   if (!roster) return;
-  const discordId = sheet.getRange(row, CONFIG.tracker.discord).getDisplayValue(); // exact ID text — getValue would round a 17-19 digit ID
+  const RC = trackerCols_(sheet);
+  const discordId = sheet.getRange(row, RC.discord).getDisplayValue(); // exact ID text — getValue would round a 17-19 digit ID
   const type = trackerLeaveType_(); // LOA-only tracker: no per-row TYPE column
-  const start = startOfDay_(new Date(sheet.getRange(row, CONFIG.tracker.start).getValue()));
-  const end = startOfDay_(new Date(sheet.getRange(row, CONFIG.tracker.end).getValue()));
+  const start = startOfDay_(new Date(sheet.getRange(row, RC.start).getValue()));
+  const end = startOfDay_(new Date(sheet.getRange(row, RC.end).getValue()));
   const today = todayInSheetTz_();
   const ui = SpreadsheetApp.getUi();
 
@@ -1791,10 +1792,9 @@ function appendTrackerRow_(tracker, values) {
   return r;
 }
 
-/** The four computed-leave formula strings for tracker row r (start=H, end=I by layout). Shared by writeLeaveFormulas_ + sortTracker_. */
-function leaveFormulaStrings_(r) {
-  const T = CONFIG.tracker;
-  const s = String.fromCharCode(64 + T.start) + r, e = String.fromCharCode(64 + T.end) + r; // e.g. H8 / I8
+/** The computed-leave formula strings for tracker row r, referencing the resolved START/END columns (RC). */
+function leaveFormulaStrings_(RC, r) {
+  const s = String.fromCharCode(64 + RC.start) + r, e = String.fromCharCode(64 + RC.end) + r; // e.g. H8 / I8
   // Every branch is ISNUMBER-guarded: a blank OR non-date cell yields "" (never #VALUE!). This also protects the
   // header — if a formula ever lands on a text row, it shows blank instead of "INT of text" #VALUE! errors.
   return {
@@ -1805,13 +1805,15 @@ function leaveFormulaStrings_(r) {
   };
 }
 
-/** Write the four computed leave columns for tracker row r (length · time-until-start · time-left · return date = end+1) and their formats. */
-function writeLeaveFormulas_(tracker, r) {
-  const T = CONFIG.tracker, f = leaveFormulaStrings_(r);
-  tracker.getRange(r, T.length).setFormula(f.len);
-  tracker.getRange(r, T.untilStart).setFormula(f.until);
-  tracker.getRange(r, T.timeLeft).setFormula(f.left);
-  tracker.getRange(r, T.returnDate).setFormula(f.ret).setNumberFormat('d mmm. yyyy');
+/** Write the computed leave columns that EXIST on this tracker for row r (length · time-until-start · time-left · return date). Absent columns are skipped. */
+function writeLeaveFormulas_(tracker, r, RC) {
+  RC = RC || trackerCols_(tracker);
+  if (!RC.start || !RC.end) return; // no date columns → nothing to compute
+  const f = leaveFormulaStrings_(RC, r);
+  if (RC.length) tracker.getRange(r, RC.length).setFormula(f.len);
+  if (RC.untilStart) tracker.getRange(r, RC.untilStart).setFormula(f.until);
+  if (RC.timeLeft) tracker.getRange(r, RC.timeLeft).setFormula(f.left);
+  if (RC.returnDate) tracker.getRange(r, RC.returnDate).setFormula(f.ret).setNumberFormat('d mmm. yyyy');
 }
 
 /** Auto-detect the tracker's label row (the row holding a STATUS label plus a NAME/START/END label), scanning the top rows. @return {number} 1-based row, or 0 if not found. */
@@ -1830,6 +1832,56 @@ function trackerLabelRow_(tracker) {
 }
 
 /**
+ * Resolve the LOA Tracker's columns by HEADER LABEL (auto-detected label row) so any column arrangement works — an
+ * operator can rename, reorder, or OMIT columns (e.g. no Return Date, since End Date already tells you when it ends).
+ * Column A (the hidden dedup key) has no header, so it's always 1. When no header row is detected, falls back to the
+ * classic CONFIG.tracker fixed positions. 1-based; 0 = that column isn't present. @return {Object} resolved columns
+ * + labelRow + width (the furthest column, for block reads/writes).
+ */
+function trackerCols_(tracker) {
+  const T = CONFIG.tracker;
+  const out = { key: 1, rank: T.rank, unit: T.unit, ooc: T.ooc, name: T.name, discord: T.discord, shift: T.shift, start: T.start, end: T.end, length: T.length, untilStart: T.untilStart, timeLeft: T.timeLeft, returnDate: T.returnDate, status: T.status, approvedBy: T.approvedBy, notes: T.notes, labelRow: 0, width: 16 };
+  try {
+    const labelRow = trackerLabelRow_(tracker);
+    if (labelRow) {
+      out.labelRow = labelRow;
+      const w = Math.max(1, tracker.getLastColumn());
+      const hdr = tracker.getRange(labelRow, 1, 1, w).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
+      const find = (pred) => { for (let i = 0; i < hdr.length; i++) { if (hdr[i] && pred(hdr[i])) return i + 1; } return 0; };
+      // Header detected → resolve EVERY column from the labels (0 = genuinely absent, e.g. no RETURN DATE column).
+      out.rank = find((h) => h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1);
+      out.unit = find((h) => (h.indexOf('UNIT') !== -1 && h.indexOf('COMMUNITY') === -1) || h.indexOf('CALLSIGN') !== -1);
+      out.ooc = find((h) => h.indexOf('OOC') !== -1);
+      out.name = find((h) => h === 'NAME' || (h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1));
+      out.discord = find((h) => h.indexOf('UNIQUE') !== -1 || h.indexOf('DISCORD') !== -1 || h.indexOf('CID') !== -1 || h.indexOf('COMMUNITY ID') !== -1);
+      out.shift = find((h) => h.indexOf('SHIFT') !== -1 || h.indexOf('DIVISION') !== -1 || h.indexOf('DISTRICT') !== -1);
+      out.start = find((h) => h.indexOf('START') !== -1);
+      out.end = find((h) => h.indexOf('END') !== -1);
+      out.length = find((h) => h.indexOf('LENGTH') !== -1 || h === 'LEN');
+      out.untilStart = find((h) => h.indexOf('UNTIL') !== -1);
+      out.timeLeft = find((h) => h.indexOf('TIME LEFT') !== -1 || (h.indexOf('LEFT') !== -1 && h.indexOf('UNTIL') === -1));
+      out.returnDate = find((h) => h.indexOf('RETURN') !== -1);
+      out.status = find((h) => h.indexOf('STATUS') !== -1);
+      out.approvedBy = find((h) => h.indexOf('APPROV') !== -1);
+      out.notes = find((h) => h.indexOf('NOTE') !== -1);
+    }
+  } catch (e) { log_('trackerCols_', e); }
+  out.width = Math.max(out.key, out.rank, out.unit, out.ooc, out.name, out.discord, out.shift, out.start, out.end, out.length, out.untilStart, out.timeLeft, out.returnDate, out.status, out.approvedBy, out.notes, 16);
+  return out;
+}
+
+/** Build a tracker VALUE row (width W) placing each provided field at its resolved column; absent columns (0) + omitted fields stay blank. */
+function buildTrackerRow_(RC, W, f) {
+  const row = new Array(W).fill('');
+  const put = (col, val) => { if (col >= 1 && col <= W && val !== undefined) row[col - 1] = val; };
+  put(RC.key, f.key); put(RC.rank, f.rank); put(RC.unit, f.unit); put(RC.ooc, f.ooc);
+  put(RC.name, f.name); put(RC.discord, f.discord); put(RC.shift, f.shift);
+  put(RC.start, f.start); put(RC.end, f.end); put(RC.status, f.status);
+  put(RC.approvedBy, f.approvedBy); put(RC.notes, f.notes);
+  return row;
+}
+
+/**
  * Group the LOA Tracker by STATUS — order = [LEAVE].STATUS_FLOW (default: Pending → Approved → Denied → Expired) —
  * via a STABLE, VALUE-ONLY rewrite: the cells stay put (your row banding / STATUS dropdown / borders are preserved),
  * only the leave data is reordered into them. Regenerates the four computed columns + the ID/date formats (they
@@ -1842,24 +1894,25 @@ function sortTracker_(prepend, trackerSheet) {
   try {
     const tracker = trackerSheet || SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.tracker);
     if (!tracker) return;
-    const T = CONFIG.tracker, start = CONFIG.trackerStartRow, W = 16;
-    // SAFETY: never write into the header. If TRACKER_START_ROW points AT/ABOVE the detected label row, bail —
-    // a misconfigured start would otherwise overwrite the header labels (and drop INT-of-text formulas → #VALUE!).
-    const labelRow = trackerLabelRow_(tracker);
-    if (labelRow && start <= labelRow) {
-      logWarn_('sortTracker_', `TRACKER_START_ROW (${start}) is at/above the tracker header (row ${labelRow}); auto-sort skipped to protect the header. Set [ROSTER_LAYOUT].TRACKER_START_ROW to the FIRST DATA ROW (below the header + divider).`);
+    const RC = trackerCols_(tracker), start = CONFIG.trackerStartRow, W = RC.width;
+    if (!RC.status) return; // no STATUS column resolved → nothing to group by
+    // SAFETY: never write into the header. If TRACKER_START_ROW points AT/ABOVE the label row, bail — a misconfigured
+    // start would otherwise overwrite the header labels (and drop INT-of-text formulas → #VALUE!).
+    if (RC.labelRow && start <= RC.labelRow) {
+      logWarn_('sortTracker_', `TRACKER_START_ROW (${start}) is at/above the tracker header (row ${RC.labelRow}); auto-sort skipped to protect the header. Set [ROSTER_LAYOUT].TRACKER_START_ROW to the FIRST DATA ROW.`);
       return;
     }
     const last = tracker.getLastRow();
     const records = [];
     if (last >= start) {
       const n = last - start + 1;
-      const vals = tracker.getRange(start, 1, n, W).getValues();              // Dates preserved
-      const ids = tracker.getRange(start, T.discord, n, 1).getDisplayValues(); // exact 17-19 digit ID text
+      const vals = tracker.getRange(start, 1, n, W).getValues();                        // Dates preserved
+      const ids = RC.discord ? tracker.getRange(start, RC.discord, n, 1).getDisplayValues() : null; // exact ID text
       for (let i = 0; i < n; i++) {
         const row = vals[i].slice(0, W);
-        row[T.discord - 1] = String(ids[i][0]).trim();                        // keep the ID exact (getValues rounds a digit string)
-        if (!String(row[T.key - 1]).trim() && !String(row[T.name - 1]).trim() && !row[T.discord - 1]) continue; // skip blank scaffolding rows
+        if (ids) row[RC.discord - 1] = String(ids[i][0]).trim();                         // keep the ID exact (getValues rounds a digit string)
+        const idv = RC.discord ? String(row[RC.discord - 1] || '').trim() : '';
+        if (!String(row[RC.key - 1] || '').trim() && !String(row[RC.name - 1] || '').trim() && !idv) continue; // skip blank rows
         records.push(row);
       }
     }
@@ -1870,25 +1923,28 @@ function sortTracker_(prepend, trackerSheet) {
     let flow = ['Pending', 'Approved', 'Denied', 'Expired'];
     try { const f = cfg_().leave.STATUS_FLOW; if (f && f.length) flow = f; } catch (e) { /* config broken — classic order */ }
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
-    const prio = (row) => { const k = norm_(String(row[T.status - 1]).trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
+    const prio = (row) => { const k = norm_(String(row[RC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
     const dec = records.map((row, i) => ({ row: row, i: i, p: prio(row) }));
     dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable: ties keep prior order, so a prepended new leave stays on top
     const sorted = dec.map((d) => d.row);
 
     // Write reordered VALUES back into the SAME physical rows. '@' the ID column BEFORE writing so long IDs stay exact.
     if (start + sorted.length - 1 > tracker.getMaxRows()) tracker.insertRowsAfter(tracker.getMaxRows(), start + sorted.length - 1 - tracker.getMaxRows());
-    tracker.getRange(start, T.discord, sorted.length, 1).setNumberFormat('@');
+    if (RC.discord) tracker.getRange(start, RC.discord, sorted.length, 1).setNumberFormat('@');
     tracker.getRange(start, 1, sorted.length, W).setValues(sorted);
     if (last > start + sorted.length - 1) tracker.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent(); // blank any now-unused trailing rows
 
-    // Regenerate the computed columns as ONE batched setFormulas per column (fast — not per-row) + date formats.
-    tracker.getRange(start, T.start, sorted.length, 2).setNumberFormat('d mmm. yyyy');
-    const lenF = [], untF = [], lftF = [], retF = [];
-    for (let k = 0; k < sorted.length; k++) { const f = leaveFormulaStrings_(start + k); lenF.push([f.len]); untF.push([f.until]); lftF.push([f.left]); retF.push([f.ret]); }
-    tracker.getRange(start, T.length, sorted.length, 1).setFormulas(lenF);
-    tracker.getRange(start, T.untilStart, sorted.length, 1).setFormulas(untF);
-    tracker.getRange(start, T.timeLeft, sorted.length, 1).setFormulas(lftF);
-    tracker.getRange(start, T.returnDate, sorted.length, 1).setFormulas(retF).setNumberFormat('d mmm. yyyy');
+    // Date formats + regenerated computed columns (batched setFormulas — only the columns that actually exist).
+    if (RC.start) tracker.getRange(start, RC.start, sorted.length, 1).setNumberFormat('d mmm. yyyy');
+    if (RC.end) tracker.getRange(start, RC.end, sorted.length, 1).setNumberFormat('d mmm. yyyy');
+    if (RC.start && RC.end) {
+      const lenF = [], untF = [], lftF = [], retF = [];
+      for (let k = 0; k < sorted.length; k++) { const f = leaveFormulaStrings_(RC, start + k); lenF.push([f.len]); untF.push([f.until]); lftF.push([f.left]); retF.push([f.ret]); }
+      if (RC.length) tracker.getRange(start, RC.length, sorted.length, 1).setFormulas(lenF);
+      if (RC.untilStart) tracker.getRange(start, RC.untilStart, sorted.length, 1).setFormulas(untF);
+      if (RC.timeLeft) tracker.getRange(start, RC.timeLeft, sorted.length, 1).setFormulas(lftF);
+      if (RC.returnDate) tracker.getRange(start, RC.returnDate, sorted.length, 1).setFormulas(retF).setNumberFormat('d mmm. yyyy');
+    }
   } catch (e) { log_('sortTracker_', e); }
 }
 
@@ -2153,6 +2209,7 @@ function syncFormToTracker_(form, tracker, opts = {}) {
   const values = range.getValues();
   const backgrounds = range.getBackgrounds();
   const synced = buildSyncedKeySet_(tracker);
+  const RC = trackerCols_(tracker); // resolve the tracker's columns by header (any layout)
   const tz = ssTz_();
   const doneBg = String(CONFIG.bg.done).toLowerCase(); // lowercase once — a Studio-picked theme colour can be uppercase (getBackgrounds returns lowercase)
 
@@ -2206,8 +2263,8 @@ function syncFormToTracker_(form, tracker, opts = {}) {
 
       const oi = rosterOocShift_(discord); // auto-fill OOC name + shift from the roster (by Unique ID)
       // Prepend the new leave at the TOP and re-group by status — a new Pending lands at the top of the list.
-      // sortTracker_ keeps the ID exact, rewrites the computed columns, and preserves the tab's row formatting.
-      sortTracker_([dedupKey, rank, callsign, oi.ooc, name, discord, oi.shift, startDate, endDate, '', '', '', '', CONFIG.pendingStatus, '', ''], tracker);
+      // Fields are placed by their resolved header column (any layout), the ID stays exact, formatting is preserved.
+      sortTracker_(buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: rank, unit: callsign, ooc: oi.ooc, name: name, discord: discord, shift: oi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus }), tracker);
 
       if (dedupKey) synced[dedupKey] = true;
       const leaf = { name, rank, callsign, type, startStr, endStr, durationStr, discord };
@@ -2229,7 +2286,7 @@ function buildSyncedKeySet_(tracker) {
   const last = tracker.getLastRow();
   if (last < CONFIG.trackerStartRow) return set;
   const n = last - CONFIG.trackerStartRow + 1;
-  const keys = tracker.getRange(CONFIG.trackerStartRow, CONFIG.tracker.key, n, 1).getValues();
+  const keys = tracker.getRange(CONFIG.trackerStartRow, trackerCols_(tracker).key, n, 1).getValues();
   keys.forEach(([k]) => {
     const key = String(k).trim();
     if (key.indexOf('KEY|') === 0) set[key] = true;
@@ -2450,9 +2507,10 @@ function notifyEvent_(channel, on, event, vars, fallbackEmbed, mention) {
 function notifyLeaveApproved_(sheet, row) {
   if (!CONFIG.notify || !CONFIG.notify.leaveApproved) return;
   try {
+    const RC = trackerCols_(sheet);
     const g = (col) => String(sheet.getRange(row, col).getDisplayValue());
     const type = trackerLeaveType_() || 'Leave';
-    const vars = { name: g(CONFIG.tracker.name), rank: g(CONFIG.tracker.rank), type, start: g(CONFIG.tracker.start), end: g(CONFIG.tracker.end) };
+    const vars = { name: g(RC.name), rank: g(RC.rank), type, start: g(RC.start), end: g(RC.end) };
     notifyEvent_('LOA', true, 'loaApproved', vars, {
       title: fill_(CONFIG.notify.approvedTitle, { type: type }),
       color: hexToInt_(CONFIG.notify.approvedColor, 5749594),
@@ -2462,7 +2520,7 @@ function notifyLeaveApproved_(sheet, row) {
         { name: '▶️ Start Date', value: clamp_(dash_(vars.start), 1000), inline: true },
         { name: '⏹️ End Date', value: clamp_(dash_(vars.end), 1000), inline: true },
       ],
-    }, mention_(g(CONFIG.tracker.discord)));
+    }, mention_(g(RC.discord)));
   } catch (e) { log_('notifyLeaveApproved_', e); }
 }
 

@@ -995,6 +995,27 @@ function devSyncTests_() {
     devEq_(R, 'sortTracker_ prepend -> total is now 5 rows', devDataRows_(tr, CONFIG.trackerStartRow), 5);
   })();
 
+  // trackerCols_ resolves a NO-Return-Date layout (Status/Approved By/Notes shift left) and sortTracker_ respects it —
+  // the STATUS column must keep its value, NOT get a return-date formula written into it (the header-corruption bug).
+  (() => {
+    const sh = devFreshSheet_('TrackerNoRet');
+    const hr = Math.max(1, CONFIG.trackerStartRow - 2);
+    sh.getRange(hr, 1, 1, 15).setValues([['KEY', 'RANK', 'UNIT NUMBER', 'OOC NAME', 'NAME', 'UNIQUE ID', 'SHIFT', 'LOA START DATE', 'LOA END DATE', 'LOA LENGTH', 'TIME UNTIL START', 'TIME LEFT', 'STATUS', 'APPROVED BY', 'NOTES']]);
+    const TC = trackerCols_(sh);
+    devEq_(R, 'no-return: status resolves to M (13)', TC.status, 13);
+    devEq_(R, 'no-return: approvedBy resolves to N (14)', TC.approvedBy, 14);
+    devEq_(R, 'no-return: notes resolves to O (15)', TC.notes, 15);
+    devEq_(R, 'no-return: returnDate absent -> 0', TC.returnDate, 0);
+    devEq_(R, 'no-return: discord = F (6, from "UNIQUE ID")', TC.discord, 6);
+    devEq_(R, 'no-return: timeLeft = L (12, not the UNTIL col)', TC.timeLeft, 12);
+    const row = buildTrackerRow_(TC, TC.width, { key: 'KEY|x|1', rank: 'Trooper', name: 'NoRet', discord: devId_(90), start: devDay_(2), end: devDay_(9), status: 'Pending' });
+    sh.getRange(CONFIG.trackerStartRow, 1, 1, TC.width).setValues([row]);
+    sortTracker_(null, sh);
+    devEq_(R, 'no-return: STATUS cell (13) keeps its value', sh.getRange(CONFIG.trackerStartRow, 13).getDisplayValue(), 'Pending');
+    devEq_(R, 'no-return: STATUS cell (13) is NOT a formula', sh.getRange(CONFIG.trackerStartRow, 13).getFormula(), '');
+    devCheck_(R, 'no-return: LENGTH col (10) still gets its formula', sh.getRange(CONFIG.trackerStartRow, 10).getFormula().indexOf('INT(') !== -1);
+  })();
+
   return R;
 }
 
