@@ -511,6 +511,7 @@ function buildGroupSheets_() {
   const rHdrUp = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
   const rName = "'" + String(CONFIG.sheets.roster).replace(/'/g, "''") + "'";
   const start = CONFIG.rosterStartRow;
+  const headerToData = Math.max(1, start - RC.headerRow); // roster gap between the label row and the first member row (e.g. divider row 7 → data starts row 8)
   const L = (c) => groupColLetter_(c);
   // marker/inferred column name → roster column: exact match wins (so "NAME" beats "OOC NAME"), then a contains match.
   const colFor = (label) => {
@@ -552,7 +553,7 @@ function buildGroupSheets_() {
     for (let i = 0; i < hdr.headers.length; i++) { const h = hdr.headers[i]; if (h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1) { rankTabCol = i + 1; break; } }
     if (!rankTabCol) rankTabCol = 1;
     if (!gCol) { skipped.push({ name: nm, why: 'couldn\'t match "' + (marker ? marker.raw : nm) + '" to a roster column' }); return; }
-    const dataRow = hdr.row + 1;
+    const dataRow = hdr.row + headerToData; // skip the same divider gap the roster leaves below its header (member rows start there)
     const fillW = Math.min(rosterWidth, sh.getMaxColumns() - rankTabCol + 1);
     if (fillW <= 0) { skipped.push({ name: nm, why: 'not enough columns to the right of RANK' }); return; }
     // Fill-only: clear just the data CELLS we own (content, never formatting — the tab's layout stays put), then drop the FILTER.
