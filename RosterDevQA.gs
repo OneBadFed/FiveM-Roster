@@ -35,6 +35,7 @@ function addDevMenu_(prefix) {
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('🧪 Dev / QA')
     .addItem('🎬 Load Demo Roster (preview)', p + 'seedDemoRoster')
+    .addItem('🎲 Add Random LOA (test)', p + 'devAddRandomLOA')
     .addSeparator()
     .addItem('▶️ Run ALL Tests', p + 'devRunAllTests')
     .addSubMenu(ui.createMenu('🔬 Run one section')
@@ -68,6 +69,51 @@ function devCleanup() {
   const res = ss.getSheetByName(RESULTS_TAB);
   if (res) ss.deleteSheet(res);
   SpreadsheetApp.getUi().alert('🧹 Removed sandbox + results tabs.');
+}
+
+/**
+ * Dev/QA quick tool: add ONE random Pending LOA to the LIVE tracker — a random roster member (with a valid Unique
+ * ID) + random start/end dates — to exercise the new-at-top + auto-sort-by-status behavior. Run it repeatedly to
+ * add them one at a time. These are real test rows (noted "🎲 random test"); delete them or change their status
+ * when you're done. Goes through the same path as a real add (sortTracker_), so each one lands at the top of Pending.
+ */
+function devAddRandomLOA() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActive();
+  const roster = ss.getSheetByName(CONFIG.sheets.roster);
+  const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
+  if (!roster || !tracker) { ui.alert('🎲 Add Random LOA', `Need both the "${CONFIG.sheets.roster}" and "${CONFIG.sheets.tracker}" tabs.`, ui.ButtonSet.OK); return; }
+
+  const RC = rosterCols_(roster);
+  const start = CONFIG.rosterStartRow, last = roster.getLastRow();
+  const n = Math.max(0, last - start + 1);
+  const ranks = n ? roster.getRange(start, RC.rank, n, 1).getValues() : [];
+  const names = n ? roster.getRange(start, RC.name, n, 1).getValues() : [];
+  const ids = n ? roster.getRange(start, RC.discord, n, 1).getDisplayValues() : [];
+  const eligible = [];
+  for (let i = 0; i < n; i++) {
+    const id = String(ids[i][0]).trim();
+    if (isValidMemberValues_(ranks[i][0], names[i][0]) && DISCORD_ID_RE.test(id)) eligible.push(start + i);
+  }
+  if (!eligible.length) { ui.alert('🎲 Add Random LOA', 'No members with a valid 17-19 digit Unique ID to pick from — assign some members first.', ui.ButtonSet.OK); return; }
+
+  const row = eligible[Math.floor(Math.random() * eligible.length)];
+  const rank = String(roster.getRange(row, RC.rank).getDisplayValue()).trim();
+  const name = String(roster.getRange(row, RC.name).getDisplayValue()).trim();
+  const unit = RC.unit ? String(roster.getRange(row, RC.unit).getDisplayValue()).trim() : '';
+  const discord = String(roster.getRange(row, RC.discord).getDisplayValue()).trim();
+  const ooc = RC.ooc ? String(roster.getRange(row, RC.ooc).getDisplayValue()).trim() : '';
+  const shift = RC.shift ? String(roster.getRange(row, RC.shift).getDisplayValue()).trim() : '';
+
+  const today = todayInSheetTz_();
+  const startD = new Date(today.getFullYear(), today.getMonth(), today.getDate() + (Math.floor(Math.random() * 17) - 2)); // -2..+14 days
+  const endD = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate() + (3 + Math.floor(Math.random() * 19))); // +3..+21 days
+  const key = makeLeaveKey_(discord, new Date()); // timestamp key → always unique (never dedup-collides)
+
+  // Same 16-col row + path as a real add: prepend to the top, auto-group by status, keep the ID exact.
+  sortTracker_([key, rank, unit, ooc, name, discord, shift, startD, endD, '', '', '', '', CONFIG.pendingStatus, '', '🎲 random test'], tracker);
+  SpreadsheetApp.flush();
+  ui.alert('🎲 Add Random LOA', `Added a ${CONFIG.pendingStatus} LOA at the top:\n\n${name || '(unnamed)'} — ${rank}\n${fmtDisplay_(startD)} → ${fmtDisplay_(endD)}\n\nRun it again to add another.`, ui.ButtonSet.OK);
 }
 
 /* ======================================================================
