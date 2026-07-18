@@ -559,8 +559,6 @@ function buildGroupSheets_() {
   if (!rosterBandCol && RC.rank > 1) rosterBandCol = RC.rank - 1;
   const firstColRange = rName + '!' + L(firstCol) + start + ':' + L(firstCol); // for ROW() row-range tests
   const rosterRanges = rosterBandRanges_(roster, rosterBandCol); // group label → roster row range
-  const rosterCbOffsets = checkboxOffsets_(roster, start, firstCol, rosterWidth); // roster checkbox columns → render as boxes (not "TRUE"/"FALSE") on group tabs
-  const CB_RULE = SpreadsheetApp.newDataValidation().requireCheckbox().build();
   // Don't touch the roster or the engine's own system tabs.
   const sysNames = {};
   Object.keys(CONFIG.sheets || {}).forEach((k) => { if (CONFIG.sheets[k]) sysNames[String(CONFIG.sheets[k]).toUpperCase()] = true; });
@@ -597,10 +595,11 @@ function buildGroupSheets_() {
       if (combined.indexOf('RANK') !== -1 && combined.indexOf('GROUP') !== -1) { tabBandCol = i + 1; break; }
     }
     if (!tabBandCol && rankTabCol > 1) tabBandCol = rankTabCol - 1;
-    // Clear only the member CELLS we fill (content + any blocking merges) — never formatting, never column B (your bands stay put).
+    // Clear only the member CELLS we fill (content + any blocking merges + stray validations, e.g. a checkbox rule that
+    // would occupy the array's cells) — never formatting, never column B (your bands stay put) — so the FILTER can spill.
     if (sh.getMaxRows() >= dataRow) {
       const area = sh.getRange(dataRow, rankTabCol, sh.getMaxRows() - dataRow + 1, fillW);
-      area.breakApart(); area.clearContent();
+      area.breakApart(); area.clearContent(); area.clearDataValidations();
     }
     const gRange = rName + '!' + L(gCol) + start + ':' + L(gCol);
     // "Starts with" (case/space-tolerant) so a "Day Shift" tab finds a roster SHIFT of "Days"; OR across listed values.
@@ -614,8 +613,6 @@ function buildGroupSheets_() {
       if (!rb) return; // a tab band whose label isn't one of the roster's rank groups — leave it blank
       const f = '=IFERROR(ARRAY_CONSTRAIN(FILTER(' + block + ',' + shiftOR + ',' + nameRange + '<>"",ROW(' + firstColRange + ')>=' + rb.top + ',ROW(' + firstColRange + ')<=' + rb.bottom + '),' + tb.height + ',' + rosterWidth + '),"")';
       sh.getRange(tb.top, rankTabCol).setFormula(f);
-      // Give the checkbox columns a checkbox rule so the FILTER's TRUE/FALSE render as boxes (the roster columns start at rankTabCol).
-      rosterCbOffsets.forEach((off) => { const c = rankTabCol + off; if (c >= 1 && c <= sh.getMaxColumns()) sh.getRange(tb.top, c, tb.height, 1).setDataValidation(CB_RULE); });
       placed++;
     });
     if (!placed) {
