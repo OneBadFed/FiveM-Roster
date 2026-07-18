@@ -43,7 +43,35 @@ try {
   Object.defineProperty(globalThis, 'CONFIG', { configurable: true, get: function () { return cfg_().legacy; } });
 } catch (e) { console.error('CONFIG bridge install failed: ' + e); }
 
-const DISCORD_ID_RE = /^\d{17,19}$/;
+const DISCORD_ID_RE = /^\d{17,19}$/; // STRICT Discord snowflake — used ONLY to gate @mention pings (see mention_)
+
+/**
+ * Validates a member Unique ID against the CONFIGURED digit range ([ROSTER_LAYOUT].ID_MIN_DIGITS…ID_MAX_DIGITS).
+ * Default 17-19 (a Discord ID); set the range to e.g. 1-8 for a short Community/CID. Digits only; blank is invalid.
+ * This — not DISCORD_ID_RE — is the identity check used everywhere a Unique ID is accepted (roster, tracker, form).
+ * @mention pings deliberately keep the strict Discord test, because a short Community ID isn't a pingable snowflake.
+ */
+function isValidId_(id) {
+  const s = String(id == null ? '' : id).trim();
+  if (!/^\d+$/.test(s)) return false;
+  let lo = 17, hi = 19;
+  try { if (CONFIG.idMinDigits) lo = CONFIG.idMinDigits; if (CONFIG.idMaxDigits) hi = CONFIG.idMaxDigits; } catch (e) {}
+  return s.length >= lo && s.length <= hi;
+}
+
+/** Human label for the accepted ID length, e.g. "17-19" or "8" (used in operator-facing messages). */
+function idDigitsLabel_() {
+  let lo = 17, hi = 19;
+  try { if (CONFIG.idMinDigits) lo = CONFIG.idMinDigits; if (CONFIG.idMaxDigits) hi = CONFIG.idMaxDigits; } catch (e) {}
+  return lo === hi ? String(lo) : (lo + '-' + hi);
+}
+
+/** Regex SOURCE (for a Sheets/Forms REGEXMATCH rule) that accepts the configured ID digit range. */
+function idRegexSource_() {
+  let lo = 17, hi = 19;
+  try { if (CONFIG.idMinDigits) lo = CONFIG.idMinDigits; if (CONFIG.idMaxDigits) hi = CONFIG.idMaxDigits; } catch (e) {}
+  return '^\\d{' + lo + ',' + hi + '}$';
+}
 
 /* ======================================================================
  * HEADER-BASED COLUMN RESOLUTION
@@ -371,8 +399,8 @@ function createLeaveForm_(ss) {
     form.addTextItem().setTitle(label('NAME', 'Name')).setRequired(true);
     form.addTextItem().setTitle(label('DISCORD_ID', 'Discord ID')).setRequired(true)
       .setValidation(FormApp.createTextValidation()
-        .setHelpText('17-19 digits — copy it from Discord, never retype it.')
-        .requireTextMatchesPattern('^\\d{17,19}$').build());
+        .setHelpText(idDigitsLabel_() + ' digits — copy-paste it, never retype it.')
+        .requireTextMatchesPattern(idRegexSource_()).build());
     form.addTextItem().setTitle(label('CALLSIGN', 'Callsign')).setRequired(true);
     form.addTextItem().setTitle(label('RANK', 'Rank')).setRequired(true);
     form.addListItem().setTitle(label('TYPE', 'Status')).setChoiceValues(types).setRequired(true);
@@ -538,9 +566,9 @@ function installDataValidation_() {
   const idRuleFor = (range) => {
     const top = range.getCell(1, 1).getA1Notation();
     return SpreadsheetApp.newDataValidation()
-      .requireFormulaSatisfied(`=OR(${top}="",REGEXMATCH(TO_TEXT(${top}),"^\\d{17,19}$"))`)
+      .requireFormulaSatisfied(`=OR(${top}="",REGEXMATCH(TO_TEXT(${top}),"${idRegexSource_()}"))`)
       .setAllowInvalid(false)
-      .setHelpText('Discord ID must be a 17-19 digit number (digits only), or left blank. Copy-paste it — never retype it.')
+      .setHelpText('Unique ID must be a ' + idDigitsLabel_() + '-digit number (digits only), or left blank. Copy-paste it — never retype it.')
       .build();
   };
   const dateRule = (msg) => SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(true).setHelpText(msg).build();
@@ -1022,7 +1050,7 @@ function onEdit(e) {
         const rLast = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
         for (let rr = Math.max(row, CONFIG.trackerStartRow); rr <= rLast; rr++) {
           const idv = String(sheet.getRange(rr, TRC.discord).getDisplayValue()).trim();
-          if (DISCORD_ID_RE.test(idv)) autoFillTrackerRow_(sheet, rr, TRC, idv);
+          if (isValidId_(idv)) autoFillTrackerRow_(sheet, rr, TRC, idv);
         }
       }
       // A STATUS change applies an approved leave immediately + re-groups the tracker.
@@ -1812,7 +1840,7 @@ function rosterOocShift_(discordId) {
  */
 function autoFillTrackerRow_(tracker, row, TC, id) {
   try {
-    if (!DISCORD_ID_RE.test(String(id))) return;
+    if (!isValidId_(id)) return;
     const mi = rosterOocShift_(id); // full roster record by Unique ID
     const put = (c, v) => { if (c && v !== undefined && String(v) !== '') tracker.getRange(row, c).setValue(v); };
     if (mi.found) { put(TC.rank, mi.rank); put(TC.unit, mi.unit); put(TC.ooc, mi.ooc); put(TC.name, mi.name); put(TC.shift, mi.shift); }
@@ -2041,7 +2069,7 @@ function patrolFindRow_(roster, discord, callsign) {
   const names = roster.getRange(CONFIG.rosterStartRow, RC.name, n, 1).getValues();
   const id = String(discord == null ? '' : discord).trim();
   if (id !== '') { // an ID was given — trust it, don't fall back to callsign
-    if (!DISCORD_ID_RE.test(id)) return -1; // malformed ID → error (operator fixes it), not a callsign guess
+    if (!isValidId_(id)) return -1; // malformed ID → error (operator fixes it), not a callsign guess
     const ids = roster.getRange(CONFIG.rosterStartRow, RC.discord, n, 1).getDisplayValues();
     for (let i = 0; i < n; i++) { if (isValidMemberValues_(ranks[i][0], names[i][0]) && String(ids[i][0]).trim() === id) return CONFIG.rosterStartRow + i; }
     return -1; // valid ID but not on the roster → error, NOT a callsign fallback
@@ -2269,7 +2297,7 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const endRaw = row[CONFIG.form.end - 1];
 
       if (!startRaw || !endRaw) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
-      if (!DISCORD_ID_RE.test(discord)) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
+      if (!isValidId_(discord)) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
       // LOA-only tracker: reject any non-LOA submission (e.g. an ROA form row) — the tracker has no TYPE column, so a
       // different type would sync "done" (green) yet activate/expire as the wrong status.
       const trkType = trackerLeaveType_();
@@ -2943,13 +2971,13 @@ function checkDuplicateDiscordIds() {
     const id = String(ids[i][0]).trim();
     if (id === '') continue;
     const who = `${names[i][0] || '(no name)'} (row ${CONFIG.rosterStartRow + i})`;
-    if (!DISCORD_ID_RE.test(id)) malformed.push(`${who}: "${id}"`);
+    if (!isValidId_(id)) malformed.push(`${who}: "${id}"`);
     (seen[id] = seen[id] || []).push(who);
   }
 
   const dup = Object.keys(seen).filter((k) => seen[k].length > 1).map((k) => `ID ${k} → ${seen[k].join(', ')}`);
   const out = [dup.length ? `DUPLICATE IDs (${dup.length}):\n${dup.join('\n')}` : 'No duplicate Discord IDs found.'];
-  if (malformed.length) out.push(`\nNOT 17-19 DIGITS (${malformed.length}):\n${malformed.join('\n')}`);
+  if (malformed.length) out.push(`\nNOT ${idDigitsLabel_()} DIGITS (${malformed.length}):\n${malformed.join('\n')}`);
   SpreadsheetApp.getUi().alert(out.join('\n'));
   });
 }

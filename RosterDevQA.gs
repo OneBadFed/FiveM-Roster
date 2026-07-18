@@ -93,9 +93,9 @@ function devAddRandomLOA() {
   const eligible = [];
   for (let i = 0; i < n; i++) {
     const id = String(ids[i][0]).trim();
-    if (isValidMemberValues_(ranks[i][0], names[i][0]) && DISCORD_ID_RE.test(id)) eligible.push(start + i);
+    if (isValidMemberValues_(ranks[i][0], names[i][0]) && isValidId_(id)) eligible.push(start + i);
   }
-  if (!eligible.length) { ui.alert('🎲 Add Random LOA', 'No members with a valid 17-19 digit Unique ID to pick from — assign some members first.', ui.ButtonSet.OK); return; }
+  if (!eligible.length) { ui.alert('🎲 Add Random LOA', 'No members with a valid ' + idDigitsLabel_() + '-digit Unique ID to pick from — assign some members first.', ui.ButtonSet.OK); return; }
 
   const row = eligible[Math.floor(Math.random() * eligible.length)];
   const rank = String(roster.getRange(row, RC.rank).getDisplayValue()).trim();
@@ -359,12 +359,23 @@ function devDeleteSandbox_() {
   ss.getSheets().forEach((sh) => { if (sh.getName().indexOf(SANDBOX_PREFIX) === 0) ss.deleteSheet(sh); });
 }
 
-/** Unique, precision-safe 18-digit Discord-like ID by STRING concat (never arithmetic). */
+/**
+ * Unique, precision-safe ID by STRING concat (never arithmetic). The length ADAPTS to the configured ID range
+ * ([ROSTER_LAYOUT].ID_MIN_DIGITS…ID_MAX_DIGITS) so the suite generates valid IDs whether the live deployment uses
+ * Discord snowflakes (17-19) or short Community/CID values (1-8). Prefers an 18-digit ID, clamped into the range.
+ */
 function devId_(i) {
-  let suffix = String(i);
-  while (suffix.length < 7) suffix = `0${suffix}`;
-  return `11000000000${suffix}`; // 11 fixed + 7 = 18 digits, all distinct
+  let min = 17, max = 19;
+  try { if (CONFIG.idMinDigits) min = CONFIG.idMinDigits; if (CONFIG.idMaxDigits) max = CONFIG.idMaxDigits; } catch (e) {}
+  const len = Math.min(Math.max(18, min), max); // prefer 18 (Discord-like), clamped into the configured range
+  const bodyLen = Math.max(1, len - 1);
+  let body = String(i);
+  while (body.length < bodyLen) body = `0${body}`;
+  return `1${body.slice(-bodyLen)}`; // leading '1' + last (len-1) digits of i → exactly `len` digits, all distinct
 }
+
+/** An ID that is INVALID under any digit-range config (non-numeric) — for "rejects a malformed ID" assertions. */
+function devBadId_() { return 'not-an-id'; }
 
 /** Today +/- offset days at midnight (keeps the suite from rotting). */
 function devDay_(offset) {
@@ -454,7 +465,7 @@ function devScanDuplicateIds_(roster) {
     if (!isValidMemberValues_(ranks[i][0], names[i][0])) continue;
     const id = String(ids[i][0]).trim();
     if (id === '') continue;
-    if (!/^\d{17,19}$/.test(id)) malformed.push(id);
+    if (!isValidId_(id)) malformed.push(id);
     (seen[id] = seen[id] || []).push(i);
   }
   const duplicates = Object.keys(seen).filter((k) => seen[k].length > 1);
@@ -593,10 +604,12 @@ function devUnitTests_() {
   const tod = todayInSheetTz_();
   devCheck_(R, 'todayInSheetTz_ is a midnight Date', tod instanceof Date && tod.getHours() === 0 && tod.getMinutes() === 0);
 
-  // --- mention_ (gate is DISCORD_ID_RE; suffix is config-driven so test the gate only) ---
-  const goodId = devId_(1);
-  devCheck_(R, 'mention_ valid 18-digit ID -> "<@id>" ping', mention_(goodId).indexOf('<@' + goodId + '>') === 0, mention_(goodId));
+  // --- mention_ (gate is the STRICT Discord snowflake DISCORD_ID_RE, independent of the configurable ID range —
+  //     a short Community ID is NOT a pingable snowflake, so use a literal 18-digit Discord ID here) ---
+  const goodId = '110000000000000001';
+  devCheck_(R, 'mention_ valid 18-digit Discord ID -> "<@id>" ping', mention_(goodId).indexOf('<@' + goodId + '>') === 0, mention_(goodId));
   devCheck_(R, 'mention_ 16-digit ID -> no ping', mention_('1234567890123456').indexOf('<@') === -1);
+  devCheck_(R, 'mention_ short Community ID -> no ping (not a snowflake)', mention_('12345').indexOf('<@') === -1);
   devCheck_(R, 'mention_ non-numeric ID -> no ping', mention_('not-an-id').indexOf('<@') === -1);
 
   // --- webhookChannel_ normalization (unknown -> LOA) ---
@@ -628,7 +641,25 @@ function devUnitTests_() {
   const idset = {}; let dupes = 0;
   for (let i = 0; i < 1005; i++) { const id = devId_(i); if (idset[id]) dupes++; idset[id] = true; }
   devEq_(R, 'devId_ generates 1005 unique IDs', dupes, 0);
-  devCheck_(R, 'devId_ IDs are all 18 digits', Object.keys(idset).every((k) => /^\d{18}$/.test(k)));
+  devCheck_(R, 'devId_ IDs all pass the configured ID validation', Object.keys(idset).every((k) => isValidId_(k)));
+
+  // --- isValidId_ / idDigitsLabel_ / idRegexSource_ (CONFIGURABLE Unique-ID length: 17-19 Discord default, 1-8 Community/CID) ---
+  devWithConfig_({}, () => {
+    devEq_(R, 'idDigitsLabel_ default is "17-19"', idDigitsLabel_(), '17-19');
+    devCheck_(R, 'isValidId_ accepts a valid 18-digit ID (default)', isValidId_('110000000000000001'));
+    devCheck_(R, 'isValidId_ rejects a 16-digit ID (default)', !isValidId_('1234567890123456'));
+    devCheck_(R, 'isValidId_ rejects a short 5-digit ID (default)', !isValidId_('12345'));
+    devCheck_(R, 'isValidId_ rejects a non-numeric ID', !isValidId_('not-an-id'));
+    devCheck_(R, 'isValidId_ rejects blank / whitespace', !isValidId_('') && !isValidId_('   '));
+  });
+  devWithConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { ID_MIN_DIGITS: 1, ID_MAX_DIGITS: 8 } } }, () => {
+    devEq_(R, 'idDigitsLabel_ Community range is "1-8"', idDigitsLabel_(), '1-8');
+    devCheck_(R, 'isValidId_ accepts a 1-digit Community ID', isValidId_('7'));
+    devCheck_(R, 'isValidId_ accepts an 8-digit Community ID', isValidId_('12345678'));
+    devCheck_(R, 'isValidId_ rejects a 9-digit ID (over max)', !isValidId_('123456789'));
+    devCheck_(R, 'isValidId_ rejects an 18-digit Discord ID (over max)', !isValidId_('110000000000000001'));
+    devCheck_(R, 'idRegexSource_ builds the ^\\d{1,8}$ pattern', idRegexSource_() === '^\\d{1,8}$');
+  });
 
   return R;
 }
@@ -938,14 +969,22 @@ function devSyncTests_() {
     devEq_(R, 'missing dates -> row marked error', form.getRange(2, 1).getBackground().toLowerCase(), String(CONFIG.bg.error).toLowerCase());
   })();
 
-  // Discord ID length boundaries: 16 rejected, 20 rejected, whitespace rejected, 17 accepted.
-  (() => {
+  // Unique-ID length boundaries under the DEFAULT (Discord 17-19) range: 16 rejected, 20 rejected, whitespace rejected, 17 accepted.
+  devWithConfig_({}, () => {
     const mk = (id) => { const tr = devBuildTracker_([]); syncFormToTracker_(devBuildForm_([{ ts: devDay_(0), name: 'B', id: id, callsign: 'S-1', rank: 'Trooper', type: 'LOA', start: devDay_(2), end: devDay_(9) }]), tr, NO_HOOK); return tr; };
-    devCheck_(R, '16-digit ID rejected', mk('1234567890123456').getLastRow() < CONFIG.trackerStartRow);
-    devCheck_(R, '20-digit ID rejected', mk('12345678901234567890').getLastRow() < CONFIG.trackerStartRow);
+    devCheck_(R, '16-digit ID rejected (Discord range)', mk('1234567890123456').getLastRow() < CONFIG.trackerStartRow);
+    devCheck_(R, '20-digit ID rejected (Discord range)', mk('12345678901234567890').getLastRow() < CONFIG.trackerStartRow);
     devCheck_(R, 'whitespace-only ID rejected', mk('   ').getLastRow() < CONFIG.trackerStartRow);
     devEq_(R, '17-digit ID accepted -> one row', devDataRows_(mk('12345678901234567'), CONFIG.trackerStartRow), 1);
-  })();
+  });
+
+  // CONFIGURABLE ID range — a Community/CID deployment ([ID_MIN_DIGITS]=1, [ID_MAX_DIGITS]=8): a short ID is accepted, a Discord-length one is rejected.
+  devWithConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { ID_MIN_DIGITS: 1, ID_MAX_DIGITS: 8 } } }, () => {
+    const mk = (id) => { const tr = devBuildTracker_([]); syncFormToTracker_(devBuildForm_([{ ts: devDay_(0), name: 'C', id: id, callsign: 'S-1', rank: 'Trooper', type: 'LOA', start: devDay_(2), end: devDay_(9) }]), tr, NO_HOOK); return tr; };
+    devEq_(R, 'Community range: 5-digit ID accepted -> one row', devDataRows_(mk('12345'), CONFIG.trackerStartRow), 1);
+    devCheck_(R, 'Community range: 1-digit ID accepted', devDataRows_(mk('7'), CONFIG.trackerStartRow) === 1);
+    devCheck_(R, 'Community range: 18-digit ID rejected', mk('110000000000000001').getLastRow() < CONFIG.trackerStartRow);
+  });
 
   // Reversed dates (end before start): no crash, still appends a row.
   (() => {
@@ -1115,7 +1154,7 @@ function devMaintenanceTests_() {
     const ro = devBuildRoster_([
       { rank: 'Trooper', name: 'A', id: devId_(40) },
       { rank: 'Trooper', name: 'B', id: devId_(40) },   // duplicate
-      { rank: 'Trooper', name: 'C', id: '123' },         // malformed
+      { rank: 'Trooper', name: 'C', id: devBadId_() },   // malformed (invalid under any ID range)
       { rank: 'Trooper', name: 'D', id: 'abcdefgh' },    // malformed
     ]);
     const scan = devScanDuplicateIds_(ro);
@@ -1156,8 +1195,8 @@ function devWebhookTests_() {
   // dash_ guarantees a non-empty string for any blank-ish input.
   [null, undefined, '', '   '].forEach((v, i) => devCheck_(R, 'dash_ output non-empty for blank input #' + i, dash_(v).length > 0));
 
-  // mention_ gate (only a valid 17-19 digit ID produces a ping).
-  devCheck_(R, 'mention_ valid ID pings', mention_(devId_(1)).indexOf('<@') === 0);
+  // mention_ gate (only a true 17-19 digit Discord snowflake produces a ping — not the configurable ID range).
+  devCheck_(R, 'mention_ valid Discord ID pings', mention_('110000000000000001').indexOf('<@') === 0);
   devCheck_(R, 'mention_ short ID does not ping', mention_('123').indexOf('<@') === -1);
 
   return R;
@@ -1174,7 +1213,7 @@ function devIdMatchTests_() {
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'A', id: devId_(1), activity: 'Active', hours: 5 }]);
     updateRosterStatus(ro, devId_(1), 'LOA');
-    devEq_(R, 'exact 18-digit match sets status', devActivity_(ro, 0), 'LOA');
+    devEq_(R, 'exact Unique-ID match sets status', devActivity_(ro, 0), 'LOA');
   })();
 
   // Near-miss (differs only in the last digit) must NOT match — precision-safe.
@@ -1319,7 +1358,7 @@ function devPanelTests_() {
     try { cpAssignMember_(ro, { row: CONFIG.rosterStartRow, name: 'X', discord: devId_(10) }); } catch (e) { filled = true; } // slot now filled
     const ro2 = devBuildRoster_([{ rank: 'Trooper', name: 'Held', id: devId_(11) }, { rank: 'Trooper', name: '', id: '' }]);
     try { cpAssignMember_(ro2, { row: CONFIG.rosterStartRow + 1, name: 'Dupe', discord: devId_(11) }); } catch (e) { dup = true; }
-    try { cpAssignMember_(ro2, { row: CONFIG.rosterStartRow + 1, name: 'Bad', discord: '123' }); } catch (e) { mal = true; }
+    try { cpAssignMember_(ro2, { row: CONFIG.rosterStartRow + 1, name: 'Bad', discord: devBadId_() }); } catch (e) { mal = true; }
     devCheck_(R, 'cpAssignMember_ rejects an already-filled slot', filled);
     devCheck_(R, 'cpAssignMember_ rejects a duplicate ID', dup);
     devCheck_(R, 'cpAssignMember_ rejects a malformed ID', mal);
@@ -1398,7 +1437,7 @@ function devPanelTests_() {
     try { cpScheduleLeave_(ro, tr, { row: CONFIG.rosterStartRow, status: 'Pending', start: ymd(devDay_(5)), end: ymd(devDay_(2)) }, NO_HOOK); } catch (e) { rev = true; }
     try { cpScheduleLeave_(ro, tr, { row: CONFIG.rosterStartRow + 1, status: 'Pending', start: ymd(devDay_(2)), end: ymd(devDay_(5)) }, NO_HOOK); } catch (e) { open = true; }
     try { cpScheduleLeave_(ro, tr, { row: CONFIG.rosterStartRow, status: 'Pending', start: '', end: '' }, NO_HOOK); } catch (e) { miss = true; }
-    const roBad = devBuildRoster_([{ rank: 'Trooper', name: 'Bad', id: '123', activity: 'Active', hours: 12 }]);
+    const roBad = devBuildRoster_([{ rank: 'Trooper', name: 'Bad', id: devBadId_(), activity: 'Active', hours: 12 }]);
     try { cpScheduleLeave_(roBad, tr, { row: CONFIG.rosterStartRow, status: 'Pending', start: ymd(devDay_(2)), end: ymd(devDay_(5)) }, NO_HOOK); } catch (e) { mal = true; }
     devCheck_(R, 'cpScheduleLeave_ rejects end-before-start', rev);
     devCheck_(R, 'cpScheduleLeave_ rejects an open slot', open);
@@ -1462,7 +1501,7 @@ function devPanelTests_() {
     devEq_(R, 'cpDetectMove_ member = source name', mv.member, 'Mover');
     devCheck_(R, 'cpDetectMove_ from starts with the source rank', mv.from.indexOf('Trooper') === 0);
     devCheck_(R, 'cpDetectMove_ null for a brand-new ID', cpDetectMove_(ro, CONFIG.rosterStartRow + 1, devId_(777)) === null);
-    devCheck_(R, 'cpDetectMove_ null for a malformed ID', cpDetectMove_(ro, CONFIG.rosterStartRow + 1, '123') === null);
+    devCheck_(R, 'cpDetectMove_ null for a malformed ID', cpDetectMove_(ro, CONFIG.rosterStartRow + 1, devBadId_()) === null);
   })();
 
   // cpRosterHeaderIssues_ (header-resolved) + cpHeaderIssues_ (fixed-position tracker)

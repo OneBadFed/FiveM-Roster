@@ -110,7 +110,7 @@ function cpHealthCheck_() {
       if (!isValidMemberValues_(ranks[i][0], names[i][0])) continue;
       const id = String(ids[i][0]).trim();
       if (id === '') continue;
-      if (!DISCORD_ID_RE.test(id)) bad++;
+      if (!isValidId_(id)) bad++;
       seen[id] = (seen[id] || 0) + 1;
     }
     Object.keys(seen).forEach((k) => { if (seen[k] > 1) bad += seen[k] - 1; });
@@ -377,7 +377,7 @@ function cpApplyRestore_(roster, snapRows) {
 /** Injectable core: detect a member move (ID already on another roster row). Returns move info or null (testable). */
 function cpDetectMove_(sheet, editedRow, newId) {
   const id = String(newId).trim();
-  if (!/^\d{17,19}$/.test(id)) return null;
+  if (!isValidId_(id)) return null;
   const RC = rosterCols_(sheet);
   const cnt = sheet.getLastRow() - CONFIG.rosterStartRow + 1;
   if (cnt <= 0) return null;

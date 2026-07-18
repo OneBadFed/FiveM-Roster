@@ -1087,7 +1087,7 @@ function runIntegritySummary_() {
   members.forEach((m) => {
     if (m.id !== '') {
       idToName[m.id] = m.name;
-      if (!/^\d{17,19}$/.test(m.id)) issues.push(`Malformed Discord ID: ${m.name}`);
+      if (!isValidId_(m.id)) issues.push(`Malformed Unique ID: ${m.name}`);
       (seen[m.id] = seen[m.id] || []).push(m.name);
     }
     if (!isProtectedStatus_(m.activity) && m.activity !== '') {

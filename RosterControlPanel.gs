@@ -771,7 +771,7 @@ function cpScheduleLeave_(roster, tracker, p, opts) {
   const row = cpResolveMemberRow_(roster, Number(p && p.row), p && p.expectedId); // identity-verified target (F-002)
   const m = cpMemberAt_(roster, row);
   if (!m.filled) throw new Error('That slot has no member yet.');
-  if (!DISCORD_ID_RE.test(m.discord)) throw new Error('This member needs a valid 17-19 digit Discord ID first.');
+  if (!isValidId_(m.discord)) throw new Error('This member needs a valid ' + idDigitsLabel_() + '-digit Unique ID first.');
 
   // Dedup by LEAVE identity (member + dates + type), NOT click time, so two staffers scheduling the same leave
   // seconds apart can't create two rows (F-039). This is the OPPOSITE trade from the form path (syncFormToTracker_,
@@ -849,7 +849,7 @@ function cpAssignMember_(roster, payload) {
   const shift = String((payload && payload.shift) || '').trim(); // optional shift (written only if the roster has that column)
 
   if (!name) throw new Error('Name is required.');
-  if (!DISCORD_ID_RE.test(discord)) throw new Error('Unique ID must be 17-19 digits.');
+  if (!isValidId_(discord)) throw new Error('Unique ID must be ' + idDigitsLabel_() + ' digits.');
 
   cpAssertSlotRow_(roster, row);
   const RC = rosterCols_(roster);
@@ -1011,14 +1011,14 @@ function cpDuplicateReport_() {
     const id = String(ids[i][0]).trim();
     if (id === '') continue;
     const who = `${names[i][0] || '(no name)'} (row ${CONFIG.rosterStartRow + i})`;
-    if (!DISCORD_ID_RE.test(id)) malformed.push(`${who}: "${id}"`);
+    if (!isValidId_(id)) malformed.push(`${who}: "${id}"`);
     (seen[id] = seen[id] || []).push(who);
   }
   const dup = Object.keys(seen).filter((k) => seen[k].length > 1).map((k) => `ID ${k} → ${seen[k].join(', ')}`);
-  if (!dup.length && !malformed.length) return 'No duplicate or malformed Discord IDs found.';
+  if (!dup.length && !malformed.length) return 'No duplicate or malformed Unique IDs found.';
   const parts = [];
   if (dup.length) parts.push(`Duplicates (${dup.length}): ${dup.join(' | ')}`);
-  if (malformed.length) parts.push(`Not 17-19 digits (${malformed.length}): ${malformed.join(' | ')}`);
+  if (malformed.length) parts.push(`Not ${idDigitsLabel_()} digits (${malformed.length}): ${malformed.join(' | ')}`);
   return parts.join('  ·  ');
 }
 
@@ -1317,7 +1317,7 @@ function cpAdminRead_(details, logSheet, discordId, cap) {
  */
 function cpAdminUpsert_(details, payload) {
   const id = String((payload && payload.discordId) || '').trim();
-  if (!DISCORD_ID_RE.test(id)) throw new Error('Discord ID must be 17-19 digits.');
+  if (!isValidId_(id)) throw new Error('Unique ID must be ' + idDigitsLabel_() + ' digits.');
   const name = clamp_(String((payload && payload.name) || '').trim(), 120);
   const given = (payload && payload.fields && typeof payload.fields === 'object') ? payload.fields : {};
   const cols = adminFieldCols_(details);
@@ -1353,7 +1353,7 @@ function cpAdminUpsert_(details, payload) {
 /** Injectable core: append a disciplinary entry (append-only — history is never edited from the panel). Text columns are '@'-formatted before the write (formula-injection guard); the Date column stays a real date. Testable. */
 function cpAppendDiscipline_(logSheet, entry) {
   const id = String((entry && entry.discordId) || '').trim();
-  if (!DISCORD_ID_RE.test(id)) throw new Error('Discord ID must be 17-19 digits.');
+  if (!isValidId_(id)) throw new Error('Unique ID must be ' + idDigitsLabel_() + ' digits.');
   const action = clamp_(String((entry && entry.action) || '').trim(), 60);
   if (action === '') throw new Error('Action is required.');
   const reason = clamp_(String((entry && entry.reason) || '').trim(), 1000);
@@ -1430,7 +1430,7 @@ function cpAdminSetup(payload) {
     if (d && d.getLastRow() >= 2) {
       d.getRange(2, 1, d.getLastRow() - 1, 1).getDisplayValues().forEach((r) => {
         const v = String(r[0]).trim();
-        if (v !== '' && !DISCORD_ID_RE.test(v)) badIds++;
+        if (v !== '' && !isValidId_(v)) badIds++;
       });
     }
   } catch (e) { /* advisory only */ }
