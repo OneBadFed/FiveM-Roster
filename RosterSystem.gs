@@ -268,6 +268,8 @@ function buildMenus_(prefix) {
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
       .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
       .addItem('🗂️ Build / Refresh Group Sheets', p + 'buildGroupSheets')
+      .addItem('🙈 Hide Helper Columns', p + 'hideHelperColumns')
+      .addItem('👁️ Show All Columns', p + 'showAllRosterColumns')
       .addSeparator()
       // Setup & wiring (run rarely)
       .addItem('🧩 Sync Column Config', p + 'syncColumnConfig')

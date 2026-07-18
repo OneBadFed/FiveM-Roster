@@ -467,6 +467,58 @@ function buildGroupSheets() {
   });
 }
 
+const HELPER_COLS_PROP = 'RE_HELPER_COLS'; // remembered "hide these" header list (per spreadsheet)
+
+/** Hide each roster column whose header matches a name in `list` (exact header wins, then contains). @return {string[]} headers hidden. */
+function hideHelperColumns_(roster, list) {
+  const RC = rosterCols_(roster);
+  if (!RC.headerRow) return [];
+  const lastCol = roster.getLastColumn();
+  const hdr = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0];
+  const hdrUp = hdr.map((h) => String(h).toUpperCase().trim());
+  const hidden = [];
+  list.forEach((label) => {
+    const key = String(label).toUpperCase().trim();
+    if (!key) return;
+    let col = 0;
+    for (let c = 0; c < hdrUp.length; c++) { if (hdrUp[c] === key) { col = c + 1; break; } }
+    if (!col) for (let c = 0; c < hdrUp.length; c++) { if (hdrUp[c] && hdrUp[c].indexOf(key) !== -1) { col = c + 1; break; } }
+    if (col) { roster.hideColumns(col); hidden.push(hdr[col - 1]); }
+  });
+  return hidden;
+}
+
+/** Menu action: hide a named set of roster "helper" columns (remembered so it's easy to re-hide). */
+function hideHelperColumns() {
+  runAction_('Hide Helper Columns', () => {
+    const ui = SpreadsheetApp.getUi();
+    const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
+    if (!roster) return;
+    const props = PropertiesService.getDocumentProperties();
+    const cur = props.getProperty(HELPER_COLS_PROP) || '';
+    const resp = ui.prompt('🙈 Hide Helper Columns',
+      'Roster column headers to hide, comma-separated (e.g. Beat, Vehicle, Radio).' + (cur ? '\n\nCurrently: ' + cur : ''),
+      ui.ButtonSet.OK_CANCEL);
+    if (resp.getSelectedButton() !== ui.Button.OK) return;
+    const list = String(resp.getResponseText() || '').split(',').map((s) => s.trim()).filter(Boolean);
+    props.setProperty(HELPER_COLS_PROP, list.join(', '));
+    const hidden = hideHelperColumns_(roster, list);
+    ui.alert(hidden.length
+      ? '✅ Hid ' + hidden.length + ' column' + (hidden.length === 1 ? '' : 's') + ': ' + hidden.join(', ') + '.\n\nUse 👁️ Show All Columns to reveal them.'
+      : 'No matching columns found — check the header names against the roster.');
+  });
+}
+
+/** Menu action: reveal every roster column (undo Hide Helper Columns). */
+function showAllRosterColumns() {
+  runAction_('Show All Columns', () => {
+    const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
+    if (!roster) return;
+    roster.showColumns(1, roster.getMaxColumns());
+    SpreadsheetApp.getUi().alert('✅ All roster columns are visible.');
+  });
+}
+
 /* ======================================================================
  * LEAVE COVERAGE VIEW
  * ====================================================================== */
