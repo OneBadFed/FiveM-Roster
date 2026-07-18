@@ -343,19 +343,21 @@ function devBuildRoster_(members) {
   return sh;
 }
 
-/** Sandbox tracker: data from CONFIG.trackerStartRow. leaves:{key,rank,name,id,type,start,end,status}. */
+/** Sandbox tracker (LOA-only layout): data from CONFIG.trackerStartRow. leaves:{key,rank,unit,ooc,name,id,shift,start,end,status}. `type` is accepted but ignored — no TYPE column. */
 function devBuildTracker_(leaves) {
   const sh = devFreshSheet_('Tracker');
-  sh.getRange(5, 1, 1, 12).setValues([['KEY', 'RANK', 'NAME', 'UNIT', 'DISCORD', 'TYPE', 'START', 'END', 'LEN', 'UNTIL', 'LEFT', 'STATUS']]);
+  const hr = Math.max(1, CONFIG.trackerStartRow - 2); // label row; mirrors the real layout (banner 5 / label 6 / divider 7 / data 8)
+  // A key · B rank · C unit · D OOC · E name · F unique-ID · G shift · H start · I end · J len · K until · L left · M return · N status · O approved · P notes
+  sh.getRange(hr, 1, 1, 16).setValues([['KEY', 'RANK', 'UNIT', 'OOC', 'NAME', 'DISCORD', 'SHIFT', 'START', 'END', 'LEN', 'UNTIL', 'LEFT', 'RETURN', 'STATUS', 'APPROVED', 'NOTES']]);
   if (leaves.length) {
     const rows = leaves.map((L) => [
-      L.key ?? '', L.rank ?? 'Trooper', L.name ?? '', L.unit ?? '', L.id ?? '', L.type ?? 'LOA',
-      L.start ?? '', L.end ?? '', '', '', '', L.status ?? 'Pending',
+      L.key ?? '', L.rank ?? 'Trooper', L.unit ?? '', L.ooc ?? '', L.name ?? '', L.id ?? '', L.shift ?? '',
+      L.start ?? '', L.end ?? '', '', '', '', '', L.status ?? 'Pending', '', '',
     ]);
     sh.getRange(CONFIG.trackerStartRow, CONFIG.tracker.discord, leaves.length, 1).setNumberFormat('@');
-    sh.getRange(CONFIG.trackerStartRow, 1, leaves.length, 12).setValues(rows); // cols A..L
+    sh.getRange(CONFIG.trackerStartRow, 1, leaves.length, 16).setValues(rows); // cols A..P
   }
-  if (DEV_THEME_SANDBOX) devTheme_(sh, 5, CONFIG.tracker.discord);
+  if (DEV_THEME_SANDBOX) devTheme_(sh, hr, CONFIG.tracker.discord);
   return sh;
 }
 
@@ -837,12 +839,12 @@ function devLifecycleTests_() {
     devEq_(R, 'E: future leave → stays Approved', devTrackerStatus_(tr, 0), 'Approved');
   })();
 
-  // F: ROA returner under 5h → Inactive
+  // F: an under-threshold returner (LOA, 3h) → recomputed to Inactive
   (() => {
-    const ro = devBuildRoster_([{ rank: 'Senior Trooper', name: 'RoaLow', id: devId_(6), activity: 'ROA', hours: 3 }]);
-    const tr = devBuildTracker_([{ name: 'RoaLow', id: devId_(6), type: 'ROA', start: devDay_(-10), end: devDay_(-1), status: 'Approved' }]);
+    const ro = devBuildRoster_([{ rank: 'Senior Trooper', name: 'LoaLow', id: devId_(6), activity: 'LOA', hours: 3 }]);
+    const tr = devBuildTracker_([{ name: 'LoaLow', id: devId_(6), type: 'LOA', start: devDay_(-10), end: devDay_(-1), status: 'Approved' }]);
     processDailyLOAs_(ro, tr, devDay_(0), NO_HOOK);
-    devEq_(R, 'F: ROA 3h return → Inactive', devActivity_(ro, 0), 'Inactive');
+    devEq_(R, 'F: LOA 3h return → Inactive', devActivity_(ro, 0), 'Inactive');
   })();
 
   // G: ends exactly today → Expired
@@ -856,9 +858,9 @@ function devLifecycleTests_() {
   // H: starts exactly today → activated
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'StartsToday', id: devId_(8), activity: 'Active', hours: 12 }]);
-    const tr = devBuildTracker_([{ name: 'StartsToday', id: devId_(8), type: 'ROA', start: devDay_(0), end: devDay_(10), status: 'Approved' }]);
+    const tr = devBuildTracker_([{ name: 'StartsToday', id: devId_(8), type: 'LOA', start: devDay_(0), end: devDay_(10), status: 'Approved' }]);
     processDailyLOAs_(ro, tr, devDay_(0), NO_HOOK);
-    devEq_(R, 'H: starts today → roster ROA', devActivity_(ro, 0), 'ROA');
+    devEq_(R, 'H: starts today → roster LOA', devActivity_(ro, 0), 'LOA');
   })();
 
   // I: already Expired left alone
@@ -940,13 +942,13 @@ function devLifecycleTests_() {
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Overlap', id: devId_(80), activity: 'LOA', hours: 0 }]);
     const tr = devBuildTracker_([
-      { name: 'Overlap', id: devId_(80), type: 'ROA', start: devDay_(0), end: devDay_(10), status: 'Approved' },   // row 0: starts today
-      { name: 'Overlap', id: devId_(80), type: 'LOA', start: devDay_(-10), end: devDay_(0), status: 'Approved' },  // row 1: expires today
+      { name: 'Overlap', id: devId_(80), start: devDay_(0), end: devDay_(10), status: 'Approved' },   // row 0: starts today
+      { name: 'Overlap', id: devId_(80), start: devDay_(-10), end: devDay_(0), status: 'Approved' },  // row 1: expires today
     ]);
     processDailyLOAs_(ro, tr, devDay_(0), NO_HOOK);
-    devEq_(R, 'P: starting ROA wins over same-day expiring LOA (order-independent)', devActivity_(ro, 0), 'ROA');
-    devEq_(R, 'P: expiring LOA row → Expired', devTrackerStatus_(tr, 1), 'Expired');
-    devEq_(R, 'P: starting ROA row stays Approved', devTrackerStatus_(tr, 0), 'Approved');
+    devEq_(R, 'P: starting leave wins over same-day expiry (member stays LOA, not Inactive)', devActivity_(ro, 0), 'LOA');
+    devEq_(R, 'P: expiring row → Expired', devTrackerStatus_(tr, 1), 'Expired');
+    devEq_(R, 'P: starting row stays Approved', devTrackerStatus_(tr, 0), 'Approved');
   })();
 
   return R;
@@ -967,7 +969,7 @@ function devSyncTests_() {
     syncFormToTracker_(form, tr, NO_HOOK);
     devEq_(R, 'sync appended exactly one row', tr.getLastRow(), CONFIG.trackerStartRow);
     devCheck_(R, 'appended row has a KEY in column A', String(tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.key).getValue()).indexOf('KEY|') === 0);
-    const lenFormula = tr.getRange(CONFIG.trackerStartRow, 9).getFormula();
+    const lenFormula = tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.length).getFormula();
     devCheck_(R, 'LENGTH cell has an INT()-wrapped formula', lenFormula.indexOf('INT(') !== -1);
 
     // simulate Sheets coercing/corrupting the stored dates, wipe the form color → rerun must NOT duplicate
@@ -1004,7 +1006,7 @@ function devSyncTests_() {
     ]);
     syncFormToTracker_(form, tr, NO_HOOK);
     // add a second submission with a different timestamp
-    form.getRange(3, 1, 1, 8).setValues([[devDay_(-1), 'X', devId_(2), 'S-1', 'Trooper', 'ROA', devDay_(6), devDay_(9)]]);
+    form.getRange(3, 1, 1, 8).setValues([[devDay_(-1), 'X', devId_(2), 'S-1', 'Trooper', 'LOA', devDay_(6), devDay_(9)]]);
     form.getRange(3, CONFIG.form.discord).setNumberFormat('@').setValue(devId_(2));
     syncFormToTracker_(form, tr, NO_HOOK);
     devEq_(R, 'new submission (new ts) → second row appended', devDataRows_(tr, CONFIG.trackerStartRow), 2);
@@ -1497,11 +1499,9 @@ function devPanelTests_() {
   devCheck_(R, 'cpScheduleLeave_ writes a KEY| dedup key', key.indexOf('KEY|') === 0, key);
   const aStr = Utilities.formatDate(devDay_(-1), ssTz_(), 'yyyy-MM-dd');
   const a2 = Utilities.formatDate(devDay_(3), ssTz_(), 'yyyy-MM-dd');
-  const lv2 = cpScheduleLeave_(roster, tracker, { row: start, type: 'ROA', status: 'Approved', start: aStr, end: a2 }, { sendWebhooks: false });
-  devEq_(R, 'cpScheduleLeave_ Approved+active applies to roster', devActivity_(roster, 0), 'ROA');
+  const lv2 = cpScheduleLeave_(roster, tracker, { row: start, status: 'Approved', start: aStr, end: a2 }, { sendWebhooks: false });
+  devEq_(R, 'cpScheduleLeave_ Approved+active applies to roster (LOA-only implicit type)', devActivity_(roster, 0), trackerLeaveType_());
   devEq_(R, 'cpScheduleLeave_ applied flag is true', lv2.applied, true);
-  let bt = false; try { cpScheduleLeave_(roster, tracker, { row: start, type: 'XYZ', start: sStr, end: eStr }, { sendWebhooks: false }); } catch (e) { bt = true; }
-  devCheck_(R, 'cpScheduleLeave_ rejects a bad type', bt);
   let bd = false; try { cpScheduleLeave_(roster, tracker, { row: start, type: 'LOA', start: eStr, end: sStr }, { sendWebhooks: false }); } catch (e) { bd = true; }
   devCheck_(R, 'cpScheduleLeave_ rejects end-before-start', bd);
 
@@ -2094,7 +2094,7 @@ function devExtrasTests_() {
     const tr = devBuildTracker_([{ name: 'IdTest', id: '533653499049934878', type: 'ROA', start: devDay_(-1), end: devDay_(10), status: 'Approved' }]);
     const a = activeLeaves_(tr)[0];
     devEq_(R, 'activeLeaves_ keeps ID exact', a.id, '533653499049934878');
-    devEq_(R, 'activeLeaves_ passes type through raw', a.type, 'ROA');
+    devEq_(R, 'activeLeaves_ reports the implicit LOA-only type', a.type, trackerLeaveType_());
   })();
   (() => {
     // documents that activeLeaves_ does NOT validate start<=end (reversed still returned while today<=end)

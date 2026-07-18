@@ -287,7 +287,7 @@ const BLOCK_SPECS_ = Object.freeze({
   ROSTER_LAYOUT: { type: 'kv', keys: {
     HEADER_ROW: { t: 'int', d: 5, req: true, min: 1, max: 50, help: 'Row holding the roster column labels.' },
     DATA_START_ROW: { t: 'int', d: 7, req: true, min: 2, max: 100, help: 'First possible member row (must be > HEADER_ROW).' },
-    TRACKER_START_ROW: { t: 'int', d: 6, req: true, min: 2, max: 100, help: 'First data row on the tracker.' },
+    TRACKER_START_ROW: { t: 'int', d: 8, req: true, min: 2, max: 100, help: 'First data row on the tracker (row 8: banner row 5, label row 6, divider row 7, data from row 8).' },
     DIVIDER_MODE: { t: 'enum', d: 'ALLCAPS_RANK', req: true, enum: ['ALLCAPS_RANK', 'EXPLICIT_LIST'], help: 'How ranks/section-dividers are detected. ALLCAPS_RANK = the all-caps heuristic (default). EXPLICIT_LIST = consult the [RANKS] table (v2.5.0), falling back to the heuristic for anything unlisted.' },
     TRAINING_KEYWORDS: { t: 'list', d: 'TRAINING, CADET', req: true, help: 'Divider labels containing these words are TRAINING sections.' },
     UNIT_FORMAT: { t: 'string', d: 'S-{00}', req: true, help: 'Callsign/unit-number template (v2.5.0). The {0…} token is the slot number zero-padded to that many digits — "S-{00}" → S-01, "TRP-{000}" → TRP-001. Text outside the token is literal (prefix/suffix). No token → the number is appended.' },
@@ -940,7 +940,7 @@ function materialize_(c, fromTab) {
     trackerStartRow: kv.ROSTER_LAYOUT.TRACKER_START_ROW,
     headerRow: kv.ROSTER_LAYOUT.HEADER_ROW,
     roster: { rank: 2, name: 3, unit: 4, discord: 5, activity: 8, hours: 9 },        // positional FALLBACKS only (header resolution wins)
-    tracker: { key: 1, rank: 2, name: 3, unit: 4, discord: 5, type: 6, start: 7, end: 8, status: 12, notes: 13 },
+    tracker: { key: 1, rank: 2, unit: 3, ooc: 4, name: 5, discord: 6, shift: 7, start: 8, end: 9, length: 10, untilStart: 11, timeLeft: 12, returnDate: 13, status: 14, approvedBy: 15, notes: 16 }, // LOA Tracker layout: A key · B rank · C unit · D OOC · E name · F unique-ID · G shift · H start · I end · J len · K until · L left · M return · N status · O approved-by · P notes (LOA-only — no TYPE column)
     form: { timestamp: 1, name: 2, discord: 3, callsign: 4, rank: 5, type: 6, start: 7, end: 8 },
     bg: { processing: t.PROCESSING, done: t.PASS, error: t.FAIL },
     protectedStatuses,

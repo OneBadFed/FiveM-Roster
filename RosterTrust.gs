@@ -188,8 +188,8 @@ function cpSchemaCheck_() {
   const ss = SpreadsheetApp.getActive();
   let issues = [];
   issues = issues.concat(cpRosterHeaderIssues_(ss.getSheetByName(CONFIG.sheets.roster)));
-  issues = issues.concat(cpHeaderIssues_(ss.getSheetByName(CONFIG.sheets.tracker), CONFIG.sheets.tracker, 5,
-    { 3: 'NAME', 5: 'DISCORD', 6: 'LOA', 7: 'START', 8: 'END', 12: 'STATUS' }));
+  issues = issues.concat(cpHeaderIssues_(ss.getSheetByName(CONFIG.sheets.tracker), CONFIG.sheets.tracker, 6,
+    { 2: 'RANK', 5: 'NAME', 6: 'UNIQUE', 8: 'START', 9: 'END', 14: 'STATUS' }));
   issues = issues.concat(cpHeaderIssues_(ss.getSheetByName(CONFIG.sheets.form), CONFIG.sheets.form, 1,
     { 1: 'TIME', 3: 'DISCORD', 6: 'STATUS', 7: 'START', 8: 'END' }));
   return issues;

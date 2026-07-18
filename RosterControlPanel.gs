@@ -464,7 +464,7 @@ function cpSnapshot_() {
     const last = tracker.getLastRow();
     if (last >= CONFIG.trackerStartRow) {
       const n = last - CONFIG.trackerStartRow + 1;
-      const tvals = tracker.getRange(CONFIG.trackerStartRow, 2, n, 11).getValues(); // cols B..L
+      const tvals = tracker.getRange(CONFIG.trackerStartRow, 2, n, 15).getValues(); // cols B..P
       const today = todayInSheetTz_().getTime();
       const weekMs = 7 * 86400000;
       for (let i = 0; i < n; i++) {
@@ -613,12 +613,12 @@ function cpGetProfile(discordId) {
     const last = tracker.getLastRow();
     if (last >= CONFIG.trackerStartRow) {
       const n = last - CONFIG.trackerStartRow + 1;
-      const disp = tracker.getRange(CONFIG.trackerStartRow, 2, n, 11).getDisplayValues(); // B..L
+      const disp = tracker.getRange(CONFIG.trackerStartRow, 2, n, 15).getDisplayValues(); // B..P
       const ids = tracker.getRange(CONFIG.trackerStartRow, CONFIG.tracker.discord, n, 1).getDisplayValues();
       for (let i = 0; i < n; i++) {
         if (String(ids[i][0]).trim() !== id) continue;
         leaves.push({
-          type: String(disp[i][CONFIG.tracker.type - 2]).trim(),
+          type: trackerLeaveType_(),
           start: String(disp[i][CONFIG.tracker.start - 2]).trim(),
           end: String(disp[i][CONFIG.tracker.end - 2]).trim(),
           status: String(disp[i][CONFIG.tracker.status - 2]).trim(),
@@ -755,10 +755,9 @@ function cpScheduleLeave(p) {
  */
 function cpScheduleLeave_(roster, tracker, p, opts) {
   opts = opts || {};
-  const type = String((p && p.type) || '').trim();
+  const type = trackerLeaveType_(); // LOA-only tracker: no per-row TYPE column (any p.type from the panel is ignored)
   const status = String((p && p.status) || CONFIG.pendingStatus).trim();
   const notes = String((p && p.notes) || '').trim();
-  if (!CONFIG.leaveTypes.some((lt) => norm_(lt) === norm_(type))) throw new Error(`Type must be one of: ${CONFIG.leaveTypes.join(', ')}.`);
   if (norm_(status) !== norm_(CONFIG.pendingStatus) && norm_(status) !== norm_(CONFIG.approvedStatus)) throw new Error(`Status must be ${CONFIG.pendingStatus} or ${CONFIG.approvedStatus}.`);
 
   const start = cpParseYMD_(p && p.start);
@@ -781,13 +780,11 @@ function cpScheduleLeave_(roster, tracker, p, opts) {
   if (dedupKey && buildSyncedKeySet_(tracker)[dedupKey]) throw new Error('That exact leave (same member, dates, and type) is already on the tracker.');
 
   // Append exactly like syncFormToTracker_ (real Date objects + the same countdown formulas).
-  tracker.appendRow([dedupKey, m.rank, m.name, m.callsign, m.discord, type, start, end, '', '', '', status, notes]);
-  const r = tracker.getLastRow();
-  const trkId = tracker.getRange(r, CONFIG.tracker.discord); trkId.setNumberFormat('@'); trkId.setValue(m.discord); // keep the 17-19 digit ID EXACT — appendRow coerces a digit-string into a rounded Number (F-001)
+  const oi = rosterOocShift_(m.discord); // auto-fill OOC name + shift from the roster (by Unique ID)
+  const r = appendTrackerRow_(tracker, [dedupKey, m.rank, m.callsign, oi.ooc, m.name, m.discord, oi.shift, start, end, '', '', '', '', status, '', notes]);
+  const trkId = tracker.getRange(r, CONFIG.tracker.discord); trkId.setNumberFormat('@'); trkId.setValue(m.discord); // keep the 17-19 digit ID EXACT — a digit-string would coerce to a rounded Number (F-001)
   tracker.getRange(r, CONFIG.tracker.start, 1, 2).setNumberFormat('d mmm. yyyy');
-  tracker.getRange(r, 9).setFormula(`=LET(d, INT(H${r})-INT(G${r}), d & IF(d=1, " Day", " Days"))`);
-  tracker.getRange(r, 10).setFormula(`=IF(INT(G${r})>TODAY(), LET(d, INT(G${r})-TODAY(), d & IF(d=1, " Day", " Days")), "Started")`);
-  tracker.getRange(r, 11).setFormula(`=IF(INT(G${r})>TODAY(), "Pending Start", IF(INT(H${r})<=TODAY(), "Expired", LET(d, INT(H${r})-TODAY(), d & IF(d=1, " Day", " Days"))))`);
+  writeLeaveFormulas_(tracker, r);
 
   // Script writes don't fire onEdit, so apply an already-active approved leave to the roster now.
   let applied = false;

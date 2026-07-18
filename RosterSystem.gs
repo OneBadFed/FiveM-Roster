@@ -570,10 +570,9 @@ function installDataValidation_() {
       idCol.setDataValidation(idRuleFor(idCol)); counts.tracker++;
       tracker.getRange(start, T.start, n, 1).setDataValidation(dateRule('Enter a valid start date.')); counts.tracker++;
       tracker.getRange(start, T.end, n, 1).setDataValidation(dateRule('Enter a valid end date.')); counts.tracker++;
-      // Dropdown values come from [LEAVE] on ⚙️ Config (defaults: LOA/ROA · Pending/Approved/Denied/Expired).
-      let leaveTypes = ['LOA', 'ROA'], statusFlow = ['Pending', 'Approved', 'Denied', 'Expired'];
-      try { const lv = cfg_().leave; if (lv.LEAVE_TYPES.length) leaveTypes = lv.LEAVE_TYPES; if (lv.STATUS_FLOW.length) statusFlow = lv.STATUS_FLOW; } catch (e) { /* config broken — classic lists */ }
-      tracker.getRange(start, T.type, n, 1).setDataValidation(listRule(leaveTypes, `Choose ${leaveTypes.join(' or ')}.`)); counts.tracker++;
+      // STATUS dropdown values come from [LEAVE] on ⚙️ Config (defaults: Pending/Approved/Denied/Expired). LOA-only tracker: no TYPE column.
+      let statusFlow = ['Pending', 'Approved', 'Denied', 'Expired'];
+      try { const lv = cfg_().leave; if (lv.STATUS_FLOW.length) statusFlow = lv.STATUS_FLOW; } catch (e) { /* config broken — classic list */ }
       tracker.getRange(start, T.status, n, 1).setDataValidation(listRule(statusFlow, 'Choose a leave status.')); counts.tracker++;
     }
   }
@@ -1608,7 +1607,7 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
   if (lastRow < CONFIG.trackerStartRow) return summary;
 
   const n = lastRow - CONFIG.trackerStartRow + 1;
-  const data = tracker.getRange(CONFIG.trackerStartRow, 2, n, 11).getValues(); // cols B..L
+  const data = tracker.getRange(CONFIG.trackerStartRow, 2, n, 15).getValues(); // cols B..P
   const trkIds = tracker.getRange(CONFIG.trackerStartRow, CONFIG.tracker.discord, n, 1).getDisplayValues(); // IDs as EXACT text — getValues would round a 17-19 digit ID
   const statusOut = data.map((r) => [r[CONFIG.tracker.status - 2]]);
 
@@ -1643,7 +1642,7 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
       logWarn_('processDailyLOAs_', `tracker row ${CONFIG.trackerStartRow + i} is ${APPROVED} but has no valid End date; it will not auto-expire.`);
     }
     if (status !== APPROVED || isNaN(end.getTime()) || today.getTime() < end.getTime()) continue;
-    const type = data[i][CONFIG.tracker.type - 2];
+    const type = trackerLeaveType_();
     const ri = idToIndex.has(discordId) ? idToIndex.get(discordId) : -1;
     statusOut[i][0] = EXPIRED;
     if (okToChange(ri, type)) { // recompute from hours (a 0h return is Inactive, not Active)
@@ -1664,7 +1663,7 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
     if (status !== APPROVED) continue;
     const start = startOfDay_(new Date(data[i][CONFIG.tracker.start - 2]));
     if (isNaN(start.getTime()) || today.getTime() < start.getTime()) continue;
-    const type = data[i][CONFIG.tracker.type - 2];
+    const type = trackerLeaveType_();
     const ri = idToIndex.has(discordId) ? idToIndex.get(discordId) : -1;
     if (okToChange(ri, type)) { activity[ri][0] = type; changedRis.add(ri); }
     summary.started.push({ row: CONFIG.trackerStartRow + i, name: data[i][CONFIG.tracker.name - 2], rank: data[i][CONFIG.tracker.rank - 2], id: discordId, type });
@@ -1713,7 +1712,7 @@ function checkImmediateLOAStart(sheet, row) {
   const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
   if (!roster) return;
   const discordId = sheet.getRange(row, CONFIG.tracker.discord).getDisplayValue(); // exact ID text — getValue would round a 17-19 digit ID
-  const type = sheet.getRange(row, CONFIG.tracker.type).getValue();
+  const type = trackerLeaveType_(); // LOA-only tracker: no per-row TYPE column
   const start = startOfDay_(new Date(sheet.getRange(row, CONFIG.tracker.start).getValue()));
   const end = startOfDay_(new Date(sheet.getRange(row, CONFIG.tracker.end).getValue()));
   const today = todayInSheetTz_();
@@ -1744,6 +1743,59 @@ function updateRosterStatus(roster, discordId, newStatus) {
       return;
     }
   }
+}
+
+/* ======================================================================
+ * LOA TRACKER HELPERS — LOA-only layout (A key · B rank · C unit · D OOC ·
+ * E name · F unique-ID · G shift · H start · I end · J len · K until · L left ·
+ * M return · N status · O approved-by · P notes). No per-row TYPE column.
+ * ====================================================================== */
+
+/** The tracker has no TYPE column (LOA-only). The implicit leave type = first configured leave type, else 'LOA'. */
+function trackerLeaveType_() {
+  try { return (CONFIG.leaveTypes && CONFIG.leaveTypes[0]) || 'LOA'; } catch (e) { return 'LOA'; }
+}
+
+/** Auto-fill source: a member's OOC name + shift from the roster, matched by Unique ID (exact text). Blank when not found or the roster lacks those columns. */
+function rosterOocShift_(discordId) {
+  const out = { ooc: '', shift: '' };
+  const target = String(discordId || '').trim();
+  if (!target) return out;
+  try {
+    const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+    if (!roster) return out;
+    const RC = rosterCols_(roster);
+    if (!RC.discord || (!RC.ooc && !RC.shift)) return out;
+    const start = CONFIG.rosterStartRow, last = roster.getLastRow();
+    if (last < start) return out;
+    const ids = roster.getRange(start, RC.discord, last - start + 1, 1).getDisplayValues();
+    for (let i = 0; i < ids.length; i++) {
+      if (String(ids[i][0]).trim() !== target) continue;
+      const row = start + i;
+      if (RC.ooc) out.ooc = String(roster.getRange(row, RC.ooc).getDisplayValue()).trim();
+      if (RC.shift) out.shift = String(roster.getRange(row, RC.shift).getDisplayValue()).trim();
+      break;
+    }
+  } catch (e) { log_('rosterOocShift_', e); }
+  return out;
+}
+
+/** Append a tracker data row at the first free row AT/AFTER trackerStartRow — the layout has a divider gap (row 7) between the header and row 1, so appendRow (content-based) could land in the gap. Extends the sheet if needed. @return the row written. */
+function appendTrackerRow_(tracker, values) {
+  const r = Math.max(tracker.getLastRow() + 1, CONFIG.trackerStartRow);
+  if (r > tracker.getMaxRows()) tracker.insertRowsAfter(tracker.getMaxRows(), r - tracker.getMaxRows());
+  tracker.getRange(r, 1, 1, values.length).setValues([values]);
+  return r;
+}
+
+/** Write the four computed leave columns for tracker row r (length · time-until-start · time-left · return date = end+1) and their formats. Start=H, End=I by layout. */
+function writeLeaveFormulas_(tracker, r) {
+  const T = CONFIG.tracker;
+  const sc = String.fromCharCode(64 + T.start), ec = String.fromCharCode(64 + T.end); // 8→H, 9→I
+  tracker.getRange(r, T.length).setFormula(`=LET(d, INT(${ec}${r})-INT(${sc}${r}), d & IF(d=1, " Day", " Days"))`);
+  tracker.getRange(r, T.untilStart).setFormula(`=IF(INT(${sc}${r})>TODAY(), LET(d, INT(${sc}${r})-TODAY(), d & IF(d=1, " Day", " Days")), "Started")`);
+  tracker.getRange(r, T.timeLeft).setFormula(`=IF(INT(${sc}${r})>TODAY(), "Pending Start", IF(INT(${ec}${r})<=TODAY(), "Expired", LET(d, INT(${ec}${r})-TODAY(), d & IF(d=1, " Day", " Days"))))`);
+  tracker.getRange(r, T.returnDate).setFormula(`=IF(ISNUMBER(${ec}${r}), INT(${ec}${r})+1, "")`).setNumberFormat('d mmm. yyyy');
 }
 
 /* ======================================================================
@@ -2028,9 +2080,11 @@ function syncFormToTracker_(form, tracker, opts = {}) {
 
       if (!startRaw || !endRaw) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
       if (!DISCORD_ID_RE.test(discord)) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
-      // Reject unknown leave types — otherwise the row would sync "done" (green) yet never activate/expire (the scheduler only acts on known types).
-      if (!CONFIG.leaveTypes.some((lt) => norm_(lt) === norm_(String(type).trim()))) {
-        logWarn_('syncFormToTracker_', `form row ${rowIndex}: leave type "${type}" is not in [LEAVE].LEAVE_TYPES; marking error and skipping.`);
+      // LOA-only tracker: reject any non-LOA submission (e.g. an ROA form row) — the tracker has no TYPE column, so a
+      // different type would sync "done" (green) yet activate/expire as the wrong status.
+      const trkType = trackerLeaveType_();
+      if (norm_(String(type).trim()) !== norm_(trkType)) {
+        logWarn_('syncFormToTracker_', `form row ${rowIndex}: leave type "${type}" is not "${trkType}" (LOA-only tracker); marking error and skipping.`);
         form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error);
         continue;
       }
@@ -2056,13 +2110,11 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const diff = Math.round(Math.abs((endDate - startDate) / 86400000));
       const durationStr = `${diff} ${diff === 1 ? 'Day' : 'Days'}`;
 
-      tracker.appendRow([dedupKey, rank, name, callsign, discord, type, startDate, endDate, '', '', '', CONFIG.pendingStatus, '']);
-      const r = tracker.getLastRow();
-      const trkId = tracker.getRange(r, CONFIG.tracker.discord); trkId.setNumberFormat('@'); trkId.setValue(discord); // keep the 17-19 digit ID EXACT — appendRow coerces a digit-string into a rounded Number
+      const oi = rosterOocShift_(discord); // auto-fill OOC name + shift from the roster (by Unique ID)
+      const r = appendTrackerRow_(tracker, [dedupKey, rank, callsign, oi.ooc, name, discord, oi.shift, startDate, endDate, '', '', '', '', CONFIG.pendingStatus, '', '']);
+      const trkId = tracker.getRange(r, CONFIG.tracker.discord); trkId.setNumberFormat('@'); trkId.setValue(discord); // keep the 17-19 digit ID EXACT — a digit-string would coerce to a rounded Number
       tracker.getRange(r, CONFIG.tracker.start, 1, 2).setNumberFormat('d mmm. yyyy');
-      tracker.getRange(r, 9).setFormula(`=LET(d, INT(H${r})-INT(G${r}), d & IF(d=1, " Day", " Days"))`);
-      tracker.getRange(r, 10).setFormula(`=IF(INT(G${r})>TODAY(), LET(d, INT(G${r})-TODAY(), d & IF(d=1, " Day", " Days")), "Started")`);
-      tracker.getRange(r, 11).setFormula(`=IF(INT(G${r})>TODAY(), "Pending Start", IF(INT(H${r})<=TODAY(), "Expired", LET(d, INT(H${r})-TODAY(), d & IF(d=1, " Day", " Days"))))`);
+      writeLeaveFormulas_(tracker, r);
 
       if (dedupKey) synced[dedupKey] = true;
       const leaf = { name, rank, callsign, type, startStr, endStr, durationStr, discord };
@@ -2306,7 +2358,7 @@ function notifyLeaveApproved_(sheet, row) {
   if (!CONFIG.notify || !CONFIG.notify.leaveApproved) return;
   try {
     const g = (col) => String(sheet.getRange(row, col).getDisplayValue());
-    const type = g(CONFIG.tracker.type) || 'Leave';
+    const type = trackerLeaveType_() || 'Leave';
     const vars = { name: g(CONFIG.tracker.name), rank: g(CONFIG.tracker.rank), type, start: g(CONFIG.tracker.start), end: g(CONFIG.tracker.end) };
     notifyEvent_('LOA', true, 'loaApproved', vars, {
       title: fill_(CONFIG.notify.approvedTitle, { type: type }),

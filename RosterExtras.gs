@@ -120,7 +120,7 @@ function activeLeaves_(tracker) {
   const last = tracker.getLastRow();
   if (last < CONFIG.trackerStartRow) return out;
   const n = last - CONFIG.trackerStartRow + 1;
-  const v = tracker.getRange(CONFIG.trackerStartRow, 2, n, 11).getValues(); // cols B..L
+  const v = tracker.getRange(CONFIG.trackerStartRow, 2, n, 15).getValues(); // cols B..P
   const ids = tracker.getRange(CONFIG.trackerStartRow, CONFIG.tracker.discord, n, 1).getDisplayValues(); // IDs EXACT — getValues rounds a 17-19 digit ID
   const today = todayInSheetTz_();
   for (let i = 0; i < n; i++) {
@@ -130,7 +130,7 @@ function activeLeaves_(tracker) {
     if (isNaN(start.getTime()) || isNaN(end.getTime()) || today.getTime() > end.getTime()) continue;
     out.push({
       name: v[i][CONFIG.tracker.name - 2],
-      type: v[i][CONFIG.tracker.type - 2],
+      type: trackerLeaveType_(),
       id: String(ids[i][0]).trim(),
       start, end,
       started: today.getTime() >= start.getTime(),
@@ -1269,12 +1269,12 @@ function demoInitialName_(name) {
 function demoWriteLeave_(tracker, m, L, r) {
   const start = demoDay_(L.from), end = demoDay_(L.to);
   const key = makeLeaveKey_(m.id, `${startOfDay_(start).getTime()}-${startOfDay_(end).getTime()}-${norm_(L.type)}`);
+  const oi = rosterOocShift_(m.id); // OOC + shift from the already-filled demo roster
   tracker.getRange(r, CONFIG.tracker.discord).setNumberFormat('@'); // keep the 17-19 digit ID exact
-  tracker.getRange(r, 1, 1, 13).setValues([[key, m.rank, m.name, '', m.id, L.type, start, end, '', '', '', L.status || 'Approved', '']]);
+  // A key · B rank · C unit · D OOC · E name · F unique-ID · G shift · H start · I end · J-M computed · N status · O approved-by · P notes
+  tracker.getRange(r, 1, 1, 16).setValues([[key, m.rank, '', oi.ooc, m.name, m.id, oi.shift, start, end, '', '', '', '', L.status || 'Approved', '', '']]);
   tracker.getRange(r, CONFIG.tracker.start, 1, 2).setNumberFormat('d mmm. yyyy');
-  tracker.getRange(r, 9).setFormula(`=LET(d, INT(H${r})-INT(G${r}), d & IF(d=1, " Day", " Days"))`);
-  tracker.getRange(r, 10).setFormula(`=IF(INT(G${r})>TODAY(), LET(d, INT(G${r})-TODAY(), d & IF(d=1, " Day", " Days")), "Started")`);
-  tracker.getRange(r, 11).setFormula(`=IF(INT(G${r})>TODAY(), "Pending Start", IF(INT(H${r})<=TODAY(), "Expired", LET(d, INT(H${r})-TODAY(), d & IF(d=1, " Day", " Days"))))`);
+  writeLeaveFormulas_(tracker, r);
 }
 
 /** Menu / command: fill the member-info columns of the rows the operator already set up (see the header note). */
@@ -1373,7 +1373,7 @@ function seedDemoRoster() {
     const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
     if (tracker) {
       const ts = CONFIG.trackerStartRow;
-      if (tracker.getLastRow() >= ts) tracker.getRange(ts, 1, tracker.getLastRow() - ts + 1, Math.max(tracker.getLastColumn(), 13)).clearContent();
+      if (tracker.getLastRow() >= ts) tracker.getRange(ts, 1, tracker.getLastRow() - ts + 1, Math.max(tracker.getLastColumn(), 16)).clearContent();
       const leaves = [];
       memberRows.forEach((m, i) => {
         const p = people[i];
