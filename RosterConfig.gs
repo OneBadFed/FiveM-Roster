@@ -283,11 +283,13 @@ const BLOCK_SPECS_ = Object.freeze({
     INTEGRITY: { t: 'string', d: 'Integrity Log', req: false, help: 'Integrity-scan log tab. Blank = "Integrity Log".' },
     SNAPSHOTS: { t: 'string', d: '_Snapshots', req: false, help: 'Hidden snapshot/restore tab. Blank = "_Snapshots".' },
     PATROL_RESPONSES: { t: 'string', d: '', req: false, help: 'Patrol-log Google Form responses tab name (v2.5.0). BLANK = patrol-hours sync OFF. Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
+    PATROL_LOG: { t: 'string', d: 'Patrol Log', req: false, help: 'Manual Patrol Log tracker tab (like the LOA Tracker). Enter Unique ID + start/end date + start/end time; the engine auto-fills member info, computes TOTAL TIME, credits the hours to the roster, and sorts Pending → Flagged → Processed. BLANK = OFF. Activates only if a tab with this name exists.' },
   } },
   ROSTER_LAYOUT: { type: 'kv', keys: {
     HEADER_ROW: { t: 'int', d: 5, req: true, min: 1, max: 50, help: 'Row holding the roster column labels.' },
     DATA_START_ROW: { t: 'int', d: 7, req: true, min: 2, max: 100, help: 'First possible member row (must be > HEADER_ROW).' },
     TRACKER_START_ROW: { t: 'int', d: 8, req: true, min: 2, max: 100, help: 'First data row on the tracker (row 8: banner row 5, label row 6, divider row 7, data from row 8).' },
+    PATROL_START_ROW: { t: 'int', d: 8, req: true, min: 2, max: 100, help: 'First data row on the Patrol Log tab (same layout as the tracker: banner, label row 6, divider row 7, data from row 8).' },
     DIVIDER_MODE: { t: 'enum', d: 'ALLCAPS_RANK', req: true, enum: ['ALLCAPS_RANK', 'EXPLICIT_LIST'], help: 'How ranks/section-dividers are detected. ALLCAPS_RANK = the all-caps heuristic (default). EXPLICIT_LIST = consult the [RANKS] table (v2.5.0), falling back to the heuristic for anything unlisted.' },
     TRAINING_KEYWORDS: { t: 'list', d: 'TRAINING, CADET', req: true, help: 'Divider labels containing these words are TRAINING sections.' },
     UNIT_FORMAT: { t: 'string', d: 'S-{00}', req: true, help: 'Callsign/unit-number template (v2.5.0). The {0…} token is the slot number zero-padded to that many digits — "S-{00}" → S-01, "TRP-{000}" → TRP-001. Text outside the token is literal (prefix/suffix). No token → the number is appended.' },
@@ -387,6 +389,9 @@ const BLOCK_SPECS_ = Object.freeze({
     MAX_HOURS: { t: 'int', d: 16, req: false, min: 1, max: 24, help: 'Reject a single patrol log longer than this many hours (guards typos / bad times).' },
     OVERNIGHT: { t: 'bool', d: true, req: false, help: 'START_END only: if the end time is before the start, treat it as crossing midnight (+24h) instead of an error.' },
     RECOMPUTE: { t: 'bool', d: true, req: false, help: 'Recompute the member\'s activity status from their new hours after crediting a patrol.' },
+    STATUS_FLOW: { t: 'list', d: 'Pending, Flagged, Processed', req: false, help: 'Manual Patrol Log tab: the STATUS dropdown values AND their top-to-bottom sort order (Pending at the top, then Flagged, then Processed).' },
+    FLAGGED_STATUS: { t: 'string', d: 'Flagged', req: false, help: 'Patrol Log: the status auto-set on a log the engine flags (bad time, over-max, unknown ID, future date). The reason is written to NOTES.' },
+    PROCESSED_STATUS: { t: 'string', d: 'Processed', req: false, help: 'Patrol Log: the "reviewed / done" status. Hours credit on entry regardless; this just marks a log as handled.' },
     COL_DISCORD: { t: 'string', d: 'Discord', req: false, help: 'Form-header keyword for the Discord-ID column (primary match key).' },
     COL_CALLSIGN: { t: 'string', d: 'Callsign', req: false, help: 'Form-header keyword for the callsign column (fallback match key when the ID is blank/unmatched).' },
     COL_START: { t: 'string', d: 'Start', req: false, help: 'START_END mode: header keyword for the on-duty / start-time column.' },
@@ -936,9 +941,15 @@ function materialize_(c, fromTab) {
       mode: P.MODE || 'START_END', maxHours: P.MAX_HOURS || 16, overnight: P.OVERNIGHT !== false, recompute: P.RECOMPUTE !== false,
       colDiscord: P.COL_DISCORD || 'Discord', colCallsign: P.COL_CALLSIGN || 'Callsign',
       colStart: P.COL_START || 'Start', colEnd: P.COL_END || 'End', colDuration: P.COL_DURATION || 'Hours',
+      // Manual Patrol Log tab statuses (sort order + the flagged/processed names).
+      statusFlow: (P.STATUS_FLOW && P.STATUS_FLOW.length) ? P.STATUS_FLOW : ['Pending', 'Flagged', 'Processed'],
+      pendingStatus: (P.STATUS_FLOW && P.STATUS_FLOW.length ? P.STATUS_FLOW[0] : 'Pending'),
+      flaggedStatus: P.FLAGGED_STATUS || 'Flagged',
+      processedStatus: P.PROCESSED_STATUS || 'Processed',
     },
     sheets: {
       roster: kv.SHEETS.ROSTER, tracker: kv.SHEETS.TRACKER, form: kv.SHEETS.FORM_RESPONSES, patrol: kv.SHEETS.PATROL_RESPONSES || '',
+      patrolLog: kv.SHEETS.PATROL_LOG || '',   // manual Patrol Log tracker tab (blank = OFF; only activates if the tab exists)
       // v2.5.0 — system/log tab names (blank falls back to the shipped default so pre-v2.5 configs keep working).
       audit: kv.SHEETS.AUDIT || 'Edit Log',
       hoursHistory: kv.SHEETS.HOURS_HISTORY || '_Hours History',
@@ -948,6 +959,7 @@ function materialize_(c, fromTab) {
     },
     rosterStartRow: kv.ROSTER_LAYOUT.DATA_START_ROW,
     trackerStartRow: kv.ROSTER_LAYOUT.TRACKER_START_ROW,
+    patrolStartRow: kv.ROSTER_LAYOUT.PATROL_START_ROW || 8,
     headerRow: kv.ROSTER_LAYOUT.HEADER_ROW,
     idType: idType,                 // 'DISCORD' | 'COMMUNITY' | 'CUSTOM' — the department's Unique-ID switch
     idMinDigits: idRange.min,       // accepted Unique ID length range, derived from ID_TYPE (isValidId_ reads these)

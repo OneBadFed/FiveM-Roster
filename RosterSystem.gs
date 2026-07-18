@@ -562,7 +562,7 @@ function setupWizard() {
  */
 function installDataValidation_() {
   const ss = SpreadsheetApp.getActive();
-  const counts = { roster: 0, tracker: 0 };
+  const counts = { roster: 0, tracker: 0, patrolLog: 0 };
 
   // Custom-formula rule: blank OR a 17-19 digit string. The formula references the range's top-left cell and
   // auto-adjusts down each row (like conditional formatting). REJECT because no non-17-19-digit ID is ever valid.
@@ -604,6 +604,20 @@ function installDataValidation_() {
       let statusFlow = ['Pending', 'Approved', 'Denied', 'Expired'];
       try { const lv = cfg_().leave; if (lv.STATUS_FLOW.length) statusFlow = lv.STATUS_FLOW; } catch (e) { /* config broken — classic list */ }
       if (T.status) { tracker.getRange(start, T.status, n, 1).setDataValidation(listRule(statusFlow, 'Choose a leave status.')); counts.tracker++; }
+    }
+  }
+
+  // Patrol Log (manual tracker) — header-resolved; validated only when the tab exists.
+  const patrolLog = CONFIG.sheets.patrolLog ? ss.getSheetByName(CONFIG.sheets.patrolLog) : null;
+  if (patrolLog) {
+    const PC = patrolLogCols_(patrolLog), pstart = CONFIG.patrolStartRow;
+    const n = Math.min(patrolLog.getMaxRows(), Math.max(patrolLog.getLastRow(), pstart - 1) + CONFIG.limits.validationBuffer) - pstart + 1;
+    if (n > 0) {
+      if (PC.discord) { const idCol = patrolLog.getRange(pstart, PC.discord, n, 1); idCol.setNumberFormat('@').setDataValidation(idRuleFor(idCol)); counts.patrolLog++; }
+      if (PC.startDate) { patrolLog.getRange(pstart, PC.startDate, n, 1).setDataValidation(dateRule('Enter the patrol start date.')); counts.patrolLog++; }
+      if (PC.endDate) { patrolLog.getRange(pstart, PC.endDate, n, 1).setDataValidation(dateRule('Enter the patrol end date.')); counts.patrolLog++; }
+      const pflow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Processed'];
+      if (PC.status) { patrolLog.getRange(pstart, PC.status, n, 1).setDataValidation(listRule(pflow, 'Patrol status: Pending, Flagged, or Processed.')); counts.patrolLog++; }
     }
   }
   return counts;
@@ -974,6 +988,8 @@ function refreshDashboard() {
       try { recompute = recomputeStatuses_(roster, false); } catch (e) { log_('refreshDashboard.status', e); }
       // 3b) Keep TIME IN RANK live for EVERY member (days since LAST PROMOTION) — fills empties + new rows.
       try { tir = fillTimeInRank_(roster); } catch (e) { log_('refreshDashboard.tir', e); }
+      // 3c) Re-process the manual Patrol Log — matures once-future logs, reconciles any credit deltas, re-groups.
+      try { refreshPatrolLog_(); } catch (e) { log_('refreshDashboard.patrol', e); }
     } finally {
       lock.releaseLock();
     }
@@ -1078,11 +1094,22 @@ function onEdit(e) {
         try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group by status + compact away any gap left by the delete
       }
     }
+    // PATROL LOG: entering a Unique ID + start/end date+time auto-fills the member, computes TOTAL TIME, credits the
+    // hours, and (auto-)flags a bad log. Re-process every edited row, then re-group Pending → Flagged → Processed.
+    if (CONFIG.sheets.patrolLog && name === CONFIG.sheets.patrolLog && row >= CONFIG.patrolStartRow) {
+      const PC = patrolLogCols_(sheet);
+      const rosterSheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+      if (rosterSheet && PC.status) {
+        const rLast = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
+        for (let rr = Math.max(row, CONFIG.patrolStartRow); rr <= rLast; rr++) { try { processPatrolLog_(sheet, rr, PC, rosterSheet); } catch (e2) { log_('onEdit.processPatrol', e2); } }
+        try { sortPatrolLog_(sheet); } catch (e2) { log_('onEdit.sortPatrolLog', e2); }
+      }
+    }
     // F-003: refreshing the WHOLE workbook on every keystroke is the biggest recurring cost. Short-circuit:
     //  • roster/tracker edits change the numbers → full refresh (all tag/KPI locations may need updating).
     //  • any other tab → only when THIS edit could touch a #stat tag (new value is a tag, or the cell was a managed
     //    tag), and then re-render ONLY that one sheet — a non-data edit can't change roster stats elsewhere.
-    if (name === CONFIG.sheets.roster || name === CONFIG.sheets.tracker) {
+    if (name === CONFIG.sheets.roster || name === CONFIG.sheets.tracker || (CONFIG.sheets.patrolLog && name === CONFIG.sheets.patrolLog)) {
       try { refreshDashboard_(); } catch (e2) { log_('onEdit.dashboard', e2); }
     } else if (!dashboardSkip_(name)) {
       let touchesTag = /^#\s*[A-Za-z]/.test(String(e.value || ''));
@@ -1673,6 +1700,7 @@ function processDailyLOAs() {
       if (!tracker || !roster) return;
       summary = processDailyLOAs_(roster, tracker, todayInSheetTz_(), { sendWebhooks: true });
       try { sortTracker_(null, tracker); } catch (e) { log_('processDailyLOAs.sort', e); } // expiries/starts changed statuses → re-group (Pending, Approved, Denied, Expired)
+      try { refreshPatrolLog_(); } catch (e) { log_('processDailyLOAs.patrol', e); } // matures once-future patrol logs, re-credits any deltas, re-groups the Patrol Log
       try { refreshDashboard_(true); } catch (e) { log_('processDailyLOAs.dashboard', e); } // nightly = full discovery rescan (self-heals renames/missed tabs daily)
       logInfo_('processDailyLOAs', `scanned ${summary.scanned}, expired ${summary.expired.length}, started ${summary.started.length}.`);
     } finally {
@@ -2275,6 +2303,232 @@ function manualSyncPatrol() {
     ui.alert(`🚔 Patrol hours credited.\n\n${res.credited.length} log(s) · ${res.hoursAdded} hrs total\n${lines}${more}` +
       (res.errored ? `\n\n⚠️ ${res.errored} row(s) had no matching member or a bad time — flagged red on the "${CONFIG.sheets.patrol}" tab. Fix them and re-run.` : ''));
   });
+}
+
+/* ======================================================================
+ * PATROL LOG TRACKER (manual entry — parallel to the LOA Tracker)
+ * A curated tab (default "Patrol Log") where an operator enters only a
+ * Unique ID + start date/time + end date/time. The engine auto-fills the
+ * member's rank/unit/OOC/name/shift from the roster, computes TOTAL TIME,
+ * credits the hours to the roster IMMEDIATELY, and auto-flags bad logs
+ * (unknown ID, end≤start, future-dated, over [PATROL].MAX_HOURS) with a
+ * one-line reason in NOTES. Rows sort Pending → Flagged → Processed.
+ * Crediting is RECONCILED durably (a hidden "hours|memberId" marker in the
+ * row's column A): an edit adjusts the delta, a flag/delete reverses it, so
+ * a member's HOURS always equals the sum of their VALID patrol logs.
+ * OFF unless a tab named [SHEETS].PATROL_LOG exists.
+ * ====================================================================== */
+
+/** The Patrol Log's 1-based label row (scans the top rows for STATUS + a member column). 0 if none. */
+function patrolLabelRow_(sheet) {
+  try {
+    const scan = Math.min(15, sheet.getLastRow());
+    if (scan < 1) return 0;
+    const grid = sheet.getRange(1, 1, scan, Math.max(1, sheet.getLastColumn())).getDisplayValues();
+    for (let r = 0; r < grid.length; r++) {
+      const row = grid[r].map((h) => norm_(h));
+      const has = (kw) => row.some((h) => h.indexOf(norm_(kw)) !== -1);
+      if (has('STATUS') && (has('NAME') || has('UNIQUE') || has('START'))) return r + 1;
+    }
+  } catch (e) { log_('patrolLabelRow_', e); }
+  return 0;
+}
+
+/** Header-resolve the Patrol Log columns (any order). 0 = column absent. mark = hidden credited-marker (col A). */
+function patrolLogCols_(sheet) {
+  const out = { mark: 1, rank: 0, unit: 0, ooc: 0, name: 0, discord: 0, shift: 0, startDate: 0, endDate: 0, startTime: 0, endTime: 0, total: 0, status: 0, notes: 0, labelRow: 0, width: 0 };
+  try {
+    out.labelRow = patrolLabelRow_(sheet) || (CONFIG.patrolStartRow - 2);
+    const lastCol = Math.max(sheet.getLastColumn(), 14);
+    const hdr = sheet.getRange(out.labelRow, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
+    const all = (...toks) => { for (let c = 0; c < hdr.length; c++) { if (toks.every((t) => hdr[c].indexOf(norm_(t)) !== -1)) return c + 1; } return 0; };
+    out.rank = all('RANK');
+    out.unit = all('UNIT') || all('CALLSIGN');
+    out.ooc = all('OOC');
+    for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } // NAME that isn't "OOC NAME"
+    out.discord = all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
+    out.shift = all('SHIFT') || all('DIVISION') || all('DISTRICT');
+    out.startDate = all('START', 'DATE'); out.endDate = all('END', 'DATE');
+    out.startTime = all('START', 'TIME'); out.endTime = all('END', 'TIME');
+    out.total = all('TOTAL'); out.status = all('STATUS');
+    out.notes = all('NOTES') || all('NOTE') || all('REASON');
+    out.width = Math.max(lastCol, out.notes, out.status, out.total, out.endTime, out.endDate, out.startTime, out.startDate, out.shift, out.discord, out.name, out.ooc, out.unit, out.rank);
+  } catch (e) { log_('patrolLogCols_', e); }
+  return out;
+}
+
+/** Combine a DATE cell value + a TIME cell value into one Date, or null if either is missing/unparseable. */
+function combineDateTime_(dateVal, timeVal) {
+  const d = (dateVal instanceof Date) ? dateVal : (dateVal === '' || dateVal == null ? null : new Date(dateVal));
+  if (!d || isNaN(d.getTime())) return null;
+  let hh = 0, mm = 0, ss = 0;
+  if (timeVal instanceof Date) { hh = timeVal.getHours(); mm = timeVal.getMinutes(); ss = timeVal.getSeconds(); }
+  else if (typeof timeVal === 'number') { const s = Math.round(timeVal * 86400); hh = Math.floor(s / 3600) % 24; mm = Math.floor((s % 3600) / 60); ss = s % 60; }
+  else return null; // blank/text time → treat the log as incomplete
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm, ss);
+}
+
+/** ISNUMBER-guarded TOTAL TIME formula (hours, 2dp) for a Patrol Log row r: ((endDate+endTime)−(startDate+startTime))*24. */
+function patrolTotalFormula_(PC, r) {
+  const A1 = (c) => String.fromCharCode(64 + c) + r; // Patrol Log lives in columns A..O (single letters)
+  const sd = A1(PC.startDate), st = A1(PC.startTime), ed = A1(PC.endDate), et = A1(PC.endTime);
+  return `=IF(AND(ISNUMBER(${sd}),ISNUMBER(${st}),ISNUMBER(${ed}),ISNUMBER(${et})),ROUND(((${ed}+${et})-(${sd}+${st}))*24,2),"")`;
+}
+
+/** Flag reason for a COMPLETE patrol log, or '' if valid. Priority: unknown member → bad duration → future → over-max. */
+function evaluatePatrolLog_(memberRow, startDT, endDT, hours, now) {
+  if (memberRow === -1) return 'Unique ID not on roster.';
+  if (!startDT || !endDT) return 'Missing or invalid start/end.';
+  if (!(hours > 0)) return 'End is not after start.';
+  if (startDT.getTime() > now.getTime() || endDT.getTime() > now.getTime()) return 'Dated in the future.';
+  if (hours > CONFIG.patrol.maxHours) return `Exceeds ${CONFIG.patrol.maxHours} hr max.`;
+  return '';
+}
+
+/**
+ * Process ONE Patrol Log data row: auto-fill member identity + TOTAL TIME, decide Pending/Flagged (+reason), and
+ * reconcile the member's credited hours. Idempotent — safe on every edit and on the nightly refresh. Never throws.
+ */
+function processPatrolLog_(sheet, row, PC, roster) {
+  try {
+    const disp = (c) => c ? String(sheet.getRange(row, c).getDisplayValue()).trim() : '';
+    const rawv = (c) => c ? sheet.getRange(row, c).getValue() : '';
+    const idv = disp(PC.discord);
+    const anyInput = !!(idv || rawv(PC.startDate) !== '' || rawv(PC.startTime) !== '' || rawv(PC.endDate) !== '' || rawv(PC.endTime) !== '');
+    if (!anyInput) { reconcilePatrolCredit_(sheet, row, PC, roster, rosterCols_(roster), null); return; } // empty/deleted row → reverse any prior credit, stay blank
+
+    const startDT = combineDateTime_(rawv(PC.startDate), rawv(PC.startTime));
+    const endDT = combineDateTime_(rawv(PC.endDate), rawv(PC.endTime));
+    const complete = !!(idv && startDT && endDT);
+    const RCr = rosterCols_(roster);
+    const memberRow = isValidId_(idv) ? patrolFindRow_(roster, idv, '') : -1;
+
+    if (memberRow !== -1) { // fill identity from the roster (source of truth)
+      const rr = (c) => c ? String(roster.getRange(memberRow, c).getDisplayValue()).trim() : '';
+      const put = (c, v) => { if (c && v !== '') sheet.getRange(row, c).setValue(v); };
+      put(PC.rank, rr(RCr.rank)); put(PC.unit, rr(RCr.unit)); put(PC.ooc, rr(RCr.ooc)); put(PC.name, rr(RCr.name)); put(PC.shift, rr(RCr.shift));
+    }
+    if (PC.discord) sheet.getRange(row, PC.discord).setNumberFormat('@');
+    if (PC.total && PC.startDate && PC.endDate && PC.startTime && PC.endTime) sheet.getRange(row, PC.total).setFormula(patrolTotalFormula_(PC, row)).setNumberFormat('0.00" hrs"');
+
+    const hours = (startDT && endDT) ? Math.round(((endDT.getTime() - startDT.getTime()) / 3600000) * 100) / 100 : null;
+    const P = CONFIG.patrol;
+    const curStatus = PC.status ? disp(PC.status) : '';
+    const setStatus = (s) => { if (PC.status && norm_(curStatus) !== norm_(s)) sheet.getRange(row, PC.status).setValue(s); };
+    const setNote = (t) => { if (PC.notes && disp(PC.notes) !== t) sheet.getRange(row, PC.notes).setValue(t); };
+
+    let desired = null;
+    if (!complete) {
+      if (!curStatus) setStatus(P.pendingStatus); // half-entered → Pending, no credit yet
+    } else {
+      const reason = evaluatePatrolLog_(memberRow, startDT, endDT, hours, new Date());
+      if (reason) { setStatus(P.flaggedStatus); setNote(reason); }                                   // invalid → Flagged + reason, no credit
+      else { if (!curStatus || norm_(curStatus) === norm_(P.flaggedStatus)) setStatus(P.pendingStatus); setNote(''); desired = { hours: hours, mid: idv }; } // valid → clear flag + credit
+    }
+    reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired);
+  } catch (e) { log_('processPatrolLog_', e); }
+}
+
+/**
+ * Reconcile a Patrol Log row's credited hours against the roster. The row's hidden marker (col A) holds "hours|memberId"
+ * of what was LAST credited; `desired` is {hours, mid} to credit now, or null. Reverses the prior credit and applies the
+ * new one so a member's HOURS always equals the sum of their VALID logs — idempotent across edits, flag/unflag, ID
+ * changes and deletes. The marker is written BEFORE the roster is touched (a crash under-credits, never double-credits).
+ */
+function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired) {
+  try {
+    if (!PC.mark || !RCr.hours) return;
+    const markCell = sheet.getRange(row, PC.mark);
+    const prior = String(markCell.getDisplayValue()).trim();
+    let priorHours = 0, priorMid = '';
+    if (prior) { const p = prior.split('|'); priorHours = parseFloat(p[0]) || 0; priorMid = (p[1] || '').trim(); }
+    const wantHours = desired ? (Math.round(desired.hours * 100) / 100) : 0;
+    const wantMid = desired ? String(desired.mid).trim() : '';
+    if (prior && priorMid === wantMid && Math.abs(priorHours - wantHours) < 0.005) return; // already exactly credited → no-op
+
+    if (priorMid && priorHours) { // reverse the prior credit on whoever actually got it
+      const prow = patrolFindRow_(roster, priorMid, '');
+      if (prow !== -1) {
+        const cur = parseHours_(roster.getRange(prow, RCr.hours).getValue());
+        roster.getRange(prow, RCr.hours).setValue(Math.round((cur - priorHours) * 100) / 100);
+        if (CONFIG.patrol.recompute) { try { updateStatusFromHours(roster, prow); } catch (e) { /* best-effort */ } }
+      }
+    }
+    markCell.clearContent(); SpreadsheetApp.flush(); // durably "uncredited" before any re-credit (self-heals on the next process if we die here)
+
+    if (desired && wantHours > 0 && wantMid) { // apply the new credit on the target member
+      const trow = patrolFindRow_(roster, wantMid, '');
+      if (trow !== -1) {
+        markCell.setValue(wantHours + '|' + wantMid); SpreadsheetApp.flush(); // durable marker BEFORE the credit
+        const cur = parseHours_(roster.getRange(trow, RCr.hours).getValue());
+        const next = Math.round((cur + wantHours) * 100) / 100;
+        roster.getRange(trow, RCr.hours).setValue(next);
+        if (CONFIG.patrol.recompute) { try { updateStatusFromHours(roster, trow); } catch (e) { /* best-effort */ } }
+        if (typeof auditEvent_ === 'function') { try { auditEvent_('patrol', String(cur), String(next), roster.getRange(trow, RCr.hours).getA1Notation(), String(roster.getRange(trow, RCr.name).getDisplayValue()).trim()); } catch (e) { /* best-effort */ } }
+      }
+    }
+  } catch (e) { log_('reconcilePatrolCredit_', e); }
+}
+
+/** Re-group + compact the Patrol Log by [PATROL].STATUS_FLOW (Pending → Flagged → Processed); preserves formatting, carries the marker. */
+function sortPatrolLog_(patrolSheet) {
+  try {
+    const sheet = patrolSheet || (CONFIG.sheets.patrolLog ? SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.patrolLog) : null);
+    if (!sheet) return;
+    const PC = patrolLogCols_(sheet), start = CONFIG.patrolStartRow, W = PC.width;
+    if (!PC.status || !W) return;
+    if (PC.labelRow && start <= PC.labelRow) { logWarn_('sortPatrolLog_', `PATROL_START_ROW (${start}) is at/above the header (row ${PC.labelRow}); sort skipped.`); return; }
+    const last = sheet.getLastRow();
+    const records = [];
+    if (last >= start) {
+      const n = last - start + 1;
+      const vals = sheet.getRange(start, 1, n, W).getValues();
+      const ids = PC.discord ? sheet.getRange(start, PC.discord, n, 1).getDisplayValues() : null;
+      for (let i = 0; i < n; i++) {
+        const r = vals[i].slice(0, W);
+        if (ids) r[PC.discord - 1] = String(ids[i][0]).trim();
+        const idv = PC.discord ? String(r[PC.discord - 1] || '').trim() : '';
+        const nmv = PC.name ? String(r[PC.name - 1] || '').trim() : '';
+        if (!idv && !nmv) continue; // drop blank rows (compaction)
+        records.push(r);
+      }
+    }
+    if (!records.length) return;
+    const flow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Processed'];
+    const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
+    const prio = (r) => { const k = norm_(String(r[PC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
+    const dec = records.map((r, i) => ({ r: r, i: i, p: prio(r) }));
+    dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable
+    const sorted = dec.map((d) => d.r);
+
+    if (start + sorted.length - 1 > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), start + sorted.length - 1 - sheet.getMaxRows());
+    if (PC.discord) sheet.getRange(start, PC.discord, sorted.length, 1).setNumberFormat('@');
+    sheet.getRange(start, 1, sorted.length, W).setValues(sorted);
+    if (last > start + sorted.length - 1) sheet.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent();
+
+    if (PC.total && PC.startDate && PC.endDate && PC.startTime && PC.endTime) { // TOTAL formula per physical row
+      const tf = []; for (let k = 0; k < sorted.length; k++) tf.push([patrolTotalFormula_(PC, start + k)]);
+      sheet.getRange(start, PC.total, sorted.length, 1).setFormulas(tf).setNumberFormat('0.00" hrs"');
+    }
+    if (PC.startDate) sheet.getRange(start, PC.startDate, sorted.length, 1).setNumberFormat('d mmm. yyyy');
+    if (PC.endDate) sheet.getRange(start, PC.endDate, sorted.length, 1).setNumberFormat('d mmm. yyyy');
+  } catch (e) { log_('sortPatrolLog_', e); }
+}
+
+/** Nightly/refresh: re-process every Patrol Log row (matures a once-future log, re-credits deltas) + re-group. No-op if OFF. */
+function refreshPatrolLog_() {
+  try {
+    if (!CONFIG.sheets.patrolLog) return;
+    const ss = SpreadsheetApp.getActive();
+    const sheet = ss.getSheetByName(CONFIG.sheets.patrolLog);
+    const roster = ss.getSheetByName(CONFIG.sheets.roster);
+    if (!sheet || !roster) return;
+    const PC = patrolLogCols_(sheet);
+    if (!PC.status) return;
+    const last = sheet.getLastRow();
+    for (let r = CONFIG.patrolStartRow; r <= last; r++) processPatrolLog_(sheet, r, PC, roster);
+    sortPatrolLog_(sheet);
+  } catch (e) { log_('refreshPatrolLog_', e); }
 }
 
 /**

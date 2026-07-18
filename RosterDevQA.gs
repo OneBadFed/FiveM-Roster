@@ -58,7 +58,8 @@ function addDevMenu_(prefix) {
       .addItem('17 · Dashboard render safety', p + 'devRunSection17')
       .addItem('18 · Settings apply', p + 'devRunSection18')
       .addItem('19 · v2.5.0 config extensions', p + 'devRunSection19')
-      .addItem('20 · New-layout column resolution', p + 'devRunSection20'))
+      .addItem('20 · New-layout column resolution', p + 'devRunSection20')
+      .addItem('21 · Patrol Log tracker', p + 'devRunSection21'))
     .addItem('🧹 Delete Sandbox / Results Tabs', p + 'devCleanup')
     .addToUi();
 }
@@ -142,6 +143,7 @@ const DEV_GROUPS = [
   ['Settings apply (sandbox)', devSettingsApplyTests_],
   ['v2.5.0 config extensions (sandbox)', devV25Tests_],
   ['New-layout column resolution (sandbox)', devNewLayoutTests_],
+  ['Patrol Log tracker (sandbox)', devPatrolLogTests_],
 ];
 
 /* ======================================================================
@@ -218,6 +220,7 @@ function devRunSection17() { devRunSectionByIndex_(17); }
 function devRunSection18() { devRunSectionByIndex_(18); }
 function devRunSection19() { devRunSectionByIndex_(19); }
 function devRunSection20() { devRunSectionByIndex_(20); }
+function devRunSection21() { devRunSectionByIndex_(21); }
 
 /* ======================================================================
  * RESULTS FRAMEWORK
@@ -432,6 +435,31 @@ function devBuildForm_(subs) {
     sh.getRange(2, 1, subs.length, 8).setValues(rows);
   }
   if (DEV_THEME_SANDBOX) devTheme_(sh, 1, CONFIG.form.discord);
+  return sh;
+}
+
+/** A Date whose TIME portion is h:m (the date part is irrelevant — combineDateTime_ reads only the time). */
+function devTime_(h, m) { return new Date(2020, 0, 1, h, m || 0, 0); }
+
+/**
+ * Sandbox Patrol Log (the user's layout): label row at patrolStartRow-2, data from patrolStartRow.
+ * A mark(hidden) · B RANK · C UNIT NUMBER · D OOC NAME · E NAME · F UNIQUE ID · G SHIFT · H START DATE ·
+ * I END DATE · J START TIME · K END TIME · L TOTAL TIME · M STATUS · N NOTES.
+ * logs:{id,startDate,startTime,endDate,endTime,status,name,rank,mark,notes}.
+ */
+function devBuildPatrolLog_(logs) {
+  const sh = devFreshSheet_('PatrolLog');
+  const hr = Math.max(1, CONFIG.patrolStartRow - 2);
+  sh.getRange(hr, 1, 1, 14).setValues([['', 'RANK', 'UNIT NUMBER', 'OOC NAME', 'NAME', 'UNIQUE ID', 'SHIFT', 'START DATE', 'END DATE', 'START TIME', 'END TIME', 'TOTAL TIME', 'STATUS', 'NOTES']]);
+  if (logs && logs.length) {
+    const rows = logs.map((L) => [
+      L.mark ?? '', L.rank ?? '', '', '', L.name ?? '', L.id ?? '', '',
+      L.startDate ?? '', L.endDate ?? '', L.startTime ?? '', L.endTime ?? '', '', L.status ?? '', L.notes ?? '',
+    ]);
+    sh.getRange(CONFIG.patrolStartRow, 6, logs.length, 1).setNumberFormat('@'); // UNIQUE ID exact
+    sh.getRange(CONFIG.patrolStartRow, 1, logs.length, 14).setValues(rows);
+  }
+  if (DEV_THEME_SANDBOX) devTheme_(sh, hr, 6);
   return sh;
 }
 
@@ -2140,6 +2168,111 @@ function devNewLayoutTests_() {
     devEq_(R, 'archive relabel: left header = previous right header', sh.getRange(6, 11).getDisplayValue(), 'JUN. HOURS');
     devEq_(R, 'archive shift: right col took current HOURS (12)', sh.getRange(CONFIG.rosterStartRow, 12).getValue(), 12);
     devEq_(R, 'archive shift: left col took the next period (JUN=6)', sh.getRange(CONFIG.rosterStartRow, 11).getValue(), 6);
+  })();
+
+  return R;
+}
+
+/* ======================================================================
+ * SECTION 21 — PATROL LOG TRACKER (sandbox): header resolution, member
+ * auto-fill, TOTAL TIME, the four auto-flags (unknown ID / end≤start /
+ * future / over-max), immediate + idempotent + delta-adjusting hours
+ * crediting, reverse-on-flag / reverse-on-delete, and the status sort.
+ * ====================================================================== */
+function devPatrolLogTests_() {
+  const R = devNewResults_('Patrol Log tracker (sandbox)');
+  const PS = CONFIG.patrolStartRow;
+  const HRS = CONFIG.roster.hours; // sandbox roster HOURS column (positional fallback = 9)
+  const rosterHrs = (ro) => parseHours_(ro.getRange(CONFIG.rosterStartRow, HRS).getValue());
+
+  // Header resolution on the user's exact layout (START DATE vs START TIME, NAME vs OOC NAME).
+  (() => {
+    const PC = patrolLogCols_(devBuildPatrolLog_([]));
+    devEq_(R, 'patrolLogCols_ mark = A', PC.mark, 1);
+    devEq_(R, 'patrolLogCols_ RANK = B', PC.rank, 2);
+    devEq_(R, 'patrolLogCols_ OOC NAME = D', PC.ooc, 4);
+    devEq_(R, 'patrolLogCols_ NAME = E (not OOC NAME)', PC.name, 5);
+    devEq_(R, 'patrolLogCols_ UNIQUE ID = F', PC.discord, 6);
+    devEq_(R, 'patrolLogCols_ START DATE = H (not START TIME)', PC.startDate, 8);
+    devEq_(R, 'patrolLogCols_ END DATE = I', PC.endDate, 9);
+    devEq_(R, 'patrolLogCols_ START TIME = J', PC.startTime, 10);
+    devEq_(R, 'patrolLogCols_ END TIME = K', PC.endTime, 11);
+    devEq_(R, 'patrolLogCols_ TOTAL = L', PC.total, 12);
+    devEq_(R, 'patrolLogCols_ STATUS = M', PC.status, 13);
+    devEq_(R, 'patrolLogCols_ NOTES = N', PC.notes, 14);
+  })();
+
+  // Valid log: auto-fills identity, computes TOTAL, credits hours immediately, marks the row — then idempotent + delta.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Sergeant', name: 'Pat Valid', id: devId_(70), unit: 'S-7', activity: 'Active', hours: 10 }]);
+    const pl = devBuildPatrolLog_([{ id: devId_(70), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }]);
+    const PC = patrolLogCols_(pl);
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'valid: auto-fills member NAME from roster', String(pl.getRange(PS, PC.name).getDisplayValue()).trim(), 'Pat Valid');
+    devEq_(R, 'valid: auto-fills member RANK from roster', String(pl.getRange(PS, PC.rank).getDisplayValue()).trim(), 'Sergeant');
+    devEq_(R, 'valid: status -> Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
+    devCheck_(R, 'valid: TOTAL TIME is a live formula', pl.getRange(PS, PC.total).getFormula().indexOf('ISNUMBER(') !== -1);
+    devEq_(R, 'valid: credits 3 hrs immediately (10 -> 13)', rosterHrs(ro), 13);
+    devCheck_(R, 'valid: writes the "hours|id" credited marker', String(pl.getRange(PS, PC.mark).getDisplayValue()).indexOf('3|') === 0);
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'idempotent: re-process does NOT double-credit (still 13)', rosterHrs(ro), 13);
+    pl.getRange(PS, PC.endTime).setValue(devTime_(14, 0)); // 3h -> 5h
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'edit: delta re-credits (5 hrs -> roster 15)', rosterHrs(ro), 15);
+  })();
+
+  // Each of the four flags: status -> Flagged, a reason in NOTES, nothing credited.
+  const flagCase = (label, log, reasonPart) => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'FlagMe', id: devId_(71), activity: 'Active', hours: 8 }]);
+    const pl = devBuildPatrolLog_([{ id: log.id === undefined ? devId_(71) : log.id, startDate: log.startDate, startTime: log.startTime, endDate: log.endDate, endTime: log.endTime }]);
+    const PC = patrolLogCols_(pl);
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, `flag(${label}): status -> Flagged`, String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
+    devCheck_(R, `flag(${label}): NOTES reason mentions "${reasonPart}"`, String(pl.getRange(PS, PC.notes).getDisplayValue()).toLowerCase().indexOf(reasonPart) !== -1);
+    devEq_(R, `flag(${label}): no hours credited (stays 8)`, rosterHrs(ro), 8);
+  };
+  flagCase('end<=start', { startDate: devDay_(-1), startTime: devTime_(12, 0), endDate: devDay_(-1), endTime: devTime_(9, 0) }, 'not after');
+  flagCase('over-max', { startDate: devDay_(-3), startTime: devTime_(0, 0), endDate: devDay_(-1), endTime: devTime_(0, 0) }, 'max');
+  flagCase('future', { startDate: devDay_(1), startTime: devTime_(9, 0), endDate: devDay_(1), endTime: devTime_(12, 0) }, 'future');
+  flagCase('unknown-id', { id: devId_(999), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }, 'roster');
+
+  // A credited log edited to invalid REVERSES its credit and flags.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Rev', id: devId_(72), activity: 'Active', hours: 5 }]);
+    const pl = devBuildPatrolLog_([{ id: devId_(72), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(11, 0) }]);
+    const PC = patrolLogCols_(pl);
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'reverse: credited 2 (5 -> 7)', rosterHrs(ro), 7);
+    pl.getRange(PS, PC.endTime).setValue(devTime_(8, 0)); // end < start now
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'reverse: flag un-credits (back to 5)', rosterHrs(ro), 5);
+    devCheck_(R, 'reverse: marker cleared', String(pl.getRange(PS, PC.mark).getDisplayValue()).trim() === '');
+  })();
+
+  // Deleting a credited log's CELLS (col A marker survives) reverses the credit.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Del', id: devId_(73), activity: 'Active', hours: 4 }]);
+    const pl = devBuildPatrolLog_([{ id: devId_(73), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(13, 0) }]);
+    const PC = patrolLogCols_(pl);
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'delete: credited 4 (4 -> 8)', rosterHrs(ro), 8);
+    pl.getRange(PS, 2, 1, PC.width - 1).clearContent(); // clear B..N (visible cells); the col-A marker survives
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'delete: cleared row reverses the credit (back to 4)', rosterHrs(ro), 4);
+  })();
+
+  // Status sort: Pending -> Flagged -> Processed.
+  (() => {
+    const pl = devBuildPatrolLog_([
+      { id: devId_(74), name: 'Proc', status: CONFIG.patrol.processedStatus },
+      { id: devId_(75), name: 'Flag', status: CONFIG.patrol.flaggedStatus },
+      { id: devId_(76), name: 'Pend', status: CONFIG.patrol.pendingStatus },
+    ]);
+    sortPatrolLog_(pl);
+    const PC = patrolLogCols_(pl);
+    devEq_(R, 'sort: row0 = Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
+    devEq_(R, 'sort: row1 = Flagged', String(pl.getRange(PS + 1, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
+    devEq_(R, 'sort: row2 = Processed', String(pl.getRange(PS + 2, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
   })();
 
   return R;
