@@ -1004,6 +1004,12 @@ function onEdit(e) {
       if (col === RC.hours && row >= CONFIG.rosterStartRow && isValidMemberRow(sheet, row)) {
         updateStatusFromHours(sheet, row);
       }
+      // A rank or shift change moves a member between rank-group / shift bands. The group tabs are live formulas
+      // (they self-update), but the editable Police Academy is written, so re-sync it (and refresh the group bands).
+      if (row >= CONFIG.rosterStartRow && isValidMemberRow(sheet, row) && (col === RC.rank || (RC.shift && col === RC.shift))) {
+        try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('onEdit.academy', e2); }
+        try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('onEdit.groups', e2); }
+      }
     }
     if (name === CONFIG.sheets.tracker && col === CONFIG.tracker.status && row >= CONFIG.trackerStartRow &&
         e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO the approved state — re-confirming it must not re-apply (would revert a manual roster override)
