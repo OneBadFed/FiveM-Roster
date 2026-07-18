@@ -693,10 +693,18 @@ function academyCols_(headers) {
   };
 }
 
+/** Significant rank/label word-stems for matching an Academy band to a rank ("CADETS"→[CADET], "Probationary Officer"→[PROBATIONARY]). */
+function academyStems_(s) {
+  const STOP = { MEMBER: 1, MEMBERS: 1, TEAM: 1, TEAMS: 1, OFFICER: 1, OFFICERS: 1, POLICE: 1, THE: 1, OF: 1, GROUP: 1, GROUPS: 1, RANK: 1, RANKS: 1, DIVISION: 1, SECTION: 1, UNIT: 1, DEPARTMENT: 1 };
+  return String(s || '').toUpperCase().split(/[^A-Z]+/).filter((w) => w && !STOP[w]).map((w) => w.replace(/S$/, ''));
+}
+
 /**
- * Sync every Academy tab: keep a row per current Cadet/Probationary member (matched by UNIQUE ID so training edits
- * follow the member), fill identity columns from the roster, preserve everything you typed, and drop graduates below a
- * "— GRADUATED —" divider. @return {{built:number, sheets:string[], skipped:Array<{name,why}>}}
+ * Sync every Academy tab. Fills members INTO the RANK GROUP bands you laid out (each band matched to a rank by its
+ * label — "CADETS"→Police Cadet, "PROBATIONARY MEMBERS"→Probationary Officer), at the band's top with blank spots
+ * below. Identity columns come from the roster; your training columns are preserved (matched by UNIQUE ID) and never
+ * overwritten; column B (your bands) is untouched. Anyone no longer in a band drops below a "— GRADUATED —" divider.
+ * A tab with no rank-group bands falls back to one contiguous list. @return {{built:number, sheets:string[], skipped}}
  */
 function buildAcademySheets_() {
   const ss = SpreadsheetApp.getActive();
@@ -705,9 +713,18 @@ function buildAcademySheets_() {
   const RC = rosterCols_(roster);
   if (!RC.headerRow || !RC.name || !RC.rank) return { built: 0, sheets: [], skipped: [] };
   const start = CONFIG.rosterStartRow;
-  const lastRow = roster.getLastRow();
-  const nR = Math.max(0, lastRow - start + 1);
+  const headerToData = Math.max(1, start - RC.headerRow);
+  const lastRowR = roster.getLastRow();
+  const nR = Math.max(0, lastRowR - start + 1);
   const rd = nR ? roster.getRange(start, 1, nR, roster.getLastColumn()).getDisplayValues() : [];
+  const rHdrUp = roster.getRange(RC.headerRow, 1, 1, roster.getLastColumn()).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
+  const colForRoster = (label) => { // academy header label → roster column: exact match wins (NAME beats OOC NAME), then contains
+    const key = String(label).toUpperCase().trim();
+    if (!key) return 0;
+    for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c] === key) return c + 1; }
+    for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c] && rHdrUp[c].indexOf(key) !== -1) return c + 1; }
+    return 0;
+  };
   const built = [];
   const skipped = [];
   ss.getSheets().forEach((sh) => {
@@ -719,74 +736,104 @@ function buildAcademySheets_() {
     if (!H.row) { skipped.push({ name: sh.getName(), why: 'no header row with a NAME column found' }); return; }
     const AC = academyCols_(H.headers);
     if (!AC.name) { skipped.push({ name: sh.getName(), why: 'no NAME column' }); return; }
-    const keyCol = AC.id || AC.name; // prefer UNIQUE ID as the match key (names can change / repeat)
-    const dataRow = H.row + 1;
+    const useId = !!(AC.id && RC.discord);          // match rows by UNIQUE ID when both sides have one; else by NAME
+    const keyCol = useId ? AC.id : AC.name;
+    const dataRow = H.row + headerToData;
     const maxRows = sh.getMaxRows();
-    const width = Math.max(sh.getLastColumn(), AC.name, keyCol, AC.grad || 0);
-    // Read the existing body (values to preserve) + a display read of the key column (exact match, no number rounding).
+    const width = Math.max(sh.getLastColumn(), AC.name, keyCol, AC.rank || 0, AC.grad || 0);
+    // Map each academy column to a roster column (by header). Mapped columns are filled from the roster; unmapped ones
+    // (your Exam / Ride-Alongs / Notes) are yours and preserved. The GRADUATED column is engine-owned, never roster-mapped.
+    const colMap = [];
+    for (let c = 0; c < width; c++) { colMap[c] = (AC.grad && c + 1 === AC.grad) ? 0 : colForRoster(H.headers[c] || ''); }
+    // Find the tab's RANK GROUP band column (its label is often merged across the banner+label rows → scan both; else col left of RANK).
+    const topHdr = H.row > 1 ? sh.getRange(H.row - 1, 1, 1, width).getDisplayValues()[0].map((x) => String(x).toUpperCase()) : [];
+    let tabBandCol = 0;
+    for (let i = 0; i < Math.max(H.headers.length, topHdr.length); i++) {
+      const combined = (H.headers[i] || '') + ' ' + (topHdr[i] || '');
+      if (combined.indexOf('RANK') !== -1 && combined.indexOf('GROUP') !== -1) { tabBandCol = i + 1; break; }
+    }
+    if (!tabBandCol && AC.rank > 1) tabBandCol = AC.rank - 1;
+    const memberCol1 = tabBandCol ? tabBandCol + 1 : 1; // first member column = right of the band column (never write column B)
+    // Read the existing body (to preserve your training columns) keyed by ID; a display read of the key avoids number rounding.
     const existVals = maxRows >= dataRow ? sh.getRange(dataRow, 1, maxRows - dataRow + 1, width).getValues() : [];
     const existKeys = maxRows >= dataRow ? sh.getRange(dataRow, keyCol, maxRows - dataRow + 1, 1).getDisplayValues() : [];
     const existByKey = {};
     for (let i = 0; i < existVals.length; i++) {
-      if (String(existVals[i][AC.name - 1] || '').trim() === ACADEMY_GRAD_DIVIDER) continue; // never re-ingest the divider row as a member
+      if (String(existVals[i][AC.name - 1] || '').trim() === ACADEMY_GRAD_DIVIDER) continue; // never re-ingest the divider row
       const k = String(existKeys[i][0] || '').trim();
       if (k && existVals[i].some((c) => String(c || '').trim() !== '')) existByKey[k] = existVals[i].slice();
     }
-    // Current trainees from the roster, in roster order (= rank order).
-    const trainees = [];
-    for (let i = 0; i < rd.length; i++) {
-      const rk = groupNorm_(rd[i][RC.rank - 1]);
-      if (!wanted.some((w) => rk.indexOf(w) === 0)) continue;
-      const nm = String(rd[i][RC.name - 1] || '').trim();
-      if (!nm) continue; // skip empty roster slots
-      trainees.push({
-        id: RC.discord ? String(rd[i][RC.discord - 1] || '').trim() : '',
-        rank: String(rd[i][RC.rank - 1] || '').trim(),
-        name: nm,
-        call: RC.unit ? String(rd[i][RC.unit - 1] || '').trim() : '',
-      });
-    }
     const blank = () => new Array(width).fill('');
-    const putIdentity = (row, t, graduated) => {
+    const keyOfIdx = (i) => (useId ? String(rd[i][RC.discord - 1] || '') : String(rd[i][RC.name - 1] || '')).trim();
+    const rowForIdx = (i, graduated) => {
+      const k = keyOfIdx(i);
+      const row = (k && existByKey[k]) ? existByKey[k].slice() : blank();
       while (row.length < width) row.push('');
-      if (AC.id) row[AC.id - 1] = t.id;
-      if (AC.rank) row[AC.rank - 1] = t.rank;
-      if (AC.name) row[AC.name - 1] = t.name;
-      if (AC.call) row[AC.call - 1] = t.call;
+      for (let c = memberCol1; c <= width; c++) { const rc = colMap[c - 1]; if (rc) row[c - 1] = String(rd[i][rc - 1] || ''); } // fill roster-mapped columns
       if (AC.grad) row[AC.grad - 1] = graduated ? 'Graduated' : '';
       return row;
     };
-    const activeKeys = {};
-    const activeRows = trainees.map((t) => {
-      const key = (AC.id ? t.id : t.name).trim();
-      if (key) activeKeys[key] = true;
-      const base = (key && existByKey[key]) ? existByKey[key].slice() : blank();
-      return putIdentity(base, t, false);
-    });
-    // Graduated = keyed rows that are no longer trainees — keep their data, mark graduated.
-    const gradRows = [];
-    Object.keys(existByKey).forEach((k) => {
-      if (activeKeys[k]) return;
-      const row = existByKey[k].slice();
-      while (row.length < width) row.push('');
-      if (AC.grad) row[AC.grad - 1] = 'Graduated';
-      gradRows.push(row);
-    });
-    // Assemble: active (rank order) → divider → graduated.
+    const filled = {};
+    // Write helper: member columns only (right of the band column), so your column-B bands are never touched.
+    const writeBlock = (rowsFull, atRow) => {
+      if (!rowsFull.length) return;
+      sh.getRange(atRow, memberCol1, rowsFull.length, width - memberCol1 + 1).setValues(rowsFull.map((r) => r.slice(memberCol1 - 1, width)));
+    };
+    // Clear only the member columns we own; keep the ID column as text so long IDs stay exact.
+    if (maxRows >= dataRow) { const a = sh.getRange(dataRow, memberCol1, maxRows - dataRow + 1, width - memberCol1 + 1); a.breakApart(); a.clearContent(); }
+    if (AC.id && AC.id >= memberCol1) sh.getRange(dataRow, AC.id, maxRows - dataRow + 1, 1).setNumberFormat('@');
+
+    const bands = tabBandRanges_(sh, dataRow, tabBandCol);
+    if (bands.length) {
+      // Assign each named roster member to the band whose label best matches their rank (word-stem overlap).
+      const bandStems = bands.map((b) => academyStems_(b.label));
+      const byBand = bands.map(() => []);
+      for (let i = 0; i < rd.length; i++) {
+        if (String(rd[i][RC.name - 1] || '').trim() === '') continue;
+        const rs = academyStems_(rd[i][RC.rank - 1]);
+        if (!rs.length) continue;
+        let best = -1, score = 0;
+        bands.forEach((b, bi) => { let s = 0; rs.forEach((w) => { if (bandStems[bi].indexOf(w) !== -1) s++; }); if (s > score) { score = s; best = bi; } });
+        if (best >= 0) byBand[best].push(i);
+      }
+      bands.forEach((b, bi) => {
+        const idxs = byBand[bi];
+        const rows = [];
+        for (let j = 0; j < b.height; j++) {
+          if (j < idxs.length) { const i = idxs[j]; const k = keyOfIdx(i); if (k) filled[k] = true; rows.push(rowForIdx(i, false)); }
+          else rows.push(blank());
+        }
+        writeBlock(rows, b.top);
+      });
+      // Graduates = kept rows whose member is no longer in any band — below the last band, under a divider.
+      const grads = Object.keys(existByKey).filter((k) => !filled[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
+      if (grads.length) {
+        let cursor = bands.reduce((mx, b) => Math.max(mx, b.top + b.height - 1), dataRow - 1) + 1;
+        const need = cursor + grads.length;
+        if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+        const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER;
+        writeBlock([div], cursor);
+        writeBlock(grads, cursor + 1);
+      }
+      built.push(sh.getName());
+      return;
+    }
+
+    // ---- No rank-group bands on the tab: one contiguous list (active in rank order → divider → graduated). ----
+    const activeRows = [];
+    for (let i = 0; i < rd.length; i++) {
+      const rk = groupNorm_(rd[i][RC.rank - 1]);
+      if (!wanted.some((w) => rk.indexOf(w) === 0)) continue;
+      if (String(rd[i][RC.name - 1] || '').trim() === '') continue;
+      const k = keyOfIdx(i); if (k) filled[k] = true;
+      activeRows.push(rowForIdx(i, false));
+    }
+    const gradRows = Object.keys(existByKey).filter((k) => !filled[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
     const body = activeRows.slice();
     if (gradRows.length) { const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER; body.push(div); gradRows.forEach((r) => body.push(r)); }
-    // Make room, keep the key/ID column as text so long IDs stay exact, then rewrite the body (identity refreshed, your columns carried along).
     const need = dataRow + Math.max(body.length, 1) - 1;
     if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
-    if (sh.getMaxRows() >= dataRow) {
-      const area = sh.getRange(dataRow, 1, sh.getMaxRows() - dataRow + 1, width);
-      area.breakApart(); area.clearContent();
-    }
-    if (AC.id) sh.getRange(dataRow, AC.id, Math.max(body.length, 1), 1).setNumberFormat('@');
-    if (body.length) {
-      try { sh.getRange(dataRow, 1, 1, width).copyTo(sh.getRange(dataRow, 1, body.length, width), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false); } catch (e) { /* keep going if the template row can't be tiled */ }
-      sh.getRange(dataRow, 1, body.length, width).setValues(body);
-    }
+    writeBlock(body, dataRow);
     built.push(sh.getName());
   });
   return { built: built.length, sheets: built, skipped: skipped };
@@ -800,7 +847,7 @@ function buildAcademySheets() {
     let msg = '';
     if (res.built) {
       msg += 'Synced ' + res.built + ' academy tab' + (res.built === 1 ? '' : 's') + ':\n• ' + res.sheets.join('\n• ') +
-        '\n\nCadets & probationary members are listed with their ID / rank / name filled in — your training columns are left untouched. Anyone promoted out drops below a “— GRADUATED —” divider.\n';
+        '\n\nMembers drop into the top of their RANK GROUP band (blank spots left as-is); roster columns are filled, your training columns are left untouched. Anyone promoted out drops below a “— GRADUATED —” divider.\n';
     }
     if (res.skipped && res.skipped.length) {
       msg += (msg ? '\n' : '') + 'Skipped:\n' + res.skipped.map((s) => '• ' + s.name + ' — ' + s.why).join('\n') + '\n';

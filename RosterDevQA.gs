@@ -520,6 +520,12 @@ function devNewLayoutTests_() {
     devEq_(R, 'academyCols_ name col', AC.name, 3);
     devEq_(R, 'academyCols_ graduated col', AC.grad, 6);
     devEq_(R, 'academyCols_ ignores training cols', AC.rank, 2);
+    if (typeof academyStems_ === 'function') {
+      devEq_(R, 'academyStems_ "CADETS" → CADET', academyStems_('CADETS').join(','), 'CADET');
+      devEq_(R, 'academyStems_ "Police Cadet" → CADET', academyStems_('Police Cadet').join(','), 'CADET');
+      devEq_(R, 'academyStems_ "PROBATIONARY MEMBERS" → PROBATIONARY', academyStems_('PROBATIONARY MEMBERS').join(','), 'PROBATIONARY');
+      devEq_(R, 'academyStems_ "Probationary Officer" → PROBATIONARY', academyStems_('Probationary Officer').join(','), 'PROBATIONARY');
+    }
   } else { devInfo_(R, 'academyMarker_ not loaded', 'RosterExtras.gs absent — skipped'); }
 
   // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.
