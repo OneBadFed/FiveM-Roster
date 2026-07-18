@@ -668,6 +668,27 @@ function academyMarker_(sh) {
 /** Is this an Academy tab? (name contains "academy", or it carries a #academy: marker). */
 function isAcademyTab_(sh) { return /academy/i.test(sh.getName()) || !!academyMarker_(sh); }
 
+/**
+ * Rank names that belong to a "Training" dashboard label — i.e. any [DASHBOARD_GROUPS] group whose NAME matches a
+ * training keyword (TRAINING_KEYWORDS: TRAINING, CADET). This is what the Engine Settings → Ranks panel writes when
+ * you tag a rank "Training", so tagging there ALSO designates it as a Police Academy training rank. @return {string[]}
+ */
+function academyTrainingRanksFromLabels_() {
+  const out = [];
+  try {
+    const groups = (CONFIG.dashboard && CONFIG.dashboard.groups) ? CONFIG.dashboard.groups : {};
+    const kw = CONFIG.trainingDividers || []; // normalized training keywords (e.g. TRAINING, CADET)
+    if (!kw.length) return out;
+    const tagSet = {}; (CONFIG.sectionCategories || []).forEach((t) => { tagSet[norm_(t.label)] = true; });
+    Object.keys(groups).forEach((g) => {
+      const gn = norm_(g);
+      if (!kw.some((k) => k && gn.indexOf(k) !== -1)) return;                       // group name isn't a training label
+      (groups[g] || []).forEach((cat) => { if (cat && !tagSet[norm_(cat)]) out.push(String(cat).trim()); }); // keep rank entries, skip section-tag labels
+    });
+  } catch (e) { if (typeof log_ === 'function') log_('academyTrainingRanksFromLabels_', e); }
+  return out;
+}
+
 /** Find the Academy header row (the row that holds a NAME label) + its uppercased labels. */
 function academyHeaderRow_(sh) {
   const maxScan = Math.min(15, sh.getLastRow());
@@ -743,15 +764,17 @@ function buildAcademySheets_() {
     for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c] && rHdrUp[c].indexOf(key) !== -1) return c + 1; }
     return 0;
   };
+  // Training ranks (shared across academy tabs): the "Training" dashboard label (Engine Settings → Ranks) + any
+  // [RANKS] TRAINING flags. Either way of designating a training rank works; a per-tab #academy marker overrides both.
+  const baseTraining = ((CONFIG.rankList && CONFIG.rankList.trainingRanks) ? CONFIG.rankList.trainingRanks : [])
+    .concat(academyTrainingRanksFromLabels_());
   const built = [];
   const skipped = [];
   ss.getSheets().forEach((sh) => {
     if (sh.getSheetId() === roster.getSheetId()) return;
     if (!isAcademyTab_(sh)) return;
     const mk = academyMarker_(sh);
-    // Who counts as a trainee: a #academy marker (per-tab) wins; else the [RANKS] TRAINING flags; else the built-in default.
-    const cfgTraining = (CONFIG.rankList && CONFIG.rankList.trainingRanks && CONFIG.rankList.trainingRanks.length) ? CONFIG.rankList.trainingRanks : null;
-    const wanted = ((mk && mk.ranks.length) ? mk.ranks : (cfgTraining || ACADEMY_DEFAULT_RANKS)).map(groupNorm_);
+    const wanted = ((mk && mk.ranks.length) ? mk.ranks : (baseTraining.length ? baseTraining : ACADEMY_DEFAULT_RANKS)).map(groupNorm_);
     const isTrainee = (rank) => { const r = groupNorm_(rank); return wanted.some((w) => w && r.indexOf(w) === 0); };
     const H = academyHeaderRow_(sh);
     if (!H.row) { skipped.push({ name: sh.getName(), why: 'no header row with a NAME column found' }); return; }

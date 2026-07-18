@@ -3357,6 +3357,18 @@ function devV25Tests_() {
   });
   devCheck_(R, '[RANKS] bogus Kind still errors', hasErr(validateConfig_({ RANKS: { kind: 'table', header: ['Value', 'Kind'], rows: [['X', 'TRAINEE']] } }), '[RANKS]', 'kind'));
 
+  // A "Training" dashboard label (Engine Settings → Ranks) also designates Police Academy training ranks.
+  if (typeof academyTrainingRanksFromLabels_ === 'function') {
+    devWithConfig_({
+      DASHBOARD_GROUPS: { kind: 'table', header: ['Group', 'Categories'], rows: [['Training', 'Police Cadet, Probationary Officer'], ['Members', 'Senior Police Officer']] },
+    }, () => {
+      const tr = academyTrainingRanksFromLabels_();
+      devEq_(R, 'academyTrainingRanksFromLabels_ → 2 ranks from the Training label', tr.length, 2);
+      devCheck_(R, 'academyTrainingRanksFromLabels_ includes Police Cadet', tr.indexOf('Police Cadet') !== -1, tr.join(','));
+      devCheck_(R, 'academyTrainingRanksFromLabels_ excludes the Members group', tr.indexOf('Senior Police Officer') === -1, tr.join(','));
+    });
+  }
+
   devEq_(R, 'default ALLCAPS_RANK: ALL-CAPS is a divider', isDividerValue_('COMMAND STAFF'), true);
   devEq_(R, 'default ALLCAPS_RANK: mixed-case rank is not a divider', isDividerValue_('Sergeant'), false);
 
