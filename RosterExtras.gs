@@ -551,7 +551,17 @@ function buildGroupSheets_() {
   // The member block the FILTER pulls = every roster column from RANK to the last (skips the merged RANK GROUP band).
   const firstCol = RC.rank;
   const rosterWidth = lastCol - firstCol + 1;
-  const block = rName + '!' + L(firstCol) + start + ':' + L(lastCol);
+  // Roster checkbox columns can't be REAL checkboxes in a live FILTER (the rule occupies the array's cells → #REF!), so
+  // render them as a ✓ (checked) / blank (unchecked) inside the block. If there are none, keep the simple contiguous range.
+  const cbSet = {}; checkboxOffsets_(roster, start, firstCol, rosterWidth).forEach((off) => { cbSet[firstCol + off] = true; });
+  let block;
+  if (!Object.keys(cbSet).length) {
+    block = rName + '!' + L(firstCol) + start + ':' + L(lastCol);
+  } else {
+    const parts = [];
+    for (let c = firstCol; c <= lastCol; c++) { const r = rName + '!' + L(c) + start + ':' + L(c); parts.push(cbSet[c] ? ('IF(' + r + ',"✓","")') : r); }
+    block = '{' + parts.join(',') + '}';
+  }
   const nameRange = rName + '!' + L(RC.name) + start + ':' + L(RC.name);
   // The roster's RANK GROUP column (merged bands) — header "RANK … GROUP", else the column just left of RANK.
   let rosterBandCol = 0;
