@@ -504,6 +504,13 @@ function devNewLayoutTests_() {
       devEq_(R, 'inferGroup_ "Academy" → 2 rank values', inferGroup_('Academy').values.length, 2);
       devEq_(R, 'inferGroup_ bare name → no column (auto-find)', inferGroup_('Alpha').column, '');
     }
+    if (typeof checkboxOffsets_ === 'function') {
+      const csh = devFreshSheet_('CbCols');
+      csh.getRange(2, 3).setDataValidation(SpreadsheetApp.newDataValidation().requireCheckbox().build()); // col 3 is a checkbox
+      const offs = checkboxOffsets_(csh, 2, 2, 4); // firstCol=2 → cols 2-5; checkbox at col 3 = offset 1
+      devEq_(R, 'checkboxOffsets_ finds the checkbox column (offset 1)', offs.join(','), '1');
+      devEq_(R, 'checkboxOffsets_ none when no checkbox', checkboxOffsets_(devFreshSheet_('NoCb'), 2, 2, 4).length, 0);
+    }
   } else { devInfo_(R, 'groupMarker_ not loaded', 'RosterExtras.gs absent — skipped'); }
 
   // Police Academy (editable tracker) marker + column resolution (RosterExtras.gs).

@@ -452,6 +452,17 @@ function groupNorm_(x) { return String(x).toLowerCase().replace(/\s+/g, ' ').tri
 /** A normalized value as an RE2-safe, quote-safe fragment for a "^…" REGEXMATCH inside a FILTER formula. */
 function groupRe_(v) { return groupNorm_(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/"/g, '""'); }
 
+/** 0-based column offsets within [firstCol, firstCol+width-1] that carry a CHECKBOX data-validation rule (scans a few rows). @return {number[]} */
+function checkboxOffsets_(sheet, firstRow, firstCol, width) {
+  const out = {};
+  try {
+    const n = Math.max(1, Math.min(5, sheet.getMaxRows() - firstRow + 1));
+    const vlds = sheet.getRange(firstRow, firstCol, n, width).getDataValidations();
+    for (let r = 0; r < vlds.length; r++) { for (let i = 0; i < vlds[r].length; i++) { const v = vlds[r][i]; if (v && v.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.CHECKBOX) out[i] = true; } }
+  } catch (e) { /* no validations to read */ }
+  return Object.keys(out).map(Number);
+}
+
 /**
  * Roster RANK GROUP bands as { normalized label → {top, bottom} } roster-row ranges, read from the column's actual
  * merged ranges (a plain read blanks every merged cell but the top). Lets each group's members be selected by their
@@ -548,6 +559,8 @@ function buildGroupSheets_() {
   if (!rosterBandCol && RC.rank > 1) rosterBandCol = RC.rank - 1;
   const firstColRange = rName + '!' + L(firstCol) + start + ':' + L(firstCol); // for ROW() row-range tests
   const rosterRanges = rosterBandRanges_(roster, rosterBandCol); // group label → roster row range
+  const rosterCbOffsets = checkboxOffsets_(roster, start, firstCol, rosterWidth); // roster checkbox columns → render as boxes (not "TRUE"/"FALSE") on group tabs
+  const CB_RULE = SpreadsheetApp.newDataValidation().requireCheckbox().build();
   // Don't touch the roster or the engine's own system tabs.
   const sysNames = {};
   Object.keys(CONFIG.sheets || {}).forEach((k) => { if (CONFIG.sheets[k]) sysNames[String(CONFIG.sheets[k]).toUpperCase()] = true; });
@@ -601,6 +614,8 @@ function buildGroupSheets_() {
       if (!rb) return; // a tab band whose label isn't one of the roster's rank groups — leave it blank
       const f = '=IFERROR(ARRAY_CONSTRAIN(FILTER(' + block + ',' + shiftOR + ',' + nameRange + '<>"",ROW(' + firstColRange + ')>=' + rb.top + ',ROW(' + firstColRange + ')<=' + rb.bottom + '),' + tb.height + ',' + rosterWidth + '),"")';
       sh.getRange(tb.top, rankTabCol).setFormula(f);
+      // Give the checkbox columns a checkbox rule so the FILTER's TRUE/FALSE render as boxes (the roster columns start at rankTabCol).
+      rosterCbOffsets.forEach((off) => { const c = rankTabCol + off; if (c >= 1 && c <= sh.getMaxColumns()) sh.getRange(tb.top, c, tb.height, 1).setDataValidation(CB_RULE); });
       placed++;
     });
     if (!placed) {
@@ -842,18 +857,22 @@ function buildAcademySheets_() {
     // Clear member columns in [top, bottom] — break merges so setValues is safe, but never touch the GRADUATE LOG banner.
     const clearMemberCols = (top, bottom) => { if (bottom >= top && bottom >= dataRow) { const a = sh.getRange(top, memberCol1, bottom - top + 1, width - memberCol1 + 1); a.breakApart(); a.clearContent(); } };
     const gradRowsFrom = () => Object.keys(existByKey).filter((k) => !filled[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
-    const putGrads = (grads, bandBottom) => {
+    const putGrads = (grads, bandBottom, tmplRow) => {
       const top = gradSec ? gradSec.dataStart : bandBottom + 1;
       clearMemberCols(top, sh.getMaxRows()); // clear the graduate destination first so removed graduates don't linger (banner above untouched)
       if (!grads.length) return;
+      let writeAt;
       if (gradSec) {
         const need = top + grads.length - 1; if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
-        writeBlock(grads, top);
+        writeBlock(grads, top); writeAt = top;
       } else {
         const need = top + grads.length; if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
         const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER;
-        writeBlock([div], top); writeBlock(grads, top + 1);
+        writeBlock([div], top); writeBlock(grads, top + 1); writeAt = top + 1;
       }
+      // Carry the band row's data validations (checkboxes, dates, dropdowns) onto the graduate rows so a moved checkbox
+      // renders as a box — not "TRUE"/"FALSE" — and dates keep their picker.
+      if (tmplRow) { try { sh.getRange(tmplRow, memberCol1, 1, width - memberCol1 + 1).copyTo(sh.getRange(writeAt, memberCol1, grads.length, width - memberCol1 + 1), SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false); } catch (e) { /* validations are best-effort */ } }
     };
 
     const bands = tabBandRanges_(sh, dataRow, tabBandCol).filter((b) => !gradSec || b.top < gradSec.headerRow);
@@ -881,7 +900,7 @@ function buildAcademySheets_() {
         }
         writeBlock(rows, b.top);
       });
-      putGrads(gradRowsFrom(), bandBottom);
+      putGrads(gradRowsFrom(), bandBottom, bands[0].top); // bands[0].top carries your checkbox/date/dropdown validations
       built.push(sh.getName());
       return;
     }
@@ -899,7 +918,7 @@ function buildAcademySheets_() {
     const grads = gradRowsFrom();
     if (gradSec) {
       writeBlock(activeRows.slice(0, Math.max(0, gradSec.headerRow - dataRow)), dataRow); // active fits above the GRADUATE LOG header
-      putGrads(grads, dataRow - 1);
+      putGrads(grads, dataRow - 1, dataRow);
     } else {
       const body = activeRows.slice();
       if (grads.length) { const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER; body.push(div); grads.forEach((r) => body.push(r)); }
