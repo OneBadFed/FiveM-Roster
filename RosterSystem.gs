@@ -1760,16 +1760,16 @@ function trackerLeaveType_() {
   try { return (CONFIG.leaveTypes && CONFIG.leaveTypes[0]) || 'LOA'; } catch (e) { return 'LOA'; }
 }
 
-/** Auto-fill source: a member's OOC name + shift from the roster, matched by Unique ID (exact text). Blank when not found or the roster lacks those columns. */
+/** Auto-fill source: a member's OOC name, shift + unit/callsign from the roster, matched by Unique ID (exact text). Blank when not found or the roster lacks those columns. */
 function rosterOocShift_(discordId) {
-  const out = { ooc: '', shift: '' };
+  const out = { ooc: '', shift: '', unit: '' };
   const target = String(discordId || '').trim();
   if (!target) return out;
   try {
     const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
     if (!roster) return out;
     const RC = rosterCols_(roster);
-    if (!RC.discord || (!RC.ooc && !RC.shift)) return out;
+    if (!RC.discord || (!RC.ooc && !RC.shift && !RC.unit)) return out;
     const start = CONFIG.rosterStartRow, last = roster.getLastRow();
     if (last < start) return out;
     const ids = roster.getRange(start, RC.discord, last - start + 1, 1).getDisplayValues();
@@ -1778,6 +1778,7 @@ function rosterOocShift_(discordId) {
       const row = start + i;
       if (RC.ooc) out.ooc = String(roster.getRange(row, RC.ooc).getDisplayValue()).trim();
       if (RC.shift) out.shift = String(roster.getRange(row, RC.shift).getDisplayValue()).trim();
+      if (RC.unit) out.unit = String(roster.getRange(row, RC.unit).getDisplayValue()).trim();
       break;
     }
   } catch (e) { log_('rosterOocShift_', e); }
@@ -2264,7 +2265,7 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const oi = rosterOocShift_(discord); // auto-fill OOC name + shift from the roster (by Unique ID)
       // Prepend the new leave at the TOP and re-group by status — a new Pending lands at the top of the list.
       // Fields are placed by their resolved header column (any layout), the ID stays exact, formatting is preserved.
-      sortTracker_(buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: rank, unit: callsign, ooc: oi.ooc, name: name, discord: discord, shift: oi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus }), tracker);
+      sortTracker_(buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: rank, unit: callsign || oi.unit, ooc: oi.ooc, name: name, discord: discord, shift: oi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus }), tracker);
 
       if (dedupKey) synced[dedupKey] = true;
       const leaf = { name, rank, callsign, type, startStr, endStr, durationStr, discord };

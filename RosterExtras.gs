@@ -1206,18 +1206,24 @@ function demoName_(i) {
  * LOA/ROA carry an active leave; a few active members carry a recently-expired leave for history variety.
  */
 function demoPerson_(i, rank, total) {
-  // ≈ 60% Active / 15% Semi-Active / 15% Inactive / 5% LOA / 5% ROA, spread by a coprime stride. (No "Reserve" — the operator asked to keep it off the activity mix.)
-  const DIST = ['Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Active', 'Semi-Active', 'Semi-Active', 'Semi-Active', 'Inactive', 'Inactive', 'Inactive', 'LOA', 'ROA'];
+  // ≈ 60% top tier / 15% mid / 15% low / 5% + 5% leave, spread by a coprime stride — every name is read from CONFIG,
+  // so a renamed OR LOA-only setup never seeds a status that doesn't exist (e.g. ROA). (No "Reserve" in the mix.)
+  const tiers = (CONFIG.tierNames && CONFIG.tierNames.length >= 3) ? CONFIG.tierNames : ['Active', 'Semi-Active', 'Inactive'];
+  const TOP = tiers[0], MID = tiers[1], LOW = tiers[tiers.length - 1];
+  const lts = (CONFIG.leaveTypes && CONFIG.leaveTypes.length) ? CONFIG.leaveTypes : ['LOA'];
+  const lv1 = lts[0], lv2 = lts[lts.length > 1 ? 1 : 0]; // 2nd leave slot reuses the only type on an LOA-only setup
+  const rst = norm_(CONFIG.returnStatus || '');           // the "returning" leave (default ROA), if configured
+  const DIST = [TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, MID, MID, MID, LOW, LOW, LOW, lv1, lv2];
   const act = DIST[(i * 7) % DIST.length];
   let hours, last = act, leave = null, pastLeave = null, checks = null;
   const r = demoRand_(i, 1), r2 = demoRand_(i, 2);
-  if (act === 'Active') hours = demoQuarter_(10 + r * r * 15 + (r2 > 0.93 ? 6 : 0)); // 10–25, right-skewed; rare ~30h grinder (tier: ≥ 10)
-  else if (act === 'Semi-Active') hours = demoQuarter_(5 + r * 4.7);                 // 5–9.75  (tier: ≥ 5, < 10)
-  else if (act === 'Inactive') hours = demoQuarter_(r * r * 4.7);                    // 0–4.75, clustered low (tier: < 5)
-  else if (act === 'LOA') { hours = 0; last = 'Active'; leave = { type: 'LOA', from: -(2 + i % 6), to: 5 + (i % 10), status: 'Approved' }; checks = ['Active', 'Active', 'LOA', 'LOA']; }
-  else { hours = demoQuarter_(5 + r * 3.7); last = 'Inactive'; leave = { type: 'ROA', from: -(2 + i % 5), to: 6 + (i % 9), status: 'Approved' }; checks = ['Inactive', 'ROA', 'ROA', 'ROA']; } // ROA
+  if (act === TOP) hours = demoQuarter_(10 + r * r * 15 + (r2 > 0.93 ? 6 : 0)); // right-skewed; rare ~30h grinder (top tier)
+  else if (act === MID) hours = demoQuarter_(5 + r * 4.7);                       // mid tier band
+  else if (act === LOW) hours = demoQuarter_(r * r * 4.7);                       // low tier, clustered low
+  else if (rst && norm_(act) === rst) { hours = demoQuarter_(5 + r * 3.7); last = LOW; leave = { type: act, from: -(2 + i % 5), to: 6 + (i % 9), status: 'Approved' }; checks = [LOW, act, act, act]; } // returning leave (ROA-like)
+  else { hours = 0; last = TOP; leave = { type: act, from: -(2 + i % 6), to: 5 + (i % 10), status: 'Approved' }; checks = [TOP, TOP, act, act]; } // protected leave (LOA-like)
   // Sprinkle a few recently-EXPIRED leaves onto active members (tracker + activity-check variety).
-  if (!leave && i % 17 === 5) { pastLeave = { type: (i % 2 ? 'LOA' : 'ROA'), from: -(48 + i % 10), to: -(30 + i % 8) }; checks = [pastLeave.type, pastLeave.type, 'Active', act]; }
+  if (!leave && i % 17 === 5) { pastLeave = { type: (i % 2 ? lv1 : lv2), from: -(48 + i % 10), to: -(30 + i % 8) }; checks = [pastLeave.type, pastLeave.type, TOP, act]; }
   const tenure = 1600 - Math.round((i / Math.max(total, 1)) * 1200); // seniority: earlier rows = longer tenure
   const shift = ''; // real shift is assigned per-rank (evenly across the 3 shifts) once all people are built — see seedDemoRoster
   const may = demoQuarter_(demoRand_(i, 3) * demoRand_(i, 6) * 30); // prior-month totals — right-skewed 0–30h
@@ -1271,9 +1277,9 @@ function demoWriteLeave_(tracker, m, L, r) {
   const TC = trackerCols_(tracker); // resolve columns by header (any layout)
   const start = demoDay_(L.from), end = demoDay_(L.to);
   const key = makeLeaveKey_(m.id, `${startOfDay_(start).getTime()}-${startOfDay_(end).getTime()}-${norm_(L.type)}`);
-  const oi = rosterOocShift_(m.id); // OOC + shift from the already-filled demo roster
+  const oi = rosterOocShift_(m.id); // OOC + shift + unit/callsign from the already-filled demo roster
   if (TC.discord) tracker.getRange(r, TC.discord).setNumberFormat('@'); // keep the 17-19 digit ID exact
-  const row = buildTrackerRow_(TC, TC.width, { key: key, rank: m.rank, ooc: oi.ooc, name: m.name, discord: m.id, shift: oi.shift, start: start, end: end, status: L.status || 'Approved' });
+  const row = buildTrackerRow_(TC, TC.width, { key: key, rank: m.rank, unit: oi.unit, ooc: oi.ooc, name: m.name, discord: m.id, shift: oi.shift, start: start, end: end, status: L.status || 'Approved' });
   tracker.getRange(r, 1, 1, TC.width).setValues([row]);
   if (TC.start) tracker.getRange(r, TC.start).setNumberFormat('d mmm. yyyy');
   if (TC.end) tracker.getRange(r, TC.end).setNumberFormat('d mmm. yyyy');
@@ -1325,7 +1331,7 @@ function seedDemoRoster() {
     // Spread each RANK's filled members as evenly as possible across the 3 shifts (round-robin within the rank), and
     // rotate each rank's starting shift so any remainder doesn't always pile onto the same shift.
     (function assignShiftsByRank() {
-      const SHIFTS = ['Day', 'Swings', 'Nights'];
+      const SHIFTS = ['Days', 'Swings', 'Nights'];
       const seen = {}; // rank → count assigned so far
       const startAt = {}; // rank → starting offset (rotates per rank)
       let ranksSeen = 0;
