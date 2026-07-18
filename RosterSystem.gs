@@ -1002,9 +1002,13 @@ function onEdit(e) {
       if (col === RC.hours && row >= CONFIG.rosterStartRow && isValidMemberRow(sheet, row)) {
         updateStatusFromHours(sheet, row);
       }
-      // A rank or shift change moves a member between rank-group / shift bands. The group tabs are live formulas
-      // (they self-update), but the editable Police Academy is written, so re-sync it (and refresh the group bands).
-      if (row >= CONFIG.rosterStartRow && isValidMemberRow(sheet, row) && (col === RC.rank || (RC.shift && col === RC.shift))) {
+      // A change to a member's RANK / SHIFT / NAME / UNIQUE ID — including CLEARING or bulk-deleting them — adds,
+      // removes, or re-bands a member, so re-sync the editable Police Academy + the group bands. No isValidMemberRow
+      // guard: a just-cleared row is "invalid" but still needs the rebuild to REMOVE the member. Span-check the edited
+      // range so a block clear/paste that covers any of those columns still fires.
+      const cLast = (e.range && e.range.getLastColumn) ? e.range.getLastColumn() : col;
+      const spansCol = (t) => t && col <= t && cLast >= t;
+      if (row >= CONFIG.rosterStartRow && (spansCol(RC.rank) || spansCol(RC.shift) || spansCol(RC.name) || spansCol(RC.discord))) {
         try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('onEdit.academy', e2); }
         try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('onEdit.groups', e2); }
       }

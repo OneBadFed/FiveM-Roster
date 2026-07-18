@@ -865,7 +865,11 @@ function buildAcademySheets_() {
     const gradSec = academyGradSection_(sh, dataRow, width);
     // Clear member columns in [top, bottom] — break merges so setValues is safe, but never touch the GRADUATE LOG banner.
     const clearMemberCols = (top, bottom) => { if (bottom >= top && bottom >= dataRow) { const a = sh.getRange(top, memberCol1, bottom - top + 1, width - memberCol1 + 1); a.breakApart(); a.clearContent(); } };
-    const gradRowsFrom = () => Object.keys(existByKey).filter((k) => !filled[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
+    // Members STILL on the roster (named), keyed the same way. A member GONE from the roster is REMOVED from the Academy;
+    // one who left the training ranks but remains on the roster (e.g. promoted to Officer) goes to the GRADUATE LOG.
+    const rosterKeys = {};
+    for (let i = 0; i < rd.length; i++) { const kk = keyOfIdx(i); if (kk && String(rd[i][RC.name - 1] || '').trim()) rosterKeys[kk] = true; }
+    const gradRowsFrom = () => Object.keys(existByKey).filter((k) => !filled[k] && rosterKeys[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
     const putGrads = (grads, bandBottom, tmplRow) => {
       const top = gradSec ? gradSec.dataStart : bandBottom + 1;
       clearMemberCols(top, sh.getMaxRows()); // clear the graduate destination first so removed graduates don't linger (banner above untouched)
