@@ -453,71 +453,69 @@ function groupNorm_(x) { return String(x).toLowerCase().replace(/\s+/g, ' ').tri
 function groupRe_(v) { return groupNorm_(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/"/g, '""'); }
 
 /**
- * Draw the RANK GROUP bands down a group tab's band column so they line up with the live FILTER output. Members
- * arrive in group order (roster order), so each rank group is one contiguous run; this merges + labels + styles the
- * band column to match those runs, copying the band look straight from the roster. No-op if the tab has no RANK GROUP
- * column or the roster's band column can't be found. The roster's band column is merged, so it's forward-filled here.
+ * Roster RANK GROUP bands as { normalized label → {top, bottom} } roster-row ranges, read from the column's actual
+ * merged ranges (a plain read blanks every merged cell but the top). Lets each group's members be selected by their
+ * roster row range. @return {Object<string,{top:number,bottom:number}>}
  */
-function layoutGroupBands_(sh, dataRow, tabBandCol, roster, rosterBandCol, RC, gCol, values) {
-  if (!tabBandCol || !rosterBandCol) return;
-  const start = CONFIG.rosterStartRow;
-  const lastRow = roster.getLastRow();
-  const wanted = values.map(groupNorm_);
-  // Wipe whatever bands were there before (content + merges + format) so stale bands don't linger below the members.
-  const bandData = sh.getRange(dataRow, tabBandCol, Math.max(1, sh.getMaxRows() - dataRow + 1), 1);
-  bandData.breakApart(); bandData.clearContent(); bandData.clearFormat();
-  if (lastRow < start) return;
-  const n = lastRow - start + 1;
-  const disp = roster.getRange(start, 1, n, roster.getLastColumn()).getDisplayValues();
-  // Exact band per roster row, read from the merged RANK GROUP column. getMergedRanges gives each band's true top row
-  // and span, so a member's band is whatever merge actually covers their row — no forward-fill guessing that can drift.
+function rosterBandRanges_(roster, rosterBandCol) {
+  const out = {};
+  if (!rosterBandCol) return out;
   const maxR = roster.getMaxRows();
-  const bandColVals = roster.getRange(1, rosterBandCol, maxR, 1).getValues();
-  const merges = roster.getRange(1, rosterBandCol, maxR, 1).getMergedRanges();
-  const rowBand = {};      // roster row → band label
-  const bandFirstRow = {}; // band label → the row that actually holds its label (the format source)
+  const rng = roster.getRange(1, rosterBandCol, maxR, 1);
+  const vals = rng.getValues();
+  const merges = rng.getMergedRanges();
+  const covered = {};
+  const add = (label, top, bottom) => {
+    if (!label) return;
+    if (!(label in out)) out[label] = { top: top, bottom: bottom };
+    else { out[label].top = Math.min(out[label].top, top); out[label].bottom = Math.max(out[label].bottom, bottom); }
+  };
   merges.forEach((m) => {
     const top = m.getRow();
-    const label = String(bandColVals[top - 1][0]).trim();
-    if (!label) return;
-    if (!(label in bandFirstRow)) bandFirstRow[label] = top;
-    for (let r = top; r < top + m.getNumRows(); r++) rowBand[r] = label;
+    for (let r = top; r < top + m.getNumRows(); r++) covered[r] = true;
+    add(groupNorm_(vals[top - 1][0]), top, top + m.getNumRows() - 1);
   });
-  for (let r = 1; r <= maxR; r++) { // single-cell (unmerged) bands
-    if (r in rowBand) continue;
-    const v = String(bandColVals[r - 1][0]).trim();
-    if (v) { rowBand[r] = v; if (!(v in bandFirstRow)) bandFirstRow[v] = r; }
-  }
-  let carry = '';
-  for (let r = 1; r <= maxR; r++) { if (r in rowBand) carry = rowBand[r]; else if (carry) rowBand[r] = carry; } // fill any gap rows between bands
-  // Walk the matching members (same test as the FILTER) and collect contiguous runs per rank group.
-  const runs = [];
-  for (let i = 0; i < n; i++) {
-    if (String(disp[i][RC.name - 1]) === '') continue;
-    const cv = groupNorm_(disp[i][gCol - 1]);
-    if (!wanted.some((w) => cv.indexOf(w) === 0)) continue; // "starts with", identical to the FILTER's REGEXMATCH(^…)
-    const g = rowBand[start + i] || '—';
-    const last = runs[runs.length - 1];
-    if (last && last.label === g) last.count++;
-    else runs.push({ label: g, count: 1, fmtRow: bandFirstRow[g] || (start + i) });
-  }
-  let cursor = dataRow;
-  runs.forEach((run) => {
-    const rng = sh.getRange(cursor, tabBandCol, run.count, 1);
-    rng.breakApart();
-    roster.getRange(run.fmtRow, rosterBandCol, 1, 1).copyTo(rng, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false); // tile the band look down
-    if (run.count > 1) rng.merge();
-    sh.getRange(cursor, tabBandCol).setValue(run.label);
-    cursor += run.count;
+  for (let r = 1; r <= maxR; r++) { if (!covered[r]) add(groupNorm_(vals[r - 1][0]), r, r); } // single-cell (unmerged) bands
+  return out;
+}
+
+/**
+ * A group tab's OWN RANK GROUP bands as [{label(normalized), top, height}], read from column B's merged ranges below
+ * the header — these are the fixed-size bands the user laid out. The engine fills members into each and never resizes
+ * them. @return {Array<{label:string,top:number,height:number}>}
+ */
+function tabBandRanges_(sh, dataRow, tabBandCol) {
+  const out = [];
+  if (!tabBandCol) return out;
+  const maxR = sh.getMaxRows();
+  if (maxR < dataRow) return out;
+  const rng = sh.getRange(dataRow, tabBandCol, maxR - dataRow + 1, 1);
+  const vals = rng.getValues();
+  const merges = rng.getMergedRanges();
+  const covered = {};
+  merges.forEach((m) => {
+    const top = m.getRow();
+    for (let r = top; r < top + m.getNumRows(); r++) covered[r] = true;
+    const label = groupNorm_(vals[top - dataRow][0]);
+    if (label) out.push({ label: label, top: top, height: m.getNumRows() });
   });
+  for (let i = 0; i < vals.length; i++) { // single-cell (unmerged) bands
+    const r = dataRow + i;
+    if (covered[r]) continue;
+    const label = groupNorm_(vals[i][0]);
+    if (label) out.push({ label: label, top: r, height: 1 });
+  }
+  out.sort((a, b) => a.top - b.top);
+  return out;
 }
 
 /**
  * FILL-ONLY. For each group tab (one carrying a "#group:" marker, or simply named like a group — "Day Shift",
- * "Troop A", "Academy"), the engine leaves the tab's own header, banners, widths and member-cell formatting exactly as
- * laid out and just drops ONE live FILTER into the first data row (the roster's member block for that group, in rank
- * order, live). It then redraws the RANK GROUP bands in column B so they line up with the members this group has.
- * Nothing above the data area is touched. @return {{built:number, sheets:string[], skipped:Array<{name,why}>}}
+ * "Troop A", "Academy"), the engine leaves the tab's own layout exactly as laid out — header, banners, widths,
+ * formatting AND the RANK GROUP bands in column B (their sizes/blank spots are yours). Into each band it drops a live,
+ * capped FILTER that fills that rank group's members for this shift at the band's top, leaving the remaining spots
+ * blank. Tabs without rank-group bands get one contiguous FILTER instead. Nothing above the data area, and nothing in
+ * column B, is touched. @return {{built:number, sheets:string[], skipped:Array<{name,why}>}}
  */
 function buildGroupSheets_() {
   const ss = SpreadsheetApp.getActive();
@@ -548,6 +546,8 @@ function buildGroupSheets_() {
   let rosterBandCol = 0;
   for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c].indexOf('RANK') !== -1 && rHdrUp[c].indexOf('GROUP') !== -1) { rosterBandCol = c + 1; break; } }
   if (!rosterBandCol && RC.rank > 1) rosterBandCol = RC.rank - 1;
+  const firstColRange = rName + '!' + L(firstCol) + start + ':' + L(firstCol); // for ROW() row-range tests
+  const rosterRanges = rosterBandRanges_(roster, rosterBandCol); // group label → roster row range
   // Don't touch the roster or the engine's own system tabs.
   const sysNames = {};
   Object.keys(CONFIG.sheets || {}).forEach((k) => { if (CONFIG.sheets[k]) sysNames[String(CONFIG.sheets[k]).toUpperCase()] = true; });
@@ -574,17 +574,6 @@ function buildGroupSheets_() {
     const dataRow = hdr.row + headerToData; // skip the same divider gap the roster leaves below its header (member rows start there)
     const fillW = Math.min(rosterWidth, sh.getMaxColumns() - rankTabCol + 1);
     if (fillW <= 0) { skipped.push({ name: nm, why: 'not enough columns to the right of RANK' }); return; }
-    // Fill-only: clear just the data CELLS we own (content + any merges that would block the array from expanding —
-    // never formatting, so the tab's layout stays put), then drop the FILTER.
-    if (sh.getMaxRows() >= dataRow) {
-      const area = sh.getRange(dataRow, rankTabCol, sh.getMaxRows() - dataRow + 1, fillW);
-      area.breakApart(); area.clearContent();
-    }
-    const gRange = rName + '!' + L(gCol) + start + ':' + L(gCol);
-    // Match on "starts with" (case/space-tolerant) so a "Day Shift" tab still finds a roster SHIFT of "Days". Bands below use the same rule.
-    const cond = grp.values.map((v) => 'REGEXMATCH(LOWER(TRIM(' + gRange + ')),"^' + groupRe_(v) + '")').join('+');
-    const formula = '=IFERROR(FILTER(' + block + ',(' + cond + '),' + nameRange + '<>""),"No members in this group yet.")';
-    sh.getRange(dataRow, rankTabCol).setFormula(formula);
     // Find the tab's RANK GROUP column. Its "RANK GROUP" label is usually merged across the banner+label rows, so its
     // value only sits in the top row — scan both rows, and fall back to the column just left of RANK (mirrors the roster).
     const topHdr = hdr.row > 1 ? sh.getRange(hdr.row - 1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map((x) => String(x).toUpperCase()) : [];
@@ -594,7 +583,29 @@ function buildGroupSheets_() {
       if (combined.indexOf('RANK') !== -1 && combined.indexOf('GROUP') !== -1) { tabBandCol = i + 1; break; }
     }
     if (!tabBandCol && rankTabCol > 1) tabBandCol = rankTabCol - 1;
-    try { layoutGroupBands_(sh, dataRow, tabBandCol, roster, rosterBandCol, RC, gCol, grp.values); } catch (e) { if (typeof log_ === 'function') log_('buildGroupSheets.bands', e); }
+    // Clear only the member CELLS we fill (content + any blocking merges) — never formatting, never column B (your bands stay put).
+    if (sh.getMaxRows() >= dataRow) {
+      const area = sh.getRange(dataRow, rankTabCol, sh.getMaxRows() - dataRow + 1, fillW);
+      area.breakApart(); area.clearContent();
+    }
+    const gRange = rName + '!' + L(gCol) + start + ':' + L(gCol);
+    // "Starts with" (case/space-tolerant) so a "Day Shift" tab finds a roster SHIFT of "Days"; OR across listed values.
+    const shiftOR = '(' + grp.values.map((v) => 'REGEXMATCH(LOWER(TRIM(' + gRange + ')),"^' + groupRe_(v) + '")').join('+') + ')';
+    // Fill INSIDE your bands: one capped FILTER per band drops that rank group's members at the band's top and leaves the
+    // rest of the band's spots blank. ARRAY_CONSTRAIN caps each to its band height, so it can never overflow into the next.
+    const bands = tabBandRanges_(sh, dataRow, tabBandCol);
+    let placed = 0;
+    bands.forEach((tb) => {
+      const rb = rosterRanges[tb.label];
+      if (!rb) return; // a tab band whose label isn't one of the roster's rank groups — leave it blank
+      const f = '=IFERROR(ARRAY_CONSTRAIN(FILTER(' + block + ',' + shiftOR + ',' + nameRange + '<>"",ROW(' + firstColRange + ')>=' + rb.top + ',ROW(' + firstColRange + ')<=' + rb.bottom + '),' + tb.height + ',' + rosterWidth + '),"")';
+      sh.getRange(tb.top, rankTabCol).setFormula(f);
+      placed++;
+    });
+    if (!placed) {
+      // Tab has no rank-group bands — fall back to one contiguous FILTER (everyone in rank order, no blank spots).
+      sh.getRange(dataRow, rankTabCol).setFormula('=IFERROR(FILTER(' + block + ',' + shiftOR + ',' + nameRange + '<>""),"No members in this group yet.")');
+    }
     built.push(nm);
   });
   return { built: built.length, sheets: built, skipped: skipped };
@@ -608,7 +619,7 @@ function buildGroupSheets() {
     let msg = '';
     if (res.built) {
       msg += 'Filled ' + res.built + ' group tab' + (res.built === 1 ? '' : 's') + ':\n• ' + res.sheets.join('\n• ') +
-        '\n\nMembers fill in live under the header you laid out, and the RANK GROUP bands are resized to match.\n';
+        '\n\nMembers drop into the top of each of your RANK GROUP bands (blank spots left as-is). Your bands aren’t resized.\n';
     }
     if (res.skipped && res.skipped.length) {
       msg += (msg ? '\n' : '') + 'Skipped:\n' + res.skipped.map((s) => '• ' + s.name + ' — ' + s.why).join('\n') + '\n';
