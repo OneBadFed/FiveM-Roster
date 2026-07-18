@@ -1794,12 +1794,14 @@ function appendTrackerRow_(tracker, values) {
 /** The four computed-leave formula strings for tracker row r (start=H, end=I by layout). Shared by writeLeaveFormulas_ + sortTracker_. */
 function leaveFormulaStrings_(r) {
   const T = CONFIG.tracker;
-  const sc = String.fromCharCode(64 + T.start), ec = String.fromCharCode(64 + T.end); // 8→H, 9→I
+  const s = String.fromCharCode(64 + T.start) + r, e = String.fromCharCode(64 + T.end) + r; // e.g. H8 / I8
+  // Every branch is ISNUMBER-guarded: a blank OR non-date cell yields "" (never #VALUE!). This also protects the
+  // header — if a formula ever lands on a text row, it shows blank instead of "INT of text" #VALUE! errors.
   return {
-    len: `=LET(d, INT(${ec}${r})-INT(${sc}${r}), d & IF(d=1, " Day", " Days"))`,
-    until: `=IF(INT(${sc}${r})>TODAY(), LET(d, INT(${sc}${r})-TODAY(), d & IF(d=1, " Day", " Days")), "Started")`,
-    left: `=IF(INT(${sc}${r})>TODAY(), "Pending Start", IF(INT(${ec}${r})<=TODAY(), "Expired", LET(d, INT(${ec}${r})-TODAY(), d & IF(d=1, " Day", " Days"))))`,
-    ret: `=IF(ISNUMBER(${ec}${r}), INT(${ec}${r})+1, "")`,
+    len: `=IF(AND(ISNUMBER(${s}),ISNUMBER(${e})), LET(d, INT(${e})-INT(${s}), d & IF(d=1, " Day", " Days")), "")`,
+    until: `=IF(ISNUMBER(${s}), IF(INT(${s})>TODAY(), LET(d, INT(${s})-TODAY(), d & IF(d=1, " Day", " Days")), "Started"), "")`,
+    left: `=IF(AND(ISNUMBER(${s}),ISNUMBER(${e})), IF(INT(${s})>TODAY(), "Pending Start", IF(INT(${e})<=TODAY(), "Expired", LET(d, INT(${e})-TODAY(), d & IF(d=1, " Day", " Days")))), "")`,
+    ret: `=IF(ISNUMBER(${e}), INT(${e})+1, "")`,
   };
 }
 
@@ -1810,6 +1812,21 @@ function writeLeaveFormulas_(tracker, r) {
   tracker.getRange(r, T.untilStart).setFormula(f.until);
   tracker.getRange(r, T.timeLeft).setFormula(f.left);
   tracker.getRange(r, T.returnDate).setFormula(f.ret).setNumberFormat('d mmm. yyyy');
+}
+
+/** Auto-detect the tracker's label row (the row holding a STATUS label plus a NAME/START/END label), scanning the top rows. @return {number} 1-based row, or 0 if not found. */
+function trackerLabelRow_(tracker) {
+  const scan = Math.min(15, tracker.getLastRow());
+  if (scan < 1) return 0;
+  const w = Math.max(1, tracker.getLastColumn());
+  const grid = tracker.getRange(1, 1, scan, w).getDisplayValues();
+  for (let r = 0; r < scan; r++) {
+    const up = grid[r].map((x) => String(x).toUpperCase());
+    const hasStatus = up.some((h) => h.indexOf('STATUS') !== -1);
+    const hasField = up.some((h) => h === 'NAME' || h.indexOf('START') !== -1 || h.indexOf('END') !== -1);
+    if (hasStatus && hasField) return r + 1;
+  }
+  return 0;
 }
 
 /**
@@ -1826,6 +1843,13 @@ function sortTracker_(prepend, trackerSheet) {
     const tracker = trackerSheet || SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.tracker);
     if (!tracker) return;
     const T = CONFIG.tracker, start = CONFIG.trackerStartRow, W = 16;
+    // SAFETY: never write into the header. If TRACKER_START_ROW points AT/ABOVE the detected label row, bail —
+    // a misconfigured start would otherwise overwrite the header labels (and drop INT-of-text formulas → #VALUE!).
+    const labelRow = trackerLabelRow_(tracker);
+    if (labelRow && start <= labelRow) {
+      logWarn_('sortTracker_', `TRACKER_START_ROW (${start}) is at/above the tracker header (row ${labelRow}); auto-sort skipped to protect the header. Set [ROSTER_LAYOUT].TRACKER_START_ROW to the FIRST DATA ROW (below the header + divider).`);
+      return;
+    }
     const last = tracker.getLastRow();
     const records = [];
     if (last >= start) {
