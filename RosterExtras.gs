@@ -446,6 +446,12 @@ function inferGroup_(name) {
   return { column: '', values: [raw] };
 }
 
+/** Normalize a group value for matching: lowercase, collapse whitespace, trim. */
+function groupNorm_(x) { return String(x).toLowerCase().replace(/\s+/g, ' ').trim(); }
+
+/** A normalized value as an RE2-safe, quote-safe fragment for a "^…" REGEXMATCH inside a FILTER formula. */
+function groupRe_(v) { return groupNorm_(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/"/g, '""'); }
+
 /**
  * Draw the RANK GROUP bands down a group tab's band column so they line up with the live FILTER output. Members
  * arrive in group order (roster order), so each rank group is one contiguous run; this merges + labels + styles the
@@ -456,8 +462,7 @@ function layoutGroupBands_(sh, dataRow, tabBandCol, roster, rosterBandCol, RC, g
   if (!tabBandCol || !rosterBandCol) return;
   const start = CONFIG.rosterStartRow;
   const lastRow = roster.getLastRow();
-  const norm = (x) => String(x).toLowerCase().replace(/\s+/g, ' ').trim();
-  const wanted = values.map(norm);
+  const wanted = values.map(groupNorm_);
   // Wipe whatever bands were there before (content + merges + format) so stale bands don't linger below the members.
   const bandData = sh.getRange(dataRow, tabBandCol, Math.max(1, sh.getMaxRows() - dataRow + 1), 1);
   bandData.breakApart(); bandData.clearContent(); bandData.clearFormat();
@@ -477,7 +482,8 @@ function layoutGroupBands_(sh, dataRow, tabBandCol, roster, rosterBandCol, RC, g
   const runs = [];
   for (let i = 0; i < n; i++) {
     if (String(disp[i][RC.name - 1]) === '') continue;
-    if (wanted.indexOf(norm(disp[i][gCol - 1])) === -1) continue;
+    const cv = groupNorm_(disp[i][gCol - 1]);
+    if (!wanted.some((w) => cv.indexOf(w) === 0)) continue; // "starts with", identical to the FILTER's REGEXMATCH(^…)
     const g = filled[i] || '—';
     const last = runs[runs.length - 1];
     if (last && last.label === g) last.count++;
@@ -556,10 +562,15 @@ function buildGroupSheets_() {
     const dataRow = hdr.row + headerToData; // skip the same divider gap the roster leaves below its header (member rows start there)
     const fillW = Math.min(rosterWidth, sh.getMaxColumns() - rankTabCol + 1);
     if (fillW <= 0) { skipped.push({ name: nm, why: 'not enough columns to the right of RANK' }); return; }
-    // Fill-only: clear just the data CELLS we own (content, never formatting — the tab's layout stays put), then drop the FILTER.
-    if (sh.getMaxRows() >= dataRow) sh.getRange(dataRow, rankTabCol, sh.getMaxRows() - dataRow + 1, fillW).clearContent();
+    // Fill-only: clear just the data CELLS we own (content + any merges that would block the array from expanding —
+    // never formatting, so the tab's layout stays put), then drop the FILTER.
+    if (sh.getMaxRows() >= dataRow) {
+      const area = sh.getRange(dataRow, rankTabCol, sh.getMaxRows() - dataRow + 1, fillW);
+      area.breakApart(); area.clearContent();
+    }
     const gRange = rName + '!' + L(gCol) + start + ':' + L(gCol);
-    const cond = grp.values.map((v) => 'LOWER(TRIM(' + gRange + '))="' + String(v).toLowerCase().replace(/\s+/g, ' ').trim().replace(/"/g, '""') + '"').join('+'); // any listed value (OR); TRIM/LOWER on both sides so bands (below) count identically
+    // Match on "starts with" (case/space-tolerant) so a "Day Shift" tab still finds a roster SHIFT of "Days". Bands below use the same rule.
+    const cond = grp.values.map((v) => 'REGEXMATCH(LOWER(TRIM(' + gRange + ')),"^' + groupRe_(v) + '")').join('+');
     const formula = '=IFERROR(FILTER(' + block + ',(' + cond + '),' + nameRange + '<>""),"No members in this group yet.")';
     sh.getRange(dataRow, rankTabCol).setFormula(formula);
     // Redraw the RANK GROUP bands (column B) so they line up with the members this shift actually has.
