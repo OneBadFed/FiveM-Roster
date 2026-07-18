@@ -2465,10 +2465,11 @@ function isTrainingRow_(sheet, row) {
 /**
  * Move a member's MEMBER-class columns from sourceRow → targetRow, keeping SLOT columns (Rank/Callsign) at each
  * position, and clearing the source. A cross-section move (training ⇄ non-training) drops opted-in section-specific
- * columns at the destination instead of carrying them. Returns true iff such a column was cleared. `copyTo` carries
- * value AND format together — precision-safe for 17-19 digit IDs and any added ID column. The caller must hold the
- * script lock and have validated both rows. Shared by the sheet-edit transfer (checkForMemberMove) and the Control
- * Panel's Move action (cpMoveMember_) so both relocate members by exactly the same rules.
+ * columns at the destination instead of carrying them. Returns true iff such a column was cleared. Copies with
+ * PASTE_NO_BORDERS: value/formula, number format and validation still follow the person (so TIME IN RANK stays a
+ * live formula and 17-19 digit IDs stay exact), but the source cell's BORDERS do not — a move used to carry a
+ * band/section border into the destination row and repaint the roster. The caller must hold the script lock and have
+ * validated both rows. Shared by the sheet-edit transfer (checkForMemberMove) and the Control Panel's Move action.
  */
 function moveMemberColumns_(sheet, sourceRow, targetRow) {
   const crossSection = isTrainingRow_(sheet, sourceRow) !== isTrainingRow_(sheet, targetRow);
@@ -2483,7 +2484,8 @@ function moveMemberColumns_(sheet, sourceRow, targetRow) {
       sheet.getRange(targetRow, c).clearContent(); // section-specific column (opted in): don't carry it across sections
       wiped = true;
     } else {
-      sheet.getRange(sourceRow, c).copyTo(sheet.getRange(targetRow, c));
+      // Carry value/formula + number format + validation, but NOT borders — so a move never repaints the roster's band/section lines.
+      sheet.getRange(sourceRow, c).copyTo(sheet.getRange(targetRow, c), SpreadsheetApp.CopyPasteType.PASTE_NO_BORDERS, false);
     }
     sheet.getRange(sourceRow, c).clearContent();   // the member has left the source row
   }
