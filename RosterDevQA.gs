@@ -506,6 +506,22 @@ function devNewLayoutTests_() {
     }
   } else { devInfo_(R, 'groupMarker_ not loaded', 'RosterExtras.gs absent — skipped'); }
 
+  // Police Academy (editable tracker) marker + column resolution (RosterExtras.gs).
+  if (typeof academyMarker_ === 'function') {
+    const ash = devFreshSheet_('Academy');
+    ash.getRange(1, 1).setValue('#academy: Rank in Police Cadet, Probationary Officer');
+    const am = academyMarker_(ash);
+    devEq_(R, 'academyMarker_ → 2 ranks', am && am.ranks.length, 2);
+    devEq_(R, 'academyMarker_ first rank', am && am.ranks[0], 'Police Cadet');
+    ash.getRange(1, 1).setValue('nothing here');
+    devEq_(R, 'academyMarker_ none → null', academyMarker_(ash), null);
+    const AC = academyCols_(['UNIQUE ID', 'RANK', 'NAME', 'EXAM', 'RIDE-ALONGS', 'GRADUATED']);
+    devEq_(R, 'academyCols_ id col', AC.id, 1);
+    devEq_(R, 'academyCols_ name col', AC.name, 3);
+    devEq_(R, 'academyCols_ graduated col', AC.grad, 6);
+    devEq_(R, 'academyCols_ ignores training cols', AC.rank, 2);
+  } else { devInfo_(R, 'academyMarker_ not loaded', 'RosterExtras.gs absent — skipped'); }
+
   // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.
   const RCo = rosterCols_(devBuildRoster_([{ rank: 'Trooper', name: 'A', id: devId_(1), activity: 'Active', hours: 12 }]));
   devEq_(R, 'classic layout: activity still col 8', RCo.activity, 8);

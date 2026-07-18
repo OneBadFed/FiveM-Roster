@@ -552,13 +552,14 @@ function buildGroupSheets_() {
   const sysNames = {};
   Object.keys(CONFIG.sheets || {}).forEach((k) => { if (CONFIG.sheets[k]) sysNames[String(CONFIG.sheets[k]).toUpperCase()] = true; });
   ['CONTROL PANEL', 'CONFIG', '⚙️ CONFIG', 'DEV / QA', 'DEV/QA', 'DASHBOARD'].forEach((n) => { sysNames[n] = true; });
-  const groupNoun = /(shift|division|troop|district|squad|platoon|academy|precinct|watch|beat|sector|zone)/i;
+  const groupNoun = /(shift|division|troop|district|squad|platoon|precinct|watch|beat|sector|zone)/i; // NB: "academy" is handled by buildAcademySheets_ (editable), not here
   const built = [];
   const skipped = [];
   ss.getSheets().forEach((sh) => {
     if (sh.getSheetId() === roster.getSheetId()) return;
     const nm = sh.getName();
     if (sysNames[nm.toUpperCase()]) return;
+    if (isAcademyTab_(sh)) return; // the Academy is an editable tracker, not a read-only #group view
     const marker = groupMarker_(sh);
     // A tab counts as a group tab if it has an explicit marker OR its name reads like a group.
     if (!marker && !groupNoun.test(nm)) return;
@@ -629,6 +630,186 @@ function buildGroupSheets() {
         'Prefer to be explicit? Put a marker in the tab instead:\n  #group: Shift = Day\n  #group: Rank in Police Cadet, Probationary Officer';
     }
     ui.alert('🗂️ Build / Refresh Group Sheets', msg, ui.ButtonSet.OK);
+  });
+}
+
+/* ======================================================================
+ * POLICE ACADEMY — an EDITABLE, roster-synced training tracker. Unlike the
+ * read-only #group tabs, the engine keeps one row per Cadet / Probationary
+ * member (matched by UNIQUE ID so your edits stay put), fills the identity
+ * columns (UNIQUE ID / RANK / NAME / CALLSIGN) from the roster, and NEVER
+ * touches your own training columns (Exam, Ride-Alongs, Notes, …). Members
+ * who leave those ranks drop below a "— GRADUATED —" divider with everything
+ * you typed kept. Tab is any sheet named "…Academy…" or carrying a marker:
+ *   #academy: Rank in Police Cadet, Probationary Officer
+ * ====================================================================== */
+
+const ACADEMY_DEFAULT_RANKS = ['Police Cadet', 'Probationary Officer'];
+const ACADEMY_GRAD_DIVIDER = '— GRADUATED —';
+
+/** Read a tab's top cells for "#academy: Rank in A, B" (which ranks to track). @return {{ranks:string[]}|null} */
+function academyMarker_(sh) {
+  const rows = Math.min(5, sh.getLastRow());
+  if (rows < 1) return null;
+  const cols = Math.min(4, Math.max(1, sh.getLastColumn()));
+  const grid = sh.getRange(1, 1, rows, cols).getDisplayValues();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const m = String(grid[r][c] || '').match(/^#academy:\s*(.+)$/i);
+      if (!m) continue;
+      const inM = m[1].trim().match(/^(?:rank\s+in\s+|rank\s*[:=]\s*)?(.+)$/i);
+      const list = (inM ? inM[1] : m[1]).split(',').map((s) => s.trim()).filter(Boolean);
+      return { ranks: list.length ? list : ACADEMY_DEFAULT_RANKS.slice() };
+    }
+  }
+  return null;
+}
+
+/** Is this an Academy tab? (name contains "academy", or it carries a #academy: marker). */
+function isAcademyTab_(sh) { return /academy/i.test(sh.getName()) || !!academyMarker_(sh); }
+
+/** Find the Academy header row (the row that holds a NAME label) + its uppercased labels. */
+function academyHeaderRow_(sh) {
+  const maxScan = Math.min(15, sh.getLastRow());
+  if (maxScan < 1) return { row: 0, headers: [] };
+  const w = Math.max(1, sh.getLastColumn());
+  const grid = sh.getRange(1, 1, maxScan, w).getDisplayValues();
+  for (let r = 0; r < maxScan; r++) {
+    const up = grid[r].map((x) => String(x).toUpperCase().trim());
+    if (up.some((h) => h === 'NAME' || (h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1))) return { row: r + 1, headers: up };
+  }
+  return { row: 0, headers: [] };
+}
+
+/** Resolve the Academy sheet's engine-owned columns from its header labels (1-based; 0 when absent). Everything else is yours. */
+function academyCols_(headers) {
+  const find = (pred) => { for (let i = 0; i < headers.length; i++) { if (headers[i] && pred(headers[i])) return i + 1; } return 0; };
+  return {
+    id: find((h) => h.indexOf('UNIQUE') !== -1 || h.indexOf('DISCORD') !== -1 || h === 'ID' || /\bID\b/.test(h)),
+    rank: find((h) => h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1),
+    name: find((h) => h === 'NAME' || (h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1)),
+    call: find((h) => h.indexOf('CALLSIGN') !== -1 || h.indexOf('UNIT') !== -1),
+    grad: find((h) => h.indexOf('GRADUAT') !== -1),
+  };
+}
+
+/**
+ * Sync every Academy tab: keep a row per current Cadet/Probationary member (matched by UNIQUE ID so training edits
+ * follow the member), fill identity columns from the roster, preserve everything you typed, and drop graduates below a
+ * "— GRADUATED —" divider. @return {{built:number, sheets:string[], skipped:Array<{name,why}>}}
+ */
+function buildAcademySheets_() {
+  const ss = SpreadsheetApp.getActive();
+  const roster = ss.getSheetByName(CONFIG.sheets.roster);
+  if (!roster) return { built: 0, sheets: [], skipped: [] };
+  const RC = rosterCols_(roster);
+  if (!RC.headerRow || !RC.name || !RC.rank) return { built: 0, sheets: [], skipped: [] };
+  const start = CONFIG.rosterStartRow;
+  const lastRow = roster.getLastRow();
+  const nR = Math.max(0, lastRow - start + 1);
+  const rd = nR ? roster.getRange(start, 1, nR, roster.getLastColumn()).getDisplayValues() : [];
+  const built = [];
+  const skipped = [];
+  ss.getSheets().forEach((sh) => {
+    if (sh.getSheetId() === roster.getSheetId()) return;
+    if (!isAcademyTab_(sh)) return;
+    const mk = academyMarker_(sh);
+    const wanted = ((mk && mk.ranks.length) ? mk.ranks : ACADEMY_DEFAULT_RANKS).map(groupNorm_);
+    const H = academyHeaderRow_(sh);
+    if (!H.row) { skipped.push({ name: sh.getName(), why: 'no header row with a NAME column found' }); return; }
+    const AC = academyCols_(H.headers);
+    if (!AC.name) { skipped.push({ name: sh.getName(), why: 'no NAME column' }); return; }
+    const keyCol = AC.id || AC.name; // prefer UNIQUE ID as the match key (names can change / repeat)
+    const dataRow = H.row + 1;
+    const maxRows = sh.getMaxRows();
+    const width = Math.max(sh.getLastColumn(), AC.name, keyCol, AC.grad || 0);
+    // Read the existing body (values to preserve) + a display read of the key column (exact match, no number rounding).
+    const existVals = maxRows >= dataRow ? sh.getRange(dataRow, 1, maxRows - dataRow + 1, width).getValues() : [];
+    const existKeys = maxRows >= dataRow ? sh.getRange(dataRow, keyCol, maxRows - dataRow + 1, 1).getDisplayValues() : [];
+    const existByKey = {};
+    for (let i = 0; i < existVals.length; i++) {
+      if (String(existVals[i][AC.name - 1] || '').trim() === ACADEMY_GRAD_DIVIDER) continue; // never re-ingest the divider row as a member
+      const k = String(existKeys[i][0] || '').trim();
+      if (k && existVals[i].some((c) => String(c || '').trim() !== '')) existByKey[k] = existVals[i].slice();
+    }
+    // Current trainees from the roster, in roster order (= rank order).
+    const trainees = [];
+    for (let i = 0; i < rd.length; i++) {
+      const rk = groupNorm_(rd[i][RC.rank - 1]);
+      if (!wanted.some((w) => rk.indexOf(w) === 0)) continue;
+      const nm = String(rd[i][RC.name - 1] || '').trim();
+      if (!nm) continue; // skip empty roster slots
+      trainees.push({
+        id: RC.discord ? String(rd[i][RC.discord - 1] || '').trim() : '',
+        rank: String(rd[i][RC.rank - 1] || '').trim(),
+        name: nm,
+        call: RC.unit ? String(rd[i][RC.unit - 1] || '').trim() : '',
+      });
+    }
+    const blank = () => new Array(width).fill('');
+    const putIdentity = (row, t, graduated) => {
+      while (row.length < width) row.push('');
+      if (AC.id) row[AC.id - 1] = t.id;
+      if (AC.rank) row[AC.rank - 1] = t.rank;
+      if (AC.name) row[AC.name - 1] = t.name;
+      if (AC.call) row[AC.call - 1] = t.call;
+      if (AC.grad) row[AC.grad - 1] = graduated ? 'Graduated' : '';
+      return row;
+    };
+    const activeKeys = {};
+    const activeRows = trainees.map((t) => {
+      const key = (AC.id ? t.id : t.name).trim();
+      if (key) activeKeys[key] = true;
+      const base = (key && existByKey[key]) ? existByKey[key].slice() : blank();
+      return putIdentity(base, t, false);
+    });
+    // Graduated = keyed rows that are no longer trainees — keep their data, mark graduated.
+    const gradRows = [];
+    Object.keys(existByKey).forEach((k) => {
+      if (activeKeys[k]) return;
+      const row = existByKey[k].slice();
+      while (row.length < width) row.push('');
+      if (AC.grad) row[AC.grad - 1] = 'Graduated';
+      gradRows.push(row);
+    });
+    // Assemble: active (rank order) → divider → graduated.
+    const body = activeRows.slice();
+    if (gradRows.length) { const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER; body.push(div); gradRows.forEach((r) => body.push(r)); }
+    // Make room, keep the key/ID column as text so long IDs stay exact, then rewrite the body (identity refreshed, your columns carried along).
+    const need = dataRow + Math.max(body.length, 1) - 1;
+    if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+    if (sh.getMaxRows() >= dataRow) {
+      const area = sh.getRange(dataRow, 1, sh.getMaxRows() - dataRow + 1, width);
+      area.breakApart(); area.clearContent();
+    }
+    if (AC.id) sh.getRange(dataRow, AC.id, Math.max(body.length, 1), 1).setNumberFormat('@');
+    if (body.length) {
+      try { sh.getRange(dataRow, 1, 1, width).copyTo(sh.getRange(dataRow, 1, body.length, width), SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false); } catch (e) { /* keep going if the template row can't be tiled */ }
+      sh.getRange(dataRow, 1, body.length, width).setValues(body);
+    }
+    built.push(sh.getName());
+  });
+  return { built: built.length, sheets: built, skipped: skipped };
+}
+
+/** Menu action: sync / refresh the Police Academy tab(s). */
+function buildAcademySheets() {
+  runAction_('Build Police Academy', () => {
+    const ui = SpreadsheetApp.getUi();
+    const res = buildAcademySheets_();
+    let msg = '';
+    if (res.built) {
+      msg += 'Synced ' + res.built + ' academy tab' + (res.built === 1 ? '' : 's') + ':\n• ' + res.sheets.join('\n• ') +
+        '\n\nCadets & probationary members are listed with their ID / rank / name filled in — your training columns are left untouched. Anyone promoted out drops below a “— GRADUATED —” divider.\n';
+    }
+    if (res.skipped && res.skipped.length) {
+      msg += (msg ? '\n' : '') + 'Skipped:\n' + res.skipped.map((s) => '• ' + s.name + ' — ' + s.why).join('\n') + '\n';
+    }
+    if (!msg) {
+      msg = 'No Police Academy tab found.\n\nMake a tab named “Police Academy” with a header row that has at least a UNIQUE ID and a NAME column, plus your own training columns (Exam, In-Game Training, Ride-Alongs, Notes…). Then run this again.\n\n' +
+        'To track specific ranks, add a marker in the top-left cell:\n  #academy: Rank in Police Cadet, Probationary Officer';
+    }
+    ui.alert('🎓 Build / Refresh Police Academy', msg, ui.ButtonSet.OK);
   });
 }
 

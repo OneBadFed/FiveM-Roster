@@ -268,6 +268,7 @@ function buildMenus_(prefix) {
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
       .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
       .addItem('🗂️ Build / Refresh Group Sheets', p + 'buildGroupSheets')
+      .addItem('🎓 Build / Refresh Police Academy', p + 'buildAcademySheets')
       .addItem('🙈 Hide Helper Columns', p + 'hideHelperColumns')
       .addItem('👁️ Show All Columns', p + 'showAllRosterColumns')
       .addSeparator()
@@ -941,6 +942,7 @@ function refreshDashboard() {
     try { cells = refreshDashboard_(true); } catch (e) { log_('refreshDashboard.dash', e); }
     try { renderPromotions_(); } catch (e) { log_('refreshDashboard.promos', e); }
     try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e) { log_('refreshDashboard.groups', e); } // refresh any #group division tabs
+    try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('refreshDashboard.academy', e); } // sync the editable Police Academy tab(s)
 
     // 5) Integrity scan — duplicate/malformed IDs, status-vs-hours mismatches, orphaned/mis-targeted leaves.
     //    Guarded (the checks live in RosterExtras.gs); logs to the Integrity Log + posts a Discord summary.
