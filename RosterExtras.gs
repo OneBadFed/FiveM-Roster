@@ -301,8 +301,9 @@ function doWeeklyReset_() {
 function weeklyResetWithHistory() {
   runAction_('Capture & Reset Activity', () => {
     const ui = SpreadsheetApp.getUi();
+    const label = periodLabel_(); // the auto-detected period this capture will be logged under — shown so it can be verified
     const resp = ui.alert('📸 Capture & Reset Activity',
-      'Roll this period\'s HOURS into the previous-period column(s), save a history snapshot, then zero HOURS and recompute statuses?\n\nLOA/ROA/Reserve stay protected.',
+      `Capture the current period as “${label}”, roll the period columns forward, save a history snapshot, then zero HOURS and recompute statuses?\n\nLOA/ROA/Reserve stay protected.`,
       ui.ButtonSet.YES_NO);
     if (resp !== ui.Button.YES) return;
     const res = doWeeklyReset_();
