@@ -325,7 +325,7 @@ const BLOCK_SPECS_ = Object.freeze({
   STATUS_RULES: { type: 'table', cols: ['Source', 'Op', 'Hours', 'Target'], seed: [],
     help: 'Optional STATELESS override matrix layered on the [STATUSES] tiers (v2.5.0). Each rule reroutes a computed status: Source = a status name or * (any); Op = < · <= · > · >= · == (or * for "always"); Hours = the threshold; Target = the resulting status. Rules apply first-match-wins and iterate to a FIXED POINT, so the result depends only on hours (idempotent — never a per-run "strike"). EMPTY (the default) = the tier ladder alone. Protected statuses are never rerouted unless named as a Source.' },
   RANKS: { type: 'table', cols: ['Value', 'Kind'], seed: [],
-    help: 'Explicit rank/divider list (v2.5.0). Only consulted when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST. Value = the exact rank or divider label; Kind = RANK (a member slot) or DIVIDER (a section header). Anything not listed falls back to the all-caps heuristic, so a partial list is safe. EMPTY = pure heuristic.' },
+    help: 'Explicit rank/divider list (v2.5.0). Value = the exact rank or divider label. Kind = RANK (a member slot), DIVIDER (a section header), or TRAINING (a member rank that ALSO lands on the Police Academy — e.g. Police Cadet, Probationary Officer). RANK/DIVIDER rows are only consulted for divider detection when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST (unlisted labels fall back to the all-caps heuristic, so a partial list is safe). TRAINING rows are read for the Academy regardless of DIVIDER_MODE.' },
   LEAVE: { type: 'kv', keys: {
     LEAVE_TYPES: { t: 'list', d: 'LOA, ROA', req: true, help: 'Each must be a LEAVE-kind status in [STATUSES].' },
     RETURN_TYPE: { t: 'string', d: '', req: false, help: 'Form value meaning "I am back" (closes leave early). EMPTY = disabled — ROA is a leave TYPE here, not a return.' },
@@ -702,7 +702,7 @@ function validateConfig_(raw) {
   c.tables.RANKS.forEach((row) => {
     if (!row.Value && !row.Kind) return;
     const kind = norm_(row.Kind);
-    if (kind !== 'RANK' && kind !== 'DIVIDER') problems.push({ sev: 'ERROR', code: 'E-103', key: `[RANKS].${row.Value || '(blank)'}`, value: row.Kind, type: 'kind', expected: 'RANK · DIVIDER' });
+    if (kind !== 'RANK' && kind !== 'DIVIDER' && kind !== 'TRAINING') problems.push({ sev: 'ERROR', code: 'E-103', key: `[RANKS].${row.Value || '(blank)'}`, value: row.Kind, type: 'kind', expected: 'RANK · DIVIDER · TRAINING' });
   });
   if (norm_(c.kv.ROSTER_LAYOUT.DIVIDER_MODE) === 'EXPLICIT_LIST' && !c.tables.RANKS.some((r) => String(r.Value || '').trim() !== '')) {
     problems.push({ sev: 'WARN', code: 'E-103', key: '[RANKS]', value: '(empty)', type: 'ranks', expected: 'DIVIDER_MODE is EXPLICIT_LIST but [RANKS] is empty — the all-caps heuristic is used until you list ranks/dividers' });
@@ -888,12 +888,13 @@ function materialize_(c, fromTab) {
   }));
 
   // v2.5.0 — explicit rank/divider list (normalized) consulted when DIVIDER_MODE = EXPLICIT_LIST.
-  const rankList = { ranks: [], dividers: [] };
+  const rankList = { ranks: [], dividers: [], trainingRanks: [] };
   c.tables.RANKS.forEach((r) => {
     const val = String(r.Value || '').trim();
     if (!val) return;
     const kind = norm_(r.Kind);
     if (kind === 'DIVIDER') rankList.dividers.push(norm_(val));
+    else if (kind === 'TRAINING') { rankList.ranks.push(norm_(val)); rankList.trainingRanks.push(val); } // a member rank ALSO flagged for the Police Academy (read regardless of DIVIDER_MODE)
     else if (kind === 'RANK') rankList.ranks.push(norm_(val));
   });
 

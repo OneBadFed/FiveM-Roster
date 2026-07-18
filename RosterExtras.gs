@@ -749,7 +749,10 @@ function buildAcademySheets_() {
     if (sh.getSheetId() === roster.getSheetId()) return;
     if (!isAcademyTab_(sh)) return;
     const mk = academyMarker_(sh);
-    const wanted = ((mk && mk.ranks.length) ? mk.ranks : ACADEMY_DEFAULT_RANKS).map(groupNorm_);
+    // Who counts as a trainee: a #academy marker (per-tab) wins; else the [RANKS] TRAINING flags; else the built-in default.
+    const cfgTraining = (CONFIG.rankList && CONFIG.rankList.trainingRanks && CONFIG.rankList.trainingRanks.length) ? CONFIG.rankList.trainingRanks : null;
+    const wanted = ((mk && mk.ranks.length) ? mk.ranks : (cfgTraining || ACADEMY_DEFAULT_RANKS)).map(groupNorm_);
+    const isTrainee = (rank) => { const r = groupNorm_(rank); return wanted.some((w) => w && r.indexOf(w) === 0); };
     const H = academyHeaderRow_(sh);
     if (!H.row) { skipped.push({ name: sh.getName(), why: 'no header row with a NAME column found' }); return; }
     const AC = academyCols_(H.headers);
@@ -826,6 +829,7 @@ function buildAcademySheets_() {
       const byBand = bands.map(() => []);
       for (let i = 0; i < rd.length; i++) {
         if (String(rd[i][RC.name - 1] || '').trim() === '') continue;
+        if (!isTrainee(rd[i][RC.rank - 1])) continue; // only designated training ranks belong on the Academy
         const rs = academyStems_(rd[i][RC.rank - 1]);
         if (!rs.length) continue;
         let best = -1, score = 0;

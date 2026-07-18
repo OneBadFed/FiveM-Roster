@@ -3346,6 +3346,17 @@ function devV25Tests_() {
     devEq_(R, 'EXPLICIT_LIST: unlisted ALL-CAPS falls back to heuristic (divider)', isDividerValue_('PATROL TROOPERS'), true);
     devEq_(R, 'EXPLICIT_LIST: unlisted mixed-case falls back to heuristic (member)', isDividerValue_('Trooper'), false);
   });
+  // [RANKS] TRAINING kind → flags Police Academy training ranks (read regardless of DIVIDER_MODE)
+  devWithConfig_({
+    RANKS: { kind: 'table', header: ['Value', 'Kind'], rows: [['Police Cadet', 'TRAINING'], ['Probationary Officer', 'TRAINING'], ['Sergeant', 'RANK']] },
+  }, (cfg, val) => {
+    devEq_(R, '[RANKS] TRAINING kind validates clean', val.problems.filter((p) => p.sev === 'ERROR').length, 0);
+    devEq_(R, '[RANKS] TRAINING → 2 training ranks', CONFIG.rankList.trainingRanks.length, 2);
+    devEq_(R, '[RANKS] TRAINING → first training rank kept verbatim', CONFIG.rankList.trainingRanks[0], 'Police Cadet');
+    devEq_(R, '[RANKS] TRAINING rank counts as a member rank too', CONFIG.rankList.ranks.length, 3);
+  });
+  devCheck_(R, '[RANKS] bogus Kind still errors', hasErr(validateConfig_({ RANKS: { kind: 'table', header: ['Value', 'Kind'], rows: [['X', 'TRAINEE']] } }), '[RANKS]', 'kind'));
+
   devEq_(R, 'default ALLCAPS_RANK: ALL-CAPS is a divider', isDividerValue_('COMMAND STAFF'), true);
   devEq_(R, 'default ALLCAPS_RANK: mixed-case rank is not a divider', isDividerValue_('Sergeant'), false);
 
