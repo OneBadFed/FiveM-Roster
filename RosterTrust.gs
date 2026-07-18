@@ -155,16 +155,23 @@ function cpHeaderIssues_(sheet, label, headerRow, colsSpec) {
   return issues;
 }
 
-/** Roster columns are header-based, so verify the required header LABELS exist in row 5 (any column). */
+/** Roster columns are header-resolved, so verify the required columns resolve on the roster's ACTUAL label row (auto-detected). */
 function cpRosterHeaderIssues_(roster) {
   if (!roster) return [];
   const issues = [];
-  if (roster.getLastRow() < ROSTER_HEADER_ROW) { issues.push(`${CONFIG.sheets.roster}: header row ${ROSTER_HEADER_ROW} is missing.`); return issues; }
-  const hdr = roster.getRange(ROSTER_HEADER_ROW, 1, 1, Math.max(roster.getLastColumn(), 1)).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
-  ['RANK', 'NAME', 'DISCORD', 'ACTIVITY', 'HOURS'].forEach((want) => {
-    if (!hdr.some((h) => h.indexOf(want) !== -1)) {
-      issues.push(`${CONFIG.sheets.roster}: no "${want}" header in row ${ROSTER_HEADER_ROW} — columns are resolved by header, so this label is required.`);
-    }
+  const RC = rosterCols_(roster);
+  if (!RC.headerRow) { issues.push(`${CONFIG.sheets.roster}: couldn't find a header row — need a row with a RANK label plus NAME/HOURS. Columns are resolved by header.`); return issues; }
+  const hdr = roster.getRange(RC.headerRow, 1, 1, Math.max(roster.getLastColumn(), 1)).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
+  // Same matchers rosterCols_ uses (so UNIQUE ID counts as DISCORD and STATUS as ACTIVITY) — check by resolution, not literal text.
+  const required = [
+    { label: 'RANK', ok: (h) => h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1 },
+    { label: 'NAME', ok: (h) => h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 },
+    { label: 'UNIQUE ID / DISCORD', ok: (h) => h.indexOf('DISCORD') !== -1 || h.indexOf('UNIQUE') !== -1 },
+    { label: 'STATUS / ACTIVITY', ok: (h) => h.indexOf('ACTIVITY') !== -1 || h.indexOf('STATUS') !== -1 },
+    { label: 'HOURS', ok: (h) => h.indexOf('HOURS') !== -1 },
+  ];
+  required.forEach((req) => {
+    if (!hdr.some(req.ok)) issues.push(`${CONFIG.sheets.roster}: no ${req.label} header in row ${RC.headerRow} — columns are resolved by header, so this label is required.`);
   });
   // F-019: duplicate headers silently shadow each other (only one wins on header-resolved ops / snapshot restore) — flag them.
   const seen = {};

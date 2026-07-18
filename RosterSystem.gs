@@ -153,8 +153,23 @@ function columnClassOverrides_() {
   return out;
 }
 
+/** The roster's resolved label row — auto-detected by rosterCols_ (handles a two-row banner+label header), else the configured ROSTER_HEADER_ROW. */
+function rosterLabelRow_(roster) {
+  try { const h = rosterCols_(roster).headerRow; if (h) return h; } catch (e) { log_('rosterLabelRow_', e); }
+  return ROSTER_HEADER_ROW;
+}
+
+/** Per-column header labels at `labelRow`, each falling back to the banner row above when its own cell is blank (cells merged across both rows, e.g. RANK GROUP). */
+function rosterHeaderLabels_(roster, labelRow) {
+  const lastCol = Math.max(roster.getLastColumn(), 1);
+  const lbl = roster.getRange(labelRow, 1, 1, lastCol).getDisplayValues()[0];
+  const banner = labelRow > 1 ? roster.getRange(labelRow - 1, 1, 1, lastCol).getDisplayValues()[0] : [];
+  return lbl.map((v, i) => { const s = String(v || '').trim(); return s !== '' ? s : String(banner[i] || '').trim(); });
+}
+
 /**
- * Discovers every populated row-5 header and resolves its class.
+ * Discovers every populated header on the roster's resolved label row (row 6 on a two-row banner+label layout; a
+ * blank label cell falls back to the merged banner above, e.g. RANK GROUP) and resolves each column's class.
  * @param {Object} [overrides] - {NORMALIZED_HEADER:class}; defaults to the live "_Columns" tab (tests inject {}).
  * @return {Array<{col:number, header:string, klass:string}>}
  */
@@ -163,8 +178,9 @@ function columnRegistry_(roster, overrides) {
   const out = [];
   try {
     const lastCol = roster.getLastColumn();
-    if (lastCol >= 1 && roster.getLastRow() >= ROSTER_HEADER_ROW) {
-      const hdr = roster.getRange(ROSTER_HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0];
+    const labelRow = rosterLabelRow_(roster);
+    if (lastCol >= 1 && roster.getLastRow() >= labelRow) {
+      const hdr = rosterHeaderLabels_(roster, labelRow);
       for (let c = 1; c <= lastCol; c++) {
         const header = String(hdr[c - 1] || '').trim();
         if (header === '') continue;
@@ -200,8 +216,8 @@ function syncColumnConfig_() {
   if (!configSheet) return null;
   const existing = columnClassOverrides_(); // legacy tab + config rows, keyed by header
   const lastCol = roster.getLastColumn();
-  const hdr = roster.getLastRow() >= ROSTER_HEADER_ROW
-    ? roster.getRange(ROSTER_HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0] : [];
+  const labelRow = rosterLabelRow_(roster);
+  const hdr = roster.getLastRow() >= labelRow ? rosterHeaderLabels_(roster, labelRow) : [];
   let seenCount = 0;
   const added = []; // {header, klass} — headers newly classified this run (not counting ones already in [COLUMNS])
   for (let c = 1; c <= lastCol; c++) {
