@@ -345,6 +345,117 @@ function resetDue_() {
 }
 
 /* ======================================================================
+ * GROUP / DIVISION SHEETS — a live, rank-ordered view of one category (shift,
+ * district, troop, …) on its own tab. Make a tab, drop a marker like
+ * "#group: Shift = Day" in the top-left cell, then Build / Refresh Group
+ * Sheets: the engine writes a FILTER that mirrors matching members in rank
+ * order (roster order) and updates live as the roster changes.
+ * ====================================================================== */
+
+/** 1-based column number → letter (guards cpColLetter_ in RosterTrust.gs). */
+function groupColLetter_(n) {
+  if (typeof cpColLetter_ === 'function') return cpColLetter_(n);
+  let s = ''; while (n > 0) { const m = (n - 1) % 26; s = String.fromCharCode(65 + m) + s; n = Math.floor((n - 1) / 26); } return s;
+}
+
+/**
+ * Reads a tab's top-left cells for a "#group: …" marker. Accepts "#group: Column = Value" (or "Column: Value") and
+ * the shorthand "#group: Value" (engine auto-finds the column). @return {{row,col,column,value,raw}|null}
+ */
+function groupMarker_(sh) {
+  const rows = Math.min(5, sh.getLastRow());
+  if (rows < 1) return null;
+  const cols = Math.min(4, Math.max(1, sh.getLastColumn()));
+  const grid = sh.getRange(1, 1, rows, cols).getDisplayValues();
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const m = String(grid[r][c] || '').match(/^#group:\s*(.+)$/i);
+      if (!m) continue;
+      const raw = m[1].trim();
+      const eq = raw.match(/^(.+?)\s*[:=]\s*(.+)$/);
+      if (eq) return { row: r + 1, col: c + 1, column: eq[1].trim(), value: eq[2].trim(), raw: raw };
+      return { row: r + 1, col: c + 1, column: '', value: raw, raw: raw };
+    }
+  }
+  return null;
+}
+
+/** Auto-find the first roster column (left→right) whose data holds `value`. @return {number} 1-based col, or 0. */
+function findGroupColumn_(roster, start, value) {
+  const lastRow = roster.getLastRow();
+  const lastCol = roster.getLastColumn();
+  const n = lastRow - start + 1;
+  if (n <= 0 || lastCol < 1) return 0;
+  const data = roster.getRange(start, 1, n, lastCol).getDisplayValues();
+  const want = String(value).trim().toUpperCase();
+  for (let c = 0; c < lastCol; c++) {
+    for (let r = 0; r < n; r++) { if (String(data[r][c] || '').trim().toUpperCase() === want) return c + 1; }
+  }
+  return 0;
+}
+
+/**
+ * For every tab carrying a "#group:" marker, (re)write a header row + a live FILTER mirroring the matching members
+ * from the roster in rank order (roster order = rank order). @return {{built:number, sheets:string[]}}
+ */
+function buildGroupSheets_() {
+  const ss = SpreadsheetApp.getActive();
+  const roster = ss.getSheetByName(CONFIG.sheets.roster);
+  if (!roster) return { built: 0, sheets: [] };
+  const RC = rosterCols_(roster);
+  if (!RC.headerRow || !RC.name) return { built: 0, sheets: [] };
+  const lastCol = roster.getLastColumn();
+  const hdr = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
+  const rName = "'" + String(CONFIG.sheets.roster).replace(/'/g, "''") + "'";
+  const start = CONFIG.rosterStartRow;
+  const disp = [
+    { c: RC.rank, h: 'RANK' }, { c: RC.unit, h: 'CALLSIGN' }, { c: RC.name, h: 'NAME' },
+    { c: RC.hours, h: 'HOURS' }, { c: RC.activity, h: 'STATUS' },
+  ].filter((d) => d.c);
+  const rng = (c) => rName + '!' + groupColLetter_(c) + start + ':' + groupColLetter_(c);
+  const built = [];
+  ss.getSheets().forEach((sh) => {
+    if (sh.getSheetId() === roster.getSheetId()) return;
+    const marker = groupMarker_(sh);
+    if (!marker) return;
+    let gCol = 0;
+    if (marker.column) {
+      const key = marker.column.toUpperCase();
+      for (let c = 0; c < hdr.length; c++) { if (hdr[c] && hdr[c].indexOf(key) !== -1) { gCol = c + 1; break; } }
+    } else {
+      gCol = findGroupColumn_(roster, start, marker.value);
+    }
+    const hRow = marker.row + 1;
+    const clrW = Math.max(disp.length, sh.getLastColumn(), 1);
+    if (sh.getMaxRows() >= hRow) sh.getRange(hRow, 1, sh.getMaxRows() - hRow + 1, clrW).clearContent(); // engine owns everything below the marker
+    if (!gCol) { sh.getRange(hRow, 1).setValue('⚠️ Couldn\'t match "' + marker.raw + '" to a column — try  #group: Shift = Day'); return; }
+    const val = String(marker.value).replace(/"/g, '""');
+    const formula = '=IFERROR(FILTER({' + disp.map((d) => rng(d.c)).join(',') + '},' + rng(gCol) + '="' + val + '",' + rng(RC.name) + '<>""),"No members in this group yet.")';
+    sh.getRange(hRow, 1, 1, disp.length).setValues([disp.map((d) => d.h)]);
+    sh.getRange(hRow + 1, 1).setFormula(formula);
+    built.push(sh.getName());
+  });
+  return { built: built.length, sheets: built };
+}
+
+/** Menu action: build / refresh every #group tab. */
+function buildGroupSheets() {
+  runAction_('Build Group Sheets', () => {
+    const ui = SpreadsheetApp.getUi();
+    const res = buildGroupSheets_();
+    if (!res.built) {
+      ui.alert('🗂️ Build / Refresh Group Sheets',
+        'No group tabs found.\n\nMake a new tab, put a marker in its top-left cell, then run this again:\n\n  #group: Shift = Day\n  #group: District = 1\n  #group: Troop = A\n\nThe tab fills with everyone in that group, in rank order, and stays live.',
+        ui.ButtonSet.OK);
+      return;
+    }
+    ui.alert('🗂️ Group Sheets Built',
+      'Filled ' + res.built + ' group tab' + (res.built === 1 ? '' : 's') + ':\n\n• ' + res.sheets.join('\n• ') + '\n\nThey update live as the roster changes.',
+      ui.ButtonSet.OK);
+  });
+}
+
+/* ======================================================================
  * LEAVE COVERAGE VIEW
  * ====================================================================== */
 

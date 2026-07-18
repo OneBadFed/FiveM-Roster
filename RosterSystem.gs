@@ -267,6 +267,7 @@ function buildMenus_(prefix) {
       // Roster editing
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
       .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
+      .addItem('🗂️ Build / Refresh Group Sheets', p + 'buildGroupSheets')
       .addSeparator()
       // Setup & wiring (run rarely)
       .addItem('🧩 Sync Column Config', p + 'syncColumnConfig')
@@ -937,6 +938,8 @@ function refreshDashboard() {
     let cells = 0;
     try { cells = refreshDashboard_(true); } catch (e) { log_('refreshDashboard.dash', e); }
     try { renderPromotions_(); } catch (e) { log_('refreshDashboard.promos', e); }
+    try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e) { log_('refreshDashboard.groups', e); } // refresh any #group division tabs
+
     // 5) Integrity scan — duplicate/malformed IDs, status-vs-hours mismatches, orphaned/mis-targeted leaves.
     //    Guarded (the checks live in RosterExtras.gs); logs to the Integrity Log + posts a Discord summary.
     let issues = null;

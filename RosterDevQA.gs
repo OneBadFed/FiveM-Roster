@@ -470,6 +470,21 @@ function devNewLayoutTests_() {
     devEq_(R, 'archive relabel: left header = the previous right header', String(sh.getRange(6, 11).getValue()), 'JUN. HOURS');
   } else { devInfo_(R, 'shiftArchiveColumns_ not loaded', 'RosterExtras.gs absent — skipped'); }
 
+  // Group-sheet marker parsing (RosterExtras.gs): "#group: Column = Value" and the "#group: Value" shorthand.
+  if (typeof groupMarker_ === 'function') {
+    const gsh = devFreshSheet_('Group');
+    gsh.getRange(1, 1).setValue('#group: Shift = Day');
+    const g1 = groupMarker_(gsh);
+    devEq_(R, 'groupMarker_ parses the column', g1 && g1.column, 'Shift');
+    devEq_(R, 'groupMarker_ parses the value', g1 && g1.value, 'Day');
+    gsh.getRange(1, 1).setValue('#group: Nights');
+    const g2 = groupMarker_(gsh);
+    devEq_(R, 'groupMarker_ shorthand → value only', g2 && g2.value, 'Nights');
+    devEq_(R, 'groupMarker_ shorthand → no column', g2 && g2.column, '');
+    gsh.getRange(1, 1).setValue('not a marker');
+    devEq_(R, 'groupMarker_ no marker → null', groupMarker_(gsh), null);
+  } else { devInfo_(R, 'groupMarker_ not loaded', 'RosterExtras.gs absent — skipped'); }
+
   // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.
   const RCo = rosterCols_(devBuildRoster_([{ rank: 'Trooper', name: 'A', id: devId_(1), activity: 'Active', hours: 12 }]));
   devEq_(R, 'classic layout: activity still col 8', RCo.activity, 8);
