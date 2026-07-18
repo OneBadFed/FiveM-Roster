@@ -652,13 +652,24 @@ function devUnitTests_() {
     devCheck_(R, 'isValidId_ rejects a non-numeric ID', !isValidId_('not-an-id'));
     devCheck_(R, 'isValidId_ rejects blank / whitespace', !isValidId_('') && !isValidId_('   '));
   });
-  devWithConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { ID_MIN_DIGITS: 1, ID_MAX_DIGITS: 8 } } }, () => {
+  // ID_TYPE switch: COMMUNITY preset forces the 1-8 range regardless of the ID_MIN/MAX_DIGITS keys.
+  devWithConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { ID_TYPE: 'COMMUNITY' } } }, () => {
+    devEq_(R, 'ID_TYPE=COMMUNITY materializes idType', CONFIG.idType, 'COMMUNITY');
     devEq_(R, 'idDigitsLabel_ Community range is "1-8"', idDigitsLabel_(), '1-8');
     devCheck_(R, 'isValidId_ accepts a 1-digit Community ID', isValidId_('7'));
     devCheck_(R, 'isValidId_ accepts an 8-digit Community ID', isValidId_('12345678'));
     devCheck_(R, 'isValidId_ rejects a 9-digit ID (over max)', !isValidId_('123456789'));
     devCheck_(R, 'isValidId_ rejects an 18-digit Discord ID (over max)', !isValidId_('110000000000000001'));
     devCheck_(R, 'idRegexSource_ builds the ^\\d{1,8}$ pattern', idRegexSource_() === '^\\d{1,8}$');
+  });
+  // COMMUNITY ignores explicit min/max; only CUSTOM honours them.
+  devWithConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { ID_TYPE: 'COMMUNITY', ID_MIN_DIGITS: 4, ID_MAX_DIGITS: 6 } } }, () => {
+    devEq_(R, 'ID_TYPE=COMMUNITY ignores ID_MIN/MAX (stays 1-8)', idDigitsLabel_(), '1-8');
+  });
+  devWithConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { ID_TYPE: 'CUSTOM', ID_MIN_DIGITS: 4, ID_MAX_DIGITS: 6 } } }, () => {
+    devEq_(R, 'ID_TYPE=CUSTOM honours ID_MIN/MAX -> "4-6"', idDigitsLabel_(), '4-6');
+    devCheck_(R, 'ID_TYPE=CUSTOM accepts a 5-digit ID', isValidId_('12345'));
+    devCheck_(R, 'ID_TYPE=CUSTOM rejects a 7-digit ID', !isValidId_('1234567'));
   });
 
   return R;
@@ -978,8 +989,8 @@ function devSyncTests_() {
     devEq_(R, '17-digit ID accepted -> one row', devDataRows_(mk('12345678901234567'), CONFIG.trackerStartRow), 1);
   });
 
-  // CONFIGURABLE ID range — a Community/CID deployment ([ID_MIN_DIGITS]=1, [ID_MAX_DIGITS]=8): a short ID is accepted, a Discord-length one is rejected.
-  devWithConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { ID_MIN_DIGITS: 1, ID_MAX_DIGITS: 8 } } }, () => {
+  // CONFIGURABLE ID range — a Community/CID department ([ID_TYPE]=COMMUNITY → 1-8): a short ID is accepted, a Discord-length one is rejected.
+  devWithConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { ID_TYPE: 'COMMUNITY' } } }, () => {
     const mk = (id) => { const tr = devBuildTracker_([]); syncFormToTracker_(devBuildForm_([{ ts: devDay_(0), name: 'C', id: id, callsign: 'S-1', rank: 'Trooper', type: 'LOA', start: devDay_(2), end: devDay_(9) }]), tr, NO_HOOK); return tr; };
     devEq_(R, 'Community range: 5-digit ID accepted -> one row', devDataRows_(mk('12345'), CONFIG.trackerStartRow), 1);
     devCheck_(R, 'Community range: 1-digit ID accepted', devDataRows_(mk('7'), CONFIG.trackerStartRow) === 1);

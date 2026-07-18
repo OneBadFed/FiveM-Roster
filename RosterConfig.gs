@@ -292,8 +292,9 @@ const BLOCK_SPECS_ = Object.freeze({
     TRAINING_KEYWORDS: { t: 'list', d: 'TRAINING, CADET', req: true, help: 'Divider labels containing these words are TRAINING sections.' },
     UNIT_FORMAT: { t: 'string', d: 'S-{00}', req: true, help: 'Callsign/unit-number template (v2.5.0). The {0…} token is the slot number zero-padded to that many digits — "S-{00}" → S-01, "TRP-{000}" → TRP-001. Text outside the token is literal (prefix/suffix). No token → the number is appended.' },
     LAST_ACTIVITY_STYLE: { t: 'enum', d: 'MATCH', req: false, enum: ['MATCH', 'NEUTRAL'], help: 'How the LAST ACTIVITY column is coloured (v2.5.0). MATCH = mirror CURRENT ACTIVITY\'s status colours (default). NEUTRAL = a calm grey chip so only CURRENT ACTIVITY is colour-coded. Applied by 📸 Capture Last Activity and the 🎨 Last Activity Colours menu toggle.' },
-    ID_MIN_DIGITS: { t: 'int', d: 17, req: true, min: 1, max: 30, help: 'Shortest accepted Unique ID length in digits. Default 17 (Discord snowflake). Set to 1 to allow a short Community/CID.' },
-    ID_MAX_DIGITS: { t: 'int', d: 19, req: true, min: 1, max: 30, help: 'Longest accepted Unique ID length in digits. Default 19 (Discord snowflake). Set to e.g. 8 for a Community/CID. NOTE: @mention pings still require a true 17-19 digit Discord ID — a short Community ID can\'t be @-mentioned on Discord.' },
+    ID_TYPE: { t: 'enum', d: 'DISCORD', req: true, enum: ['DISCORD', 'COMMUNITY', 'CUSTOM'], help: 'THE Unique-ID switch for this department. DISCORD = a 17-19 digit Discord ID (default). COMMUNITY = a short 1-8 digit Community ID / CID. CUSTOM = use the ID_MIN_DIGITS…ID_MAX_DIGITS range below. NOTE: Discord @mention pings only fire for a real 17-19 digit ID, so a COMMUNITY department simply gets no pings.' },
+    ID_MIN_DIGITS: { t: 'int', d: 17, req: true, min: 1, max: 30, help: 'Shortest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 17, COMMUNITY forces 1).' },
+    ID_MAX_DIGITS: { t: 'int', d: 19, req: true, min: 1, max: 30, help: 'Longest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 19, COMMUNITY forces 8).' },
   } },
   COLUMNS: { type: 'table', cols: ['Role', 'Match', 'Class', 'Required'],
     seed: [
@@ -633,7 +634,7 @@ function validateConfig_(raw) {
   // ---- Semantic checks (cross-field) ----
   if (c.kv.SYSTEM.SCHEMA_VERSION > ENGINE_SCHEMA) problems.push({ sev: 'ERROR', code: 'E-104', key: '[SYSTEM].SCHEMA_VERSION', value: c.kv.SYSTEM.SCHEMA_VERSION, type: 'schema', expected: `<= ${ENGINE_SCHEMA}`, sheet: c.kv.SYSTEM.SCHEMA_VERSION, engine: ENGINE_SCHEMA });
   if (c.kv.ROSTER_LAYOUT.DATA_START_ROW <= c.kv.ROSTER_LAYOUT.HEADER_ROW) problems.push({ sev: 'ERROR', code: 'E-103', key: '[ROSTER_LAYOUT].DATA_START_ROW', value: c.kv.ROSTER_LAYOUT.DATA_START_ROW, type: 'int', expected: `> HEADER_ROW (${c.kv.ROSTER_LAYOUT.HEADER_ROW})` });
-  if (c.kv.ROSTER_LAYOUT.ID_MIN_DIGITS > c.kv.ROSTER_LAYOUT.ID_MAX_DIGITS) problems.push({ sev: 'ERROR', code: 'E-103', key: '[ROSTER_LAYOUT].ID_MIN_DIGITS', value: c.kv.ROSTER_LAYOUT.ID_MIN_DIGITS, type: 'int', expected: `<= ID_MAX_DIGITS (${c.kv.ROSTER_LAYOUT.ID_MAX_DIGITS})` });
+  if (norm_(c.kv.ROSTER_LAYOUT.ID_TYPE) === 'CUSTOM' && c.kv.ROSTER_LAYOUT.ID_MIN_DIGITS > c.kv.ROSTER_LAYOUT.ID_MAX_DIGITS) problems.push({ sev: 'ERROR', code: 'E-103', key: '[ROSTER_LAYOUT].ID_MIN_DIGITS', value: c.kv.ROSTER_LAYOUT.ID_MIN_DIGITS, type: 'int', expected: `<= ID_MAX_DIGITS (${c.kv.ROSTER_LAYOUT.ID_MAX_DIGITS})` });
   if (!/\{0+\}/.test(String(c.kv.ROSTER_LAYOUT.UNIT_FORMAT || ''))) problems.push({ sev: 'WARN', code: 'E-103', key: '[ROSTER_LAYOUT].UNIT_FORMAT', value: c.kv.ROSTER_LAYOUT.UNIT_FORMAT, type: 'format', expected: 'a {0…} number token (e.g. "S-{00}") — without one every slot gets the same label' });
 
   // [STATUSES]
@@ -868,6 +869,12 @@ function materialize_(c, fromTab) {
   const protectedStatuses = c.statuses.filter((s) => s.kind === 'LEAVE' || s.kind === 'PROTECTED').map((s) => s.name);
   const tierOf = (name) => { const hit = c.tiers.filter((x) => norm_(x.name) === norm_(name))[0]; return hit ? hit.min : null; };
 
+  // Unique-ID switch: DISCORD (17-19) | COMMUNITY (1-8) | CUSTOM (the ID_MIN/MAX_DIGITS range). Drives isValidId_.
+  const idType = norm_(kv.ROSTER_LAYOUT.ID_TYPE || 'DISCORD');
+  const idRange = idType === 'COMMUNITY' ? { min: 1, max: 8 }
+                : idType === 'CUSTOM'    ? { min: kv.ROSTER_LAYOUT.ID_MIN_DIGITS || 1, max: kv.ROSTER_LAYOUT.ID_MAX_DIGITS || 19 }
+                :                          { min: 17, max: 19 }; // DISCORD (default)
+
   // Legacy slotKeywords = every Match keyword of SLOT-classed role rows (defaults: RANK, UNIT, CALLSIGN).
   const slotKeywords = [];
   c.tables.COLUMNS.forEach((r) => {
@@ -942,8 +949,9 @@ function materialize_(c, fromTab) {
     rosterStartRow: kv.ROSTER_LAYOUT.DATA_START_ROW,
     trackerStartRow: kv.ROSTER_LAYOUT.TRACKER_START_ROW,
     headerRow: kv.ROSTER_LAYOUT.HEADER_ROW,
-    idMinDigits: kv.ROSTER_LAYOUT.ID_MIN_DIGITS || 17,   // accepted Unique ID length range (17-19 = Discord, 1-8 = Community/CID)
-    idMaxDigits: kv.ROSTER_LAYOUT.ID_MAX_DIGITS || 19,
+    idType: idType,                 // 'DISCORD' | 'COMMUNITY' | 'CUSTOM' — the department's Unique-ID switch
+    idMinDigits: idRange.min,       // accepted Unique ID length range, derived from ID_TYPE (isValidId_ reads these)
+    idMaxDigits: idRange.max,
     roster: { rank: 2, name: 3, unit: 4, discord: 5, activity: 8, hours: 9 },        // positional FALLBACKS only (header resolution wins)
     tracker: { key: 1, rank: 2, unit: 3, ooc: 4, name: 5, discord: 6, shift: 7, start: 8, end: 9, length: 10, untilStart: 11, timeLeft: 12, returnDate: 13, status: 14, approvedBy: 15, notes: 16 }, // LOA Tracker layout: A key · B rank · C unit · D OOC · E name · F unique-ID · G shift · H start · I end · J len · K until · L left · M return · N status · O approved-by · P notes (LOA-only — no TYPE column)
     form: { timestamp: 1, name: 2, discord: 3, callsign: 4, rank: 5, type: 6, start: 7, end: 8 },

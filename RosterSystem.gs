@@ -317,6 +317,9 @@ function buildMenus_(prefix) {
       .addItem('👁️ Show All Columns', p + 'showAllRosterColumns')
       .addSeparator()
       // Setup & wiring (run rarely)
+      .addSubMenu(SpreadsheetApp.getUi().createMenu('🆔 Unique ID Type')
+        .addItem('Discord ID (17–19 digits)', p + 'idTypeDiscord')
+        .addItem('Community ID (1–8 digits)', p + 'idTypeCommunity'))
       .addItem('🧩 Sync Column Config', p + 'syncColumnConfig')
       .addItem('🚀 First-Run Setup', p + 'setupWizard')
       .addItem('🔌 Install Triggers', p + 'installTriggers')
@@ -1605,6 +1608,37 @@ function lastActivityNeutral() {
 function lastActivityMatch() {
   runAction_('Last Activity: Match', () => {
     if (setLastActivityStyle_('MATCH')) SpreadsheetApp.getUi().alert("✅ LAST ACTIVITY now mirrors CURRENT ACTIVITY's status colours again.");
+  });
+}
+
+/**
+ * Persist [ROSTER_LAYOUT].ID_TYPE — the department's Unique-ID switch ('DISCORD' 17-19 | 'COMMUNITY' 1-8) — and re-apply
+ * the roster/tracker ID data-validation so the new length range takes effect immediately. Creates the ⚙️ Config tab if
+ * missing so the choice persists. @return {string} the new accepted-digit label (e.g. "17-19" or "1-8").
+ */
+function setIdType_(type) {
+  const ss = SpreadsheetApp.getActive();
+  let configSheet = findConfigSheet_(ss);
+  if (!configSheet) { seedConfigTab_(ss); configSheet = findConfigSheet_(ss); }
+  if (configSheet) setKvValue_(configSheet, 'ROSTER_LAYOUT', 'ID_TYPE', type);
+  cfgInvalidate_();
+  try { installDataValidation_(); } catch (e) { log_('setIdType_.validation', e); } // refresh the ID rule to the new range
+  return idDigitsLabel_();
+}
+
+/** Menu: switch this department to Discord IDs (17-19 digits — @mention pings work). */
+function idTypeDiscord() {
+  runAction_('ID Type: Discord', () => {
+    const label = setIdType_('DISCORD');
+    SpreadsheetApp.getUi().alert('🆔 Unique ID type → DISCORD (' + label + ' digits).\n\nExisting IDs are unchanged; new entries must be ' + label + ' digits. Discord @mention pings work with these IDs.');
+  });
+}
+
+/** Menu: switch this department to short Community IDs / CIDs (1-8 digits). */
+function idTypeCommunity() {
+  runAction_('ID Type: Community', () => {
+    const label = setIdType_('COMMUNITY');
+    SpreadsheetApp.getUi().alert('🆔 Unique ID type → COMMUNITY (' + label + ' digits).\n\nNew entries must be ' + label + ' digits. Note: Discord @mention pings are skipped for community IDs (they aren\'t Discord accounts). Any existing 17-19 digit IDs will show a validation warning until updated.');
   });
 }
 
