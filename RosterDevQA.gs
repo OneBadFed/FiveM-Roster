@@ -526,6 +526,14 @@ function devNewLayoutTests_() {
       devEq_(R, 'academyStems_ "PROBATIONARY MEMBERS" → PROBATIONARY', academyStems_('PROBATIONARY MEMBERS').join(','), 'PROBATIONARY');
       devEq_(R, 'academyStems_ "Probationary Officer" → PROBATIONARY', academyStems_('Probationary Officer').join(','), 'PROBATIONARY');
     }
+    if (typeof academyGradSection_ === 'function') {
+      const gsec = devFreshSheet_('GradSec');
+      gsec.getRange(5, 3).setValue('GRADUATE LOG');
+      const gs = academyGradSection_(gsec, 1, 5);
+      devEq_(R, 'academyGradSection_ finds header row', gs && gs.headerRow, 5);
+      devEq_(R, 'academyGradSection_ data starts under header', gs && gs.dataStart, 6);
+      devEq_(R, 'academyGradSection_ none → null', academyGradSection_(devFreshSheet_('NoGrad'), 1, 5), null);
+    }
   } else { devInfo_(R, 'academyMarker_ not loaded', 'RosterExtras.gs absent — skipped'); }
 
   // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.

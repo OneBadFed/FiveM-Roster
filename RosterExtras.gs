@@ -693,6 +693,24 @@ function academyCols_(headers) {
   };
 }
 
+/**
+ * Find a "GRADUATE LOG" section below the roster area: the header row (a row holding the word "GRADUATE") and the
+ * first data row beneath its banner. Graduates are written there; the header row also caps the member bands.
+ * @return {{headerRow:number, dataStart:number}|null}
+ */
+function academyGradSection_(sh, fromRow, width) {
+  const maxR = sh.getMaxRows();
+  if (fromRow > maxR) return null;
+  const disp = sh.getRange(fromRow, 1, maxR - fromRow + 1, width).getDisplayValues();
+  let hdr = 0;
+  for (let i = 0; i < disp.length; i++) { if (disp[i].some((c) => /GRADUATE/i.test(String(c)))) { hdr = fromRow + i; break; } }
+  if (!hdr) return null;
+  const merges = sh.getRange(hdr, 1, Math.min(6, maxR - hdr + 1), width).getMergedRanges(); // banner is usually merged — data starts under it
+  let bottom = hdr;
+  merges.forEach((m) => { if (m.getRow() <= hdr + 4) bottom = Math.max(bottom, m.getRow() + m.getNumRows() - 1); });
+  return { headerRow: hdr, dataStart: Math.min(bottom + 1, maxR) };
+}
+
 /** Significant rank/label word-stems for matching an Academy band to a rank ("CADETS"→[CADET], "Probationary Officer"→[PROBATIONARY]). */
 function academyStems_(s) {
   const STOP = { MEMBER: 1, MEMBERS: 1, TEAM: 1, TEAMS: 1, OFFICER: 1, OFFICERS: 1, POLICE: 1, THE: 1, OF: 1, GROUP: 1, GROUPS: 1, RANK: 1, RANKS: 1, DIVISION: 1, SECTION: 1, UNIT: 1, DEPARTMENT: 1 };
@@ -779,12 +797,30 @@ function buildAcademySheets_() {
       if (!rowsFull.length) return;
       sh.getRange(atRow, memberCol1, rowsFull.length, width - memberCol1 + 1).setValues(rowsFull.map((r) => r.slice(memberCol1 - 1, width)));
     };
-    // Clear only the member columns we own; keep the ID column as text so long IDs stay exact.
-    if (maxRows >= dataRow) { const a = sh.getRange(dataRow, memberCol1, maxRows - dataRow + 1, width - memberCol1 + 1); a.breakApart(); a.clearContent(); }
-    if (AC.id && AC.id >= memberCol1) sh.getRange(dataRow, AC.id, maxRows - dataRow + 1, 1).setNumberFormat('@');
+    if (AC.id && AC.id >= memberCol1) sh.getRange(dataRow, AC.id, maxRows - dataRow + 1, 1).setNumberFormat('@'); // keep long IDs exact
+    // A "GRADUATE LOG" section (a row holding "GRADUATE") tells us where graduates go AND caps the member bands above it.
+    const gradSec = academyGradSection_(sh, dataRow, width);
+    // Clear member columns in [top, bottom] — break merges so setValues is safe, but never touch the GRADUATE LOG banner.
+    const clearMemberCols = (top, bottom) => { if (bottom >= top && bottom >= dataRow) { const a = sh.getRange(top, memberCol1, bottom - top + 1, width - memberCol1 + 1); a.breakApart(); a.clearContent(); } };
+    const gradRowsFrom = () => Object.keys(existByKey).filter((k) => !filled[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
+    const putGrads = (grads, bandBottom) => {
+      const top = gradSec ? gradSec.dataStart : bandBottom + 1;
+      clearMemberCols(top, sh.getMaxRows()); // clear the graduate destination first so removed graduates don't linger (banner above untouched)
+      if (!grads.length) return;
+      if (gradSec) {
+        const need = top + grads.length - 1; if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+        writeBlock(grads, top);
+      } else {
+        const need = top + grads.length; if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+        const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER;
+        writeBlock([div], top); writeBlock(grads, top + 1);
+      }
+    };
 
-    const bands = tabBandRanges_(sh, dataRow, tabBandCol);
+    const bands = tabBandRanges_(sh, dataRow, tabBandCol).filter((b) => !gradSec || b.top < gradSec.headerRow);
     if (bands.length) {
+      const bandBottom = bands.reduce((mx, b) => Math.max(mx, b.top + b.height - 1), dataRow - 1);
+      clearMemberCols(dataRow, bandBottom);
       // Assign each named roster member to the band whose label best matches their rank (word-stem overlap).
       const bandStems = bands.map((b) => academyStems_(b.label));
       const byBand = bands.map(() => []);
@@ -805,21 +841,13 @@ function buildAcademySheets_() {
         }
         writeBlock(rows, b.top);
       });
-      // Graduates = kept rows whose member is no longer in any band — below the last band, under a divider.
-      const grads = Object.keys(existByKey).filter((k) => !filled[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
-      if (grads.length) {
-        let cursor = bands.reduce((mx, b) => Math.max(mx, b.top + b.height - 1), dataRow - 1) + 1;
-        const need = cursor + grads.length;
-        if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
-        const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER;
-        writeBlock([div], cursor);
-        writeBlock(grads, cursor + 1);
-      }
+      putGrads(gradRowsFrom(), bandBottom);
       built.push(sh.getName());
       return;
     }
 
-    // ---- No rank-group bands on the tab: one contiguous list (active in rank order → divider → graduated). ----
+    // ---- No rank-group bands on the tab: one contiguous list (active in rank order), graduates to the log / a divider. ----
+    clearMemberCols(dataRow, gradSec ? gradSec.headerRow - 1 : sh.getMaxRows());
     const activeRows = [];
     for (let i = 0; i < rd.length; i++) {
       const rk = groupNorm_(rd[i][RC.rank - 1]);
@@ -828,12 +856,17 @@ function buildAcademySheets_() {
       const k = keyOfIdx(i); if (k) filled[k] = true;
       activeRows.push(rowForIdx(i, false));
     }
-    const gradRows = Object.keys(existByKey).filter((k) => !filled[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
-    const body = activeRows.slice();
-    if (gradRows.length) { const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER; body.push(div); gradRows.forEach((r) => body.push(r)); }
-    const need = dataRow + Math.max(body.length, 1) - 1;
-    if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
-    writeBlock(body, dataRow);
+    const grads = gradRowsFrom();
+    if (gradSec) {
+      writeBlock(activeRows.slice(0, Math.max(0, gradSec.headerRow - dataRow)), dataRow); // active fits above the GRADUATE LOG header
+      putGrads(grads, dataRow - 1);
+    } else {
+      const body = activeRows.slice();
+      if (grads.length) { const div = blank(); div[AC.name - 1] = ACADEMY_GRAD_DIVIDER; body.push(div); grads.forEach((r) => body.push(r)); }
+      const need = dataRow + Math.max(body.length, 1) - 1;
+      if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
+      writeBlock(body, dataRow);
+    }
     built.push(sh.getName());
   });
   return { built: built.length, sheets: built, skipped: skipped };
