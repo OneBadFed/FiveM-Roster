@@ -1013,12 +1013,26 @@ function onEdit(e) {
         try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('onEdit.groups', e2); }
       }
     }
-    if (name === CONFIG.sheets.tracker && row >= CONFIG.trackerStartRow && col === trackerCols_(sheet).status) {
-      if (e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO the approved state — re-confirming it must not re-apply (would revert a manual roster override)
-        checkImmediateLOAStart(sheet, row);
-        notifyLeaveApproved_(sheet, row); // v2.5.0 optional embed (toggle off by default)
+    if (name === CONFIG.sheets.tracker && row >= CONFIG.trackerStartRow) {
+      const TRC = trackerCols_(sheet);
+      // Entering a Unique ID auto-fills the member's details from the roster — a leave needs only ID + start + end.
+      // Span the edited range so a paste covering the ID column across rows fills each of them.
+      const c2 = (e.range && e.range.getLastColumn) ? e.range.getLastColumn() : col;
+      if (TRC.discord && col <= TRC.discord && c2 >= TRC.discord) {
+        const rLast = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
+        for (let rr = Math.max(row, CONFIG.trackerStartRow); rr <= rLast; rr++) {
+          const idv = String(sheet.getRange(rr, TRC.discord).getDisplayValue()).trim();
+          if (DISCORD_ID_RE.test(idv)) autoFillTrackerRow_(sheet, rr, TRC, idv);
+        }
       }
-      try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group leaves by status after ANY status change (runs after the immediate-start logic, which reads the edited row's position)
+      // A STATUS change applies an approved leave immediately + re-groups the tracker.
+      if (TRC.status && col === TRC.status) {
+        if (e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO the approved state — re-confirming it must not re-apply (would revert a manual roster override)
+          checkImmediateLOAStart(sheet, row);
+          notifyLeaveApproved_(sheet, row); // v2.5.0 optional embed (toggle off by default)
+        }
+        try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group leaves by status after ANY status change (runs after the immediate-start logic, which reads the edited row's position)
+      }
     }
     // F-003: refreshing the WHOLE workbook on every keystroke is the biggest recurring cost. Short-circuit:
     //  • roster/tracker edits change the numbers → full refresh (all tag/KPI locations may need updating).
@@ -1764,29 +1778,49 @@ function trackerLeaveType_() {
   try { return (CONFIG.leaveTypes && CONFIG.leaveTypes[0]) || 'LOA'; } catch (e) { return 'LOA'; }
 }
 
-/** Auto-fill source: a member's OOC name, shift + unit/callsign from the roster, matched by Unique ID (exact text). Blank when not found or the roster lacks those columns. */
+/** Look up a member's roster details — name, rank, unit/callsign, OOC name, shift — by Unique ID (exact text). The
+ * roster is the source of truth for a leave's identity fields. `found` is false when the ID isn't on the roster. */
 function rosterOocShift_(discordId) {
-  const out = { ooc: '', shift: '', unit: '' };
+  const out = { found: false, name: '', rank: '', unit: '', ooc: '', shift: '' };
   const target = String(discordId || '').trim();
   if (!target) return out;
   try {
     const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
     if (!roster) return out;
     const RC = rosterCols_(roster);
-    if (!RC.discord || (!RC.ooc && !RC.shift && !RC.unit)) return out;
+    if (!RC.discord) return out;
     const start = CONFIG.rosterStartRow, last = roster.getLastRow();
     if (last < start) return out;
     const ids = roster.getRange(start, RC.discord, last - start + 1, 1).getDisplayValues();
     for (let i = 0; i < ids.length; i++) {
       if (String(ids[i][0]).trim() !== target) continue;
       const row = start + i;
-      if (RC.ooc) out.ooc = String(roster.getRange(row, RC.ooc).getDisplayValue()).trim();
-      if (RC.shift) out.shift = String(roster.getRange(row, RC.shift).getDisplayValue()).trim();
-      if (RC.unit) out.unit = String(roster.getRange(row, RC.unit).getDisplayValue()).trim();
+      const get = (c) => c ? String(roster.getRange(row, c).getDisplayValue()).trim() : '';
+      out.found = true;
+      out.name = get(RC.name); out.rank = get(RC.rank); out.unit = get(RC.unit); out.ooc = get(RC.ooc); out.shift = get(RC.shift);
       break;
     }
   } catch (e) { log_('rosterOocShift_', e); }
   return out;
+}
+
+/**
+ * onEdit helper: when a Unique ID is entered on a tracker data row, auto-fill the member's rank / unit-callsign / OOC /
+ * name / shift from the roster (source of truth), plus the dedup key, a default Pending status, and the computed
+ * formulas — so a leave needs only a Unique ID + start + end. A member NOT on the roster still gets the key/status/
+ * formulas (identity fields left blank). Best-effort; never throws into the trigger.
+ */
+function autoFillTrackerRow_(tracker, row, TC, id) {
+  try {
+    if (!DISCORD_ID_RE.test(String(id))) return;
+    const mi = rosterOocShift_(id); // full roster record by Unique ID
+    const put = (c, v) => { if (c && v !== undefined && String(v) !== '') tracker.getRange(row, c).setValue(v); };
+    if (mi.found) { put(TC.rank, mi.rank); put(TC.unit, mi.unit); put(TC.ooc, mi.ooc); put(TC.name, mi.name); put(TC.shift, mi.shift); }
+    if (TC.discord) tracker.getRange(row, TC.discord).setNumberFormat('@'); // keep the ID exact
+    if (TC.key && !String(tracker.getRange(row, TC.key).getValue()).trim()) tracker.getRange(row, TC.key).setValue(makeLeaveKey_(id, new Date()));
+    if (TC.status && !String(tracker.getRange(row, TC.status).getValue()).trim()) tracker.getRange(row, TC.status).setValue(CONFIG.pendingStatus);
+    writeLeaveFormulas_(tracker, row, TC);
+  } catch (e) { log_('autoFillTrackerRow_', e); }
 }
 
 /** Append a tracker data row at the first free row AT/AFTER trackerStartRow — the layout has a divider gap (row 7) between the header and row 1, so appendRow (content-based) could land in the gap. Extends the sheet if needed. @return the row written. */
@@ -2266,13 +2300,17 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const diff = Math.round(Math.abs((endDate - startDate) / 86400000));
       const durationStr = `${diff} ${diff === 1 ? 'Day' : 'Days'}`;
 
-      const oi = rosterOocShift_(discord); // auto-fill OOC name + shift from the roster (by Unique ID)
+      // The ROSTER is the source of truth: look the member up by Unique ID and use their name/rank/unit/OOC/shift when
+      // found; fall back to the form's fields only for someone not (yet) on the roster. So the form needs only ID + dates.
+      const mi = rosterOocShift_(discord);
+      const fName = (mi.found && mi.name) ? mi.name : name;
+      const fRank = (mi.found && mi.rank) ? mi.rank : rank;
+      const fUnit = (mi.found && mi.unit) ? mi.unit : callsign;
       // Prepend the new leave at the TOP and re-group by status — a new Pending lands at the top of the list.
-      // Fields are placed by their resolved header column (any layout), the ID stays exact, formatting is preserved.
-      sortTracker_(buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: rank, unit: callsign || oi.unit, ooc: oi.ooc, name: name, discord: discord, shift: oi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus }), tracker);
+      sortTracker_(buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus }), tracker);
 
       if (dedupKey) synced[dedupKey] = true;
-      const leaf = { name, rank, callsign, type, startStr, endStr, durationStr, discord };
+      const leaf = { name: fName, rank: fRank, callsign: fUnit, type, startStr, endStr, durationStr, discord };
       if (sendWebhooks) sendDiscordWebhook(leaf.name, leaf.rank, leaf.callsign, leaf.type, leaf.startStr, leaf.endStr, leaf.durationStr, leaf.discord);
       appended.push(leaf);
       form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done);

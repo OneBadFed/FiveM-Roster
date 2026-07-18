@@ -1025,6 +1025,20 @@ function devSyncTests_() {
     devCheck_(R, 'no-return: LENGTH col (10) still gets its formula', sh.getRange(CONFIG.trackerStartRow, 10).getFormula().indexOf('INT(') !== -1);
   })();
 
+  // autoFillTrackerRow_ completes a row from just a Unique ID: dedup key + Pending status + computed formulas.
+  // (Identity fields come from the roster when the ID is on it; devId_ isn't, so assert the always-set fields.)
+  (() => {
+    const tr = devBuildTracker_([]);
+    const TC = trackerCols_(tr);
+    const row = CONFIG.trackerStartRow;
+    tr.getRange(row, TC.discord).setNumberFormat('@'); tr.getRange(row, TC.discord).setValue(devId_(95));
+    tr.getRange(row, TC.start).setValue(devDay_(2)); tr.getRange(row, TC.end).setValue(devDay_(9));
+    autoFillTrackerRow_(tr, row, TC, devId_(95));
+    devCheck_(R, 'autoFillTrackerRow_ writes a KEY| dedup key', String(tr.getRange(row, TC.key).getDisplayValue()).indexOf('KEY|') === 0);
+    devEq_(R, 'autoFillTrackerRow_ defaults status to Pending', tr.getRange(row, TC.status).getDisplayValue(), CONFIG.pendingStatus);
+    devCheck_(R, 'autoFillTrackerRow_ writes the LENGTH formula', tr.getRange(row, TC.length).getFormula().indexOf('INT(') !== -1);
+  })();
+
   return R;
 }
 
@@ -1551,13 +1565,15 @@ function devExtrasTests_() {
     devEq_(R, 'academyGradSection_ none -> null', academyGradSection_(devFreshSheet_('Grad2'), 1, 4), null);
   })();
 
-  // rosterOocShift_ guards (reads the REAL roster by CONFIG.sheets.roster; blank when absent/not-found)
+  // rosterOocShift_ guards (reads the REAL roster by CONFIG.sheets.roster; found=false + blank when absent/not-found)
   (() => {
     const empty = rosterOocShift_('');
+    devEq_(R, 'rosterOocShift_ empty ID -> not found', empty.found, false);
+    devEq_(R, 'rosterOocShift_ empty ID -> blank name', empty.name, '');
     devEq_(R, 'rosterOocShift_ empty ID -> blank OOC', empty.ooc, '');
-    devEq_(R, 'rosterOocShift_ empty ID -> blank shift', empty.shift, '');
     const missing = rosterOocShift_('99999999999999999');
-    devEq_(R, 'rosterOocShift_ unknown ID -> blank OOC', missing.ooc, '');
+    devEq_(R, 'rosterOocShift_ unknown ID -> not found', missing.found, false);
+    devEq_(R, 'rosterOocShift_ unknown ID -> blank rank', missing.rank, '');
     devEq_(R, 'rosterOocShift_ unknown ID -> blank shift', missing.shift, '');
   })();
 
