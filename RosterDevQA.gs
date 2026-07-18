@@ -110,8 +110,9 @@ function devAddRandomLOA() {
   const endD = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate() + (3 + Math.floor(Math.random() * 19))); // +3..+21 days
   const key = makeLeaveKey_(discord, new Date()); // timestamp key → always unique (never dedup-collides)
 
-  // Same 16-col row + path as a real add: prepend to the top, auto-group by status, keep the ID exact.
-  sortTracker_([key, rank, unit, ooc, name, discord, shift, startD, endD, '', '', '', '', CONFIG.pendingStatus, '', '🎲 random test'], tracker);
+  // Same path as a real add: fields placed by their RESOLVED header column (any layout), prepend to the top, auto-group.
+  const TC = trackerCols_(tracker);
+  sortTracker_(buildTrackerRow_(TC, TC.width, { key: key, rank: rank, unit: unit, ooc: ooc, name: name, discord: discord, shift: shift, start: startD, end: endD, status: CONFIG.pendingStatus, notes: '🎲 random test' }), tracker);
   SpreadsheetApp.flush();
   ui.alert('🎲 Add Random LOA', `Added a ${CONFIG.pendingStatus} LOA at the top:\n\n${name || '(unnamed)'} — ${rank}\n${fmtDisplay_(startD)} → ${fmtDisplay_(endD)}\n\nRun it again to add another.`, ui.ButtonSet.OK);
 }
@@ -501,7 +502,9 @@ function devUnitTests_() {
   devEq_(R, 'parseHours_ object -> 0', parseHours_({}), 0);
   devEq_(R, 'parseHours_ non-numeric string -> 0', parseHours_('n/a'), 0);
 
-  // --- protection + resolveStatus_ ---
+  // --- protection + resolveStatus_ (forced SHIPPED default vocabulary so ROA/Reserve are protected + ROA is the
+  //     return status regardless of the operator's live [STATUSES]/[LEAVE] customizations) ---
+  devWithConfig_({}, () => {
   devEq_(R, 'isProtectedStatus_ LOA', isProtectedStatus_('LOA'), true);
   devEq_(R, 'isProtectedStatus_ ROA', isProtectedStatus_('ROA'), true);
   devEq_(R, 'isProtectedStatus_ Reserve', isProtectedStatus_('Reserve'), true);
@@ -516,6 +519,7 @@ function devUnitTests_() {
   devEq_(R, 'resolveStatus_ ROA 6h -> null (stays ROA)', resolveStatus_('Senior Trooper', 'ROA', 6), null);
   devEq_(R, 'resolveStatus_ Active 12h -> Active', resolveStatus_('Trooper', 'Active', 12), 'Active');
   devEq_(R, 'resolveStatus_ Active 3h -> Inactive', resolveStatus_('Trooper', 'Active', 3), 'Inactive');
+  });
 
   // --- slot / divider / member-value detection (ALL-CAPS length>3 heuristic) ---
   devEq_(R, 'isDividerValue_ "DEPARTMENT MEMBERS" -> true', isDividerValue_('DEPARTMENT MEMBERS'), true);
@@ -635,6 +639,9 @@ function devUnitTests_() {
  * ====================================================================== */
 function devStatusTests_() {
   const R = devNewResults_('Status engine (sandbox)');
+  // Force the SHIPPED default status vocabulary (LOA/ROA/Reserve protected, ROA = return status) so protection is
+  // tested deterministically, independent of the operator's live [STATUSES] customizations (e.g. an LOA-only setup).
+  devWithConfig_({}, () => {
 
   // --- batch recompute: tiers, protection, ROA return, dividers, empty slots ---
   const ro = devBuildRoster_([
@@ -698,6 +705,7 @@ function devStatusTests_() {
   devEq_(R, 'per-row: non-numeric hours left intact (not zeroed)', ro7.getRange(CONFIG.rosterStartRow, CONFIG.roster.hours).getValue(), 'abc');
   devEq_(R, 'per-row: non-numeric hours -> Inactive', devActivity_(ro7, 0), 'Inactive');
 
+  }); // devWithConfig_ default vocabulary
   return R;
 }
 
@@ -791,12 +799,13 @@ function devLifecycleTests_() {
   })();
 
   // J: an expiring leave does NOT overwrite a member's DIFFERENT current protected status (Reserve).
-  (() => {
+  // Forces the default vocabulary so "Reserve" is a PROTECTED status regardless of the live (LOA-only) config.
+  devWithConfig_({}, () => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Keep', id: devId_(10), activity: 'Reserve', hours: 0 }]);
     const tr = devBuildTracker_([{ name: 'Keep', id: devId_(10), start: devDay_(-20), end: devDay_(-1), status: 'Approved' }]);
     processDailyLOAs_(ro, tr, devDay_(0), NO_HOOK);
     devEq_(R, 'J: expiring leave does not overwrite current Reserve', devActivity_(ro, 0), 'Reserve');
-  })();
+  });
 
   // K: order-independence -> a leave STARTING today wins over a different leave EXPIRING today.
   (() => {
@@ -1420,14 +1429,15 @@ function devPanelTests_() {
     devCheck_(R, 'cpAssertUniqueId_ throws when ID exists on a different row', otherThrew);
     try { cpAssertSlotRow_(ro, CONFIG.rosterStartRow); } catch (e) { sameOk = false; }
     devCheck_(R, 'cpAssertSlotRow_ accepts a real member row', sameOk);
-    const roD = devBuildRoster_([{ rank: 'DEPARTMENT MEMBERS', name: '', id: '' }]);
-    try { cpAssertSlotRow_(roD, CONFIG.rosterStartRow); } catch (e) { divThrew = true; }
-    devCheck_(R, 'cpAssertSlotRow_ rejects a divider row', divThrew);
     devEq_(R, 'cpFindRowById_ finds the row', cpFindRowById_(ro, devId_(41)), CONFIG.rosterStartRow + 1);
     devEq_(R, 'cpFindRowById_ missing -> -1', cpFindRowById_(ro, devId_(999)), -1);
     devEq_(R, 'cpResolveMemberRow_ relocates by ID when the row is stale', cpResolveMemberRow_(ro, CONFIG.rosterStartRow, devId_(41)), CONFIG.rosterStartRow + 1);
     let gone = false; try { cpResolveMemberRow_(ro, CONFIG.rosterStartRow, devId_(999)); } catch (e) { gone = true; }
     devCheck_(R, 'cpResolveMemberRow_ throws when the ID is gone', gone);
+    // Divider rejection — REBUILDS the shared Roster sandbox, so do this LAST, after every `ro` use above.
+    const roD = devBuildRoster_([{ rank: 'DEPARTMENT MEMBERS', name: '', id: '' }]);
+    try { cpAssertSlotRow_(roD, CONFIG.rosterStartRow); } catch (e) { divThrew = true; }
+    devCheck_(R, 'cpAssertSlotRow_ rejects a divider row', divThrew);
   })();
 
   // cpDetectMove_
@@ -1993,8 +2003,9 @@ function devNewLayoutTests_() {
   const buildNL = (suffix) => {
     const sh = devFreshSheet_(suffix);
     sh.getRange(5, 2, 1, 14).setValues([['MEMBER INFORMATION', '', '', '', '', '', '', 'ACTIVITY', '', 'PERIOD HOURS', '', 'TENURE', '', '']]); // banner row (partial)
-    sh.getRange(6, 2, 1, 14).setValues([LABELS]);                                                                                            // label row
-    sh.getRange(7, 2, 1, 14).setValues([['DEPARTMENT MEMBERS', 'Trooper', 'S-01', 'John D.', 'John Doe', devId_(1), 'Day', 12, 'Active', 5, 6, '', '', '']]);
+    sh.getRange(6, 2, 1, 14).setValues([LABELS]);                                                                                            // label row (auto-detected)
+    // Member data at the CONFIGURED first-data row (not hardcoded) — fillTimeInRank_/shiftArchiveColumns_ read from CONFIG.rosterStartRow.
+    sh.getRange(CONFIG.rosterStartRow, 2, 1, 14).setValues([['DEPARTMENT MEMBERS', 'Trooper', 'S-01', 'John D.', 'John Doe', devId_(1), 'Day', 12, 'Active', 5, 6, '', '', '']]);
     return sh;
   };
 
@@ -2045,8 +2056,8 @@ function devNewLayoutTests_() {
     devEq_(R, 'shiftArchiveColumns_ reports 2 period columns', shifted, 2);
     devEq_(R, 'archive relabel: right header = new period label', sh.getRange(6, 12).getDisplayValue(), 'JUL HOURS');
     devEq_(R, 'archive relabel: left header = previous right header', sh.getRange(6, 11).getDisplayValue(), 'JUN. HOURS');
-    devEq_(R, 'archive shift: right col took current HOURS (12)', sh.getRange(7, 12).getValue(), 12);
-    devEq_(R, 'archive shift: left col took the next period (JUN=6)', sh.getRange(7, 11).getValue(), 6);
+    devEq_(R, 'archive shift: right col took current HOURS (12)', sh.getRange(CONFIG.rosterStartRow, 12).getValue(), 12);
+    devEq_(R, 'archive shift: left col took the next period (JUN=6)', sh.getRange(CONFIG.rosterStartRow, 11).getValue(), 6);
   })();
 
   return R;
