@@ -359,8 +359,11 @@ function groupColLetter_(n) {
 }
 
 /**
- * Reads a tab's top-left cells for a "#group: …" marker. Accepts "#group: Column = Value" (or "Column: Value") and
- * the shorthand "#group: Value" (engine auto-finds the column). @return {{row,col,column,value,raw}|null}
+ * Reads a tab's top-left cells for a "#group: …" marker. Forms:
+ *   "#group: Column = Value"            group by that column's value (or "Column: Value")
+ *   "#group: Value"                     shorthand — engine auto-finds the column
+ *   "#group: Column = Value | A, B, C"  after the "|", extra roster columns (e.g. hidden Beat, Vehicle) to also show
+ * @return {{row,col,column,value,extras:string[],raw}|null}
  */
 function groupMarker_(sh) {
   const rows = Math.min(5, sh.getLastRow());
@@ -372,9 +375,12 @@ function groupMarker_(sh) {
       const m = String(grid[r][c] || '').match(/^#group:\s*(.+)$/i);
       if (!m) continue;
       const raw = m[1].trim();
-      const eq = raw.match(/^(.+?)\s*[:=]\s*(.+)$/);
-      if (eq) return { row: r + 1, col: c + 1, column: eq[1].trim(), value: eq[2].trim(), raw: raw };
-      return { row: r + 1, col: c + 1, column: '', value: raw, raw: raw };
+      const parts = raw.split('|');
+      const spec = parts[0].trim();
+      const extras = parts.length > 1 ? parts[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+      const eq = spec.match(/^(.+?)\s*[:=]\s*(.+)$/);
+      if (eq) return { row: r + 1, col: c + 1, column: eq[1].trim(), value: eq[2].trim(), extras: extras, raw: raw };
+      return { row: r + 1, col: c + 1, column: '', value: spec, extras: extras, raw: raw };
     }
   }
   return null;
@@ -405,33 +411,39 @@ function buildGroupSheets_() {
   const RC = rosterCols_(roster);
   if (!RC.headerRow || !RC.name) return { built: 0, sheets: [] };
   const lastCol = roster.getLastColumn();
-  const hdr = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
+  const rHdrUp = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
   const rName = "'" + String(CONFIG.sheets.roster).replace(/'/g, "''") + "'";
   const start = CONFIG.rosterStartRow;
-  const disp = [
+  const rng = (c) => rName + '!' + groupColLetter_(c) + start + ':' + groupColLetter_(c);
+  // header label → roster column: exact match wins (so "NAME" beats "OOC NAME"), then a contains match ("UNIT" → "UNIT NUMBER").
+  const colFor = (label) => {
+    const key = String(label).toUpperCase().trim();
+    if (!key) return 0;
+    for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c] === key) return c + 1; }
+    for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c] && rHdrUp[c].indexOf(key) !== -1) return c + 1; }
+    return 0;
+  };
+  const defCols = [
     { c: RC.rank, h: 'RANK' }, { c: RC.unit, h: 'CALLSIGN' }, { c: RC.name, h: 'NAME' },
     { c: RC.hours, h: 'HOURS' }, { c: RC.activity, h: 'STATUS' },
   ].filter((d) => d.c);
-  const rng = (c) => rName + '!' + groupColLetter_(c) + start + ':' + groupColLetter_(c);
   const built = [];
   ss.getSheets().forEach((sh) => {
     if (sh.getSheetId() === roster.getSheetId()) return;
     const marker = groupMarker_(sh);
     if (!marker) return;
-    let gCol = 0;
-    if (marker.column) {
-      const key = marker.column.toUpperCase();
-      for (let c = 0; c < hdr.length; c++) { if (hdr[c] && hdr[c].indexOf(key) !== -1) { gCol = c + 1; break; } }
-    } else {
-      gCol = findGroupColumn_(roster, start, marker.value);
-    }
+    const gCol = marker.column ? colFor(marker.column) : findGroupColumn_(roster, start, marker.value);
     const hRow = marker.row + 1;
-    const clrW = Math.max(disp.length, sh.getLastColumn(), 1);
+    const clrW = Math.max(defCols.length + (marker.extras ? marker.extras.length : 0), sh.getLastColumn(), 1);
     if (sh.getMaxRows() >= hRow) sh.getRange(hRow, 1, sh.getMaxRows() - hRow + 1, clrW).clearContent(); // engine owns everything below the marker
     if (!gCol) { sh.getRange(hRow, 1).setValue('⚠️ Couldn\'t match "' + marker.raw + '" to a column — try  #group: Shift = Day'); return; }
+    // Columns = the member-info set + any extra roster columns named after the "|" (e.g. hidden Beat, Vehicle).
+    const cols = defCols.slice();
+    const seen = {}; cols.forEach((d) => { seen[d.c] = true; });
+    (marker.extras || []).forEach((label) => { const c = colFor(label); if (c && !seen[c]) { cols.push({ c: c, h: label }); seen[c] = true; } });
     const val = String(marker.value).replace(/"/g, '""');
-    const formula = '=IFERROR(FILTER({' + disp.map((d) => rng(d.c)).join(',') + '},' + rng(gCol) + '="' + val + '",' + rng(RC.name) + '<>""),"No members in this group yet.")';
-    sh.getRange(hRow, 1, 1, disp.length).setValues([disp.map((d) => d.h)]);
+    const formula = '=IFERROR(FILTER({' + cols.map((d) => rng(d.c)).join(',') + '},' + rng(gCol) + '="' + val + '",' + rng(RC.name) + '<>""),"No members in this group yet.")';
+    sh.getRange(hRow, 1, 1, cols.length).setValues([cols.map((d) => d.h)]);
     sh.getRange(hRow + 1, 1).setFormula(formula);
     built.push(sh.getName());
   });
@@ -445,7 +457,7 @@ function buildGroupSheets() {
     const res = buildGroupSheets_();
     if (!res.built) {
       ui.alert('🗂️ Build / Refresh Group Sheets',
-        'No group tabs found.\n\nMake a new tab, put a marker in its top-left cell, then run this again:\n\n  #group: Shift = Day\n  #group: District = 1\n  #group: Troop = A\n\nThe tab fills with everyone in that group, in rank order, and stays live.',
+        'No group tabs found.\n\nMake a new tab, put a marker in its top-left cell, then run this again:\n\n  #group: Shift = Day\n  #group: District = 1\n  #group: Troop = A\n\nTo also show columns kept on the roster (even hidden ones), list them after a “|”:\n  #group: Shift = Day | Beat, Vehicle, Radio\n\nThe tab fills with everyone in that group, in rank order, and stays live.',
         ui.ButtonSet.OK);
       return;
     }

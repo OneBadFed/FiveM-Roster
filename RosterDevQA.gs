@@ -477,6 +477,11 @@ function devNewLayoutTests_() {
     const g1 = groupMarker_(gsh);
     devEq_(R, 'groupMarker_ parses the column', g1 && g1.column, 'Shift');
     devEq_(R, 'groupMarker_ parses the value', g1 && g1.value, 'Day');
+    devEq_(R, 'groupMarker_ no pipe → no extras', g1 && g1.extras.length, 0);
+    gsh.getRange(1, 1).setValue('#group: Shift = Day | Beat, Vehicle');
+    const g3 = groupMarker_(gsh);
+    devEq_(R, 'groupMarker_ parses 2 extra columns', g3 && g3.extras.length, 2);
+    devEq_(R, 'groupMarker_ first extra column', g3 && g3.extras[0], 'Beat');
     gsh.getRange(1, 1).setValue('#group: Nights');
     const g2 = groupMarker_(gsh);
     devEq_(R, 'groupMarker_ shorthand → value only', g2 && g2.value, 'Nights');
