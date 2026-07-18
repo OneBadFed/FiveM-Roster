@@ -585,9 +585,15 @@ function buildGroupSheets_() {
     const cond = grp.values.map((v) => 'REGEXMATCH(LOWER(TRIM(' + gRange + ')),"^' + groupRe_(v) + '")').join('+');
     const formula = '=IFERROR(FILTER(' + block + ',(' + cond + '),' + nameRange + '<>""),"No members in this group yet.")';
     sh.getRange(dataRow, rankTabCol).setFormula(formula);
-    // Redraw the RANK GROUP bands (column B) so they line up with the members this shift actually has.
+    // Find the tab's RANK GROUP column. Its "RANK GROUP" label is usually merged across the banner+label rows, so its
+    // value only sits in the top row — scan both rows, and fall back to the column just left of RANK (mirrors the roster).
+    const topHdr = hdr.row > 1 ? sh.getRange(hdr.row - 1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map((x) => String(x).toUpperCase()) : [];
     let tabBandCol = 0;
-    for (let i = 0; i < hdr.headers.length; i++) { const h = hdr.headers[i]; if (h.indexOf('RANK') !== -1 && h.indexOf('GROUP') !== -1) { tabBandCol = i + 1; break; } }
+    for (let i = 0; i < Math.max(hdr.headers.length, topHdr.length); i++) {
+      const combined = (hdr.headers[i] || '') + ' ' + (topHdr[i] || '');
+      if (combined.indexOf('RANK') !== -1 && combined.indexOf('GROUP') !== -1) { tabBandCol = i + 1; break; }
+    }
+    if (!tabBandCol && rankTabCol > 1) tabBandCol = rankTabCol - 1;
     try { layoutGroupBands_(sh, dataRow, tabBandCol, roster, rosterBandCol, RC, gCol, grp.values); } catch (e) { if (typeof log_ === 'function') log_('buildGroupSheets.bands', e); }
     built.push(nm);
   });
