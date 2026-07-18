@@ -1382,6 +1382,7 @@ function seedDemoRoster() {
       });
       if (leaves.length && tracker.getMaxRows() < ts + leaves.length - 1) tracker.insertRowsAfter(tracker.getMaxRows(), ts + leaves.length - 1 - tracker.getMaxRows());
       leaves.forEach((x, i) => demoWriteLeave_(tracker, x.m, x.L, ts + i));
+      try { if (typeof sortTracker_ === 'function') sortTracker_(null, tracker); } catch (e) { log_('seedDemoRoster.sortTracker', e); } // group the demo leaves by status too
       leaveCount = leaves.length;
     }
 

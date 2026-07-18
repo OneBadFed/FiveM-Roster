@@ -781,10 +781,8 @@ function cpScheduleLeave_(roster, tracker, p, opts) {
 
   // Append exactly like syncFormToTracker_ (real Date objects + the same countdown formulas).
   const oi = rosterOocShift_(m.discord); // auto-fill OOC name + shift from the roster (by Unique ID)
-  const r = appendTrackerRow_(tracker, [dedupKey, m.rank, m.callsign, oi.ooc, m.name, m.discord, oi.shift, start, end, '', '', '', '', status, '', notes]);
-  const trkId = tracker.getRange(r, CONFIG.tracker.discord); trkId.setNumberFormat('@'); trkId.setValue(m.discord); // keep the 17-19 digit ID EXACT — a digit-string would coerce to a rounded Number (F-001)
-  tracker.getRange(r, CONFIG.tracker.start, 1, 2).setNumberFormat('d mmm. yyyy');
-  writeLeaveFormulas_(tracker, r);
+  // Prepend the new leave at the TOP and re-group by status — a new Pending lands at the top of the list.
+  sortTracker_([dedupKey, m.rank, m.callsign, oi.ooc, m.name, m.discord, oi.shift, start, end, '', '', '', '', status, '', notes], tracker);
 
   // Script writes don't fire onEdit, so apply an already-active approved leave to the roster now.
   let applied = false;

@@ -928,6 +928,27 @@ function devSyncTests_() {
     devEq_(R, 'syncedKeySet ignores a non-KEY col-A value', set['104'], undefined);
   })();
 
+  // sortTracker_ groups leaves by STATUS_FLOW order (Pending, Approved, Denied, Expired); a prepend seats a new one on top.
+  (() => {
+    const tr = devBuildTracker_([
+      { name: 'Exp', id: devId_(80), start: devDay_(-10), end: devDay_(-1), status: 'Expired' },
+      { name: 'Pend', id: devId_(81), start: devDay_(1), end: devDay_(5), status: 'Pending' },
+      { name: 'Appr', id: devId_(82), start: devDay_(-1), end: devDay_(5), status: 'Approved' },
+      { name: 'Den', id: devId_(83), start: devDay_(1), end: devDay_(5), status: 'Denied' },
+    ]);
+    sortTracker_(null, tr);
+    devEq_(R, 'sortTracker_ row0 = Pending', devTrackerStatus_(tr, 0), 'Pending');
+    devEq_(R, 'sortTracker_ row1 = Approved', devTrackerStatus_(tr, 1), 'Approved');
+    devEq_(R, 'sortTracker_ row2 = Denied', devTrackerStatus_(tr, 2), 'Denied');
+    devEq_(R, 'sortTracker_ row3 = Expired', devTrackerStatus_(tr, 3), 'Expired');
+    devEq_(R, 'sortTracker_ keeps the ID exact after reorder', tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.discord).getDisplayValue(), devId_(81));
+    devCheck_(R, 'sortTracker_ regenerates the LENGTH formula on the moved row', tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.length).getFormula().indexOf('INT(') !== -1);
+    // prepend a brand-new Pending -> it lands at the very top of the Pending group
+    sortTracker_(['KEY|new|1', 'Trooper', 'S-1', '', 'NewOne', devId_(84), 'Day', devDay_(2), devDay_(6), '', '', '', '', 'Pending', '', ''], tr);
+    devEq_(R, 'sortTracker_ prepend -> new Pending at the very top', tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.name).getDisplayValue(), 'NewOne');
+    devEq_(R, 'sortTracker_ prepend -> total is now 5 rows', devDataRows_(tr, CONFIG.trackerStartRow), 5);
+  })();
+
   return R;
 }
 

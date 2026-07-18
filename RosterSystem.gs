@@ -1010,10 +1010,12 @@ function onEdit(e) {
         try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('onEdit.groups', e2); }
       }
     }
-    if (name === CONFIG.sheets.tracker && col === CONFIG.tracker.status && row >= CONFIG.trackerStartRow &&
-        e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO the approved state — re-confirming it must not re-apply (would revert a manual roster override)
-      checkImmediateLOAStart(sheet, row);
-      notifyLeaveApproved_(sheet, row); // v2.5.0 optional embed (toggle off by default)
+    if (name === CONFIG.sheets.tracker && col === CONFIG.tracker.status && row >= CONFIG.trackerStartRow) {
+      if (e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO the approved state — re-confirming it must not re-apply (would revert a manual roster override)
+        checkImmediateLOAStart(sheet, row);
+        notifyLeaveApproved_(sheet, row); // v2.5.0 optional embed (toggle off by default)
+      }
+      try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group leaves by status after ANY status change (runs after the immediate-start logic, which reads the edited row's position)
     }
     // F-003: refreshing the WHOLE workbook on every keystroke is the biggest recurring cost. Short-circuit:
     //  • roster/tracker edits change the numbers → full refresh (all tag/KPI locations may need updating).
@@ -1578,6 +1580,7 @@ function processDailyLOAs() {
       const roster = getSheetOrWarn_(ss, CONFIG.sheets.roster);
       if (!tracker || !roster) return;
       summary = processDailyLOAs_(roster, tracker, todayInSheetTz_(), { sendWebhooks: true });
+      try { sortTracker_(null, tracker); } catch (e) { log_('processDailyLOAs.sort', e); } // expiries/starts changed statuses → re-group (Pending, Approved, Denied, Expired)
       try { refreshDashboard_(true); } catch (e) { log_('processDailyLOAs.dashboard', e); } // nightly = full discovery rescan (self-heals renames/missed tabs daily)
       logInfo_('processDailyLOAs', `scanned ${summary.scanned}, expired ${summary.expired.length}, started ${summary.started.length}.`);
     } finally {
@@ -1788,14 +1791,81 @@ function appendTrackerRow_(tracker, values) {
   return r;
 }
 
-/** Write the four computed leave columns for tracker row r (length · time-until-start · time-left · return date = end+1) and their formats. Start=H, End=I by layout. */
-function writeLeaveFormulas_(tracker, r) {
+/** The four computed-leave formula strings for tracker row r (start=H, end=I by layout). Shared by writeLeaveFormulas_ + sortTracker_. */
+function leaveFormulaStrings_(r) {
   const T = CONFIG.tracker;
   const sc = String.fromCharCode(64 + T.start), ec = String.fromCharCode(64 + T.end); // 8→H, 9→I
-  tracker.getRange(r, T.length).setFormula(`=LET(d, INT(${ec}${r})-INT(${sc}${r}), d & IF(d=1, " Day", " Days"))`);
-  tracker.getRange(r, T.untilStart).setFormula(`=IF(INT(${sc}${r})>TODAY(), LET(d, INT(${sc}${r})-TODAY(), d & IF(d=1, " Day", " Days")), "Started")`);
-  tracker.getRange(r, T.timeLeft).setFormula(`=IF(INT(${sc}${r})>TODAY(), "Pending Start", IF(INT(${ec}${r})<=TODAY(), "Expired", LET(d, INT(${ec}${r})-TODAY(), d & IF(d=1, " Day", " Days"))))`);
-  tracker.getRange(r, T.returnDate).setFormula(`=IF(ISNUMBER(${ec}${r}), INT(${ec}${r})+1, "")`).setNumberFormat('d mmm. yyyy');
+  return {
+    len: `=LET(d, INT(${ec}${r})-INT(${sc}${r}), d & IF(d=1, " Day", " Days"))`,
+    until: `=IF(INT(${sc}${r})>TODAY(), LET(d, INT(${sc}${r})-TODAY(), d & IF(d=1, " Day", " Days")), "Started")`,
+    left: `=IF(INT(${sc}${r})>TODAY(), "Pending Start", IF(INT(${ec}${r})<=TODAY(), "Expired", LET(d, INT(${ec}${r})-TODAY(), d & IF(d=1, " Day", " Days"))))`,
+    ret: `=IF(ISNUMBER(${ec}${r}), INT(${ec}${r})+1, "")`,
+  };
+}
+
+/** Write the four computed leave columns for tracker row r (length · time-until-start · time-left · return date = end+1) and their formats. */
+function writeLeaveFormulas_(tracker, r) {
+  const T = CONFIG.tracker, f = leaveFormulaStrings_(r);
+  tracker.getRange(r, T.length).setFormula(f.len);
+  tracker.getRange(r, T.untilStart).setFormula(f.until);
+  tracker.getRange(r, T.timeLeft).setFormula(f.left);
+  tracker.getRange(r, T.returnDate).setFormula(f.ret).setNumberFormat('d mmm. yyyy');
+}
+
+/**
+ * Group the LOA Tracker by STATUS — order = [LEAVE].STATUS_FLOW (default: Pending → Approved → Denied → Expired) —
+ * via a STABLE, VALUE-ONLY rewrite: the cells stay put (your row banding / STATUS dropdown / borders are preserved),
+ * only the leave data is reordered into them. Regenerates the four computed columns + the ID/date formats (they
+ * reference the physical row, so a reorder must rewrite them). Pass `prepend` (a new leave's 16-value row) to seat a
+ * just-added leave at the very TOP first, so it lands at the top of the Pending group. Best-effort; never throws.
+ * @param {Array} [prepend] a 16-column value row to add at the top before sorting.
+ * @param {Sheet} [trackerSheet] the tracker to sort (defaults to the live tracker tab; the injectable add-cores pass their own so tests + white-label runs stay isolated).
+ */
+function sortTracker_(prepend, trackerSheet) {
+  try {
+    const tracker = trackerSheet || SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.tracker);
+    if (!tracker) return;
+    const T = CONFIG.tracker, start = CONFIG.trackerStartRow, W = 16;
+    const last = tracker.getLastRow();
+    const records = [];
+    if (last >= start) {
+      const n = last - start + 1;
+      const vals = tracker.getRange(start, 1, n, W).getValues();              // Dates preserved
+      const ids = tracker.getRange(start, T.discord, n, 1).getDisplayValues(); // exact 17-19 digit ID text
+      for (let i = 0; i < n; i++) {
+        const row = vals[i].slice(0, W);
+        row[T.discord - 1] = String(ids[i][0]).trim();                        // keep the ID exact (getValues rounds a digit string)
+        if (!String(row[T.key - 1]).trim() && !String(row[T.name - 1]).trim() && !row[T.discord - 1]) continue; // skip blank scaffolding rows
+        records.push(row);
+      }
+    }
+    if (prepend) records.unshift(prepend.slice(0, W));
+    if (!records.length) return;
+
+    // Status priority from [LEAVE].STATUS_FLOW (Pending < Approved < Denied < Expired); unknown/blank → bottom.
+    let flow = ['Pending', 'Approved', 'Denied', 'Expired'];
+    try { const f = cfg_().leave.STATUS_FLOW; if (f && f.length) flow = f; } catch (e) { /* config broken — classic order */ }
+    const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
+    const prio = (row) => { const k = norm_(String(row[T.status - 1]).trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
+    const dec = records.map((row, i) => ({ row: row, i: i, p: prio(row) }));
+    dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable: ties keep prior order, so a prepended new leave stays on top
+    const sorted = dec.map((d) => d.row);
+
+    // Write reordered VALUES back into the SAME physical rows. '@' the ID column BEFORE writing so long IDs stay exact.
+    if (start + sorted.length - 1 > tracker.getMaxRows()) tracker.insertRowsAfter(tracker.getMaxRows(), start + sorted.length - 1 - tracker.getMaxRows());
+    tracker.getRange(start, T.discord, sorted.length, 1).setNumberFormat('@');
+    tracker.getRange(start, 1, sorted.length, W).setValues(sorted);
+    if (last > start + sorted.length - 1) tracker.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent(); // blank any now-unused trailing rows
+
+    // Regenerate the computed columns as ONE batched setFormulas per column (fast — not per-row) + date formats.
+    tracker.getRange(start, T.start, sorted.length, 2).setNumberFormat('d mmm. yyyy');
+    const lenF = [], untF = [], lftF = [], retF = [];
+    for (let k = 0; k < sorted.length; k++) { const f = leaveFormulaStrings_(start + k); lenF.push([f.len]); untF.push([f.until]); lftF.push([f.left]); retF.push([f.ret]); }
+    tracker.getRange(start, T.length, sorted.length, 1).setFormulas(lenF);
+    tracker.getRange(start, T.untilStart, sorted.length, 1).setFormulas(untF);
+    tracker.getRange(start, T.timeLeft, sorted.length, 1).setFormulas(lftF);
+    tracker.getRange(start, T.returnDate, sorted.length, 1).setFormulas(retF).setNumberFormat('d mmm. yyyy');
+  } catch (e) { log_('sortTracker_', e); }
 }
 
 /* ======================================================================
@@ -2111,10 +2181,9 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const durationStr = `${diff} ${diff === 1 ? 'Day' : 'Days'}`;
 
       const oi = rosterOocShift_(discord); // auto-fill OOC name + shift from the roster (by Unique ID)
-      const r = appendTrackerRow_(tracker, [dedupKey, rank, callsign, oi.ooc, name, discord, oi.shift, startDate, endDate, '', '', '', '', CONFIG.pendingStatus, '', '']);
-      const trkId = tracker.getRange(r, CONFIG.tracker.discord); trkId.setNumberFormat('@'); trkId.setValue(discord); // keep the 17-19 digit ID EXACT — a digit-string would coerce to a rounded Number
-      tracker.getRange(r, CONFIG.tracker.start, 1, 2).setNumberFormat('d mmm. yyyy');
-      writeLeaveFormulas_(tracker, r);
+      // Prepend the new leave at the TOP and re-group by status — a new Pending lands at the top of the list.
+      // sortTracker_ keeps the ID exact, rewrites the computed columns, and preserves the tab's row formatting.
+      sortTracker_([dedupKey, rank, callsign, oi.ooc, name, discord, oi.shift, startDate, endDate, '', '', '', '', CONFIG.pendingStatus, '', ''], tracker);
 
       if (dedupKey) synced[dedupKey] = true;
       const leaf = { name, rank, callsign, type, startStr, endStr, durationStr, discord };
