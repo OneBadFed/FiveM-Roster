@@ -691,8 +691,12 @@
           <div class="addgrid">
             <div><label class="lbl" for="addName">Name</label>
               <input class="field" id="addName" placeholder="e.g. J. Smith" autocomplete="off"></div>
-            <div><label class="lbl" for="addId">Discord ID <span class="lopt">· 17-19 digits</span></label>
+            <div><label class="lbl" for="addId">Unique ID <span class="lopt">· 17-19 digits</span></label>
               <input class="field mono" id="addId" placeholder="123456789012345678" inputmode="numeric" autocomplete="off"></div>
+            <div id="addOocWrap" hidden><label class="lbl" for="addOoc">OOC name <span class="lopt">· optional</span></label>
+              <input class="field" id="addOoc" placeholder="e.g. Devin M." autocomplete="off"></div>
+            <div id="addShiftWrap" hidden><label class="lbl" for="addShift">Shift <span class="lopt">· optional</span></label>
+              <input class="field" id="addShift" placeholder="e.g. Day" autocomplete="off"></div>
           </div>
         </div>
         <div class="stepcard">
@@ -884,6 +888,7 @@
     STATE.version=b.version||'';
     if(b.statuses) STATE.statuses=b.statuses;
     if(b.leaveTypes&&b.leaveTypes.length) STATE.leaveTypes=b.leaveTypes;
+    if(b.addCols){ if($('addOocWrap')) $('addOocWrap').hidden=!b.addCols.ooc; if($('addShiftWrap')) $('addShiftWrap').hidden=!b.addCols.shift; } // show OOC/Shift inputs only when the roster has those columns
     STATE.rankIcons=b.rankIcons||{}; // bootstrap ships {} — icons lazy-load below so the panel paints immediately
     STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
     renderAdminSetup();
@@ -1251,13 +1256,15 @@
   function addMember(){
     var row=STATE.addSlot; if(row==null){ toast('Pick an open slot first.','err'); openSlotMenu(true); return; }
     var name=$('addName').value.trim(), discord=$('addId').value.trim();
+    var ooc=($('addOoc')?$('addOoc').value.trim():''), shift=($('addShift')?$('addShift').value.trim():'');
     if(!name){ toast('Name is required.','err'); $('addName').focus(); return; }
-    if(!/^\d{17,19}$/.test(discord)){ toast('Discord ID must be 17-19 digits.','err'); $('addId').focus(); return; }
+    if(!/^\d{17,19}$/.test(discord)){ toast('Unique ID must be 17-19 digits.','err'); $('addId').focus(); return; }
     $('addBtn').disabled=true;
     api(function(m){
-      $('addBtn').disabled=false; $('addName').value=''; $('addId').value=''; $('addJoin').value=''; STATE.addSlot=null;
+      $('addBtn').disabled=false; $('addName').value=''; $('addId').value=''; $('addJoin').value='';
+      if($('addOoc'))$('addOoc').value=''; if($('addShift'))$('addShift').value=''; STATE.addSlot=null;
       toast('Seated '+m.name+' as '+m.rank+'.','ok'); refresh(); document.querySelector('.tab[data-tab="members"]').click();
-    }, function(e){ $('addBtn').disabled=false; onError(e); }, "cpAssignMember", {row:row,name:name,discord:discord,joinDate:$('addJoin').value});
+    }, function(e){ $('addBtn').disabled=false; onError(e); }, "cpAssignMember", {row:row,name:name,discord:discord,joinDate:$('addJoin').value,ooc:ooc,shift:shift});
   }
   function runAction(act,btn){
     btn.disabled=true; btn.classList.add('busy');

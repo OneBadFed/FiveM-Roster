@@ -764,6 +764,11 @@ function buildAcademySheets_() {
     for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c] && rHdrUp[c].indexOf(key) !== -1) return c + 1; }
     return 0;
   };
+  // The roster's section banners (the row above its header). The Academy only MIRRORS columns that sit under a section
+  // the roster ALSO has (MEMBER INFORMATION / TENURE / …). Columns under the tab's OWN sections (LEO EXAM, RIDE-ALONGS…)
+  // are training fields the engine must never overwrite — even when a header collides, e.g. a LEO-EXAM "STATUS".
+  const rosterBannerSet = {};
+  if (RC.headerRow > 1) roster.getRange(RC.headerRow - 1, 1, 1, roster.getLastColumn()).getDisplayValues()[0].forEach((b) => { const nb = norm_(b); if (nb) rosterBannerSet[nb] = true; });
   // Training ranks (shared across academy tabs): the "Training" dashboard label (Engine Settings → Ranks) + any
   // [RANKS] TRAINING flags. Either way of designating a training rank works; a per-tab #academy marker overrides both.
   const baseTraining = ((CONFIG.rankList && CONFIG.rankList.trainingRanks) ? CONFIG.rankList.trainingRanks : [])
@@ -785,10 +790,18 @@ function buildAcademySheets_() {
     const dataRow = H.row + headerToData;
     const maxRows = sh.getMaxRows();
     const width = Math.max(sh.getLastColumn(), AC.name, keyCol, AC.rank || 0, AC.grad || 0);
-    // Map each academy column to a roster column (by header). Mapped columns are filled from the roster; unmapped ones
-    // (your Exam / Ride-Alongs / Notes) are yours and preserved. The GRADUATED column is engine-owned, never roster-mapped.
+    // Map each academy column to a roster column (by header) — but ONLY within sections the roster also has, so a
+    // training field that reuses a roster header (e.g. a LEO-EXAM "STATUS") is never overwritten. The tab's banner per
+    // column is forward-filled across the merged banner row. Unmapped columns (your training fields) are preserved.
+    const aBannerRow = H.row > 1 ? H.row - 1 : 0;
+    const aBanners = [];
+    if (aBannerRow) { const raw = sh.getRange(aBannerRow, 1, 1, width).getDisplayValues()[0]; let cur = ''; for (let c = 0; c < width; c++) { const v = norm_(raw[c]); if (v) cur = v; aBanners[c] = cur; } }
     const colMap = [];
-    for (let c = 0; c < width; c++) { colMap[c] = (AC.grad && c + 1 === AC.grad) ? 0 : colForRoster(H.headers[c] || ''); }
+    for (let c = 0; c < width; c++) {
+      if (AC.grad && c + 1 === AC.grad) { colMap[c] = 0; continue; }                        // GRADUATED col is engine-owned
+      if (aBannerRow && !rosterBannerSet[aBanners[c] || '']) { colMap[c] = 0; continue; }    // under one of YOUR sections → a training field, never overwritten
+      colMap[c] = colForRoster(H.headers[c] || '');
+    }
     // Find the tab's RANK GROUP band column (its label is often merged across the banner+label rows → scan both; else col left of RANK).
     const topHdr = H.row > 1 ? sh.getRange(H.row - 1, 1, 1, width).getDisplayValues()[0].map((x) => String(x).toUpperCase()) : [];
     let tabBandCol = 0;

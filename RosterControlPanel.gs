@@ -378,12 +378,15 @@ function openControlPanel() {
 function cpBootstrap() {
   if (typeof cpEnsureAuditTrigger === 'function') { try { cpEnsureAuditTrigger(); } catch (e) { log_('cpBootstrap', e); } } // audit always-on
   const snap = cpSnapshot_();
+  const rosterSheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+  const RCadd = rosterSheet ? rosterCols_(rosterSheet) : {};
   return {
     version: CP_VERSION,
     systemName: CONFIG.systemName,
     webhooks: cpWebhookStatus_(), // per-channel booleans — read via THIS user's admin-file access
     statuses: cpStatuses_(),
     leaveTypes: CONFIG.leaveTypes.slice(),                                       // the [LEAVE].LEAVE_TYPES list — drives the schedule-leave dropdown
+    addCols: { ooc: !!RCadd.ooc, shift: !!RCadd.shift },                         // which optional columns the Add-member form should offer
 
     members: snap.members,
     stats: snap.stats,
@@ -823,6 +826,9 @@ function cpAssignMember(payload) {
     cpAudit_('add', '', `${s.rank} · ${s.callsign}`, roster.getRange(Number(payload.row), rosterCols_(roster).name).getA1Notation(), s.name);
     return s;
   });
+  // A member seated into a training-rank slot should show on the Police Academy (and group bands) right away.
+  try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('cpAssignMember.academy', e2); }
+  try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('cpAssignMember.groups', e2); }
   notifyCh_('AUDIT', CONFIG.notify.memberAdded, { // roster-change traffic → AUDIT channel; after the lock releases
     title: fill_(CONFIG.notify.memberAddedTitle, { name: seated.name }),
     color: hexToInt_(CONFIG.notify.memberAddedColor, 5749594),
@@ -841,9 +847,11 @@ function cpAssignMember_(roster, payload) {
   const name = String((payload && payload.name) || '').trim();
   const discord = String((payload && payload.discord) || '').trim();
   const joinRaw = String((payload && payload.joinDate) || '').trim();
+  const ooc = String((payload && payload.ooc) || '').trim();     // optional OOC name (written only if the roster has that column)
+  const shift = String((payload && payload.shift) || '').trim(); // optional shift (written only if the roster has that column)
 
   if (!name) throw new Error('Name is required.');
-  if (!DISCORD_ID_RE.test(discord)) throw new Error('Discord ID must be 17-19 digits.');
+  if (!DISCORD_ID_RE.test(discord)) throw new Error('Unique ID must be 17-19 digits.');
 
   cpAssertSlotRow_(roster, row);
   const RC = rosterCols_(roster);
@@ -858,6 +866,8 @@ function cpAssignMember_(roster, payload) {
   const idCell = roster.getRange(row, RC.discord);
   idCell.setNumberFormat('@'); // keep the 17-19 digit ID as exact text
   idCell.setValue(discord);
+  if (RC.ooc && ooc) roster.getRange(row, RC.ooc).setValue(ooc);       // optional display columns — only when the roster has them
+  if (RC.shift && shift) roster.getRange(row, RC.shift).setValue(shift);
   roster.getRange(row, RC.join).setValue(joinDate);   // Join Date
   roster.getRange(row, RC.activity).setValue(CONFIG.tierNames.length ? CONFIG.tierNames[CONFIG.tierNames.length - 1] : 'Inactive'); // seat at the lowest tier
   roster.getRange(row, RC.hours).setValue(0);
