@@ -2549,6 +2549,13 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   } finally {
     lock.releaseLock();
   }
+  // A transfer changes the member's rank (SLOT rank stays with the destination), which can move them in/out of the
+  // Police Academy's rank-group bands — re-sync it (and the group-tab bands). Group data itself is live formulas.
+  // Guarded to the real roster tab so test-sandbox moves don't rebuild the live sheets.
+  if (sheet.getName() === CONFIG.sheets.roster) {
+    try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('checkForMemberMove.academy', e2); }
+    try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('checkForMemberMove.groups', e2); }
+  }
   promoRecord_(sourceRow, targetRow, memberName, sourceRank, targetRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
   notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; after the lock is released, only reached on a successful move
     title: fill_(CONFIG.notify.transferTitle, { name: memberName, from: sourceRank, to: targetRank }),

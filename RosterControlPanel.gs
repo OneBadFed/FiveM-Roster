@@ -900,6 +900,9 @@ function cpMoveMember(payload) {
     cpAudit_('move', r.fromRank, r.toRank, roster.getRange(Number(payload.toRow), rosterCols_(roster).name).getA1Notation(), r.name);
     return r;
   });
+  // A move changes the member's rank (SLOT rank belongs to the destination) → re-sync the Police Academy + group bands.
+  try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('cpMoveMember.academy', e2); }
+  try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('cpMoveMember.groups', e2); }
   promoRecord_(Number(payload && payload.fromRow), Number(payload && payload.toRow), res.name, res.fromRank, res.toRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
   notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; after the lock releases, only on a successful move
     title: fill_(CONFIG.notify.transferTitle, { name: res.name, from: res.fromRank, to: res.toRank }),
