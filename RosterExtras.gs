@@ -361,9 +361,10 @@ function groupColLetter_(n) {
 /**
  * Reads a tab's top-left cells for a "#group: …" marker. Forms:
  *   "#group: Column = Value"            group by that column's value (or "Column: Value")
+ *   "#group: Column in V1, V2, …"       any of several values (e.g. two ranks — cadets + probationary)
  *   "#group: Value"                     shorthand — engine auto-finds the column
- *   "#group: Column = Value | A, B, C"  after the "|", extra roster columns (e.g. hidden Beat, Vehicle) to also show
- * @return {{row,col,column,value,extras:string[],raw}|null}
+ *   "#group: … | A, B, C"               after the "|", extra roster columns (e.g. hidden Beat, Vehicle) to also show
+ * @return {{row,col,column,values:string[],extras:string[],raw}|null}
  */
 function groupMarker_(sh) {
   const rows = Math.min(5, sh.getLastRow());
@@ -378,9 +379,11 @@ function groupMarker_(sh) {
       const parts = raw.split('|');
       const spec = parts[0].trim();
       const extras = parts.length > 1 ? parts[1].split(',').map((s) => s.trim()).filter(Boolean) : [];
+      const inM = spec.match(/^(.+?)\s+in\s+(.+)$/i); // "Column in V1, V2, …" → any of these values
+      if (inM) return { row: r + 1, col: c + 1, column: inM[1].trim(), values: inM[2].split(',').map((s) => s.trim()).filter(Boolean), extras: extras, raw: raw };
       const eq = spec.match(/^(.+?)\s*[:=]\s*(.+)$/);
-      if (eq) return { row: r + 1, col: c + 1, column: eq[1].trim(), value: eq[2].trim(), extras: extras, raw: raw };
-      return { row: r + 1, col: c + 1, column: '', value: spec, extras: extras, raw: raw };
+      if (eq) return { row: r + 1, col: c + 1, column: eq[1].trim(), values: [eq[2].trim()], extras: extras, raw: raw };
+      return { row: r + 1, col: c + 1, column: '', values: [spec], extras: extras, raw: raw };
     }
   }
   return null;
@@ -432,7 +435,7 @@ function buildGroupSheets_() {
     if (sh.getSheetId() === roster.getSheetId()) return;
     const marker = groupMarker_(sh);
     if (!marker) return;
-    const gCol = marker.column ? colFor(marker.column) : findGroupColumn_(roster, start, marker.value);
+    const gCol = marker.column ? colFor(marker.column) : findGroupColumn_(roster, start, marker.values[0]);
     const hRow = marker.row + 1;
     const clrW = Math.max(defCols.length + (marker.extras ? marker.extras.length : 0), sh.getLastColumn(), 1);
     if (sh.getMaxRows() >= hRow) sh.getRange(hRow, 1, sh.getMaxRows() - hRow + 1, clrW).clearContent(); // engine owns everything below the marker
@@ -441,8 +444,8 @@ function buildGroupSheets_() {
     const cols = defCols.slice();
     const seen = {}; cols.forEach((d) => { seen[d.c] = true; });
     (marker.extras || []).forEach((label) => { const c = colFor(label); if (c && !seen[c]) { cols.push({ c: c, h: label }); seen[c] = true; } });
-    const val = String(marker.value).replace(/"/g, '""');
-    const formula = '=IFERROR(FILTER({' + cols.map((d) => rng(d.c)).join(',') + '},' + rng(gCol) + '="' + val + '",' + rng(RC.name) + '<>""),"No members in this group yet.")';
+    const orCond = marker.values.map((v) => rng(gCol) + '="' + String(v).replace(/"/g, '""') + '"').join('+'); // any listed value (OR)
+    const formula = '=IFERROR(FILTER({' + cols.map((d) => rng(d.c)).join(',') + '},(' + orCond + '),' + rng(RC.name) + '<>""),"No members in this group yet.")';
     sh.getRange(hRow, 1, 1, cols.length).setValues([cols.map((d) => d.h)]);
     sh.getRange(hRow + 1, 1).setFormula(formula);
     built.push(sh.getName());
@@ -457,7 +460,7 @@ function buildGroupSheets() {
     const res = buildGroupSheets_();
     if (!res.built) {
       ui.alert('🗂️ Build / Refresh Group Sheets',
-        'No group tabs found.\n\nMake a new tab, put a marker in its top-left cell, then run this again:\n\n  #group: Shift = Day\n  #group: District = 1\n  #group: Troop = A\n\nTo also show columns kept on the roster (even hidden ones), list them after a “|”:\n  #group: Shift = Day | Beat, Vehicle, Radio\n\nThe tab fills with everyone in that group, in rank order, and stays live.',
+        'No group tabs found.\n\nMake a new tab, put a marker in its top-left cell, then run this again:\n\n  #group: Shift = Day\n  #group: District = 1\n  #group: Rank in Police Cadet, Probationary Officer   ← several values\n\nTo also show columns kept on the roster (even hidden ones), list them after a “|”:\n  #group: Shift = Day | Beat, Vehicle, Radio\n\nThe tab fills with everyone in that group, in rank order, and stays live.',
         ui.ButtonSet.OK);
       return;
     }
