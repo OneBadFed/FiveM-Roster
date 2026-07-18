@@ -1056,13 +1056,26 @@ function onEdit(e) {
           if (isValidId_(idv)) autoFillTrackerRow_(sheet, rr, TRC, idv);
         }
       }
-      // A STATUS change applies an approved leave immediately + re-groups the tracker.
-      if (TRC.status && col === TRC.status) {
-        if (e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO the approved state — re-confirming it must not re-apply (would revert a manual roster override)
-          checkImmediateLOAStart(sheet, row);
-          notifyLeaveApproved_(sheet, row); // v2.5.0 optional embed (toggle off by default)
+      // A STATUS change — or DELETING a leave — re-groups + compacts the tracker so the survivors slide up to the
+      // top with no gap. STATUS is checked by SPAN (a whole-row clear covers it too), not just the starting column.
+      const spans = (t) => t && col <= t && c2 >= t;
+      const statusTouched = spans(TRC.status);
+      let deletedRow = false;
+      if (e.value == null) { // a clear/delete carries no incoming value (single- or multi-cell); a paste has values, so it won't match
+        const rLast2 = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
+        for (let rr = Math.max(row, CONFIG.trackerStartRow); rr <= rLast2 && !deletedRow; rr++) {
+          const idv = TRC.discord ? String(sheet.getRange(rr, TRC.discord).getDisplayValue()).trim() : '';
+          const nmv = TRC.name ? String(sheet.getRange(rr, TRC.name).getDisplayValue()).trim() : '';
+          const kyv = TRC.key ? String(sheet.getRange(rr, TRC.key).getDisplayValue()).trim() : '';
+          if (!idv && !nmv && !kyv) deletedRow = true; // row is now empty (sortTracker_ would drop it) → a leave was removed
         }
-        try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group leaves by status after ANY status change (runs after the immediate-start logic, which reads the edited row's position)
+      }
+      if (statusTouched && e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO approved re-applies (a re-confirm must not revert a manual roster override)
+        checkImmediateLOAStart(sheet, row);
+        notifyLeaveApproved_(sheet, row); // v2.5.0 optional embed (toggle off by default)
+      }
+      if (statusTouched || deletedRow) {
+        try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group by status + compact away any gap left by the delete
       }
     }
     // F-003: refreshing the WHOLE workbook on every keystroke is the biggest recurring cost. Short-circuit:

@@ -1054,6 +1054,22 @@ function devSyncTests_() {
     devEq_(R, 'sortTracker_ prepend -> total is now 5 rows', devDataRows_(tr, CONFIG.trackerStartRow), 5);
   })();
 
+  // Deleting a leave (clearing its row) leaves a blank gap; sortTracker_ compacts the survivors up to the top with no gap.
+  (() => {
+    const tr = devBuildTracker_([
+      { name: 'Top', id: devId_(85), start: devDay_(1), end: devDay_(5), status: 'Pending' },
+      { name: 'Mid', id: devId_(86), start: devDay_(-1), end: devDay_(5), status: 'Approved' },
+      { name: 'Low', id: devId_(87), start: devDay_(-9), end: devDay_(-1), status: 'Expired' },
+    ]);
+    const start = CONFIG.trackerStartRow, TC = trackerCols_(tr);
+    tr.getRange(start, 1, 1, TC.width).clearContent();          // simulate deleting the TOP leave → a blank row at the start
+    devCheck_(R, 'delete: top row is blank before compaction', String(tr.getRange(start, TC.name).getDisplayValue()).trim() === '');
+    sortTracker_(null, tr);                                     // the re-group the delete now triggers on the real sheet
+    devEq_(R, 'delete: survivors compact up (2 rows, no gap)', devDataRows_(tr, start), 2);
+    devCheck_(R, 'delete: no blank gap left at the top', String(tr.getRange(start, TC.name).getDisplayValue()).trim() !== '');
+    devEq_(R, 'delete: top of the list is now the Approved survivor', devTrackerStatus_(tr, 0), 'Approved');
+  })();
+
   // trackerCols_ resolves a NO-Return-Date layout (Status/Approved By/Notes shift left) and sortTracker_ respects it —
   // the STATUS column must keep its value, NOT get a return-date formula written into it (the header-corruption bug).
   (() => {
