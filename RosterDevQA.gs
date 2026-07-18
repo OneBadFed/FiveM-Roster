@@ -492,6 +492,11 @@ function devNewLayoutTests_() {
     devEq_(R, 'groupMarker_ shorthand → no column', g2 && g2.column, '');
     gsh.getRange(1, 1).setValue('not a marker');
     devEq_(R, 'groupMarker_ no marker → null', groupMarker_(gsh), null);
+    if (typeof suggestMarker_ === 'function') {
+      devEq_(R, 'suggestMarker_ "Day Shift" → Shift = Day', suggestMarker_('Day Shift'), '#group: Shift = Day');
+      devEq_(R, 'suggestMarker_ "Troop A" → Troop = A', suggestMarker_('Troop A'), '#group: Troop = A');
+      devEq_(R, 'suggestMarker_ "Academy" → Rank in …', suggestMarker_('Academy'), '#group: Rank in Police Cadet, Probationary Officer');
+    }
   } else { devInfo_(R, 'groupMarker_ not loaded', 'RosterExtras.gs absent — skipped'); }
 
   // Back-compat: the classic single-row layout still resolves; optional columns report 0 when absent.
