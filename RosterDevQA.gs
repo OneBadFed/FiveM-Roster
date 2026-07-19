@@ -2283,7 +2283,7 @@ function devPatrolLogTests_() {
     processPatrolLog_(pl, PS, PC, ro);
     devEq_(R, 'valid: auto-fills member NAME from roster', String(pl.getRange(PS, PC.name).getDisplayValue()).trim(), 'Pat Valid');
     devEq_(R, 'valid: auto-fills member RANK from roster', String(pl.getRange(PS, PC.rank).getDisplayValue()).trim(), 'Sergeant');
-    devEq_(R, 'valid: status -> Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
+    devEq_(R, 'valid: status -> Processed (auto)', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
     devCheck_(R, 'valid: TOTAL TIME is a live formula', pl.getRange(PS, PC.total).getFormula().indexOf('ISNUMBER(') !== -1);
     devEq_(R, 'valid: credits 3 hrs immediately (10 -> 13)', rosterHrs(ro), 13);
     devCheck_(R, 'valid: writes the "hours|id" credited marker', String(pl.getRange(PS, PC.mark).getDisplayValue()).indexOf('3|') === 0);
@@ -2310,7 +2310,7 @@ function devPatrolLogTests_() {
   flagCase('future', { startDate: devDay_(1), startTime: devTime_(9, 0), endDate: devDay_(1), endTime: devTime_(12, 0) }, 'future');
   flagCase('unknown-id', { id: devId_(999), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }, 'roster');
 
-  // Admin override: an ADVISORY flag (over-max / future) is approved by moving STATUS to Pending → the hours credit.
+  // Admin override: an ADVISORY flag (over-max / future) is approved by moving STATUS to Processed → the hours credit.
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Over', id: devId_(80), activity: 'Active', hours: 6 }]);
     const pl = devBuildPatrolLog_([{ id: devId_(80), startDate: devDay_(-1), startTime: devTime_(2, 0), endDate: devDay_(-1), endTime: devTime_(22, 0) }]); // 20h → over-max
@@ -2318,26 +2318,26 @@ function devPatrolLogTests_() {
     processPatrolLog_(pl, PS, PC, ro);
     devEq_(R, 'override: over-max starts Flagged', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
     devEq_(R, 'override: nothing credited while Flagged (stays 6)', rosterHrs(ro), 6);
-    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.pendingStatus); // admin reviews + approves
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.processedStatus); // admin reviews + approves by processing
     processPatrolLog_(pl, PS, PC, ro);
-    devEq_(R, 'override: approving to Pending credits 20 hrs (6 -> 26)', rosterHrs(ro), 26);
-    devEq_(R, 'override: status stays the admin\'s Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
+    devEq_(R, 'override: processing credits 20 hrs (6 -> 26)', rosterHrs(ro), 26);
+    devEq_(R, 'override: status stays Processed', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
     devCheck_(R, 'override: NOTES keeps an "Override" trace', String(pl.getRange(PS, PC.notes).getDisplayValue()).toLowerCase().indexOf('override') !== -1);
   })();
 
-  // A BLOCKING flag (end<=start) can NOT be approved by a status change — the data must be fixed first.
+  // A BLOCKING flag (end<=start) can NOT be approved by processing — the data must be fixed first.
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Block', id: devId_(81), activity: 'Active', hours: 3 }]);
     const pl = devBuildPatrolLog_([{ id: devId_(81), startDate: devDay_(-1), startTime: devTime_(12, 0), endDate: devDay_(-1), endTime: devTime_(9, 0) }]); // end < start
     const PC = patrolLogCols_(pl);
     processPatrolLog_(pl, PS, PC, ro);
-    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.pendingStatus); // admin tries to approve without fixing
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.processedStatus); // admin tries to process without fixing
     processPatrolLog_(pl, PS, PC, ro);
     devEq_(R, 'blocking: status snaps back to Flagged', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
     devEq_(R, 'blocking: still not credited (stays 3)', rosterHrs(ro), 3);
     pl.getRange(PS, PC.endTime).setValue(devTime_(15, 0)); // fix: 12:00 -> 15:00 = 3h valid
     processPatrolLog_(pl, PS, PC, ro);
-    devEq_(R, 'blocking: fixing the data auto-clears to Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
+    devEq_(R, 'blocking: fixing the data auto-processes it', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
     devEq_(R, 'blocking: and credits 3 hrs (3 -> 6)', rosterHrs(ro), 6);
   })();
 

@@ -2430,14 +2430,15 @@ function processPatrolLog_(sheet, row, PC, roster) {
       if (!curStatus) setStatus(P.pendingStatus); // half-entered → Pending, no credit yet
     } else {
       const ev = evaluatePatrolLog_(memberRow, startDT, endDT, hours, new Date());
-      // Admin override: an ADVISORY-flagged log the admin has moved to Pending/Processed is approved → credit it.
-      const approved = ev.reason && !ev.blocking && (norm_(curStatus) === norm_(P.pendingStatus) || norm_(curStatus) === norm_(P.processedStatus));
-      if (ev.reason && !approved) {
-        setStatus(P.flaggedStatus); setNote(ev.reason);        // blocking, or advisory not yet approved → Flagged, no credit
+      const wantsProcessed = norm_(curStatus) === norm_(P.processedStatus);
+      if (ev.blocking) {
+        setStatus(P.flaggedStatus); setNote(ev.reason);        // can't credit (unknown ID / bad time / date typo) → Flagged; a Processed override snaps back
+      } else if (ev.reason) {
+        // ADVISORY (over the hour max / future-dated): counts ONLY once an admin approves it by marking it Processed
+        if (wantsProcessed) { setNote('Override: ' + ev.reason); desired = { hours: hours, mid: idv }; } // approved → credit, keep Processed
+        else { setStatus(P.flaggedStatus); setNote(ev.reason); }                                        // not yet approved → Flagged, no credit
       } else {
-        if (!curStatus || norm_(curStatus) === norm_(P.flaggedStatus)) setStatus(P.pendingStatus); // valid (or just fixed) → clear the auto-flag
-        setNote(ev.reason ? ('Override: ' + ev.reason) : '');  // advisory approved → keep a short trace; fully valid → clear the note
-        desired = { hours: hours, mid: idv };                  // credit the hours
+        setStatus(P.processedStatus); setNote(''); desired = { hours: hours, mid: idv };                // fully valid → auto-mark Processed + credit
       }
     }
     reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired);
