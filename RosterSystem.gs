@@ -308,6 +308,7 @@ function buildMenus_(prefix) {
       .addItem('📸 Capture & Reset Activity', p + 'weeklyResetWithHistory')
       .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
       .addItem('🧾 Review Roster Signups', p + 'openSignupsDialog')
+      .addItem('🌐 Publish Public Roster', p + 'publishPublicRosterNow')
       .addSeparator()
       // Roster editing
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')
@@ -319,6 +320,7 @@ function buildMenus_(prefix) {
       .addSeparator()
       // Setup & wiring (run rarely)
       .addItem('🧾 Create Roster Signup Form', p + 'createSignupForm')
+      .addItem('🌐 Set Up Public Roster', p + 'setupPublicRoster')
       .addSubMenu(SpreadsheetApp.getUi().createMenu('🆔 Unique ID Type')
         .addItem('Discord ID (17–19 digits)', p + 'idTypeDiscord')
         .addItem('Community ID (1–8 digits)', p + 'idTypeCommunity'))
@@ -358,7 +360,7 @@ function onOpenLib(libId) {
 /** Creates the installable triggers (form submit + daily check), replacing any duplicates. */
 function installTriggers() {
   runAction_('Install Triggers', () => {
-    const keep = { onFormSubmit: true, processDailyLOAs: true };
+    const keep = { onFormSubmit: true, processDailyLOAs: true, publishPublicRoster: true };
     ScriptApp.getProjectTriggers().forEach((t) => {
       if (keep[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t);
     });
@@ -366,12 +368,22 @@ function installTriggers() {
     const hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; // [SCHEDULE].NIGHTLY_HOUR — default 0 (midnight, the classic behavior)
     ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
     ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(hour).everyDays(1).create();
+    // Public roster re-publish. One-way, so a stale public copy is the worst case a missed run can cause.
+    let pubLine = '';
+    try {
+      const mins = parseInt(cfg_().kv.SCHEDULE.PUBLISH_MINUTES, 10) || 0;
+      if (mins > 0 && typeof publishPublicRoster === 'function') {
+        ScriptApp.newTrigger('publishPublicRoster').timeBased().everyMinutes(mins).create();
+        pubLine = `
+• Public roster publish (every ${mins} min)`;
+      }
+    } catch (e) { log_('installTriggers.publish', e); }
     // v2.5.0 — ONE installer: also (re)install the Extras triggers when that companion file is present (integrity scan,
     // coverage rebuild, cadence-aware hours reset). Guarded so a bound project WITHOUT RosterExtras.gs still installs core.
     let extrasLine = '';
     try { if (typeof installExtrasTriggers_ === 'function') { const rd = installExtrasTriggers_(); extrasLine = `\n• Integrity scan (7am), coverage rebuild (6am)\n• Hours reset — ${rd}`; } } catch (e) { log_('installTriggers.extras', e); }
     logInfo_('installTriggers', `installed core triggers (daily hour ${hour})${extrasLine ? ' + extras' : ''}.`);
-    SpreadsheetApp.getUi().alert(`✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})${extrasLine}`);
+    SpreadsheetApp.getUi().alert(`✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})${pubLine}${extrasLine}`);
   });
 }
 
@@ -1010,6 +1022,7 @@ function refreshDashboard() {
     } finally {
       lock.releaseLock();
     }
+    try { if (typeof publishPublicRoster === 'function') publishPublicRoster(); } catch (e) { log_('refreshDashboard.publish', e); } // refresh the public copy
     // Deferred side-effects for the form path (post after the lock, like manualSyncLOA does).
     newLeaves.forEach((L) => { try { sendDiscordWebhook(L.name, L.rank, L.callsign, L.type, L.startStr, L.endStr, L.durationStr, L.discord); } catch (e) { log_('refreshDashboard.leafwh', e); } });
     if (newLeaves.length && typeof auditEvent_ === 'function') {
@@ -1723,6 +1736,7 @@ function processDailyLOAs() {
     } finally {
       lock.releaseLock();
     }
+    try { if (typeof publishPublicRoster === 'function') publishPublicRoster(); } catch (e) { log_('processDailyLOAs.publish', e); } // refresh the public copy
     // Confirm to the operator on a MANUAL run only — the daily trigger runs headless (no UI), so getUi() is guarded.
     if (summary) {
       let ui = null; try { ui = SpreadsheetApp.getUi(); } catch (e) { /* time-driven trigger context — no UI */ }

@@ -1410,6 +1410,140 @@ function approveSignup_(signups, row, roster, slotRow) {
   return { ok: true, name: name, discord: id, slotRow: slotRow, piiWritten: piiWritten };
 }
 
+/* -------------------------------------------------------------------------
+ * PUBLIC ROSTER — a ONE-WAY export of this (internal) workbook into a separate
+ * spreadsheet that members can read. Nothing ever flows back, so there is no
+ * merge, no conflict and no way for a public edit to reach real data.
+ *
+ * ALLOW-LIST, NOT DENY-LIST: only the columns named below are ever read. Add a
+ * private column here (address, medical note, anything) and it simply never
+ * appears — a forgotten column fails CLOSED instead of leaking.
+ *
+ * Publishing writes VALUES ONLY, so any formatting you apply to the public file
+ * survives every refresh — the same layout-ownership rule the rest of the engine
+ * follows. See [[layout-ownership]].
+ * ------------------------------------------------------------------------- */
+
+const PUBLIC_FILE_PROP_ = 'PUBLIC_ROSTER_ID';
+
+/** Roster columns that go public, in order. Unique ID and every private column are deliberately absent. */
+const PUBLIC_ROSTER_COLS_ = Object.freeze([
+  { role: 'rank', label: 'RANK' }, { role: 'unit', label: 'UNIT NUMBER' }, { role: 'ooc', label: 'OOC NAME' },
+  { role: 'name', label: 'NAME' }, { role: 'shift', label: 'SHIFT' }, { role: 'hours', label: 'HOURS' },
+  { role: 'activity', label: 'STATUS' },
+]);
+
+/** Tracker columns that go public. The dedup key, Unique ID, Approved By and Notes stay internal. */
+const PUBLIC_TRACKER_COLS_ = Object.freeze([
+  { role: 'rank', label: 'RANK' }, { role: 'unit', label: 'UNIT NUMBER' }, { role: 'ooc', label: 'OOC NAME' },
+  { role: 'name', label: 'NAME' }, { role: 'shift', label: 'SHIFT' }, { role: 'start', label: 'START DATE' },
+  { role: 'end', label: 'END DATE' }, { role: 'length', label: 'LENGTH' }, { role: 'timeLeft', label: 'TIME LEFT' },
+  { role: 'status', label: 'STATUS' },
+]);
+
+/** The linked public spreadsheet, or null when none is set up yet. */
+function publicFile_() {
+  const id = String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_) || '').trim();
+  return id ? SpreadsheetApp.openById(id) : null;
+}
+
+/** A tab in the public file, created + given a styled frozen header on first use. Existing formatting is left alone. */
+function ensurePublicTab_(file, name) {
+  let sh = file.getSheetByName(name);
+  if (!sh) { sh = file.insertSheet(name); }
+  if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
+  return sh;
+}
+
+/**
+ * Injectable core: copy the ALLOW-LISTED columns of one source sheet into a public tab, values only.
+ * Rows are copied as-is from `startRow` (so rank dividers and ordering survive) but only for listed columns —
+ * a column that isn't listed is never even read. @return {number} data rows written. Testable.
+ */
+function publishSheet_(src, srcCols, startRow, dest, spec) {
+  const cols = spec.map((s) => ({ label: s.label, c: srcCols[s.role] || 0 })).filter((x) => x.c);
+  if (!cols.length) return 0;
+  const last = src.getLastRow(), rows = [];
+  if (last >= startRow) {
+    const n = last - startRow + 1;
+    const wide = src.getRange(startRow, 1, n, Math.max(src.getLastColumn(), 1)).getValues();
+    for (let i = 0; i < n; i++) rows.push(cols.map((x) => wide[i][x.c - 1]));
+  }
+  const need = rows.length + 1;
+  if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
+  dest.getRange(1, 1, 1, cols.length).setValues([cols.map((x) => x.label)]).setFontWeight('bold');
+  if (rows.length) dest.getRange(2, 1, rows.length, cols.length).setValues(rows);
+  const destLast = dest.getLastRow(); // blank anything left over from a previous, longer publish
+  if (destLast > need - 1 + 1) dest.getRange(need + 1, 1, destLast - need, cols.length).clearContent();
+  return rows.length;
+}
+
+/** Publish the roster + LOA tracker to the linked public file. Safe no-op when none is linked. */
+function publishPublicRoster_() {
+  const file = publicFile_();
+  if (!file) return { linked: false, roster: 0, tracker: 0 };
+  const ss = SpreadsheetApp.getActive();
+  const out = { linked: true, roster: 0, tracker: 0, url: '' };
+  try { out.url = file.getUrl(); } catch (e) { /* cosmetic */ }
+  const roster = ss.getSheetByName(CONFIG.sheets.roster);
+  if (roster) out.roster = publishSheet_(roster, rosterCols_(roster), CONFIG.rosterStartRow, ensurePublicTab_(file, CONFIG.sheets.publicRosterTab), PUBLIC_ROSTER_COLS_);
+  const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
+  if (tracker) out.tracker = publishSheet_(tracker, trackerCols_(tracker), CONFIG.trackerStartRow, ensurePublicTab_(file, CONFIG.sheets.publicTrackerTab), PUBLIC_TRACKER_COLS_);
+  return out;
+}
+
+/** Time-driven + menu entry point for the publish. */
+function publishPublicRoster() {
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) return false;
+  try {
+    const res = publishPublicRoster_();
+    if (res.linked) logInfo_('publishPublicRoster', `published ${res.roster} roster row(s), ${res.tracker} tracker row(s).`);
+    return res;
+  } finally { lock.releaseLock(); }
+}
+
+/** Menu: publish now and report. */
+function publishPublicRosterNow() {
+  runAction_('Publish Public Roster', () => {
+    const ui = SpreadsheetApp.getUi();
+    const res = publishPublicRoster();
+    if (res === false) { ui.alert('Publish skipped — another roster operation is running.'); return; }
+    if (!res.linked) { ui.alert('🌐 Public Roster', 'No public roster is linked yet.\n\nRun 👥 Roster ▸ 🌐 Set Up Public Roster first.', ui.ButtonSet.OK); return; }
+    ui.alert('🌐 Published', `${res.roster} roster row(s) and ${res.tracker} tracker row(s) pushed to the public file.\n\n${res.url}`, ui.ButtonSet.OK);
+  });
+}
+
+/** Menu: create or link the public spreadsheet, then do a first publish. */
+function setupPublicRoster() {
+  runAction_('Set Up Public Roster', () => {
+    const ui = SpreadsheetApp.getUi();
+    const existing = String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_) || '').trim();
+    const res = ui.prompt('🌐 Set Up Public Roster',
+      (existing ? 'A public roster is already linked — pasting a different one REPLACES it.\n\n' : '') +
+      'Paste the PUBLIC spreadsheet\'s URL or ID to link it,\nor leave this blank and press OK to create a new one.', ui.ButtonSet.OK_CANCEL);
+    if (res.getSelectedButton() !== ui.Button.OK) return;
+    const raw = String(res.getResponseText() || '').trim();
+    let file;
+    if (raw) {
+      const m = raw.match(/[-\w]{25,}/);
+      if (!m) { ui.alert('That doesn\'t look like a spreadsheet URL or ID.'); return; }
+      file = SpreadsheetApp.openById(m[0]); // throws Google's own permission error if they can't open it
+    } else {
+      file = SpreadsheetApp.create(`${SpreadsheetApp.getActive().getName()} — Public Roster`);
+      const s1 = file.getSheets()[0];
+      try { if (s1 && s1.getLastRow() === 0) s1.setName(CONFIG.sheets.publicRosterTab); } catch (e) { /* cosmetic */ }
+    }
+    PropertiesService.getDocumentProperties().setProperty(PUBLIC_FILE_PROP_, file.getId());
+    const sum = publishPublicRoster_();
+    logInfo_('setupPublicRoster', `public roster linked: ${file.getId()}`);
+    ui.alert('🌐 Public roster linked',
+      `${file.getName()}\n${file.getUrl()}\n\nPublished ${sum.roster} roster row(s) and ${sum.tracker} tracker row(s).\n\n` +
+      'NEXT: share THAT file with your members (Viewer), then restrict THIS workbook to command staff only. ' +
+      'Do it in that order so nobody is left without a roster.', ui.ButtonSet.OK);
+  });
+}
+
 /** Menu: the signup review dialog — pick a signup, pick an open slot, approve. Reads/writes only through the ACL-gated admin file. */
 function openSignupsDialog() {
   runAction_('Roster Signups', () => {

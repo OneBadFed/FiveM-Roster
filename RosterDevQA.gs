@@ -61,7 +61,8 @@ function addDevMenu_(prefix) {
       .addItem('19 · v2.5.0 config extensions', p + 'devRunSection19')
       .addItem('20 · New-layout column resolution', p + 'devRunSection20')
       .addItem('21 · Patrol Log tracker', p + 'devRunSection21')
-      .addItem('22 · Roster Signups', p + 'devRunSection22'))
+      .addItem('22 · Roster Signups', p + 'devRunSection22')
+      .addItem('23 · Public roster publish', p + 'devRunSection23'))
     .addItem('🧹 Delete Sandbox / Results Tabs', p + 'devCleanup')
     .addToUi();
 }
@@ -219,6 +220,7 @@ const DEV_GROUPS = [
   ['New-layout column resolution (sandbox)', devNewLayoutTests_],
   ['Patrol Log tracker (sandbox)', devPatrolLogTests_],
   ['Roster Signups (sandbox)', devSignupTests_],
+  ['Public roster publish (sandbox)', devPublishTests_],
 ];
 
 /* ======================================================================
@@ -297,6 +299,7 @@ function devRunSection19() { devRunSectionByIndex_(19); }
 function devRunSection20() { devRunSectionByIndex_(20); }
 function devRunSection21() { devRunSectionByIndex_(21); }
 function devRunSection22() { devRunSectionByIndex_(22); }
+function devRunSection23() { devRunSectionByIndex_(23); }
 
 /* ======================================================================
  * RESULTS FRAMEWORK
@@ -2514,6 +2517,90 @@ function devSignupTests_() {
     devCheck_(R, 'stamped-last: a filled slot is refused', threw);
     devEq_(R, 'stamped-last: signup is still actionable, not Processed', g(sh, 2, S.status), 'Approved');
     devEq_(R, 'stamped-last: the occupant was not overwritten', g(ro, CONFIG.rosterStartRow, CONFIG.roster.name), 'Taken');
+  })();
+
+  return R;
+}
+
+
+/* ======================================================================
+ * SECTION 23 — PUBLIC ROSTER PUBLISH (sandbox): the one-way export and,
+ * above all, the allow-list guarantee — a private column must never appear
+ * in the published copy no matter where it sits.
+ * ====================================================================== */
+function devPublishTests_() {
+  const R = devNewResults_('Public roster publish (sandbox)');
+  const g = (sh, r, c) => String(sh.getRange(r, c).getDisplayValue()).trim();
+
+  // A roster carrying PRIVATE columns publishes only the allow-listed ones.
+  (() => {
+    const ro = devBuildRoster_([
+      { rank: 'Sergeant', name: 'Pub One', id: devId_(60), unit: 'S-1', activity: 'Active', hours: 12 },
+      { rank: 'Trooper', name: 'Pub Two', id: devId_(61), unit: 'S-2', activity: 'LOA', hours: 4 },
+    ]);
+    ro.getRange(5, 10, 1, 3).setValues([['EMAIL', 'DATE OF BIRTH', 'PHONE']]);            // private columns
+    ro.getRange(CONFIG.rosterStartRow, 10, 1, 3).setValues([['a@b.test', '1990-01-01', '555-0111']]);
+    const dest = devFreshSheet_('PubRoster');
+    const n = publishSheet_(ro, rosterCols_(ro), CONFIG.rosterStartRow, dest, PUBLIC_ROSTER_COLS_);
+    devEq_(R, 'publish: both member rows exported', n, 2);
+    devEq_(R, 'publish: header written', g(dest, 1, 1), 'RANK');
+    devEq_(R, 'publish: rank exported', g(dest, 2, 1), 'Sergeant');
+    devEq_(R, 'publish: hours exported', g(dest, 2, 6), '12');
+    devEq_(R, 'publish: activity exported', g(dest, 3, 7), 'LOA');
+
+    // THE GUARANTEE: nothing private reached the public copy, anywhere.
+    const w = Math.max(dest.getLastColumn(), 1), h = Math.max(dest.getLastRow(), 1);
+    const flat = dest.getRange(1, 1, h, w).getDisplayValues().reduce((a, r) => a.concat(r), []).join(' | ');
+    devCheck_(R, 'ALLOW-LIST: no email in the published copy', flat.indexOf('a@b.test') === -1);
+    devCheck_(R, 'ALLOW-LIST: no date of birth in the published copy', flat.indexOf('1990-01-01') === -1);
+    devCheck_(R, 'ALLOW-LIST: no phone number in the published copy', flat.indexOf('555-0111') === -1);
+    devCheck_(R, 'ALLOW-LIST: no Unique ID in the published copy', flat.indexOf(devId_(60)) === -1);
+    devCheck_(R, 'ALLOW-LIST: published width is exactly the allow-list', w <= PUBLIC_ROSTER_COLS_.length);
+  })();
+
+  // A private column INSERTED between public ones still can't leak (resolution is by header, not position).
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Shift', id: devId_(62), unit: 'S-9', activity: 'Active', hours: 7 }]);
+    ro.getRange(5, 10, 1, 1).setValues([['EMAIL']]);
+    ro.getRange(CONFIG.rosterStartRow, 10).setValue('secret@dept.test');
+    const dest = devFreshSheet_('PubShift');
+    publishSheet_(ro, rosterCols_(ro), CONFIG.rosterStartRow, dest, PUBLIC_ROSTER_COLS_);
+    const flat = dest.getRange(1, 1, Math.max(dest.getLastRow(), 1), Math.max(dest.getLastColumn(), 1))
+      .getDisplayValues().reduce((a, r) => a.concat(r), []).join(' | ');
+    devCheck_(R, 'inserted private column still never published', flat.indexOf('secret@dept.test') === -1);
+    devEq_(R, 'inserted private column: public data still correct', g(dest, 2, 4), 'Shift');
+  })();
+
+  // Re-publishing after the roster SHRINKS clears the leftover rows (no ghosts of departed members).
+  (() => {
+    const big = devBuildRoster_([
+      { rank: 'Trooper', name: 'Stay', id: devId_(63), activity: 'Active', hours: 1 },
+      { rank: 'Trooper', name: 'Leaver', id: devId_(64), activity: 'Active', hours: 2 },
+    ]);
+    const dest = devFreshSheet_('PubShrink');
+    publishSheet_(big, rosterCols_(big), CONFIG.rosterStartRow, dest, PUBLIC_ROSTER_COLS_);
+    devEq_(R, 'shrink: 2 rows published first', devDataRows_(dest, 2), 2);
+    const small = devBuildRoster_([{ rank: 'Trooper', name: 'Stay', id: devId_(63), activity: 'Active', hours: 1 }]);
+    publishSheet_(small, rosterCols_(small), CONFIG.rosterStartRow, dest, PUBLIC_ROSTER_COLS_);
+    devEq_(R, 'shrink: down to 1 row', devDataRows_(dest, 2), 1);
+    devCheck_(R, 'shrink: the departed member left no ghost row', g(dest, 3, 4) === '');
+  })();
+
+  // The tracker export drops the key / Unique ID / Approved By / Notes.
+  (() => {
+    const tr = devBuildTracker_([{ key: 'KEY|x|1', rank: 'Trooper', unit: 'S-3', name: 'Leave Guy', id: devId_(65),
+      start: devDay_(-2), end: devDay_(5), status: 'Approved' }]);
+    tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.notes).setValue('internal remark');
+    tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.approvedBy).setValue('Cmd Staff');
+    const dest = devFreshSheet_('PubTrk');
+    devEq_(R, 'tracker: one leave exported', publishSheet_(tr, trackerCols_(tr), CONFIG.trackerStartRow, dest, PUBLIC_TRACKER_COLS_), 1);
+    devEq_(R, 'tracker: name exported', g(dest, 2, 4), 'Leave Guy');
+    const flat = dest.getRange(1, 1, Math.max(dest.getLastRow(), 1), Math.max(dest.getLastColumn(), 1))
+      .getDisplayValues().reduce((a, r) => a.concat(r), []).join(' | ');
+    devCheck_(R, 'tracker: dedup key not published', flat.indexOf('KEY|x|1') === -1);
+    devCheck_(R, 'tracker: Unique ID not published', flat.indexOf(devId_(65)) === -1);
+    devCheck_(R, 'tracker: Approved By not published', flat.indexOf('Cmd Staff') === -1);
+    devCheck_(R, 'tracker: Notes not published', flat.indexOf('internal remark') === -1);
   })();
 
   return R;
