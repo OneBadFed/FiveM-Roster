@@ -307,6 +307,7 @@ function buildMenus_(prefix) {
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
       .addItem('📸 Capture & Reset Activity', p + 'weeklyResetWithHistory')
       .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
+      .addItem('🧾 Review Roster Signups', p + 'openSignupsDialog')
       .addSeparator()
       // Roster editing
       .addItem('➕ Add Member Rows…', p + 'addMemberRow')

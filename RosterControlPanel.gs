@@ -1618,6 +1618,14 @@ function approveSignup_(signups, row, roster, internal, slotRow) {
   return { ok: true, name: name, discord: id, slotRow: slotRow, piiWritten: piiWritten };
 }
 
+/** Menu: the signup review dialog — pick a signup, pick an open slot, approve. Reads/writes only through the ACL-gated admin file. */
+function openSignupsDialog() {
+  runAction_('Roster Signups', () => {
+    const html = HtmlService.createHtmlOutputFromFile('Signups').setWidth(900).setHeight(640);
+    SpreadsheetApp.getUi().showModalDialog(html, 'Roster Signups');
+  });
+}
+
 /** Menu: create the Roster Signup form and point its responses INSIDE the protected admin file. */
 function createSignupForm() {
   runAction_('Create Roster Signup Form', () => {
