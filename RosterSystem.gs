@@ -2743,15 +2743,14 @@ function webhookFor_(channel) {
   try {
     if (_webhookMemo_ === null) {
       _webhookMemo_ = {};
-      const id = String(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_) || '').trim();
-      if (id) {
-        const sh = SpreadsheetApp.openById(id).getSheetByName(WEBHOOK_TAB_);
-        if (sh && sh.getLastRow() >= 2) {
-          sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues().forEach((r) => {
-            const c = norm_(r[0]), u = String(r[1] || '').trim();
-            if (c && /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\//.test(u)) _webhookMemo_[c] = u;
-          });
-        }
+      // Webhook URLs are secrets, so they live on a tab of THIS workbook — which members never open (they read the
+      // separate published public roster). The file's own ACL is the gate.
+      const sh = SpreadsheetApp.getActive().getSheetByName(WEBHOOK_TAB_);
+      if (sh && sh.getLastRow() >= 2) {
+        sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues().forEach((r) => {
+          const c = norm_(r[0]), u = String(r[1] || '').trim();
+          if (c && /^https:\/\/(discord|discordapp)\.com\/api\/webhooks\//.test(u)) _webhookMemo_[c] = u;
+        });
       }
     }
     return _webhookMemo_[webhookChannel_(channel)] || '';

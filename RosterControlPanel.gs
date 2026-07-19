@@ -264,7 +264,7 @@ function cpGetConfig_(ss) {
     ranks: cpRosterRanks_(s), // live roster ranks — the override editor offers these as a dropdown instead of free text
     problems: v.problems.map((p) => ({ sev: p.sev, code: p.code, key: p.key, value: String(p.value == null ? '' : p.value), expected: p.expected || '' })),
     webhooks: cpWebhookStatus_(), // per-channel booleans — read via THIS user's admin-file access
-    adminLinked: !!String(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_) || '').trim(),
+    adminLinked: true, // the private tabs are in THIS workbook now — nothing to link
     blocks,
   };
 }
@@ -1191,9 +1191,9 @@ const ADMIN_LOG_TAB_ = 'Disciplinary Log';
 
 /** The linked admin spreadsheet, opened AS THE CURRENT USER — throws Google's permission error for non-admins (that's the gate). @return {Spreadsheet|null} null when no file is linked. */
 function adminFile_() {
-  const id = String(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_) || '').trim();
-  if (!id) return null;
-  return SpreadsheetApp.openById(id);
+  // THIS workbook is the protected file: the public roster is a separate, one-way published copy, so members never
+  // open this one. Private tabs (Webhooks, Disciplinary Log, Roster Signups) live right here — nothing to link.
+  return SpreadsheetApp.getActive();
 }
 
 /** Non-PII link metadata (who linked it, when) — makes a rogue pre-link visible to every panel user. */
@@ -1204,11 +1204,10 @@ function adminLinkMeta_() {
 
 /** Cheap bootstrap probe: is an admin file linked, and can THIS user open it? Never throws. */
 function cpAdminStatus_() {
-  const id = String(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_) || '').trim();
-  const meta = adminLinkMeta_();
-  if (!id) return { linked: false, access: false, url: '', linkedBy: '', linkedAt: '' };
-  try { const f = SpreadsheetApp.openById(id); return { linked: true, access: true, url: f.getUrl(), linkedBy: meta.by, linkedAt: meta.at }; }
-  catch (e) { return { linked: true, access: false, url: '', linkedBy: meta.by, linkedAt: meta.at }; }
+  // Always available: the private tabs live in THIS workbook, and anyone who can open the Control Panel can open it.
+  let url = '';
+  try { url = SpreadsheetApp.getActive().getUrl(); } catch (e) { /* cosmetic */ }
+  return { linked: true, access: true, url: url, linkedBy: '', linkedAt: '', selfHosted: true };
 }
 
 /**
@@ -1236,8 +1235,6 @@ function seedAdminSheet_(file) {
   };
   mk(ADMIN_LOG_TAB_, ['Date', 'Discord ID', 'Name', 'Action', 'Reason', 'Issued By', 'Status'], 2);
   ensureWebhookTab_(file);        // per-channel Discord webhooks live here too — the file's ACL gates them
-  const s1 = file.getSheetByName('Sheet1'); // drop the empty default tab on a freshly created file
-  if (s1 && file.getSheets().length > 2 && s1.getLastRow() === 0) { try { file.deleteSheet(s1); } catch (e) { /* cosmetic */ } }
 }
 
 /* -------------------------------------------------------------------------
@@ -1716,41 +1713,9 @@ function adminIdFromUrl_(url) {
 
 /** Panel endpoint: create a new admin spreadsheet (owned by the acting admin) or link an existing one by URL/ID. Gated + logged. */
 function cpAdminSetup(payload) {
-  payload = payload || {};
-  assertMayRelink_(); // hostile editors cannot redirect or blank an established link
-  const prior = String(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_) || '').trim();
-  let file;
-  const url = String(payload.url || '').trim();
-  if (url !== '') {
-    const id = adminIdFromUrl_(url);
-    try { file = SpreadsheetApp.openById(id); } // must be openable by the acting admin
-    catch (e) { throw new Error('Could not open that spreadsheet — check the link and that YOUR Google account has access to it.'); }
-    const mainId = SpreadsheetApp.getActive().getId();
-    if (file.getId() === mainId) throw new Error('The admin roster must be a SEPARATE spreadsheet — anyone who can view this sheet can read every tab in it.');
-  } else {
-    file = SpreadsheetApp.create(`${CONFIG.systemName} — Admin Roster`); // owned by the acting admin — they control sharing
-  }
-  seedAdminSheet_(file); // throws with a clear message if a hand-made file's tab headers don't match
-  // Detectability (file IDs + actor are NOT member PII — the no-PII-in-the-main-file rule holds): every link change
-  // leaves a SYS Log trail AND a who/when stamp that the Tools tab shows to every panel user.
-  let actor = ''; try { actor = Session.getActiveUser().getEmail() || ''; } catch (e) { /* consumer-Gmail may hide it */ }
-  const props = PropertiesService.getDocumentProperties();
-  props.setProperty(ADMIN_SHEET_PROP_, file.getId());
-  props.setProperty(ADMIN_SHEET_PROP_ + '_META', JSON.stringify({ by: actor || 'unknown', at: Utilities.formatDate(new Date(), ssTz_(), 'd MMM yyyy, HH:mm') }));
-  logInfo_('cpAdminSetup', `admin roster ${prior ? 'RE-LINKED' : 'linked'}: ${prior ? prior + ' → ' : ''}${file.getId()} by ${actor || 'unknown'}.`);
-  // Warn about pre-existing rows whose ID column was hand-typed as a NUMBER (precision already lost at entry — flag, can't repair).
-  let badIds = 0;
-  try {
-    const d = file.getSheetByName(CONFIG.sheets.signups);
-    const SC = d ? signupCols_(d) : null;
-    if (d && SC && SC.discord && d.getLastRow() >= 2) {
-      d.getRange(2, SC.discord, d.getLastRow() - 1, 1).getDisplayValues().forEach((r) => {
-        const v = String(r[0]).trim();
-        if (v !== '' && !isValidId_(v)) badIds++;
-      });
-    }
-  } catch (e) { /* advisory only */ }
-  return { ok: true, url: file.getUrl(), name: file.getName(), created: url === '', relinked: !!prior, badIds: badIds };
+  // RETIRED: there is no separate admin file any more. This workbook is the protected one and the PUBLIC roster is a
+  // one-way published copy (🌐 Set Up Public Roster). Refused outright so nobody can repoint a now-unread property.
+  throw new Error('The separate admin file has been retired — this workbook IS the internal roster. Use 👥 Roster ▸ 🌐 Set Up Public Roster to publish the member-facing copy.');
 }
 
 /**
