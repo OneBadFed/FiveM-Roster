@@ -2305,9 +2305,41 @@ function devPatrolLogTests_() {
     devEq_(R, `flag(${label}): no hours credited (stays 8)`, rosterHrs(ro), 8);
   };
   flagCase('end<=start', { startDate: devDay_(-1), startTime: devTime_(12, 0), endDate: devDay_(-1), endTime: devTime_(9, 0) }, 'not after');
-  flagCase('over-max', { startDate: devDay_(-3), startTime: devTime_(0, 0), endDate: devDay_(-1), endTime: devTime_(0, 0) }, 'max');
+  flagCase('over-max', { startDate: devDay_(-1), startTime: devTime_(2, 0), endDate: devDay_(-1), endTime: devTime_(22, 0) }, 'max'); // 20h: advisory
+  flagCase('over-a-day', { startDate: devDay_(-3), startTime: devTime_(0, 0), endDate: devDay_(-1), endTime: devTime_(0, 0) }, '24'); // 48h: blocking
   flagCase('future', { startDate: devDay_(1), startTime: devTime_(9, 0), endDate: devDay_(1), endTime: devTime_(12, 0) }, 'future');
   flagCase('unknown-id', { id: devId_(999), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }, 'roster');
+
+  // Admin override: an ADVISORY flag (over-max / future) is approved by moving STATUS to Pending → the hours credit.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Over', id: devId_(80), activity: 'Active', hours: 6 }]);
+    const pl = devBuildPatrolLog_([{ id: devId_(80), startDate: devDay_(-1), startTime: devTime_(2, 0), endDate: devDay_(-1), endTime: devTime_(22, 0) }]); // 20h → over-max
+    const PC = patrolLogCols_(pl);
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'override: over-max starts Flagged', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
+    devEq_(R, 'override: nothing credited while Flagged (stays 6)', rosterHrs(ro), 6);
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.pendingStatus); // admin reviews + approves
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'override: approving to Pending credits 20 hrs (6 -> 26)', rosterHrs(ro), 26);
+    devEq_(R, 'override: status stays the admin\'s Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
+    devCheck_(R, 'override: NOTES keeps an "Override" trace', String(pl.getRange(PS, PC.notes).getDisplayValue()).toLowerCase().indexOf('override') !== -1);
+  })();
+
+  // A BLOCKING flag (end<=start) can NOT be approved by a status change — the data must be fixed first.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Block', id: devId_(81), activity: 'Active', hours: 3 }]);
+    const pl = devBuildPatrolLog_([{ id: devId_(81), startDate: devDay_(-1), startTime: devTime_(12, 0), endDate: devDay_(-1), endTime: devTime_(9, 0) }]); // end < start
+    const PC = patrolLogCols_(pl);
+    processPatrolLog_(pl, PS, PC, ro);
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.pendingStatus); // admin tries to approve without fixing
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'blocking: status snaps back to Flagged', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
+    devEq_(R, 'blocking: still not credited (stays 3)', rosterHrs(ro), 3);
+    pl.getRange(PS, PC.endTime).setValue(devTime_(15, 0)); // fix: 12:00 -> 15:00 = 3h valid
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'blocking: fixing the data auto-clears to Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
+    devEq_(R, 'blocking: and credits 3 hrs (3 -> 6)', rosterHrs(ro), 6);
+  })();
 
   // A credited log edited to invalid REVERSES its credit and flags.
   (() => {

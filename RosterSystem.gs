@@ -2375,14 +2375,22 @@ function patrolTotalFormula_(PC, r) {
   return `=IF(AND(ISNUMBER(${sd}),ISNUMBER(${st}),ISNUMBER(${ed}),ISNUMBER(${et})),ROUND(((${ed}+${et})-(${sd}+${st}))*24,2),"")`;
 }
 
-/** Flag reason for a COMPLETE patrol log, or '' if valid. Priority: unknown member → bad duration → future → over-max. */
+/**
+ * Evaluate a COMPLETE patrol log → { reason, blocking }. reason='' means valid.
+ *  • BLOCKING (blocking:true) = crediting is impossible/nonsensical, so an admin CANNOT approve it by changing the
+ *    status — the data must be fixed: unknown member, non-positive duration, or an over-a-day span (a date typo).
+ *  • ADVISORY (blocking:false) = a computable but suspicious log (over the hour max, or future-dated). Flagged by
+ *    default, but an admin can APPROVE it by setting the status to Pending/Processed → the hours then credit.
+ * Priority: unknown member → bad duration → over-a-day → over-max → future.
+ */
 function evaluatePatrolLog_(memberRow, startDT, endDT, hours, now) {
-  if (memberRow === -1) return 'Unique ID not on roster.';
-  if (!startDT || !endDT) return 'Missing or invalid start/end.';
-  if (!(hours > 0)) return 'End is not after start.';
-  if (startDT.getTime() > now.getTime() || endDT.getTime() > now.getTime()) return 'Dated in the future.';
-  if (hours > CONFIG.patrol.maxHours) return `Exceeds ${CONFIG.patrol.maxHours} hr max.`;
-  return '';
+  if (memberRow === -1) return { reason: 'Unique ID not on roster.', blocking: true };
+  if (!startDT || !endDT) return { reason: 'Missing or invalid start/end.', blocking: true };
+  if (!(hours > 0)) return { reason: 'End is not after start.', blocking: true };
+  if (hours > 24) return { reason: 'Over 24 hrs — check the dates.', blocking: true }; // a single session can't exceed a day → force a fix, don't let it be approved
+  if (hours > CONFIG.patrol.maxHours) return { reason: `Exceeds ${CONFIG.patrol.maxHours} hr max.`, blocking: false };
+  if (startDT.getTime() > now.getTime() || endDT.getTime() > now.getTime()) return { reason: 'Dated in the future.', blocking: false };
+  return { reason: '', blocking: false };
 }
 
 /**
@@ -2421,9 +2429,16 @@ function processPatrolLog_(sheet, row, PC, roster) {
     if (!complete) {
       if (!curStatus) setStatus(P.pendingStatus); // half-entered → Pending, no credit yet
     } else {
-      const reason = evaluatePatrolLog_(memberRow, startDT, endDT, hours, new Date());
-      if (reason) { setStatus(P.flaggedStatus); setNote(reason); }                                   // invalid → Flagged + reason, no credit
-      else { if (!curStatus || norm_(curStatus) === norm_(P.flaggedStatus)) setStatus(P.pendingStatus); setNote(''); desired = { hours: hours, mid: idv }; } // valid → clear flag + credit
+      const ev = evaluatePatrolLog_(memberRow, startDT, endDT, hours, new Date());
+      // Admin override: an ADVISORY-flagged log the admin has moved to Pending/Processed is approved → credit it.
+      const approved = ev.reason && !ev.blocking && (norm_(curStatus) === norm_(P.pendingStatus) || norm_(curStatus) === norm_(P.processedStatus));
+      if (ev.reason && !approved) {
+        setStatus(P.flaggedStatus); setNote(ev.reason);        // blocking, or advisory not yet approved → Flagged, no credit
+      } else {
+        if (!curStatus || norm_(curStatus) === norm_(P.flaggedStatus)) setStatus(P.pendingStatus); // valid (or just fixed) → clear the auto-flag
+        setNote(ev.reason ? ('Override: ' + ev.reason) : '');  // advisory approved → keep a short trace; fully valid → clear the note
+        desired = { hours: hours, mid: idv };                  // credit the hours
+      }
     }
     reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired);
   } catch (e) { log_('processPatrolLog_', e); }
