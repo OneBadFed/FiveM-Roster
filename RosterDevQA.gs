@@ -61,7 +61,8 @@ function addDevMenu_(prefix) {
       .addItem('19 · v2.5.0 config extensions', p + 'devRunSection19')
       .addItem('20 · New-layout column resolution', p + 'devRunSection20')
       .addItem('21 · Patrol Log tracker', p + 'devRunSection21')
-      .addItem('22 · Internal Roster sync', p + 'devRunSection22'))
+      .addItem('22 · Internal Roster sync', p + 'devRunSection22')
+      .addItem('23 · Roster Signups', p + 'devRunSection23'))
     .addItem('🧹 Delete Sandbox / Results Tabs', p + 'devCleanup')
     .addToUi();
 }
@@ -219,6 +220,7 @@ const DEV_GROUPS = [
   ['New-layout column resolution (sandbox)', devNewLayoutTests_],
   ['Patrol Log tracker (sandbox)', devPatrolLogTests_],
   ['Internal Roster sync (sandbox)', devInternalRosterTests_],
+  ['Roster Signups (sandbox)', devSignupTests_],
 ];
 
 /* ======================================================================
@@ -297,6 +299,7 @@ function devRunSection19() { devRunSectionByIndex_(19); }
 function devRunSection20() { devRunSectionByIndex_(20); }
 function devRunSection21() { devRunSectionByIndex_(21); }
 function devRunSection22() { devRunSectionByIndex_(22); }
+function devRunSection23() { devRunSectionByIndex_(23); }
 
 /* ======================================================================
  * RESULTS FRAMEWORK
@@ -572,6 +575,20 @@ function devBuildDiscLog_(entries) {
   if (entries && entries.length) {
     sh.getRange(2, 2, entries.length, 1).setNumberFormat('@');
     sh.getRange(2, 1, entries.length, 7).setValues(entries.map((e) => [e.date ?? '', e.id ?? '', e.name ?? '', e.action ?? '', e.reason ?? '', e.by ?? '', e.status ?? '']));
+  }
+  return sh;
+}
+
+/** Sandbox signup response tab — the exact shape the Roster Signup form produces, plus the appended Status/Notes. */
+function devBuildSignups_(rows) {
+  const sh = devFreshSheet_('Signups');
+  sh.getRange(1, 1, 1, 13).setValues([['Timestamp', 'Name (in-character)', 'OOC Name', 'Unique ID', 'Email', 'Date of Birth', 'Phone',
+    'Prior Experience', 'Timezone', 'Age Confirmation', 'Why do you want to join?', 'Status', 'Notes']]);
+  if (rows && rows.length) {
+    const out = rows.map((r) => [r.ts ?? devDay_(-1), r.name ?? '', r.ooc ?? '', r.id ?? '', r.email ?? '', r.dob ?? '', r.phone ?? '',
+      r.exp ?? '', r.tz ?? '', r.age ?? '', r.why ?? '', r.status ?? '', r.notes ?? '']);
+    sh.getRange(2, 4, rows.length, 1).setNumberFormat('@'); // Unique ID exact
+    sh.getRange(2, 1, rows.length, 13).setValues(out);
   }
   return sh;
 }
@@ -2603,6 +2620,113 @@ function devInternalRosterTests_() {
     devEq_(R, 'idempotent: second sync adds nothing', s2.added, 0);
     devEq_(R, 'idempotent: second sync writes nothing to internal', s2.toInternal, 0);
     devEq_(R, 'idempotent: second sync writes nothing to public', s2.toPublic, 0);
+  })();
+
+  return R;
+}
+
+/* ======================================================================
+ * SECTION 23 — ROSTER SIGNUPS (sandbox): header resolution, the Pending →
+ * Approved → Processed sort, the review queue, and approveSignup_ — including
+ * its refusals and the "Processed is stamped LAST" guarantee.
+ * ====================================================================== */
+function devSignupTests_() {
+  const R = devNewResults_('Roster Signups (sandbox)');
+  const S = { name: 2, ooc: 3, id: 4, email: 5, dob: 6, phone: 7, status: 12 };  // signup tab
+  const N = { name: 4, id: 5, dob: 11, email: 12, phone: 13 };                    // Internal Roster tab
+  const g = (sh, r, c) => String(sh.getRange(r, c).getDisplayValue()).trim();
+
+  // Header resolution — the form's real question titles, and free-text columns claim nothing.
+  (() => {
+    const SC = signupCols_(devBuildSignups_([]));
+    devEq_(R, 'signupCols_ "Name (in-character)" = 2', SC.name, 2);
+    devEq_(R, 'signupCols_ OOC Name = 3', SC.ooc, 3);
+    devEq_(R, 'signupCols_ Unique ID = 4', SC.discord, 4);
+    devEq_(R, 'signupCols_ Email = 5', SC.email, 5);
+    devEq_(R, 'signupCols_ Date of Birth = 6', SC.dob, 6);
+    devEq_(R, 'signupCols_ Phone = 7', SC.phone, 7);
+    devEq_(R, 'signupCols_ Status = 12', SC.status, 12);
+    const claimed = [SC.name, SC.ooc, SC.discord, SC.email, SC.dob, SC.phone, SC.status, SC.notes];
+    devCheck_(R, 'signupCols_ leaves "Why do you want to join?" unclaimed', claimed.indexOf(11) === -1);
+    devCheck_(R, 'signupCols_ leaves "Prior Experience" unclaimed', claimed.indexOf(8) === -1);
+  })();
+
+  // Sort: a blank status becomes Pending, then Pending → Approved → Processed.
+  (() => {
+    const sh = devBuildSignups_([
+      { name: 'P3', id: devId_(91), status: 'Processed' },
+      { name: 'A2', id: devId_(92), status: 'Approved' },
+      { name: 'P1', id: devId_(93), status: '' }, // a fresh submission
+    ]);
+    devEq_(R, 'sort: all three rows kept', sortSignups_(sh), 3);
+    devEq_(R, 'sort: row0 = Pending', g(sh, 2, S.status), 'Pending');
+    devEq_(R, 'sort: row1 = Approved', g(sh, 3, S.status), 'Approved');
+    devEq_(R, 'sort: row2 = Processed', g(sh, 4, S.status), 'Processed');
+    devEq_(R, 'sort: the blank-status submission is the one stamped Pending', g(sh, 2, S.name), 'P1');
+  })();
+
+  // The review queue shows what still needs action and hides what's done.
+  (() => {
+    const q = signupQueue_(devBuildSignups_([
+      { name: 'Q1', id: devId_(94), status: 'Pending' },
+      { name: 'Q2', id: devId_(95), status: 'Processed' },
+      { name: 'Q3', id: devId_(96), status: 'Approved' },
+    ]), 50);
+    devEq_(R, 'queue: 2 signups awaiting action', q.length, 2);
+    devCheck_(R, 'queue: Processed is excluded', q.every((x) => x.name !== 'Q2'));
+    devCheck_(R, 'queue: carries the private details through', q.some((x) => x.name === 'Q1'));
+  })();
+
+  // Approve: member lands in the slot, PII lands on the Internal Roster, signup flips to Processed.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Existing', id: devId_(97), activity: 'Active', hours: 5 }, { rank: 'Trooper', name: '', id: '' }]);
+    const inn = devBuildInternal_([]);
+    const sh = devBuildSignups_([{ name: 'Recruit', ooc: 'Rec OOC', id: devId_(98), email: 'rec@dept.test', dob: '1995-03-03', phone: '555-0100', status: 'Approved' }]);
+    const slot = CONFIG.rosterStartRow + 1;
+    const res = approveSignup_(sh, 2, ro, inn, slot);
+    devEq_(R, 'approve: name written into the chosen slot', g(ro, slot, CONFIG.roster.name), 'Recruit');
+    devEq_(R, 'approve: Unique ID written exactly', g(ro, slot, CONFIG.roster.discord), devId_(98));
+    devEq_(R, 'approve: signup stamped Processed', g(sh, 2, S.status), 'Processed');
+    devEq_(R, 'approve: Internal Roster row keyed by Unique ID', g(inn, 2, N.id), devId_(98));
+    devEq_(R, 'approve: email copied privately', g(inn, 2, N.email), 'rec@dept.test');
+    devEq_(R, 'approve: DOB copied privately', g(inn, 2, N.dob), '1995-03-03');
+    devEq_(R, 'approve: phone copied privately', g(inn, 2, N.phone), '555-0100');
+    devCheck_(R, 'approve: reports the private fields it copied', res.piiWritten >= 3);
+    devEq_(R, 'approve: the already-filled row was not disturbed', g(ro, CONFIG.rosterStartRow, CONFIG.roster.name), 'Existing');
+  })();
+
+  // Someone already on the roster can't be added twice.
+  (() => {
+    const dup = devId_(99);
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Already', id: dup, activity: 'Active', hours: 5 }, { rank: 'Trooper', name: '', id: '' }]);
+    const sh = devBuildSignups_([{ name: 'Dupe', id: dup, email: 'd@x.test', status: 'Approved' }]);
+    let threw = false;
+    try { approveSignup_(sh, 2, ro, devBuildInternal_([]), CONFIG.rosterStartRow + 1); } catch (e) { threw = true; }
+    devCheck_(R, 'duplicate ID: refused', threw);
+    devEq_(R, 'duplicate ID: signup left actionable', g(sh, 2, S.status), 'Approved');
+    devEq_(R, 'duplicate ID: the open slot stayed empty', g(ro, CONFIG.rosterStartRow + 1, CONFIG.roster.name), '');
+  })();
+
+  // A malformed Unique ID is refused before anything is written anywhere.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: '', id: '' }]);
+    const sh = devBuildSignups_([{ name: 'NoId', id: devBadId_(), status: 'Approved' }]);
+    let threw = false;
+    try { approveSignup_(sh, 2, ro, devBuildInternal_([]), CONFIG.rosterStartRow); } catch (e) { threw = true; }
+    devCheck_(R, 'bad ID: refused', threw);
+    devEq_(R, 'bad ID: signup left actionable', g(sh, 2, S.status), 'Approved');
+    devEq_(R, 'bad ID: nothing written to the roster', g(ro, CONFIG.rosterStartRow, CONFIG.roster.name), '');
+  })();
+
+  // PROCESSED IS STAMPED LAST — a failed roster write must never mark the signup done.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Taken', id: devId_(100), activity: 'Active', hours: 5 }]);
+    const sh = devBuildSignups_([{ name: 'Late', id: devId_(101), status: 'Approved' }]);
+    let threw = false;
+    try { approveSignup_(sh, 2, ro, devBuildInternal_([]), CONFIG.rosterStartRow); } catch (e) { threw = true; } // that slot is filled
+    devCheck_(R, 'stamped-last: a filled slot is refused', threw);
+    devEq_(R, 'stamped-last: signup is still actionable, not Processed', g(sh, 2, S.status), 'Approved');
+    devEq_(R, 'stamped-last: the occupant was not overwritten', g(ro, CONFIG.rosterStartRow, CONFIG.roster.name), 'Taken');
   })();
 
   return R;
