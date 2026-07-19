@@ -36,6 +36,7 @@ function addDevMenu_(prefix) {
   ui.createMenu('🧪 Dev / QA')
     .addItem('🎬 Load Demo Roster (preview)', p + 'seedDemoRoster')
     .addItem('🎲 Add Random LOA (test)', p + 'devAddRandomLOA')
+    .addItem('🚔 Add Random Patrol Log (test)', p + 'devAddRandomPatrol')
     .addSeparator()
     .addItem('▶️ Run ALL Tests', p + 'devRunAllTests')
     .addSubMenu(ui.createMenu('🔬 Run one section')
@@ -116,6 +117,78 @@ function devAddRandomLOA() {
   sortTracker_(buildTrackerRow_(TC, TC.width, { key: key, rank: rank, unit: unit, ooc: ooc, name: name, discord: discord, shift: shift, start: startD, end: endD, status: CONFIG.pendingStatus, notes: '🎲 random test' }), tracker);
   SpreadsheetApp.flush();
   ui.alert('🎲 Add Random LOA', `Added a ${CONFIG.pendingStatus} LOA at the top:\n\n${name || '(unnamed)'} — ${rank}\n${fmtDisplay_(startD)} → ${fmtDisplay_(endD)}\n\nRun it again to add another.`, ui.ButtonSet.OK);
+}
+
+/**
+ * Dev/QA quick tool: add ONE random patrol log to the LIVE Patrol Log — a random roster member (with a valid Unique ID)
+ * + random start/end date+time — through the SAME path as a real entry (auto-fill member, compute TOTAL TIME, credit
+ * the hours, flag if bad, then re-group). ~70% are valid (credit hours); the rest are intentionally bad to demo each
+ * flag (over-max / future-dated / end-before-start). Real test rows — clear a row's cells to remove it (un-credits).
+ */
+function devAddRandomPatrol() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActive();
+  const roster = ss.getSheetByName(CONFIG.sheets.roster);
+  const plName = CONFIG.sheets.patrolLog;
+  const patrol = plName ? ss.getSheetByName(plName) : null;
+  if (!roster) { ui.alert('🚔 Add Random Patrol Log', `Need the "${CONFIG.sheets.roster}" tab.`, ui.ButtonSet.OK); return; }
+  if (!patrol) { ui.alert('🚔 Add Random Patrol Log', plName ? `The Patrol Log tab "${plName}" was not found.` : 'Patrol Log is OFF — set [SHEETS].PATROL_LOG to your Patrol Log tab name.', ui.ButtonSet.OK); return; }
+
+  // Pick a random roster member with a valid Unique ID.
+  const RC = rosterCols_(roster);
+  const rstart = CONFIG.rosterStartRow, rlast = roster.getLastRow(), n = Math.max(0, rlast - rstart + 1);
+  const ranks = n ? roster.getRange(rstart, RC.rank, n, 1).getValues() : [];
+  const names = n ? roster.getRange(rstart, RC.name, n, 1).getValues() : [];
+  const ids = n ? roster.getRange(rstart, RC.discord, n, 1).getDisplayValues() : [];
+  const pick = [];
+  for (let i = 0; i < n; i++) { if (isValidMemberValues_(ranks[i][0], names[i][0]) && isValidId_(String(ids[i][0]).trim())) pick.push(rstart + i); }
+  if (!pick.length) { ui.alert('🚔 Add Random Patrol Log', 'No members with a valid ' + idDigitsLabel_() + '-digit Unique ID to pick from — assign some members first.', ui.ButtonSet.OK); return; }
+  const mrow = pick[Math.floor(Math.random() * pick.length)];
+  const discord = String(roster.getRange(mrow, RC.discord).getDisplayValue()).trim();
+  const name = String(roster.getRange(mrow, RC.name).getDisplayValue()).trim();
+  const rank = String(roster.getRange(mrow, RC.rank).getDisplayValue()).trim();
+
+  // Build a random session. Mostly valid; occasionally bad to demo a flag.
+  const rInt = (a, b) => a + Math.floor(Math.random() * (b - a + 1));
+  const today = todayInSheetTz_();
+  const dayBack = (d) => new Date(today.getFullYear(), today.getMonth(), today.getDate() - d);
+  const dayFwd = (d) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + d);
+  const endFrom = (sD, sh, sm, durH) => { const t = sh * 60 + sm + Math.round(durH * 60); return { eD: new Date(sD.getFullYear(), sD.getMonth(), sD.getDate() + Math.floor(t / 1440)), eh: Math.floor((t % 1440) / 60), em: t % 60 }; };
+  const roll = Math.random();
+  let startD, endD, sh = rInt(6, 13), sm = [0, 15, 30, 45][rInt(0, 3)], eh, em;
+  if (roll < 0.70) { startD = dayBack(rInt(1, 10)); const e = endFrom(startD, sh, sm, rInt(1, 8)); endD = e.eD; eh = e.eh; em = e.em; }          // valid
+  else if (roll < 0.80) { sh = rInt(0, 4); startD = dayBack(rInt(2, 6)); const e = endFrom(startD, sh, sm, rInt(18, 22)); endD = e.eD; eh = e.eh; em = e.em; } // over-max
+  else if (roll < 0.90) { startD = dayFwd(rInt(2, 5)); const e = endFrom(startD, sh, sm, rInt(1, 6)); endD = e.eD; eh = e.eh; em = e.em; }                    // future
+  else { startD = dayBack(rInt(1, 6)); endD = new Date(startD.getFullYear(), startD.getMonth(), startD.getDate()); sh = rInt(14, 20); sm = 0; eh = rInt(1, sh - 2); em = 0; } // end-before-start
+
+  const PC = patrolLogCols_(patrol);
+  if (!PC.discord || !PC.startDate || !PC.endDate || !PC.startTime || !PC.endTime || !PC.status) { ui.alert('🚔 Add Random Patrol Log', 'The Patrol Log header is missing a required column (Unique ID, START/END DATE, START/END TIME, or STATUS).', ui.ButtonSet.OK); return; }
+
+  // Write the inputs at the first free row, then run the REAL path (auto-fill + credit/flag + re-group).
+  const pstart = CONFIG.patrolStartRow, plast = patrol.getLastRow();
+  let row = plast < pstart ? pstart : plast + 1;
+  if (plast >= pstart) { const col = patrol.getRange(pstart, PC.discord, plast - pstart + 1, 1).getDisplayValues(); for (let i = 0; i < col.length; i++) { if (String(col[i][0]).trim() === '') { row = pstart + i; break; } } }
+  const T = (h, m) => new Date(2020, 0, 1, h, m, 0); // time-of-day (fixed date base so the TOTAL formula cancels it out)
+  patrol.getRange(row, PC.discord).setNumberFormat('@').setValue(discord);
+  patrol.getRange(row, PC.startDate).setNumberFormat('d mmm. yyyy').setValue(startD);
+  patrol.getRange(row, PC.endDate).setNumberFormat('d mmm. yyyy').setValue(endD);
+  patrol.getRange(row, PC.startTime).setNumberFormat('h:mm am/pm').setValue(T(sh, sm));
+  patrol.getRange(row, PC.endTime).setNumberFormat('h:mm am/pm').setValue(T(eh, em));
+
+  processPatrolLog_(patrol, row, PC, roster);
+  const status = String(patrol.getRange(row, PC.status).getDisplayValue()).trim();
+  const total = PC.total ? String(patrol.getRange(row, PC.total).getDisplayValue()).trim() : '';
+  const note = PC.notes ? String(patrol.getRange(row, PC.notes).getDisplayValue()).trim() : '';
+  sortPatrolLog_(patrol);
+  SpreadsheetApp.flush();
+
+  const pad = (x) => (x < 10 ? '0' + x : '' + x);
+  const flagged = norm_(status) === norm_(CONFIG.patrol.flaggedStatus);
+  ui.alert('🚔 Add Random Patrol Log',
+    `${name || '(unnamed)'} — ${rank}\n${fmtDisplay_(startD)} ${pad(sh)}:${pad(sm)} → ${fmtDisplay_(endD)} ${pad(eh)}:${pad(em)}\n\n` +
+    (flagged ? `⚠️ ${status} — ${note}\n(no hours credited)` : `✅ ${status} · ${total} credited to ${name || 'the member'}'s hours`) +
+    `\n\nRun again to add another. Clear a row's cells to remove it.`,
+    ui.ButtonSet.OK);
 }
 
 /* ======================================================================
