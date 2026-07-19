@@ -60,7 +60,8 @@ function addDevMenu_(prefix) {
       .addItem('18 · Settings apply', p + 'devRunSection18')
       .addItem('19 · v2.5.0 config extensions', p + 'devRunSection19')
       .addItem('20 · New-layout column resolution', p + 'devRunSection20')
-      .addItem('21 · Patrol Log tracker', p + 'devRunSection21'))
+      .addItem('21 · Patrol Log tracker', p + 'devRunSection21')
+      .addItem('22 · Internal Roster sync', p + 'devRunSection22'))
     .addItem('🧹 Delete Sandbox / Results Tabs', p + 'devCleanup')
     .addToUi();
 }
@@ -217,6 +218,7 @@ const DEV_GROUPS = [
   ['v2.5.0 config extensions (sandbox)', devV25Tests_],
   ['New-layout column resolution (sandbox)', devNewLayoutTests_],
   ['Patrol Log tracker (sandbox)', devPatrolLogTests_],
+  ['Internal Roster sync (sandbox)', devInternalRosterTests_],
 ];
 
 /* ======================================================================
@@ -294,6 +296,7 @@ function devRunSection18() { devRunSectionByIndex_(18); }
 function devRunSection19() { devRunSectionByIndex_(19); }
 function devRunSection20() { devRunSectionByIndex_(20); }
 function devRunSection21() { devRunSectionByIndex_(21); }
+function devRunSection22() { devRunSectionByIndex_(22); }
 
 /* ======================================================================
  * RESULTS FRAMEWORK
@@ -533,6 +536,43 @@ function devBuildPatrolLog_(logs) {
     sh.getRange(CONFIG.patrolStartRow, 1, logs.length, 14).setValues(rows);
   }
   if (DEV_THEME_SANDBOX) devTheme_(sh, hr, 6);
+  return sh;
+}
+
+/** Sandbox Internal Roster (the seeded layout): header row 1, data from row 2. Cols 1-10 mirrored, 11+ private. */
+function devBuildInternal_(rows) {
+  const sh = devFreshSheet_('Internal');
+  sh.getRange(1, 1, 1, 17).setValues([['RANK', 'UNIT NUMBER', 'OOC NAME', 'NAME', 'UNIQUE ID', 'SHIFT', 'HOURS', 'STATUS', 'JOIN DATE', 'LAST PROMOTION',
+    'DATE OF BIRTH', 'EMAIL', 'PHONE', 'DISCIPLINARY ACTIONS', 'LAST ACTION', 'LAST ACTION DATE', 'NOTES']]);
+  if (rows && rows.length) {
+    const out = rows.map((r) => [r.rank ?? '', r.unit ?? '', r.ooc ?? '', r.name ?? '', r.id ?? '', r.shift ?? '',
+      r.hours === undefined ? '' : r.hours, r.activity ?? '', r.join ?? '', r.promo ?? '',
+      r.dob ?? '', r.email ?? '', r.phone ?? '', '', '', '', r.notes ?? '']);
+    sh.getRange(2, 5, rows.length, 1).setNumberFormat('@'); // UNIQUE ID exact
+    sh.getRange(2, 1, rows.length, 17).setValues(out);
+  }
+  return sh;
+}
+
+/** Sandbox _Sync State: the last-synced base the two-way merge compares against. entries:{id, vals:{role:normalized}}. */
+function devBuildSyncState_(entries) {
+  const sh = devFreshSheet_('SyncState');
+  sh.getRange(1, 1, 1, 2).setValues([['Unique ID', 'Last Synced (JSON)']]);
+  if (entries && entries.length) {
+    sh.getRange(2, 1, entries.length, 1).setNumberFormat('@');
+    sh.getRange(2, 1, entries.length, 2).setValues(entries.map((e) => [e.id, JSON.stringify(e.vals || {})]));
+  }
+  return sh;
+}
+
+/** Sandbox Disciplinary Log: Date | Unique ID | Name | Action | Reason | Issued By | Status. */
+function devBuildDiscLog_(entries) {
+  const sh = devFreshSheet_('DiscLog');
+  sh.getRange(1, 1, 1, 7).setValues([['Date', 'Discord ID', 'Name', 'Action', 'Reason', 'Issued By', 'Status']]);
+  if (entries && entries.length) {
+    sh.getRange(2, 2, entries.length, 1).setNumberFormat('@');
+    sh.getRange(2, 1, entries.length, 7).setValues(entries.map((e) => [e.date ?? '', e.id ?? '', e.name ?? '', e.action ?? '', e.reason ?? '', e.by ?? '', e.status ?? '']));
+  }
   return sh;
 }
 
@@ -2378,6 +2418,161 @@ function devPatrolLogTests_() {
     devEq_(R, 'sort: row0 = Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
     devEq_(R, 'sort: row1 = Flagged', String(pl.getRange(PS + 1, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
     devEq_(R, 'sort: row2 = Processed', String(pl.getRange(PS + 2, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
+  })();
+
+  return R;
+}
+
+/* ======================================================================
+ * SECTION 22 — INTERNAL ROSTER SYNC (sandbox): the ID-keyed two-way merge.
+ * New members, each merge direction, conflict resolution, PII safety across a
+ * promotion, retention of departed members, and the discipline summary.
+ * ====================================================================== */
+function devInternalRosterTests_() {
+  const R = devNewResults_('Internal Roster sync (sandbox)');
+  const RS = CONFIG.rosterStartRow;
+  // Internal Roster column positions (seeded layout).
+  const I = { rank: 1, unit: 2, ooc: 3, name: 4, id: 5, shift: 6, hours: 7, status: 8, join: 9, promo: 10, dob: 11, email: 12, dcount: 14, dlast: 15 };
+  const iv = (sh, row, col) => String(sh.getRange(row, col).getDisplayValue()).trim();
+  const pv = (sh, row, col) => String(sh.getRange(row, col).getDisplayValue()).trim();
+
+  // Column resolution on the seeded layout.
+  (() => {
+    const IC = internalCols_(devBuildInternal_([]));
+    devEq_(R, 'internalCols_ RANK = 1', IC.rank, 1);
+    devEq_(R, 'internalCols_ OOC NAME = 3', IC.ooc, 3);
+    devEq_(R, 'internalCols_ NAME = 4 (not OOC NAME)', IC.name, 4);
+    devEq_(R, 'internalCols_ UNIQUE ID = 5', IC.discord, 5);
+    devEq_(R, 'internalCols_ HOURS = 7', IC.hours, 7);
+    devEq_(R, 'internalCols_ STATUS -> activity = 8', IC.activity, 8);
+    devEq_(R, 'internalCols_ LAST PROMOTION = 10 (not LAST ACTION)', IC.promo, 10);
+    devEq_(R, 'internalCols_ DISCIPLINARY ACTIONS = 14', IC.discCount, 14);
+    devEq_(R, 'internalCols_ LAST ACTION = 15', IC.discLast, 15);
+    devEq_(R, 'internalCols_ LAST ACTION DATE = 16', IC.discDate, 16);
+  })();
+
+  // A member on the public roster but not the internal sheet is ADDED (mirrored fields only, PII left blank).
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'New Guy', id: devId_(70), unit: 'S-1', activity: 'Active', hours: 5 }]);
+    const inn = devBuildInternal_([]), st = devBuildSyncState_([]), lg = devBuildDiscLog_([]);
+    const s = syncInternalRoster_(ro, inn, st, lg);
+    devEq_(R, 'new: reports 1 added', s.added, 1);
+    devEq_(R, 'new: Unique ID copied exactly', iv(inn, 2, I.id), devId_(70));
+    devEq_(R, 'new: rank mirrored', iv(inn, 2, I.rank), 'Trooper');
+    devEq_(R, 'new: name mirrored', iv(inn, 2, I.name), 'New Guy');
+    devEq_(R, 'new: hours mirrored', iv(inn, 2, I.hours), '5');
+    devEq_(R, 'new: PII left blank', iv(inn, 2, I.dob), '');
+    devCheck_(R, 'new: _Sync State recorded the member', String(st.getRange(2, 1).getDisplayValue()).trim() === devId_(70));
+  })();
+
+  // Only the PUBLIC side changed → push to internal.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Sergeant', name: 'B', id: devId_(71), activity: 'Active', hours: 12 }]);
+    const inn = devBuildInternal_([{ rank: 'Trooper', name: 'B', id: devId_(71), activity: 'Active', hours: 12, dob: '1990-01-01' }]);
+    const st = devBuildSyncState_([{ id: devId_(71), vals: { rank: 'Trooper', name: 'B', hours: '12', activity: 'Active' } }]);
+    const s = syncInternalRoster_(ro, inn, st, devBuildDiscLog_([]));
+    devEq_(R, 'public→internal: internal rank updated', iv(inn, 2, I.rank), 'Sergeant');
+    devCheck_(R, 'public→internal: counted as a push to internal', s.toInternal >= 1);
+    devEq_(R, 'public→internal: public untouched', pv(ro, RS, CONFIG.roster.rank), 'Sergeant');
+    devEq_(R, 'public→internal: PII preserved', iv(inn, 2, I.dob), '1990-01-01');
+  })();
+
+  // Only the INTERNAL side changed → push to public.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'C', id: devId_(72), activity: 'Active', hours: 8 }]);
+    const inn = devBuildInternal_([{ rank: 'Trooper', name: 'C Updated', id: devId_(72), activity: 'Active', hours: 8 }]);
+    const st = devBuildSyncState_([{ id: devId_(72), vals: { rank: 'Trooper', name: 'C', hours: '8', activity: 'Active' } }]);
+    const s = syncInternalRoster_(ro, inn, st, devBuildDiscLog_([]));
+    devEq_(R, 'internal→public: public name updated', pv(ro, RS, CONFIG.roster.name), 'C Updated');
+    devCheck_(R, 'internal→public: counted as a push to public', s.toPublic >= 1);
+  })();
+
+  // BOTH sides changed the same field → the public roster wins, and it is logged.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Captain', name: 'D', id: devId_(73), activity: 'Active', hours: 9 }]);
+    const inn = devBuildInternal_([{ rank: 'Lieutenant', name: 'D', id: devId_(73), activity: 'Active', hours: 9 }]);
+    const st = devBuildSyncState_([{ id: devId_(73), vals: { rank: 'Trooper', name: 'D', hours: '9', activity: 'Active' } }]);
+    const s = syncInternalRoster_(ro, inn, st, devBuildDiscLog_([]));
+    devEq_(R, 'conflict: public value wins on the internal sheet', iv(inn, 2, I.rank), 'Captain');
+    devEq_(R, 'conflict: public roster keeps its value', pv(ro, RS, CONFIG.roster.rank), 'Captain');
+    devCheck_(R, 'conflict: reported', s.conflicts.length >= 1);
+  })();
+
+  // Both sides already agree → no writes at all.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'E', id: devId_(74), activity: 'Active', hours: 4 }]);
+    const inn = devBuildInternal_([{ rank: 'Trooper', name: 'E', id: devId_(74), activity: 'Active', hours: 4 }]);
+    const st = devBuildSyncState_([{ id: devId_(74), vals: { rank: 'Trooper', name: 'E', hours: '4', activity: 'Active' } }]);
+    const s = syncInternalRoster_(ro, inn, st, devBuildDiscLog_([]));
+    devEq_(R, 'in agreement: nothing pushed to internal', s.toInternal, 0);
+    devEq_(R, 'in agreement: nothing pushed to public', s.toPublic, 0);
+    devEq_(R, 'in agreement: nothing added', s.added, 0);
+  })();
+
+  // PROMOTION SAFETY: the member sits at a DIFFERENT row on each sheet — the merge is keyed by ID, never position.
+  (() => {
+    const ro = devBuildRoster_([
+      { rank: 'Trooper', name: 'First', id: devId_(75), activity: 'Active', hours: 3 },
+      { rank: 'Sergeant', name: 'Promoted', id: devId_(76), activity: 'Active', hours: 7 }, // just promoted on the public roster
+    ]);
+    const inn = devBuildInternal_([ // REVERSED order + PII on the promoted member
+      { rank: 'Trooper', name: 'Promoted', id: devId_(76), activity: 'Active', hours: 7, dob: '1988-05-05', email: 'promoted@dept.test' },
+      { rank: 'Trooper', name: 'First', id: devId_(75), activity: 'Active', hours: 3 },
+    ]);
+    const st = devBuildSyncState_([
+      { id: devId_(76), vals: { rank: 'Trooper', name: 'Promoted', hours: '7', activity: 'Active' } },
+      { id: devId_(75), vals: { rank: 'Trooper', name: 'First', hours: '3', activity: 'Active' } },
+    ]);
+    syncInternalRoster_(ro, inn, st, devBuildDiscLog_([]));
+    devEq_(R, 'promotion: the RIGHT internal row got the new rank (row 2 = the promoted ID)', iv(inn, 2, I.rank), 'Sergeant');
+    devEq_(R, 'promotion: PII stayed with the promoted member', iv(inn, 2, I.dob), '1988-05-05');
+    devEq_(R, 'promotion: their email survived too', iv(inn, 2, I.email), 'promoted@dept.test');
+    devEq_(R, 'promotion: the other member was not disturbed', iv(inn, 3, I.rank), 'Trooper');
+    devEq_(R, 'promotion: and is still the right person', iv(inn, 3, I.id), devId_(75));
+  })();
+
+  // Someone off the public roster keeps their record — PII/history is never auto-deleted.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Still Here', id: devId_(77), activity: 'Active', hours: 6 }]);
+    const inn = devBuildInternal_([
+      { rank: 'Trooper', name: 'Still Here', id: devId_(77), activity: 'Active', hours: 6 },
+      { rank: 'Trooper', name: 'Departed', id: devId_(78), activity: 'Active', hours: 2, dob: '1975-12-12' },
+    ]);
+    const st = devBuildSyncState_([]);
+    const s = syncInternalRoster_(ro, inn, st, devBuildDiscLog_([]));
+    devCheck_(R, 'departed: reported', s.departed >= 1);
+    devEq_(R, 'departed: row kept', iv(inn, 3, I.id), devId_(78));
+    devEq_(R, 'departed: their PII kept', iv(inn, 3, I.dob), '1975-12-12');
+  })();
+
+  // Discipline summary columns are filled from the log (count + latest action).
+  (() => {
+    const ro = devBuildRoster_([
+      { rank: 'Trooper', name: 'Disc One', id: devId_(79), activity: 'Active', hours: 5 },
+      { rank: 'Trooper', name: 'Clean', id: devId_(80), activity: 'Active', hours: 5 },
+    ]);
+    const inn = devBuildInternal_([]), st = devBuildSyncState_([]);
+    const lg = devBuildDiscLog_([
+      { date: devDay_(-30), id: devId_(79), name: 'Disc One', action: 'Warning', reason: 'late', by: 'Cmd', status: 'Closed' },
+      { date: devDay_(-2), id: devId_(79), name: 'Disc One', action: 'Suspension', reason: 'repeat', by: 'Cmd', status: 'Open' },
+    ]);
+    syncInternalRoster_(ro, inn, st, lg);
+    const rowOf = (id) => (iv(inn, 2, I.id) === id ? 2 : 3);
+    const r79 = rowOf(devId_(79));
+    devEq_(R, 'discipline: count = 2 actions', iv(inn, r79, I.dcount), '2');
+    devEq_(R, 'discipline: latest action wins (Suspension)', iv(inn, r79, I.dlast), 'Suspension');
+    devEq_(R, 'discipline: a clean member shows no count', iv(inn, r79 === 2 ? 3 : 2, I.dcount), '');
+  })();
+
+  // A second sync right after the first is a no-op (the base was persisted correctly — no write storm).
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Idem', id: devId_(81), activity: 'Active', hours: 11 }]);
+    const inn = devBuildInternal_([]), st = devBuildSyncState_([]), lg = devBuildDiscLog_([]);
+    syncInternalRoster_(ro, inn, st, lg);
+    const s2 = syncInternalRoster_(ro, inn, st, lg);
+    devEq_(R, 'idempotent: second sync adds nothing', s2.added, 0);
+    devEq_(R, 'idempotent: second sync writes nothing to internal', s2.toInternal, 0);
+    devEq_(R, 'idempotent: second sync writes nothing to public', s2.toPublic, 0);
   })();
 
   return R;
