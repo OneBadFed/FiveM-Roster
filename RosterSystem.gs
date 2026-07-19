@@ -577,6 +577,21 @@ function installDataValidation_() {
   const dateRule = (msg) => SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(true).setHelpText(msg).build();
   const listRule = (vals, msg) => SpreadsheetApp.newDataValidation().requireValueInList(vals, true).setAllowInvalid(true).setHelpText(msg).build();
 
+  // Apply a STATUS dropdown, but PRESERVE an existing one that already offers the same set of values. Apps Script
+  // cannot read or set the per-value dropdown CHIP COLOURS, so blindly re-applying the rule wipes a user's custom
+  // status colours — so we only (re)build the dropdown when it's missing or its value set actually changed.
+  const applyStatusDropdown = (range, wantVals, msg) => {
+    try {
+      const dv = range.getCell(1, 1).getDataValidation();
+      if (dv && dv.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
+        const have = (dv.getCriteriaValues()[0] || []).map((v) => norm_(v)).sort();
+        const want = wantVals.map((v) => norm_(v)).sort();
+        if (have.length === want.length && have.every((v, i) => v === want[i])) return; // same values → leave it (keeps the colours)
+      }
+    } catch (e) { /* unreadable → fall through and (re)apply a fresh dropdown */ }
+    range.setDataValidation(listRule(wantVals, msg));
+  };
+
   // Roster (Member Information) — resolve columns by header so it tracks reorders.
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
   if (roster) {
@@ -603,7 +618,7 @@ function installDataValidation_() {
       // STATUS dropdown values come from [LEAVE] on ⚙️ Config (defaults: Pending/Approved/Denied/Expired). LOA-only tracker: no TYPE column.
       let statusFlow = ['Pending', 'Approved', 'Denied', 'Expired'];
       try { const lv = cfg_().leave; if (lv.STATUS_FLOW.length) statusFlow = lv.STATUS_FLOW; } catch (e) { /* config broken — classic list */ }
-      if (T.status) { tracker.getRange(start, T.status, n, 1).setDataValidation(listRule(statusFlow, 'Choose a leave status.')); counts.tracker++; }
+      if (T.status) { applyStatusDropdown(tracker.getRange(start, T.status, n, 1), statusFlow, 'Choose a leave status.'); counts.tracker++; }
     }
   }
 
@@ -617,7 +632,7 @@ function installDataValidation_() {
       if (PC.startDate) { patrolLog.getRange(pstart, PC.startDate, n, 1).setDataValidation(dateRule('Enter the patrol start date.')); counts.patrolLog++; }
       if (PC.endDate) { patrolLog.getRange(pstart, PC.endDate, n, 1).setDataValidation(dateRule('Enter the patrol end date.')); counts.patrolLog++; }
       const pflow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Processed'];
-      if (PC.status) { patrolLog.getRange(pstart, PC.status, n, 1).setDataValidation(listRule(pflow, 'Patrol status: Pending, Flagged, or Processed.')); counts.patrolLog++; }
+      if (PC.status) { applyStatusDropdown(patrolLog.getRange(pstart, PC.status, n, 1), pflow, 'Patrol status: Pending, Flagged, or Processed.'); counts.patrolLog++; }
     }
   }
   return counts;
