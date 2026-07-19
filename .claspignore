@@ -1,5 +1,9 @@
 # Never push the shim with the engine (D1: it ships only inside community templates)
 TEMPLATE-SHIM.gs
+# Companion for the ADMIN file own script project — defines its own onEdit/onOpen and
+# MUST NOT reach the engine project (it would collide with the real onEdit).
+ADMIN-COMPANION.gs
+ADMIN-COMPANION.html
 # Non-script assets
 _gallery/**
 _files/**
