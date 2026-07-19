@@ -1236,8 +1236,6 @@ function seedAdminSheet_(file) {
   };
   mk(ADMIN_LOG_TAB_, ['Date', 'Discord ID', 'Name', 'Action', 'Reason', 'Issued By', 'Status'], 2);
   ensureWebhookTab_(file);        // per-channel Discord webhooks live here too — the file's ACL gates them
-  ensureInternalRosterTab_(file); // the flat, ID-keyed mirror of the public roster + private PII columns
-  ensureSyncStateTab_(file);      // hidden last-synced snapshot that powers the two-way merge
   const s1 = file.getSheetByName('Sheet1'); // drop the empty default tab on a freshly created file
   if (s1 && file.getSheets().length > 2 && s1.getLastRow() === 0) { try { file.deleteSheet(s1); } catch (e) { /* cosmetic */ } }
 }
@@ -1251,227 +1249,17 @@ function seedAdminSheet_(file) {
  * moving someone on the public roster can never orphan their PII — their record
  * is found by Unique ID and follows them.
  *
- * TWO-WAY MERGE: the hidden _Sync State tab stores the last-synced value of each
- * mirrored field. That base is what lets the sync tell WHICH side changed:
- *   pub===int             → agree, nothing to do
- *   int===base, pub≠base  → public changed  → push to internal
- *   pub===base, int≠base  → internal changed → push to public
- *   both changed          → conflict → the PUBLIC roster wins (that's where
- *                           promotions/hours happen) and the clash is logged
- * Someone on the internal sheet but no longer on the public roster is LEFT
- * ALONE — their PII and disciplinary history are retained, never auto-deleted.
+ * PII lives directly on this workbook's roster — no mirroring, no merge, nothing to reconcile.
  * Columns the engine does not recognize are private and never touched.
  * ------------------------------------------------------------------------- */
 
-const INTERNAL_TAB_ = 'Internal Roster';
-const SYNC_STATE_TAB_ = '_Sync State';
-/** Roles mirrored between the two rosters. UNIQUE ID is the KEY and is never merged. */
-const INTERNAL_SHARED_ = Object.freeze(['rank', 'unit', 'ooc', 'name', 'shift', 'hours', 'activity', 'join', 'promo']);
-/** Seed layout: cols 1-10 mirror the public roster, 11+ are private (extend them freely). */
-const INTERNAL_SEED_ = Object.freeze(['RANK', 'UNIT NUMBER', 'OOC NAME', 'NAME', 'UNIQUE ID', 'SHIFT', 'HOURS', 'STATUS', 'JOIN DATE', 'LAST PROMOTION',
-  'DATE OF BIRTH', 'EMAIL', 'PHONE', 'DISCIPLINARY ACTIONS', 'LAST ACTION', 'LAST ACTION DATE', 'NOTES']);
 
-/** Create the Internal Roster tab with the seed header when absent. An EXISTING tab is left exactly as the operator built it. */
-function ensureInternalRosterTab_(file) {
-  let sh = file.getSheetByName(INTERNAL_TAB_);
-  if (!sh) sh = file.insertSheet(INTERNAL_TAB_);
-  if (sh.getLastRow() === 0) {
-    sh.getRange(1, 1, 1, INTERNAL_SEED_.length).setValues([INTERNAL_SEED_.slice()]);
-    sh.setFrozenRows(1);
-    sh.getRange(1, 5, sh.getMaxRows(), 1).setNumberFormat('@'); // UNIQUE ID stays exact text
-  }
-  try {
-    const w = Math.max(sh.getLastColumn(), 1);
-    sh.getRange(1, 1, 1, w).setFontWeight('bold').setBackground(theme_('BANNER')).setFontColor(theme_('TEXT_STRONG'));
-  } catch (e) { /* cosmetic */ }
-  return sh;
-}
 
-/** The hidden last-synced snapshot tab (Unique ID | JSON of mirrored values) that powers the two-way merge. */
-function ensureSyncStateTab_(file) {
-  let sh = file.getSheetByName(SYNC_STATE_TAB_);
-  if (!sh) { sh = file.insertSheet(SYNC_STATE_TAB_); sh.appendRow(['Unique ID', 'Last Synced (JSON)']); }
-  if (!sh.isSheetHidden()) { try { sh.hideSheet(); } catch (e) { /* best-effort */ } }
-  return sh;
-}
 
-/** Header-resolve the Internal Roster's columns (header row 1). 0 = absent — the engine only touches what it resolves. */
-function internalCols_(sheet) {
-  const out = { rank: 0, unit: 0, ooc: 0, name: 0, discord: 0, shift: 0, hours: 0, activity: 0, join: 0, promo: 0, discCount: 0, discLast: 0, discDate: 0, width: 0 };
-  try {
-    const lastCol = Math.max(sheet.getLastColumn(), 1);
-    const hdr = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
-    // EXACT header match wins over a substring match, so a PRIVATE column that merely contains a reserved word
-    // ("Emergency Contact Name", "Employment Status", "Rank History") can never hijack a mirrored role and get
-    // overwritten with roster data. Substring matching is only the fallback when no exact header exists.
-    const exact = (l) => { const k = norm_(l); for (let c = 0; c < hdr.length; c++) { if (hdr[c] === k) return c + 1; } return 0; };
-    const all = (...toks) => { for (let c = 0; c < hdr.length; c++) { if (toks.every((t) => hdr[c].indexOf(norm_(t)) !== -1)) return c + 1; } return 0; };
-    out.rank = exact('RANK') || all('RANK');
-    out.unit = exact('UNIT NUMBER') || exact('UNIT') || exact('CALLSIGN') || all('UNIT') || all('CALLSIGN');
-    out.ooc = exact('OOC NAME') || all('OOC');
-    out.name = exact('NAME');
-    if (!out.name) { for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } } // a NAME that isn't "OOC NAME"
-    out.discord = exact('UNIQUE ID') || all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
-    out.shift = exact('SHIFT') || all('SHIFT') || all('DIVISION') || all('DISTRICT');
-    out.hours = exact('HOURS') || all('HOURS');
-    out.activity = exact('STATUS') || exact('ACTIVITY') || all('STATUS') || all('ACTIVITY');
-    out.join = exact('JOIN DATE') || all('JOIN');
-    out.promo = exact('LAST PROMOTION') || all('PROMOT');
-    out.discCount = exact('DISCIPLINARY ACTIONS') || all('DISCIPLINARY');
-    out.discDate = exact('LAST ACTION DATE') || all('LAST', 'ACTION', 'DATE');
-    out.discLast = exact('LAST ACTION');
-    if (!out.discLast) { for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf(norm_('LAST')) !== -1 && hdr[c].indexOf(norm_('ACTION')) !== -1 && (c + 1) !== out.discDate) { out.discLast = c + 1; break; } } }
-    out.width = lastCol;
-  } catch (e) { log_('internalCols_', e); }
-  return out;
-}
 
-/** Normalize a cell value for change detection (dates by timestamp, everything else trimmed text). */
-function svNorm_(v) {
-  if (v instanceof Date) return 'D' + v.getTime();
-  if (v === null || v === undefined) return '';
-  return String(v).trim();
-}
 
-/**
- * Injectable core: two-way, ID-keyed merge between the public roster and the Internal Roster. Writes ONLY the cells
- * that actually changed and never touches an unrecognized (private) internal column. @return {Object} summary. Testable.
- */
-function syncInternalRoster_(roster, internal, state, logSheet) {
-  const sum = { added: 0, toInternal: 0, toPublic: 0, conflicts: [], departed: 0, members: 0 };
-  const RC = rosterCols_(roster), IC = internalCols_(internal);
-  if (!RC.discord || !IC.discord) return sum;
-  const pairs = INTERNAL_SHARED_.filter((k) => RC[k] && IC[k]).map((k) => ({ k: k, p: RC[k], i: IC[k] })); // roles present on BOTH sides
 
-  // ---- public roster ----
-  const rStart = CONFIG.rosterStartRow, rLast = roster.getLastRow(), pub = {};
-  if (rLast >= rStart) {
-    const n = rLast - rStart + 1;
-    const wide = roster.getRange(rStart, 1, n, Math.max(roster.getLastColumn(), 1)).getValues();
-    const pids = roster.getRange(rStart, RC.discord, n, 1).getDisplayValues();
-    for (let i = 0; i < n; i++) {
-      const id = String(pids[i][0]).trim();
-      if (!id || !isValidId_(id)) continue;
-      if (RC.rank && RC.name && !isValidMemberValues_(wide[i][RC.rank - 1], wide[i][RC.name - 1])) continue;
-      const vals = {}; pairs.forEach((pr) => { vals[pr.k] = wide[i][pr.p - 1]; });
-      pub[id] = { row: rStart + i, vals: vals };
-    }
-  }
 
-  // ---- internal roster ----
-  const iLast = internal.getLastRow(), int = {};
-  if (iLast >= 2) {
-    const n = iLast - 1;
-    const wide = internal.getRange(2, 1, n, Math.max(internal.getLastColumn(), 1)).getValues();
-    const iids = internal.getRange(2, IC.discord, n, 1).getDisplayValues();
-    for (let i = 0; i < n; i++) {
-      const id = String(iids[i][0]).trim();
-      if (!id) continue;
-      const vals = {}; pairs.forEach((pr) => { vals[pr.k] = wide[i][pr.i - 1]; });
-      int[id] = { row: 2 + i, vals: vals };
-    }
-  }
-
-  // ---- last-synced base ----
-  const base = {}, sLast = state.getLastRow();
-  if (sLast >= 2) {
-    state.getRange(2, 1, sLast - 1, 2).getDisplayValues().forEach((r) => {
-      const id = String(r[0]).trim(); if (!id) return;
-      try { base[id] = JSON.parse(r[1] || '{}'); } catch (e) { base[id] = {}; }
-    });
-  }
-
-  // ---- merge ----
-  const nextBase = {};
-  Object.keys(pub).forEach((id) => {
-    sum.members++;
-    const b = base[id] || {};
-    if (!int[id]) { // not on the internal sheet yet → append the member with the public's values (PII left blank)
-      const row = Math.max(internal.getLastRow() + 1, 2);
-      adminEnsureRow_(internal, row);
-      internal.getRange(row, IC.discord).setNumberFormat('@').setValue(id);
-      nextBase[id] = {};
-      pairs.forEach((pr) => {
-        const v = pub[id].vals[pr.k];
-        if (svNorm_(v) !== '') internal.getRange(row, pr.i).setValue(v);
-        nextBase[id][pr.k] = svNorm_(v);
-      });
-      int[id] = { row: row, vals: Object.assign({}, pub[id].vals) };
-      sum.added++;
-      return;
-    }
-    nextBase[id] = {};
-    pairs.forEach((pr) => {
-      const pv = pub[id].vals[pr.k], iv = int[id].vals[pr.k];
-      const pn = svNorm_(pv), inn = svNorm_(iv), bn = svNorm_(b[pr.k] === undefined ? '' : b[pr.k]);
-      if (pn === inn) { nextBase[id][pr.k] = pn; return; }                       // already agree
-      const pubChanged = pn !== bn, intChanged = inn !== bn;
-      if (pubChanged && intChanged) {                                            // both moved → public wins
-        internal.getRange(int[id].row, pr.i).setValue(pv); sum.toInternal++;
-        sum.conflicts.push(`${id} · ${pr.k}: kept public "${pn}" over internal "${inn}"`);
-        nextBase[id][pr.k] = pn;
-      } else if (pubChanged) {
-        internal.getRange(int[id].row, pr.i).setValue(pv); sum.toInternal++;
-        nextBase[id][pr.k] = pn;
-      } else {                                                                    // only the internal side moved
-        roster.getRange(pub[id].row, pr.p).setValue(iv); sum.toPublic++;
-        nextBase[id][pr.k] = inn;
-      }
-    });
-  });
-  Object.keys(int).forEach((id) => { if (!pub[id]) { sum.departed++; nextBase[id] = base[id] || {}; } }); // off the public roster → record kept
-
-  try { internalDisciplineSummary_(internal, IC, logSheet, int); } catch (e) { log_('syncInternalRoster_.discipline', e); }
-
-  // ---- persist the new base ----
-  const out = Object.keys(nextBase).map((id) => [id, JSON.stringify(nextBase[id])]);
-  if (out.length + 1 > state.getMaxRows()) state.insertRowsAfter(state.getMaxRows(), out.length + 1 - state.getMaxRows());
-  if (state.getLastRow() > 1) state.getRange(2, 1, state.getLastRow() - 1, 2).clearContent();
-  if (out.length) { state.getRange(2, 1, out.length, 1).setNumberFormat('@'); state.getRange(2, 1, out.length, 2).setValues(out); }
-  return sum;
-}
-
-/** Fill the Internal Roster's discipline summary columns (count · latest action · latest date) from the Disciplinary Log. */
-function internalDisciplineSummary_(internal, IC, logSheet, intMap) {
-  if (!logSheet || (!IC.discCount && !IC.discLast && !IC.discDate)) return;
-  const last = logSheet.getLastRow(), agg = {};
-  if (last >= 2) {
-    logSheet.getRange(2, 1, last - 1, 7).getDisplayValues().forEach((r) => { // Date | ID | Name | Action | Reason | By | Status
-      const id = String(r[1]).trim(); if (!id) return;
-      const when = new Date(r[0]);
-      const a = agg[id] || (agg[id] = { n: 0, when: null, action: '' });
-      a.n++;
-      if (!isNaN(when.getTime()) && (!a.when || when.getTime() >= a.when.getTime())) { a.when = when; a.action = String(r[3] || '').trim(); }
-    });
-  }
-  Object.keys(intMap).forEach((id) => {
-    const a = agg[id] || { n: 0, when: null, action: '' }, row = intMap[id].row;
-    if (IC.discCount) internal.getRange(row, IC.discCount).setValue(a.n || '');
-    if (IC.discLast) internal.getRange(row, IC.discLast).setValue(a.action || '');
-    if (IC.discDate) internal.getRange(row, IC.discDate).setValue(a.when || '');
-  });
-}
-
-/** Entry point: two-way sync with the ACL-protected Internal Roster. Safe no-op when no admin file is linked. */
-function syncInternalRoster() {
-  const file = adminFile_();
-  if (!file) return { linked: false };
-  const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
-  if (!roster) return { linked: true, missing: true };
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) return false;
-  try {
-    const internal = ensureInternalRosterTab_(file);
-    const state = ensureSyncStateTab_(file);
-    let logSheet = file.getSheetByName(ADMIN_LOG_TAB_);
-    if (!logSheet) { seedAdminSheet_(file); logSheet = file.getSheetByName(ADMIN_LOG_TAB_); }
-    const sum = syncInternalRoster_(roster, internal, state, logSheet);
-    try { const sg = file.getSheetByName(CONFIG.sheets.signups); if (sg) { ensureSignupTab_(file); sortSignups_(sg); } } catch (e) { log_('syncInternalRoster.signups', e); } // stamp new submissions Pending + re-group
-    if (sum.conflicts.length) logWarn_('syncInternalRoster', `${sum.conflicts.length} conflict(s), public kept: ${sum.conflicts.slice(0, 10).join(' | ')}`);
-    logInfo_('syncInternalRoster', `${sum.members} member(s): +${sum.added} new, ${sum.toInternal}→internal, ${sum.toPublic}→public, ${sum.departed} off-roster kept.`);
-    return Object.assign({ linked: true }, sum);
-  } finally { lock.releaseLock(); }
-}
 
 /* -------------------------------------------------------------------------
  * ROSTER SIGNUPS — a Google Form whose responses land INSIDE the protected
@@ -1577,12 +1365,28 @@ function signupQueue_(sheet, cap) {
   return out;
 }
 
+/** Resolve the roster's PRIVATE columns (only present on an internal roster). 0 = absent → that detail simply isn't stored. */
+function rosterPiiCols_(roster) {
+  const out = { email: 0, dob: 0, phone: 0 };
+  try {
+    const RC = rosterCols_(roster);
+    const hr = RC.headerRow || CONFIG.headerRow;
+    const hdr = roster.getRange(hr, 1, 1, Math.max(roster.getLastColumn(), 1)).getDisplayValues()[0].map((h) => norm_(h));
+    const exact = (l) => { const k = norm_(l); for (let c = 0; c < hdr.length; c++) { if (hdr[c] === k) return c + 1; } return 0; };
+    const all = (t) => { for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf(norm_(t)) !== -1) return c + 1; } return 0; };
+    out.email = exact('EMAIL') || all('EMAIL');
+    out.dob = exact('DATE OF BIRTH') || all('BIRTH') || all('DOB');
+    out.phone = exact('PHONE') || all('PHONE');
+  } catch (e) { log_('rosterPiiCols_', e); }
+  return out;
+}
+
 /**
- * Injectable core: approve ONE signup — assign the member to an open roster slot, write their private details onto the
- * Internal Roster (keyed by Unique ID), then stamp the signup Processed. Throws with a clear message on any bad input,
- * and only stamps Processed after the roster write succeeds, so a failure leaves the signup actionable. Testable.
+ * Injectable core: approve ONE signup — assign the member to an open roster slot, write their private details onto that
+ * same roster row, then stamp the signup Processed. Throws with a clear message on any bad input, and only stamps
+ * Processed after the roster write succeeds, so a failure leaves the signup actionable. Testable.
  */
-function approveSignup_(signups, row, roster, internal, slotRow) {
+function approveSignup_(signups, row, roster, slotRow) {
   const SC = signupCols_(signups);
   if (!SC.discord || !SC.name) throw new Error('The signup tab has no Unique ID / Name column.');
   const g = (c) => c ? String(signups.getRange(row, c).getDisplayValue()).trim() : '';
@@ -1595,26 +1399,14 @@ function approveSignup_(signups, row, roster, internal, slotRow) {
   const RC = rosterCols_(roster);
   if (RC.ooc && g(SC.ooc)) roster.getRange(slotRow, RC.ooc).setValue(g(SC.ooc));
 
-  // Private details → Internal Roster (upsert by Unique ID; the sync fills the mirrored columns on its next pass).
+  // Private details go straight onto the member's own roster row — this workbook IS the internal roster.
   let piiWritten = 0;
   try {
-    if (internal) {
-      const IC = internalCols_(internal);
-      if (IC.discord) {
-        let r = -1;
-        const last = internal.getLastRow();
-        if (last >= 2) {
-          const ids = internal.getRange(2, IC.discord, last - 1, 1).getDisplayValues();
-          for (let i = 0; i < ids.length; i++) { if (String(ids[i][0]).trim() === id) { r = 2 + i; break; } }
-        }
-        if (r === -1) { r = Math.max(last + 1, 2); adminEnsureRow_(internal, r); internal.getRange(r, IC.discord).setNumberFormat('@').setValue(id); }
-        const put = (c, v) => { if (c && v) { internal.getRange(r, c).setNumberFormat('@').setValue(v); piiWritten++; } };
-        put(IC.email, g(SC.email)); put(IC.dob, g(SC.dob)); put(IC.phone, g(SC.phone));
-        if (IC.name && name) internal.getRange(r, IC.name).setValue(name);
-      }
-    }
-  } catch (e) { log_('approveSignup_.pii', e); } // roster write already succeeded — never fail the approval over PII copy
-  signups.getRange(row, SC.status).setValue(SIGNUP_STATUSES_[2]); // Processed — last, so a failure above leaves it actionable
+    const P = rosterPiiCols_(roster);
+    const put = (c, v) => { if (c && v) { roster.getRange(slotRow, c).setNumberFormat('@').setValue(v); piiWritten++; } };
+    put(P.email, g(SC.email)); put(P.dob, g(SC.dob)); put(P.phone, g(SC.phone));
+  } catch (e) { log_('approveSignup_.pii', e); } // the roster write already succeeded — never fail an approval over the PII copy
+  signups.getRange(row, SC.status).setValue(SIGNUP_STATUSES_[2]); // Processed — LAST, so a failure above leaves it actionable
   return { ok: true, name: name, discord: id, slotRow: slotRow, piiWritten: piiWritten };
 }
 
@@ -1702,26 +1494,13 @@ function cpSignupApprove(payload) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw new Error('Another roster operation is running — try again in a moment.');
   try {
-    const res = approveSignup_(sh, row, roster, ensureInternalRosterTab_(file), slotRow);
+    const res = approveSignup_(sh, row, roster, slotRow);
     try { sortSignups_(sh); } catch (e) { log_('cpSignupApprove.sort', e); }
     try { cpAudit_('signup-approved', '', res.name, `row ${slotRow}`, res.name); } catch (e) { /* audit is best-effort */ }
     return res;
   } finally { lock.releaseLock(); }
 }
 
-/** Menu: run the internal-roster sync now and report what moved. */
-function syncInternalRosterNow() {
-  runAction_('Sync Internal Roster', () => {
-    const ui = SpreadsheetApp.getUi();
-    const res = syncInternalRoster();
-    if (res === false) { ui.alert('Sync skipped — another roster operation is running.'); return; }
-    if (!res.linked) { ui.alert('🔒 Internal Roster', 'No admin file is linked yet.\n\nOpen 🎛️ Control Panel ▸ Admin and link (or create) the protected admin spreadsheet first.', ui.ButtonSet.OK); return; }
-    if (res.missing) { ui.alert(`The roster tab "${CONFIG.sheets.roster}" was not found.`); return; }
-    ui.alert('🔒 Internal Roster synced',
-      `${res.members} member(s)\n• ${res.added} added to the internal roster\n• ${res.toInternal} field(s) pushed → internal\n• ${res.toPublic} field(s) pushed → public\n• ${res.departed} record(s) kept for people off the public roster` +
-      (res.conflicts.length ? `\n\n⚠️ ${res.conflicts.length} conflict(s) — the public roster won:\n${res.conflicts.slice(0, 8).join('\n')}` : ''), ui.ButtonSet.OK);
-  });
-}
 
 /** Grow the grid when a write would land past the last row (a full 1000-row grid would otherwise throw). */
 function adminEnsureRow_(sheet, r) {
@@ -1828,10 +1607,10 @@ function cpAdminSetup(payload) {
   // Warn about pre-existing rows whose ID column was hand-typed as a NUMBER (precision already lost at entry — flag, can't repair).
   let badIds = 0;
   try {
-    const d = file.getSheetByName(INTERNAL_TAB_);
-    const IC = d ? internalCols_(d) : null;
-    if (d && IC && IC.discord && d.getLastRow() >= 2) {
-      d.getRange(2, IC.discord, d.getLastRow() - 1, 1).getDisplayValues().forEach((r) => {
+    const d = file.getSheetByName(CONFIG.sheets.signups);
+    const SC = d ? signupCols_(d) : null;
+    if (d && SC && SC.discord && d.getLastRow() >= 2) {
+      d.getRange(2, SC.discord, d.getLastRow() - 1, 1).getDisplayValues().forEach((r) => {
         const v = String(r[0]).trim();
         if (v !== '' && !isValidId_(v)) badIds++;
       });

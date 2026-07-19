@@ -318,7 +318,6 @@ function buildMenus_(prefix) {
       .addItem('👁️ Show All Columns', p + 'showAllRosterColumns')
       .addSeparator()
       // Setup & wiring (run rarely)
-      .addItem('🔒 Sync Internal Roster', p + 'syncInternalRosterNow')
       .addItem('🧾 Create Roster Signup Form', p + 'createSignupForm')
       .addSubMenu(SpreadsheetApp.getUi().createMenu('🆔 Unique ID Type')
         .addItem('Discord ID (17–19 digits)', p + 'idTypeDiscord')
@@ -359,7 +358,7 @@ function onOpenLib(libId) {
 /** Creates the installable triggers (form submit + daily check), replacing any duplicates. */
 function installTriggers() {
   runAction_('Install Triggers', () => {
-    const keep = { onFormSubmit: true, processDailyLOAs: true, syncInternalRoster: true };
+    const keep = { onFormSubmit: true, processDailyLOAs: true };
     ScriptApp.getProjectTriggers().forEach((t) => {
       if (keep[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t);
     });
@@ -367,22 +366,12 @@ function installTriggers() {
     const hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; // [SCHEDULE].NIGHTLY_HOUR — default 0 (midnight, the classic behavior)
     ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
     ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(hour).everyDays(1).create();
-    // Internal Roster two-way sync. A SIMPLE onEdit can't reach another file (restricted auth), so near-live sync
-    // is a periodic installable trigger; 0 turns it off (nightly / Refresh / the menu action still sync).
-    let syncLine = '';
-    try {
-      const mins = parseInt(cfg_().kv.SCHEDULE.INTERNAL_SYNC_MINUTES, 10) || 0;
-      if (mins > 0 && typeof syncInternalRoster === 'function') {
-        ScriptApp.newTrigger('syncInternalRoster').timeBased().everyMinutes(mins).create();
-        syncLine = `\n• Internal Roster sync (every ${mins} min)`;
-      }
-    } catch (e) { log_('installTriggers.internalSync', e); }
     // v2.5.0 — ONE installer: also (re)install the Extras triggers when that companion file is present (integrity scan,
     // coverage rebuild, cadence-aware hours reset). Guarded so a bound project WITHOUT RosterExtras.gs still installs core.
     let extrasLine = '';
     try { if (typeof installExtrasTriggers_ === 'function') { const rd = installExtrasTriggers_(); extrasLine = `\n• Integrity scan (7am), coverage rebuild (6am)\n• Hours reset — ${rd}`; } } catch (e) { log_('installTriggers.extras', e); }
     logInfo_('installTriggers', `installed core triggers (daily hour ${hour})${extrasLine ? ' + extras' : ''}.`);
-    SpreadsheetApp.getUi().alert(`✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})${syncLine}${extrasLine}`);
+    SpreadsheetApp.getUi().alert(`✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})${extrasLine}`);
   });
 }
 
@@ -1021,8 +1010,6 @@ function refreshDashboard() {
     } finally {
       lock.releaseLock();
     }
-    // Internal Roster two-way merge — AFTER the lock releases (syncInternalRoster takes its own).
-    try { if (typeof syncInternalRoster === 'function') syncInternalRoster(); } catch (e) { log_('refreshDashboard.internal', e); }
     // Deferred side-effects for the form path (post after the lock, like manualSyncLOA does).
     newLeaves.forEach((L) => { try { sendDiscordWebhook(L.name, L.rank, L.callsign, L.type, L.startStr, L.endStr, L.durationStr, L.discord); } catch (e) { log_('refreshDashboard.leafwh', e); } });
     if (newLeaves.length && typeof auditEvent_ === 'function') {
@@ -1736,8 +1723,6 @@ function processDailyLOAs() {
     } finally {
       lock.releaseLock();
     }
-    // Internal Roster two-way merge — AFTER the lock releases (syncInternalRoster takes its own).
-    try { if (typeof syncInternalRoster === 'function') syncInternalRoster(); } catch (e) { log_('processDailyLOAs.internal', e); }
     // Confirm to the operator on a MANUAL run only — the daily trigger runs headless (no UI), so getUi() is guarded.
     if (summary) {
       let ui = null; try { ui = SpreadsheetApp.getUi(); } catch (e) { /* time-driven trigger context — no UI */ }

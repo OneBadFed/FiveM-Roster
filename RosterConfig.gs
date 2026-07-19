@@ -410,7 +410,6 @@ const BLOCK_SPECS_ = Object.freeze({
     WEEKLY_HOURS_RESET: { t: 'enum', d: 'SUN', req: true, enum: ['OFF', 'SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], help: 'Weekday for WEEKLY/BIWEEKLY reset (captures history BEFORE zeroing — resolved G1). OFF disables the reset regardless of cadence.' },
     WEEKLY_RESET_HOUR: { t: 'int', d: 23, req: true, min: 0, max: 23, help: 'Hour of day for the reset trigger.' },
     RESET_DOM: { t: 'int', d: 1, req: true, min: 1, max: 28, help: 'Day of month the reset runs under MONTHLY cadence (1–28, v2.5.0).' },
-    INTERNAL_SYNC_MINUTES: { t: 'enum', d: '15', req: false, enum: ['0', '5', '10', '15', '30', '60'], help: 'How often the Internal Roster two-way sync runs (minutes). 0 = no periodic trigger (it still runs nightly, on Refresh & Update All, and from the 🔒 Sync Internal Roster menu). Re-run 🔌 Install Triggers after changing this.' },
   } },
   LOGGING: { type: 'kv', keys: {
     LOG_LEVEL: { t: 'enum', d: 'INFO', req: true, enum: ['ERROR', 'WARN', 'INFO', 'DEBUG'], help: 'Minimum severity written to the SYS Log.' },
