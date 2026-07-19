@@ -70,7 +70,6 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpDeleteDividerStyle: (label) => cpDeleteDividerStyle(label),
   cpAdminSetup: (p) => cpAdminSetup(p),
   cpAdminInfo: (id) => cpAdminInfo(id),
-  cpAdminSave: (p) => cpAdminSave(p),
   cpAddDiscipline: (p) => cpAddDiscipline(p),
 });
 
@@ -1186,7 +1185,6 @@ function cpDeleteDividerStyle(label) {
  * ------------------------------------------------------------------------- */
 
 const ADMIN_SHEET_PROP_ = 'ADMIN_ROSTER_ID';
-const ADMIN_DETAILS_TAB_ = 'Member Details';
 const ADMIN_LOG_TAB_ = 'Disciplinary Log';
 
 /** The linked admin spreadsheet, opened AS THE CURRENT USER — throws Google's permission error for non-admins (that's the gate). @return {Spreadsheet|null} null when no file is linked. */
@@ -1480,64 +1478,22 @@ function syncInternalRosterNow() {
   });
 }
 
-/** The Member Details FIELD columns — everything after Discord ID + Name with a non-empty header, in sheet order (capped). The header row IS the schema: add a column in the admin file → a new private field everywhere. */
-const ADMIN_MAX_FIELDS_ = 30;
-function adminFieldCols_(details) {
-  const lastCol = details.getLastColumn();
-  if (lastCol < 3) return [];
-  const hdr = details.getRange(1, 3, 1, lastCol - 2).getDisplayValues()[0];
-  const out = [];
-  const seen = {}; // DUPLICATE labels: keep the FIRST column only — labels key the read/render/save round-trip, so a
-  for (let c = 0; c < hdr.length && out.length < ADMIN_MAX_FIELDS_; c++) { // second same-named column would get silently clobbered by every save
-    const label = String(hdr[c] || '').trim();
-    if (label === '' || seen[norm_(label)]) continue;
-    seen[norm_(label)] = true;
-    out.push({ col: 3 + c, label: label });
-  }
-  return out;
-}
-
-/** Is this header label an actual email-address field? Whole-label match only — 'Voicemail' or 'Email Preferences' are free text. */
-function adminIsEmailLabel_(label) {
-  return /^E[- ]?MAIL( ADDRESS)?$/.test(norm_(label));
-}
-
 /** Grow the grid when a write would land past the last row (a full 1000-row grid would otherwise throw). */
 function adminEnsureRow_(sheet, r) {
   if (r > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 100);
 }
 
-/**
- * The admin tabs, seeding them if missing. `details` is the RETIRED "Member Details" grid — it is no longer created,
- * so it is null on any new file; PII now lives on the Internal Roster tab. Callers must tolerate a null `details`.
- */
+/** The admin tabs, seeding them if missing. PII lives on the Internal Roster tab; this resolves the Disciplinary Log. */
 function adminTabs_(file) {
   let l = file.getSheetByName(ADMIN_LOG_TAB_);
   if (!l) { seedAdminSheet_(file); l = file.getSheetByName(ADMIN_LOG_TAB_); }
-  return { details: file.getSheetByName(ADMIN_DETAILS_TAB_) || null, log: l };
+  return { log: l };
 }
 
-/** Injectable core: the details row holding this exact Discord ID, or -1. */
-function adminDetailsRow_(details, discordId) {
-  const id = String(discordId == null ? '' : discordId).trim();
-  const last = details.getLastRow();
-  if (!id || last < 2) return -1;
-  const ids = details.getRange(2, 1, last - 1, 1).getDisplayValues();
-  for (let i = 0; i < ids.length; i++) { if (String(ids[i][0]).trim() === id) return 2 + i; }
-  return -1;
-}
-
-/** Injectable core: one member's details (every discovered field, in sheet order) + disciplinary history (newest first, capped — default 50). Testable. */
-function cpAdminRead_(details, logSheet, discordId, cap) {
+/** Injectable core: one member's disciplinary history (newest first, capped — default 50). Testable. */
+function cpAdminRead_(logSheet, discordId, cap) {
   cap = (typeof cap === 'number' && cap > 0) ? cap : 50;
-  const fields = details ? adminFieldCols_(details) : []; // retired Member Details grid — absent on new files
-  const out = { fields: fields.map((f) => ({ label: f.label, value: '' })), discipline: [] };
-  const r = details ? adminDetailsRow_(details, discordId) : -1;
-  if (r !== -1 && fields.length) {
-    const width = fields[fields.length - 1].col;
-    const v = details.getRange(r, 1, 1, width).getDisplayValues()[0];
-    out.fields = fields.map((f) => ({ label: f.label, value: String(v[f.col - 1] == null ? '' : v[f.col - 1]).trim() }));
-  }
+  const out = { discipline: [] }; // PII fields now live on the Internal Roster tab (edited there, synced by Unique ID)
   const last = logSheet.getLastRow();
   if (last >= 2) {
     const id = String(discordId == null ? '' : discordId).trim();
@@ -1550,48 +1506,6 @@ function cpAdminRead_(details, logSheet, discordId, cap) {
   return out;
 }
 
-/**
- * Injectable core: upsert a member's private fields. `payload.fields` = { <header label>: value } — only labels that
- * exist in the header row are written (unknown labels are ignored, never create columns), and ONLY provided fields are
- * touched (other columns keep their values). An EMAIL-named field is validated BEFORE truncation (overlong/invalid is
- * rejected, never mangled). Every written cell is '@'-formatted FIRST so a value starting '=' stays literal text
- * (an unformatted setValue would execute it as a live formula — an injection into the admin file).
- */
-function cpAdminUpsert_(details, payload) {
-  if (!details) throw new Error('The "Member Details" grid has been retired — PII now lives on the Internal Roster tab of the admin file.');
-  const id = String((payload && payload.discordId) || '').trim();
-  if (!isValidId_(id)) throw new Error('Unique ID must be ' + idDigitsLabel_() + ' digits.');
-  const name = clamp_(String((payload && payload.name) || '').trim(), 120);
-  const given = (payload && payload.fields && typeof payload.fields === 'object') ? payload.fields : {};
-  const cols = adminFieldCols_(details);
-  const writes = []; // {col, value} — validated BEFORE any cell is touched (reject = nothing written)
-  const matched = {}; // labels we found a column for — anything else provided is IGNORED and must be reported, not silently dropped
-  cols.forEach((f) => {
-    if (!Object.prototype.hasOwnProperty.call(given, f.label)) return; // untouched field — keep its current value
-    matched[f.label] = true;
-    let v = String(given[f.label] == null ? '' : given[f.label]).trim();
-    if (adminIsEmailLabel_(f.label)) { // strict whole-label match — 'Voicemail'/'Email Preferences' are free text
-      if (v.length > 200) throw new Error(`${f.label} is too long.`);
-      if (v !== '' && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v)) throw new Error(`${f.label} does not look like a valid email.`);
-    } else {
-      v = clamp_(v, 2000);
-    }
-    writes.push({ col: f.col, value: v });
-  });
-  const ignored = Object.keys(given).filter((k) => !matched[k]); // header renamed/removed since the panel loaded
-  let r = adminDetailsRow_(details, id);
-  if (r === -1) r = Math.max(details.getLastRow(), 1) + 1;
-  adminEnsureRow_(details, r);
-  const idName = details.getRange(r, 1, 1, 2);
-  idName.setNumberFormat('@'); // ID precision + literal text — BEFORE the write
-  idName.setValues([[id, name]]);
-  writes.forEach((w) => {
-    const cell = details.getRange(r, w.col);
-    cell.setNumberFormat('@'); // formula-injection guard on every field cell
-    cell.setValue(w.value);
-  });
-  return { row: r, written: writes.length, ignored: ignored };
-}
 
 /** Injectable core: append a disciplinary entry (append-only — history is never edited from the panel). Text columns are '@'-formatted before the write (formula-injection guard); the Date column stays a real date. Testable. */
 function cpAppendDiscipline_(logSheet, entry) {
@@ -1669,9 +1583,10 @@ function cpAdminSetup(payload) {
   // Warn about pre-existing rows whose ID column was hand-typed as a NUMBER (precision already lost at entry — flag, can't repair).
   let badIds = 0;
   try {
-    const d = file.getSheetByName(ADMIN_DETAILS_TAB_);
-    if (d && d.getLastRow() >= 2) {
-      d.getRange(2, 1, d.getLastRow() - 1, 1).getDisplayValues().forEach((r) => {
+    const d = file.getSheetByName(INTERNAL_TAB_);
+    const IC = d ? internalCols_(d) : null;
+    if (d && IC && IC.discord && d.getLastRow() >= 2) {
+      d.getRange(2, IC.discord, d.getLastRow() - 1, 1).getDisplayValues().forEach((r) => {
         const v = String(r[0]).trim();
         if (v !== '' && !isValidId_(v)) badIds++;
       });
@@ -1680,23 +1595,18 @@ function cpAdminSetup(payload) {
   return { ok: true, url: file.getUrl(), name: file.getName(), created: url === '', relinked: !!prior, badIds: badIds };
 }
 
-/** Panel endpoint: one member's admin details + discipline history (Google's ACL gates this — see the section header). */
+/**
+ * Panel endpoint: one member's discipline history + a link to the admin file (Google's ACL gates this — see the
+ * section header). PII fields are NOT returned here any more: they live on the Internal Roster tab and are edited
+ * there, so the panel links to the file instead of round-tripping DOB/email through the page.
+ */
 function cpAdminInfo(discordId) {
   const file = adminFile_();
-  if (!file) return { linked: false, email: '', dob: '', notes: '', discipline: [] };
-  const t = adminTabs_(file);
-  const out = cpAdminRead_(t.details, t.log, discordId);
+  if (!file) return { linked: false, url: '', discipline: [] };
+  const out = cpAdminRead_(adminTabs_(file).log, discordId);
   out.linked = true;
+  try { out.url = file.getUrl(); } catch (e) { out.url = ''; }
   return out;
-}
-
-/** Panel endpoint: save a member's private fields to the admin roster. Reports labels that no longer exist (renamed/removed columns) so edits are never silently dropped. */
-function cpAdminSave(payload) {
-  const file = adminFile_();
-  if (!file) throw new Error('No admin roster is linked yet — set one up on the Tools tab.');
-  const t = adminTabs_(file);
-  const res = cpAdminUpsert_(t.details, payload);
-  return { ok: true, written: res.written, ignored: res.ignored };
 }
 
 /** Panel endpoint: record a disciplinary action (append-only) and return the member's refreshed admin info. */

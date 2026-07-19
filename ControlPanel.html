@@ -1028,26 +1028,15 @@
         else lv.innerHTML=p.leaves.map(function(l){ return '<div class="lr"><span><b>'+esc(l.type||'—')+'</b> &nbsp;'+esc(l.start||'?')+' → '+esc(l.end||'?')+'</span><span class="ltag"><span class="pdot" style="background:'+leaveDot(l.status)+'"></span>'+esc(l.status||'')+'</span></div>'; }).join(''); }
     }, onError, "cpGetProfile", m.discord);
   }
-  /* admin section — draft-aware (typed edits survive a re-render, like the leave form / F-026).
-     SCALABLE: fields come from the admin sheet's header row — add a column there and it renders here automatically. */
+  /* admin section — PII (DOB, email, …) now lives on the INTERNAL ROSTER tab of the admin file, edited there and
+     synced two-way by Unique ID. The panel keeps the disciplinary history + "record action" and links to that file. */
   function admHtml(m,a){
     if(!a || a.linked===false) return '<span class="muted2">No admin roster linked — set one up on the Tools tab.</span>';
     var d=STATE.admDraft[m.row]||{};
     if(d.id && d.id!==m.discord){ delete STATE.admDraft[m.row]; d={}; } // rows shifted since the draft was typed — never rehydrate under a different member
     var v=function(dv,sv){ return dv!=null?dv:(sv||''); };
-    var flds=a.fields||[];
-    var fh='';
-    for(var i=0;i<flds.length;i+=1){
-      var f=flds[i], big=/NOTE/i.test(f.label), val=v(d['f:'+f.label],f.value); // drafts keyed by LABEL — an index would misfile after a column is inserted/reordered
-      var ctl=big
-        ? '<textarea class="field adm-ta" id="admF'+m.row+'_'+i+'" data-lab="'+esc(f.label)+'" rows="2" autocomplete="off">'+esc(val)+'</textarea>'
-        : '<input class="field" id="admF'+m.row+'_'+i+'" data-lab="'+esc(f.label)+'" value="'+esc(val)+'" autocomplete="off">';
-      var cell='<label class="adm-f"><span>'+esc(f.label)+'</span>'+ctl+'</label>';
-      fh+=big?cell:('<div class="adm-half">'+cell+'</div>');
-    }
-    var fieldsHtml=flds.length
-      ? '<div class="adm-flex">'+fh+'</div><button class="linkbtn" data-admsave="'+m.row+'">Save details</button>'
-      : '<span class="muted2">No field columns in the admin file yet — add columns after "Name" on its Member Details tab (e.g. Email, Phone) and they appear here.</span>';
+    var fieldsHtml='<span class="muted2">Private details (DOB, email, …) live on the <b>Internal Roster</b> tab of the admin file — they stay keyed to this member\'s Unique ID, so a promotion or re-sort never separates them.</span>'
+      +(a.url?(' <a class="linkbtn" href="'+esc(a.url)+'" target="_blank" rel="noopener">Open Internal Roster</a>'):'');
     var hist=(a.discipline&&a.discipline.length)
       ? a.discipline.map(function(x){ return '<div class="disc"><div class="disc-h"><b>'+esc(x.action||'—')+'</b>'+(x.status?('<span class="disc-st">'+esc(x.status)+'</span>'):'')+'<span class="disc-dt">'+esc(x.date||'')+'</span></div>'+(x.reason?('<div class="disc-r">'+esc(x.reason)+'</div>'):'')+(x.issuedBy?('<div class="disc-by">by '+esc(x.issuedBy)+'</div>'):'')+'</div>'; }).join('')
       : '<span class="muted2">No disciplinary actions on record.</span>';
@@ -1060,22 +1049,8 @@
   }
   function admDraftClear(row,keys){ // clear only the keys that form owns — the OTHER form's unsaved edits survive
     var d=STATE.admDraft[row]; if(!d) return;
-    if(keys==='fields'){ Object.keys(d).forEach(function(k){ if(k.indexOf('f:')===0) delete d[k]; }); }
-    else keys.forEach(function(k){ delete d[k]; });
+    keys.forEach(function(k){ delete d[k]; });
     if(Object.keys(d).filter(function(k){return k!=='id';}).length===0) delete STATE.admDraft[row];
-  }
-  function saveAdmin(row,btn){
-    var m=memberByRow(row); if(!m||!m.discord){ toast('This member has no Discord ID.','err'); return; }
-    var fields=Object.create(null); // null prototype — a column literally named "__proto__" must still become an own key
-    document.querySelectorAll('[id^="admF'+row+'_"]').forEach(function(el){ var lab=el.getAttribute('data-lab'); if(lab) fields[lab]=el.value; });
-    btn.disabled=true;
-    api(function(r){ btn.disabled=false;
-      var ign=(r&&r.ignored)||[];
-      if(ign.length){ // header renamed/removed mid-session: keep those drafts (the text is not lost) and say so
-        admDraftClear(row, Object.keys(fields).filter(function(k){return ign.indexOf(k)<0;}).map(function(k){return 'f:'+k;}));
-        toast('Saved '+((r&&r.written)||0)+' field(s) — but '+ign.length+' ('+ign.join(', ')+') no longer exist in the admin file. Refresh to see its current columns; your text is kept in the form.','err');
-      } else { admDraftClear(row,'fields'); toast('Admin details saved (private file).','ok'); }
-    }, function(e){ btn.disabled=false; onError(e); }, "cpAdminSave", {discordId:m.discord,name:m.name,fields:fields});
   }
   function addDiscipline(row,btn){
     var m=memberByRow(row); if(!m||!m.discord){ toast('This member has no Discord ID.','err'); return; }
@@ -1561,8 +1536,8 @@
   $('mlist').addEventListener('input',function(e){
     var mm=String(e.target.id||'').match(/^sf(st|en|t|s|n)(\d+)$/);
     if(mm){ var row=mm[2]; (STATE.formData[row]||(STATE.formData[row]={}))[mm[1]]=e.target.value; return; }
-    var am=String(e.target.id||'').match(/^adm(?:(Re|Act)(\d+)|F(\d+)_(\d+))$/); if(!am) return; // admin drafts survive a re-render too (F-026 pattern)
-    var arow=am[2]||am[3], key=am[1]?{Re:'re',Act:'act'}[am[1]]:('f:'+(e.target.getAttribute('data-lab')||'')); // dynamic fields draft by LABEL (schema-shift safe)
+    var am=String(e.target.id||'').match(/^adm(Re|Act)(\d+)$/); if(!am) return; // admin drafts survive a re-render too (F-026 pattern)
+    var arow=am[2], key={Re:'re',Act:'act'}[am[1]];
     var ad=(STATE.admDraft[arow]||(STATE.admDraft[arow]={})); ad[key]=e.target.value;
     var amem=memberByRow(Number(arow)); ad.id=amem?(amem.discord||''):''; // stamp ownership so a shifted row can't rehydrate another member's draft
   });
@@ -1571,7 +1546,6 @@
     var cp=e.target.closest('[data-copy]'); if(cp){ e.stopPropagation(); if(copyText(cp.getAttribute('data-copy'))){ cp.classList.add('ok'); cp.innerHTML=SVG.check; clearTimeout(cp._ct); cp._ct=setTimeout(function(){ cp.classList.remove('ok'); cp.innerHTML=SVG.copy; },1500); } return; }
     var sc=e.target.closest('[data-sched]'); if(sc){ var scr=Number(sc.dataset.sched); STATE.formOpen=(STATE.formOpen===scr?null:scr); renderMembers(); return; } // F-026: drive open-state off STATE so a re-render preserves it
     var sg=e.target.closest('[data-schedgo]'); if(sg){ scheduleLeave(Number(sg.dataset.schedgo),sg); return; }
-    var asv=e.target.closest('[data-admsave]'); if(asv){ saveAdmin(Number(asv.dataset.admsave),asv); return; }
     var adc=e.target.closest('[data-admdisc]'); if(adc){ addDiscipline(Number(adc.dataset.admdisc),adc); return; }
     var mvb=e.target.closest('[data-mvbtn]'); if(mvb){ e.stopPropagation(); openMvMenu(); return; }
     var mvo=e.target.closest('[data-mvrow]'); if(mvo){ setMove(Number(mvo.dataset.mvrow)); openMvMenu(false); return; }
