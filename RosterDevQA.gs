@@ -2451,6 +2451,36 @@ function devInternalRosterTests_() {
     devEq_(R, 'internalCols_ LAST ACTION DATE = 16', IC.discDate, 16);
   })();
 
+  // PRIVATE columns that merely CONTAIN a reserved word must never hijack a mirrored role (exact header wins).
+  (() => {
+    const sh = devFreshSheet_('IntTricky');
+    sh.getRange(1, 1, 1, 8).setValues([['EMERGENCY CONTACT NAME', 'RANK HISTORY', 'RANK', 'NAME', 'UNIQUE ID', 'EMAIL', 'EMPLOYMENT STATUS', 'STATUS']]);
+    const IC = internalCols_(sh);
+    devEq_(R, 'tricky: exact RANK beats "RANK HISTORY"', IC.rank, 3);
+    devEq_(R, 'tricky: exact NAME beats "EMERGENCY CONTACT NAME"', IC.name, 4);
+    devEq_(R, 'tricky: exact STATUS beats "EMPLOYMENT STATUS"', IC.activity, 8);
+    const claimed = [IC.rank, IC.unit, IC.ooc, IC.name, IC.discord, IC.shift, IC.hours, IC.activity, IC.join, IC.promo];
+    devCheck_(R, 'tricky: EMAIL is claimed by no mirrored role (stays private)', claimed.indexOf(6) === -1);
+    devCheck_(R, 'tricky: "EMERGENCY CONTACT NAME" stays private', claimed.indexOf(1) === -1);
+    devCheck_(R, 'tricky: "RANK HISTORY" stays private', claimed.indexOf(2) === -1);
+    devCheck_(R, 'tricky: "EMPLOYMENT STATUS" stays private', claimed.indexOf(7) === -1);
+  })();
+
+  // A PII column inserted BETWEEN mirrored columns must not disturb the merge (resolution is by header, not position).
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Sergeant', name: 'Shifted', id: devId_(82), activity: 'Active', hours: 14 }]);
+    const inn = devFreshSheet_('IntShift');
+    // EMAIL sits between NAME and UNIQUE ID — every mirrored column is now one to the right of the seeded layout.
+    inn.getRange(1, 1, 1, 9).setValues([['RANK', 'UNIT NUMBER', 'OOC NAME', 'NAME', 'EMAIL', 'UNIQUE ID', 'SHIFT', 'HOURS', 'STATUS']]);
+    inn.getRange(2, 6).setNumberFormat('@');
+    inn.getRange(2, 1, 1, 9).setValues([['Trooper', '', '', 'Shifted', 'shifted@dept.test', devId_(82), '', 14, 'Active']]);
+    const st = devBuildSyncState_([{ id: devId_(82), vals: { rank: 'Trooper', name: 'Shifted', hours: '14', activity: 'Active' } }]);
+    syncInternalRoster_(ro, inn, st, devBuildDiscLog_([]));
+    devEq_(R, 'inserted col: rank still merged into the RIGHT column', String(inn.getRange(2, 1).getDisplayValue()).trim(), 'Sergeant');
+    devEq_(R, 'inserted col: the inserted EMAIL is untouched', String(inn.getRange(2, 5).getDisplayValue()).trim(), 'shifted@dept.test');
+    devEq_(R, 'inserted col: Unique ID still exact in its shifted column', String(inn.getRange(2, 6).getDisplayValue()).trim(), devId_(82));
+  })();
+
   // A member on the public roster but not the internal sheet is ADDED (mirrored fields only, PII left blank).
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'New Guy', id: devId_(70), unit: 'S-1', activity: 'Active', hours: 5 }]);

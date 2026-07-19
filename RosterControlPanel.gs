@@ -1299,20 +1299,26 @@ function internalCols_(sheet) {
   try {
     const lastCol = Math.max(sheet.getLastColumn(), 1);
     const hdr = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
+    // EXACT header match wins over a substring match, so a PRIVATE column that merely contains a reserved word
+    // ("Emergency Contact Name", "Employment Status", "Rank History") can never hijack a mirrored role and get
+    // overwritten with roster data. Substring matching is only the fallback when no exact header exists.
+    const exact = (l) => { const k = norm_(l); for (let c = 0; c < hdr.length; c++) { if (hdr[c] === k) return c + 1; } return 0; };
     const all = (...toks) => { for (let c = 0; c < hdr.length; c++) { if (toks.every((t) => hdr[c].indexOf(norm_(t)) !== -1)) return c + 1; } return 0; };
-    out.rank = all('RANK');
-    out.unit = all('UNIT') || all('CALLSIGN');
-    out.ooc = all('OOC');
-    for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } // NAME that isn't "OOC NAME"
-    out.discord = all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
-    out.shift = all('SHIFT') || all('DIVISION') || all('DISTRICT');
-    out.hours = all('HOURS');
-    out.activity = all('STATUS') || all('ACTIVITY');
-    out.join = all('JOIN');
-    out.promo = all('PROMOT');
-    out.discDate = all('LAST', 'ACTION', 'DATE');
-    for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf(norm_('LAST')) !== -1 && hdr[c].indexOf(norm_('ACTION')) !== -1 && (c + 1) !== out.discDate) { out.discLast = c + 1; break; } }
-    out.discCount = all('DISCIPLINARY');
+    out.rank = exact('RANK') || all('RANK');
+    out.unit = exact('UNIT NUMBER') || exact('UNIT') || exact('CALLSIGN') || all('UNIT') || all('CALLSIGN');
+    out.ooc = exact('OOC NAME') || all('OOC');
+    out.name = exact('NAME');
+    if (!out.name) { for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } } // a NAME that isn't "OOC NAME"
+    out.discord = exact('UNIQUE ID') || all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
+    out.shift = exact('SHIFT') || all('SHIFT') || all('DIVISION') || all('DISTRICT');
+    out.hours = exact('HOURS') || all('HOURS');
+    out.activity = exact('STATUS') || exact('ACTIVITY') || all('STATUS') || all('ACTIVITY');
+    out.join = exact('JOIN DATE') || all('JOIN');
+    out.promo = exact('LAST PROMOTION') || all('PROMOT');
+    out.discCount = exact('DISCIPLINARY ACTIONS') || all('DISCIPLINARY');
+    out.discDate = exact('LAST ACTION DATE') || all('LAST', 'ACTION', 'DATE');
+    out.discLast = exact('LAST ACTION');
+    if (!out.discLast) { for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf(norm_('LAST')) !== -1 && hdr[c].indexOf(norm_('ACTION')) !== -1 && (c + 1) !== out.discDate) { out.discLast = c + 1; break; } } }
     out.width = lastCol;
   } catch (e) { log_('internalCols_', e); }
   return out;
