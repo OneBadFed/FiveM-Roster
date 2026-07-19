@@ -284,6 +284,7 @@ const BLOCK_SPECS_ = Object.freeze({
     SNAPSHOTS: { t: 'string', d: '_Snapshots', req: false, help: 'Hidden snapshot/restore tab. Blank = "_Snapshots".' },
     PATROL_RESPONSES: { t: 'string', d: '', req: false, help: 'Patrol-log Google Form responses tab name (v2.5.0). BLANK = patrol-hours sync OFF. Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
     PATROL_LOG: { t: 'string', d: 'Patrol Log', req: false, help: 'Manual Patrol Log tracker tab (like the LOA Tracker). Enter Unique ID + start/end date + start/end time; the engine auto-fills member info, computes TOTAL TIME, credits the hours to the roster, and sorts Pending → Flagged → Processed. BLANK = OFF. Activates only if a tab with this name exists.' },
+    SIGNUPS: { t: 'string', d: 'Roster Signups', req: false, help: 'Roster Signup form responses tab — lives INSIDE the protected admin file (it carries email/DOB). Created by 🧾 Create Roster Signup Form. Approving a signup adds the member to a slot and writes their private details to the Internal Roster.' },
   } },
   ROSTER_LAYOUT: { type: 'kv', keys: {
     HEADER_ROW: { t: 'int', d: 5, req: true, min: 1, max: 50, help: 'Row holding the roster column labels.' },
@@ -951,6 +952,7 @@ function materialize_(c, fromTab) {
     sheets: {
       roster: kv.SHEETS.ROSTER, tracker: kv.SHEETS.TRACKER, form: kv.SHEETS.FORM_RESPONSES, patrol: kv.SHEETS.PATROL_RESPONSES || '',
       patrolLog: kv.SHEETS.PATROL_LOG || '',   // manual Patrol Log tracker tab (blank = OFF; only activates if the tab exists)
+      signups: kv.SHEETS.SIGNUPS || 'Roster Signups', // signup form responses — inside the ACL-protected admin file
       // v2.5.0 — system/log tab names (blank falls back to the shipped default so pre-v2.5 configs keep working).
       audit: kv.SHEETS.AUDIT || 'Edit Log',
       hoursHistory: kv.SHEETS.HOURS_HISTORY || '_Hours History',

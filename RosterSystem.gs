@@ -318,6 +318,7 @@ function buildMenus_(prefix) {
       .addSeparator()
       // Setup & wiring (run rarely)
       .addItem('🔒 Sync Internal Roster', p + 'syncInternalRosterNow')
+      .addItem('🧾 Create Roster Signup Form', p + 'createSignupForm')
       .addSubMenu(SpreadsheetApp.getUi().createMenu('🆔 Unique ID Type')
         .addItem('Discord ID (17–19 digits)', p + 'idTypeDiscord')
         .addItem('Community ID (1–8 digits)', p + 'idTypeCommunity'))

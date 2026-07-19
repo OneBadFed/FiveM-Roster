@@ -71,6 +71,8 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpAdminSetup: (p) => cpAdminSetup(p),
   cpAdminInfo: (id) => cpAdminInfo(id),
   cpAddDiscipline: (p) => cpAddDiscipline(p),
+  cpSignupList: () => cpSignupList(),
+  cpSignupApprove: (p) => cpSignupApprove(p),
 });
 
 /** The panel's single server entry point. @param {string} name @param {Array} args */
@@ -1464,9 +1466,238 @@ function syncInternalRoster() {
     let logSheet = file.getSheetByName(ADMIN_LOG_TAB_);
     if (!logSheet) { seedAdminSheet_(file); logSheet = file.getSheetByName(ADMIN_LOG_TAB_); }
     const sum = syncInternalRoster_(roster, internal, state, logSheet);
+    try { const sg = file.getSheetByName(CONFIG.sheets.signups); if (sg) { ensureSignupTab_(file); sortSignups_(sg); } } catch (e) { log_('syncInternalRoster.signups', e); } // stamp new submissions Pending + re-group
     if (sum.conflicts.length) logWarn_('syncInternalRoster', `${sum.conflicts.length} conflict(s), public kept: ${sum.conflicts.slice(0, 10).join(' | ')}`);
     logInfo_('syncInternalRoster', `${sum.members} member(s): +${sum.added} new, ${sum.toInternal}→internal, ${sum.toPublic}→public, ${sum.departed} off-roster kept.`);
     return Object.assign({ linked: true }, sum);
+  } finally { lock.releaseLock(); }
+}
+
+/* -------------------------------------------------------------------------
+ * ROSTER SIGNUPS — a Google Form whose responses land INSIDE the protected
+ * admin file (they carry email/DOB, so they must never touch the public
+ * workbook). The engine appends a STATUS column to that response tab:
+ *   Pending (new / blank) → Approved (an admin's decision) → Processed (added)
+ * Approving is a real action, not just a label: it assigns the member to an
+ * open roster slot, writes their private details onto the Internal Roster, and
+ * only then stamps the row Processed. Rows sort Pending → Approved → Processed.
+ * ------------------------------------------------------------------------- */
+
+const SIGNUP_STATUSES_ = Object.freeze(['Pending', 'Approved', 'Processed']);
+
+/** Header-resolve the signup response tab (exact header wins, so an application free-text column can't hijack a role). */
+function signupCols_(sheet) {
+  const out = { timestamp: 1, name: 0, ooc: 0, discord: 0, email: 0, dob: 0, phone: 0, status: 0, notes: 0, width: 0 };
+  try {
+    const lastCol = Math.max(sheet.getLastColumn(), 1);
+    const hdr = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
+    const exact = (l) => { const k = norm_(l); for (let c = 0; c < hdr.length; c++) { if (hdr[c] === k) return c + 1; } return 0; };
+    const all = (...toks) => { for (let c = 0; c < hdr.length; c++) { if (toks.every((t) => hdr[c].indexOf(norm_(t)) !== -1)) return c + 1; } return 0; };
+    out.ooc = exact('OOC NAME') || all('OOC');
+    out.name = exact('NAME') || exact('NAME (IN-CHARACTER)') || 0;
+    if (!out.name) { for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } }
+    out.discord = exact('UNIQUE ID') || all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
+    out.email = exact('EMAIL') || all('EMAIL');
+    out.dob = exact('DATE OF BIRTH') || all('BIRTH') || all('DOB');
+    out.phone = exact('PHONE') || all('PHONE');
+    out.status = exact('STATUS') || all('STATUS');
+    out.notes = exact('NOTES') || all('NOTES');
+    out.width = lastCol;
+  } catch (e) { log_('signupCols_', e); }
+  return out;
+}
+
+/** The signup tab inside the admin file, with the STATUS/NOTES columns + dropdown ensured. null when it doesn't exist yet. */
+function ensureSignupTab_(file) {
+  const sh = file.getSheetByName(CONFIG.sheets.signups);
+  if (!sh) return null;
+  let SC = signupCols_(sh);
+  if (!SC.status) { // append STATUS (+ NOTES) after the form's own question columns
+    const c = sh.getLastColumn() + 1;
+    sh.getRange(1, c).setValue('Status');
+    sh.getRange(1, c + 1).setValue('Notes');
+    sh.getRange(1, c, 1, 2).setFontWeight('bold').setBackground(theme_('BANNER')).setFontColor(theme_('TEXT_STRONG'));
+    SC = signupCols_(sh);
+  }
+  try {
+    const n = Math.max(sh.getMaxRows() - 1, 1);
+    sh.getRange(2, SC.status, n, 1).setDataValidation(
+      SpreadsheetApp.newDataValidation().requireValueInList(SIGNUP_STATUSES_.slice(), true).setAllowInvalid(true).setHelpText('Pending → Approved → Processed').build());
+    if (SC.discord) sh.getRange(2, SC.discord, n, 1).setNumberFormat('@'); // keep the Unique ID exact
+    if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
+  } catch (e) { log_('ensureSignupTab_.validation', e); }
+  return sh;
+}
+
+/** Stamp blank statuses as Pending, then re-group Pending → Approved → Processed (value rewrite; keeps formatting). */
+function sortSignups_(sheet) {
+  try {
+    const SC = signupCols_(sheet), W = SC.width;
+    if (!SC.status || !W) return 0;
+    const last = sheet.getLastRow();
+    if (last < 2) return 0;
+    const n = last - 1;
+    const vals = sheet.getRange(2, 1, n, W).getValues();
+    const ids = SC.discord ? sheet.getRange(2, SC.discord, n, 1).getDisplayValues() : null;
+    const rows = [];
+    for (let i = 0; i < n; i++) {
+      const r = vals[i].slice(0, W);
+      if (ids) r[SC.discord - 1] = String(ids[i][0]).trim();
+      const blank = r.every((v) => String(v == null ? '' : v).trim() === '');
+      if (blank) continue;
+      if (String(r[SC.status - 1] || '').trim() === '') r[SC.status - 1] = SIGNUP_STATUSES_[0]; // new submission → Pending
+      rows.push(r);
+    }
+    if (!rows.length) return 0;
+    const rank = {}; SIGNUP_STATUSES_.forEach((s, i) => { rank[norm_(s)] = i; });
+    const dec = rows.map((r, i) => ({ r: r, i: i, p: (norm_(String(r[SC.status - 1] || '').trim()) in rank) ? rank[norm_(String(r[SC.status - 1]).trim())] : SIGNUP_STATUSES_.length }));
+    dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable
+    const sorted = dec.map((d) => d.r);
+    if (SC.discord) sheet.getRange(2, SC.discord, sorted.length, 1).setNumberFormat('@');
+    sheet.getRange(2, 1, sorted.length, W).setValues(sorted);
+    return sorted.length;
+  } catch (e) { log_('sortSignups_', e); return 0; }
+}
+
+/** Read the signup rows an admin still has to act on (Pending + Approved), newest submission first. */
+function signupQueue_(sheet, cap) {
+  const out = [];
+  const SC = signupCols_(sheet);
+  const last = sheet.getLastRow();
+  if (!SC.status || last < 2) return out;
+  const n = last - 1;
+  const vals = sheet.getRange(2, 1, n, SC.width).getDisplayValues();
+  for (let i = 0; i < n && out.length < (cap || 100); i++) {
+    const st = String(vals[i][SC.status - 1] || '').trim() || SIGNUP_STATUSES_[0];
+    if (norm_(st) === norm_(SIGNUP_STATUSES_[2])) continue; // Processed → done
+    const g = (c) => c ? String(vals[i][c - 1] || '').trim() : '';
+    out.push({ row: 2 + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
+      email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), submitted: g(SC.timestamp) });
+  }
+  return out;
+}
+
+/**
+ * Injectable core: approve ONE signup — assign the member to an open roster slot, write their private details onto the
+ * Internal Roster (keyed by Unique ID), then stamp the signup Processed. Throws with a clear message on any bad input,
+ * and only stamps Processed after the roster write succeeds, so a failure leaves the signup actionable. Testable.
+ */
+function approveSignup_(signups, row, roster, internal, slotRow) {
+  const SC = signupCols_(signups);
+  if (!SC.discord || !SC.name) throw new Error('The signup tab has no Unique ID / Name column.');
+  const g = (c) => c ? String(signups.getRange(row, c).getDisplayValue()).trim() : '';
+  const id = g(SC.discord), name = g(SC.name);
+  if (!isValidId_(id)) throw new Error(`Signup row ${row} has no valid Unique ID (${idDigitsLabel_()} digits).`);
+  if (!name) throw new Error(`Signup row ${row} has no name.`);
+  if (cpFindRowById_(roster, id) !== -1) throw new Error(`${name} is already on the roster — mark this signup Processed instead.`);
+
+  cpAssignMember_(roster, { row: slotRow, name: name, discord: id }); // reuses the panel's slot guard + validation
+  const RC = rosterCols_(roster);
+  if (RC.ooc && g(SC.ooc)) roster.getRange(slotRow, RC.ooc).setValue(g(SC.ooc));
+
+  // Private details → Internal Roster (upsert by Unique ID; the sync fills the mirrored columns on its next pass).
+  let piiWritten = 0;
+  try {
+    if (internal) {
+      const IC = internalCols_(internal);
+      if (IC.discord) {
+        let r = -1;
+        const last = internal.getLastRow();
+        if (last >= 2) {
+          const ids = internal.getRange(2, IC.discord, last - 1, 1).getDisplayValues();
+          for (let i = 0; i < ids.length; i++) { if (String(ids[i][0]).trim() === id) { r = 2 + i; break; } }
+        }
+        if (r === -1) { r = Math.max(last + 1, 2); adminEnsureRow_(internal, r); internal.getRange(r, IC.discord).setNumberFormat('@').setValue(id); }
+        const put = (c, v) => { if (c && v) { internal.getRange(r, c).setNumberFormat('@').setValue(v); piiWritten++; } };
+        put(IC.email, g(SC.email)); put(IC.dob, g(SC.dob)); put(IC.phone, g(SC.phone));
+        if (IC.name && name) internal.getRange(r, IC.name).setValue(name);
+      }
+    }
+  } catch (e) { log_('approveSignup_.pii', e); } // roster write already succeeded — never fail the approval over PII copy
+  signups.getRange(row, SC.status).setValue(SIGNUP_STATUSES_[2]); // Processed — last, so a failure above leaves it actionable
+  return { ok: true, name: name, discord: id, slotRow: slotRow, piiWritten: piiWritten };
+}
+
+/** Menu: create the Roster Signup form and point its responses INSIDE the protected admin file. */
+function createSignupForm() {
+  runAction_('Create Roster Signup Form', () => {
+    const ui = SpreadsheetApp.getUi();
+    const file = adminFile_();
+    if (!file) { ui.alert('🧾 Roster Signup', 'Link the protected admin file first (🎛️ Control Panel ▸ Tools ▸ admin roster).', ui.ButtonSet.OK); return; }
+    if (file.getSheetByName(CONFIG.sheets.signups)) { ui.alert('🧾 Roster Signup', `"${CONFIG.sheets.signups}" already exists in the admin file — the signup form is already set up.`, ui.ButtonSet.OK); return; }
+    const before = {}; file.getSheets().forEach((s) => { before[s.getSheetId()] = true; });
+    const form = FormApp.create('Roster Signup');
+    form.setDescription('Apply to join. Your answers go to a private file that only command staff can open.');
+    form.addTextItem().setTitle('Name (in-character)').setRequired(true);
+    form.addTextItem().setTitle('OOC Name').setRequired(true);
+    form.addTextItem().setTitle('Unique ID').setRequired(true)
+      .setValidation(FormApp.createTextValidation().setHelpText(idDigitsLabel_() + ' digits — copy-paste it, never retype it.').requireTextMatchesPattern(idRegexSource_()).build());
+    form.addTextItem().setTitle('Email').setRequired(true)
+      .setValidation(FormApp.createTextValidation().setHelpText('A valid email address.').requireTextIsEmail().build());
+    form.addDateItem().setTitle('Date of Birth').setRequired(true);
+    form.addTextItem().setTitle('Phone').setRequired(false);
+    form.addParagraphTextItem().setTitle('Prior Experience').setRequired(false);
+    form.addTextItem().setTitle('Timezone').setRequired(false);
+    form.addMultipleChoiceItem().setTitle('Age Confirmation').setChoiceValues(['I confirm I meet the minimum age requirement']).setRequired(true);
+    form.addParagraphTextItem().setTitle('Why do you want to join?').setRequired(false);
+    form.setDestination(FormApp.DestinationType.SPREADSHEET, file.getId());
+    SpreadsheetApp.flush();
+    let created = null; // Google adds a brand-new response tab — find it, rename it, then add the STATUS column
+    file.getSheets().forEach((s) => { if (!before[s.getSheetId()]) created = s; });
+    let renamed = false;
+    if (created) { try { created.setName(CONFIG.sheets.signups); renamed = true; } catch (e) { log_('createSignupForm.rename', e); } }
+    ensureSignupTab_(file);
+    logInfo_('createSignupForm', `signup form created; responses → ${file.getId()} / ${CONFIG.sheets.signups}.`);
+    ui.alert('🧾 Roster Signup form created',
+      `Share with applicants:\n${form.getPublishedUrl()}\n\nEdit the form:\n${form.getEditUrl()}\n\nResponses land on "${CONFIG.sheets.signups}" inside the ADMIN file — never the public workbook.` +
+      (renamed ? '' : `\n\n⚠️ Couldn't auto-rename the new response tab — rename it to "${CONFIG.sheets.signups}" in the admin file, then run 🔒 Sync Internal Roster.`), ui.ButtonSet.OK);
+  });
+}
+
+/** Panel endpoint: signups still needing action, plus the OPEN roster slots one can be placed into. */
+function cpSignupList() {
+  const file = adminFile_();
+  const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+  const slots = [];
+  if (roster) {
+    const RC = rosterCols_(roster), start = CONFIG.rosterStartRow, last = roster.getLastRow();
+    if (last >= start) {
+      const n = last - start + 1;
+      const ranks = roster.getRange(start, RC.rank, n, 1).getDisplayValues();
+      const names = roster.getRange(start, RC.name, n, 1).getDisplayValues();
+      const units = RC.unit ? roster.getRange(start, RC.unit, n, 1).getDisplayValues() : null;
+      for (let i = 0; i < n; i++) {
+        const rank = String(ranks[i][0]).trim();
+        if (!isMemberSlot_(rank) || rank === '' || rank === 'Rank') continue;
+        if (String(names[i][0]).trim() !== '') continue; // filled → not an open slot
+        slots.push({ row: start + i, rank: rank, unit: units ? String(units[i][0]).trim() : '' });
+      }
+    }
+  }
+  if (!file) return { linked: false, ready: false, signups: [], slots: slots };
+  const sh = file.getSheetByName(CONFIG.sheets.signups);
+  if (!sh) return { linked: true, ready: false, signups: [], slots: slots };
+  return { linked: true, ready: true, signups: signupQueue_(sh, 100), slots: slots };
+}
+
+/** Panel endpoint: approve a signup into a chosen open slot (adds the member, copies PII, stamps Processed). */
+function cpSignupApprove(payload) {
+  const file = adminFile_();
+  if (!file) throw new Error('No admin file is linked yet.');
+  const sh = file.getSheetByName(CONFIG.sheets.signups);
+  if (!sh) throw new Error(`"${CONFIG.sheets.signups}" was not found in the admin file — run 🧾 Create Roster Signup Form first.`);
+  const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+  if (!roster) throw new Error(`The roster tab "${CONFIG.sheets.roster}" was not found.`);
+  const row = Number((payload && payload.row) || 0), slotRow = Number((payload && payload.slotRow) || 0);
+  if (!(row >= 2)) throw new Error('Pick a signup to approve.');
+  if (!(slotRow >= CONFIG.rosterStartRow)) throw new Error('Pick an open slot to place them in.');
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(20000)) throw new Error('Another roster operation is running — try again in a moment.');
+  try {
+    const res = approveSignup_(sh, row, roster, ensureInternalRosterTab_(file), slotRow);
+    try { sortSignups_(sh); } catch (e) { log_('cpSignupApprove.sort', e); }
+    try { cpAudit_('signup-approved', '', res.name, `row ${slotRow}`, res.name); } catch (e) { /* audit is best-effort */ }
+    return res;
   } finally { lock.releaseLock(); }
 }
 
