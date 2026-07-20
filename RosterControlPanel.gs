@@ -1531,15 +1531,23 @@ function publishPublicRoster_() {
   const ss = SpreadsheetApp.getActive();
   const out = { linked: true, tabs: [], rows: 0, skipped: [], url: '' };
   try { out.url = file.getUrl(); } catch (e) { /* cosmetic */ }
+  out.detail = [];
   file.getSheets().forEach((dest) => {
     const name = dest.getName();
-    if (publishTabBlocked_(name)) { out.skipped.push(name + ' (blocked)'); return; }
+    if (publishTabBlocked_(name)) { out.skipped.push(name); out.detail.push(`${name}: BLOCKED (never published)`); return; }
     const src = ss.getSheetByName(name);
-    if (!src) { out.skipped.push(name + ' (no match here)'); return; }
+    if (!src) { out.skipped.push(name); out.detail.push(`${name}: no tab of that name here`); return; }
+    const sg = src.getMaxColumns(), dg = dest.getMaxColumns();
+    const mode = (sg === dg) ? 'FULL' : 'match';
     try {
       const n = publishMirrorTab_(src, dest);
-      out.tabs.push(`${name}: ${n}`); out.rows += n;
-    } catch (e) { log_('publishMirrorTab_.' + name, e); out.skipped.push(name + ' (error)'); }
+      out.tabs.push(name); out.rows += n;
+      out.detail.push(`${name}: ${mode} · ${n} row(s) · grid ${sg}/${dg} · src rows ${src.getLastRow()}`);
+    } catch (e) {
+      log_('publishMirrorTab_.' + name, e);
+      out.skipped.push(name);
+      out.detail.push(`${name}: ERROR — ${e && e.message ? e.message : e}`);
+    }
   });
   return out;
 }
@@ -1607,7 +1615,11 @@ function publishPublicRosterNow() {
     const res = publishPublicRoster();
     if (res === false) { ui.alert('Publish skipped — another roster operation is running.'); return; }
     if (!res.linked) { ui.alert('🌐 Public Roster', 'No public roster is linked yet.\n\nRun 👥 Roster ▸ 🌐 Set Up Public Roster first.', ui.ButtonSet.OK); return; }
-    ui.alert('🌐 Published', `${res.roster} roster row(s) and ${res.tracker} tracker row(s) pushed to the public file.\n\n${res.url}`, ui.ButtonSet.OK);
+    ui.alert('🌐 Published',
+      res.rows + ' row(s) across ' + res.tabs.length + ' tab(s).\n\n' +
+      (res.detail || []).join('\n') +
+      '\n\nFULL = mirrored wholesale (grids match). match = header-matched (public tab is narrower).\n' +
+      res.url, ui.ButtonSet.OK);
   });
 }
 
