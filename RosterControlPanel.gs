@@ -1472,6 +1472,23 @@ function publishHeaderRow_(sh) {
  * skipping every cell that is inside a merge but is not its top-left (the only writable cell of a merge).
  */
 /** [PUBLISH].KEEP_RANGES parsed into { normalisedTabName: ['F6:W7', ...] }. '*' applies to every tab. */
+/**
+ * Read a range as values but with FORMULAS PRESERVED: a source cell holding a formula yields the formula text, which
+ * setValues re-creates as a live formula on the public copy. Without this a "=TEXT(NOW(),...)" clock publishes as the
+ * frozen string it happened to evaluate to. Self-referential formulas (the tracker's LENGTH / TIME LEFT) therefore keep
+ * recalculating publicly instead of going stale between publishes.
+ */
+function publishReadCells_(range) {
+  const v = range.getValues(), f = range.getFormulas();
+  for (let r = 0; r < v.length; r++) {
+    for (let c = 0; c < v[r].length; c++) {
+      const fx = String(f[r][c] == null ? '' : f[r][c]);
+      if (fx !== '') v[r][c] = fx;
+    }
+  }
+  return v;
+}
+
 function publishKeepRanges_() {
   const out = {};
   try {
@@ -1574,7 +1591,7 @@ function publishMirrorTab_(src, dest) {
   const step = (label, fn) => { try { return fn(); } catch (e) { throw new Error(label + ' -> ' + ((e && e.message) ? e.message : e)); } };
   if (src.getMaxColumns() === dest.getMaxColumns()) {
     if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
-    const vals = step('read src ' + sRows + 'x' + sCols, () => src.getRange(1, 1, sRows, sCols).getValues());
+    const vals = step('read src ' + sRows + 'x' + sCols, () => publishReadCells_(src.getRange(1, 1, sRows, sCols)));
     const keep = publishKeepMask_(dest, 1, 1, sRows, sCols);
     const bad = step('write dest ' + sRows + 'x' + sCols, () => publishWriteValues_(dest, 1, 1, vals, keep));
     if (bad) logWarn_('publishMirrorTab_', dest.getName() + ': ' + bad + ' cell(s) could not be written (in-cell image or chip).');
@@ -1607,7 +1624,7 @@ function publishMirrorTab_(src, dest) {
   const need = destStart + n - 1;
   if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
   if (n) {
-    pairs.forEach((p) => publishWriteValues_(dest, destStart, p.dc, src.getRange(srcStart, p.sc, n, 1).getValues(),
+    pairs.forEach((p) => publishWriteValues_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1)),
       publishKeepMask_(dest, destStart, p.dc, n, 1)));
     scrub.forEach((c) => dest.getRange(destStart, c, n, 1).clearContent());
   }

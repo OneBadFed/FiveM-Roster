@@ -2686,6 +2686,22 @@ function devPublishTests_() {
     });
   })();
 
+  // A SOURCE formula is carried across as a formula, so live clocks/counters keep recalculating publicly.
+  (() => {
+    const src = devFreshSheet_('PubFxSrc');
+    src.getRange(1, 1, 1, 2).setValues([['WHEN', 'WHO']]);
+    src.getRange(2, 1).setFormula('=UPPER(TEXT(TODAY(),"dd mmmm yyyy"))');
+    src.getRange(2, 2).setValue('Alice');
+    const dest = devFreshSheet_('PubFxDest');
+    dest.getRange(1, 1, 1, 2).setValues([['WHEN', 'WHO']]);
+    dest.getRange(2, 1).setValue('19 JULY 2026');  // a previously-published FROZEN value, no formula left
+    const keep = publishKeepMask_(dest, 1, 1, 2, 2);
+    devCheck_(R, 'formula: a frozen destination value is NOT treated as protected', keep[1][0] === false);
+    publishWriteValues_(dest, 1, 1, publishReadCells_(src.getRange(1, 1, 2, 2)), keep);
+    devCheck_(R, 'formula: source formula arrives as a LIVE formula', dest.getRange(2, 1).getFormula().indexOf('TODAY(') !== -1);
+    devEq_(R, 'formula: ordinary values still published', g(dest, 2, 2), 'Alice');
+  })();
+
   return R;
 }
 
