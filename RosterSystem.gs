@@ -2067,6 +2067,7 @@ function buildTrackerRow_(RC, W, f) {
  */
 function sortTracker_(prepend, trackerSheet) {
   try {
+    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
     const tracker = trackerSheet || SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.tracker);
     if (!tracker) return;
     const RC = trackerCols_(tracker), start = CONFIG.trackerStartRow, W = RC.width;
@@ -2495,6 +2496,7 @@ function processPatrolLog_(sheet, row, PC, roster) {
  */
 function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired) {
   try {
+    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
     if (!PC.mark || !RCr.hours) return;
     const markCell = sheet.getRange(row, PC.mark);
     const prior = String(markCell.getDisplayValue()).trim();
@@ -2534,6 +2536,7 @@ function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired) {
 /** Re-group + compact the Patrol Log by [PATROL].STATUS_FLOW (Pending → Flagged → Processed); preserves formatting, carries the marker. */
 function sortPatrolLog_(patrolSheet) {
   try {
+    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
     const sheet = patrolSheet || (CONFIG.sheets.patrolLog ? SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.patrolLog) : null);
     if (!sheet) return;
     const PC = patrolLogCols_(sheet), start = CONFIG.patrolStartRow, W = PC.width;

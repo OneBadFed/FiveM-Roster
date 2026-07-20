@@ -660,6 +660,7 @@ function cpGetProfile(discordId) {
 
 /** Safe semantic audit write (no-op if RosterTrust.gs isn't pasted). */
 function cpAudit_(type, oldText, newText, cellA1, member) {
+  publishMarkDirty_(); // panel actions are script writes -> no onEdit -> the sweep would otherwise never know
   if (typeof auditEvent_ === 'function') { try { auditEvent_(type, oldText, newText, cellA1, member); } catch (e) { log_('cpAudit_', e); } }
 }
 
@@ -1674,6 +1675,10 @@ function publishMirrorTab_(src, dest) {
         if (publishSensitiveHeader_(h)) dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent();
       });
     }
+    // Carry NUMBER FORMATS too. Values alone are not enough: a date/time written onto a public row past whatever the
+    // tab copy happened to be formatted down to renders as a raw serial (46212) instead of "19 Jul. 2026".
+    try { dest.getRange(1, 1, sRows, sCols).setNumberFormats(src.getRange(1, 1, sRows, sCols).getNumberFormats()); }
+    catch (e) { log_('publishMirrorTab_.formats', e); }
     const dLast = dest.getLastRow();
     if (dLast > sRows) step('clear trailing ' + (dLast - sRows), () => dest.getRange(sRows + 1, 1, dLast - sRows, sCols).clearContent());
     return sRows;
@@ -1698,8 +1703,12 @@ function publishMirrorTab_(src, dest) {
   const need = destStart + n - 1;
   if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
   if (n) {
-    pairs.forEach((p) => publishWriteValues_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1)),
-      publishKeepMask_(dest, destStart, p.dc, n, 1)));
+    pairs.forEach((p) => {
+      publishWriteValues_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1)),
+        publishKeepMask_(dest, destStart, p.dc, n, 1));
+      try { dest.getRange(destStart, p.dc, n, 1).setNumberFormats(src.getRange(srcStart, p.sc, n, 1).getNumberFormats()); }
+      catch (e) { log_('publishMirrorTab_.formats', e); }
+    });
     scrub.forEach((c) => dest.getRange(destStart, c, n, 1).clearContent());
   }
   const dLast = dest.getLastRow(); // drop rows left over from a previous, longer publish
@@ -1756,9 +1765,15 @@ function publishPublicRoster_() {
 /* Near-live publishing. A SIMPLE onEdit can't open another file, but an INSTALLABLE one runs authorized and can —
  * so 🔌 Install Triggers registers publishOnChange for both onEdit (cell edits) and onChange (row insert/DELETE,
  * which onEdit never sees). Bursts are rate-limited and a 1-minute sweep publishes anything that was skipped. */
-const PUBLISH_MIN_GAP_MS_ = 15000;
+const PUBLISH_MIN_GAP_MS_ = 3000; // burst guard only - small enough that a normal edit publishes straight away
 const PUBLISH_DIRTY_PROP_ = 'PUBLIC_DIRTY';
 const PUBLISH_LAST_PROP_ = 'PUBLIC_LAST_PUBLISH';
+
+/** Flag the public copy as stale WITHOUT publishing. Script writes (panel actions, the schedulers, patrol crediting)
+ *  never fire onEdit, so they mark it here and the 1-minute sweep carries them. Cheap: one property write. */
+function publishMarkDirty_() {
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_, '1'); } catch (e) { /* best-effort */ }
+}
 
 /** Publish under the lock, clearing the dirty flag FIRST so an edit landing mid-publish re-marks itself. */
 function publishPublicRosterQuiet_() {
@@ -1777,10 +1792,8 @@ function publishPublicRosterQuiet_() {
 function publishOnChange(e) {
   try {
     if (!publicFile_()) return; // no public roster linked → nothing to do
-    let name = '';
-    try { name = (e && e.range) ? e.range.getSheet().getName() : ''; } catch (ig) { /* onChange has no range */ }
-    // Cell edits only matter on the two PUBLISHED sheets; structural changes (no range) always count.
-    if (name && name !== CONFIG.sheets.roster && name !== CONFIG.sheets.tracker) return;
+    // ANY edit anywhere counts: every tab in the public file is mirrored, so a change on the Patrol Log, the Welcome
+    // Page or any other published tab must republish just like a roster edit.
     const props = PropertiesService.getDocumentProperties();
     props.setProperty(PUBLISH_DIRTY_PROP_, '1');
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
