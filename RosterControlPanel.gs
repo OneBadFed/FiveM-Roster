@@ -554,7 +554,7 @@ function rankIconsMap_() {
     (parts[rank] || (parts[rank] = []))[idx] = all[k];
   });
   const map = {};
-  Object.keys(parts).forEach((rank) => { const uri = parts[rank].join(''); if (uri) map[rank] = uri; });
+  Object.keys(parts).forEach((rank) => { const uri = parts[rank].join('|~|'); if (uri) map[rank] = uri; });
   return map;
 }
 
@@ -1464,8 +1464,31 @@ function publishHeaderRow_(sh) {
  * layout and only receives the columns it actually has — delete a column there and it simply stops being populated.
  * Sensitive headers are never written and are wiped if present. Values only, so formatting survives. @return rows copied.
  */
+function publishSameHeader_(src, dest, row, width) {
+  const a = src.getRange(row, 1, 1, width).getDisplayValues()[0].map((h) => norm_(h)).join('|~|');
+  const b = dest.getRange(row, 1, 1, width).getDisplayValues()[0].map((h) => norm_(h)).join('|~|');
+  return a === b;
+}
+
 function publishMirrorTab_(src, dest) {
   const sh = publishHeaderRow_(src), dh = publishHeaderRow_(dest);
+  const sRows = src.getLastRow(), sCols = src.getLastColumn();
+  if (sRows < 1 || sCols < 1) return 0;
+
+  // UNTOUCHED COPY (identical header row in the same place) → mirror the sheet WHOLESALE. This is what dashboards and
+  // any other non-tabular layout need: the Welcome Page's leadership/promotions/leaderboard boxes sit at fixed cells,
+  // not under a header, so column-matching can't reproduce them. Sensitive columns are still scrubbed afterwards.
+  if (sh && sh === dh && sCols <= dest.getMaxColumns() && publishSameHeader_(src, dest, sh, sCols)) {
+    if (sRows > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows());
+    dest.getRange(1, 1, sRows, sCols).setValues(src.getRange(1, 1, sRows, sCols).getValues());
+    const hdr = src.getRange(sh, 1, 1, sCols).getDisplayValues()[0];
+    if (sRows > sh) hdr.forEach((h, i) => { if (publishSensitiveHeader_(h)) dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent(); });
+    const dLast = dest.getLastRow();
+    if (dLast > sRows) dest.getRange(sRows + 1, 1, dLast - sRows, sCols).clearContent();
+    return sRows;
+  }
+
+  // EDITED COPY (columns deleted/reordered) → match by header, so only the columns the public tab still has get filled.
   if (!sh || !dh) return 0;
   const sHdr = src.getRange(sh, 1, 1, Math.max(src.getLastColumn(), 1)).getDisplayValues()[0];
   const dHdr = dest.getRange(dh, 1, 1, Math.max(dest.getLastColumn(), 1)).getDisplayValues()[0];

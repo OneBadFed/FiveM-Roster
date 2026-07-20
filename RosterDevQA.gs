@@ -2613,6 +2613,39 @@ function devPublishTests_() {
       .forEach((h) => devCheck_(R, 'not sensitive: ' + h, publishSensitiveHeader_(h) === false));
   })();
 
+  // DASHBOARD LAYOUT: an untouched copy is mirrored WHOLESALE, so boxes at fixed cells (leadership names, promotions,
+  // leaderboard hours) come across — column-matching alone would leave them blank.
+  (() => {
+    const src = devFreshSheet_('PubDash');
+    src.getRange(2, 2).setValue('LEADERSHIP');
+    src.getRange(3, 2, 2, 2).setValues([['Chief of Police', 'James Bennett'], ['Major', 'Aisha Nguyen']]);
+    src.getRange(8, 2).setValue('PATROL LEADERBOARD');
+    src.getRange(9, 2, 1, 3).setValues([['RANK', 'NAME', 'HOURS']]);
+    src.getRange(10, 2, 2, 3).setValues([[1, 'Chen Reyes', 28.5], [2, 'Maria Nguyen', 24.25]]);
+    const dest = devFreshSheet_('PubDashDest');
+    // an untouched tab copy: identical layout, values wiped as if never published
+    dest.getRange(9, 2, 1, 3).setValues([['RANK', 'NAME', 'HOURS']]);
+    const n = publishMirrorTab_(src, dest);
+    devCheck_(R, 'dashboard: rows mirrored', n > 0);
+    devEq_(R, 'dashboard: leadership NAME at a fixed cell copied', g(dest, 3, 3), 'James Bennett');
+    devEq_(R, 'dashboard: second leadership row copied', g(dest, 4, 3), 'Aisha Nguyen');
+    devEq_(R, 'dashboard: leaderboard HOURS copied', g(dest, 10, 4), '28.5');
+    devEq_(R, 'dashboard: section title copied', g(dest, 2, 2), 'LEADERSHIP');
+  })();
+
+  // Wholesale mirroring still scrubs sensitive columns.
+  (() => {
+    const src = devFreshSheet_('PubDash2');
+    src.getRange(1, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'HOURS']]);
+    src.getRange(2, 1, 1, 3).setValues([['Whole', devId_(67), 5]]);
+    const dest = devFreshSheet_('PubDash2D');
+    dest.getRange(1, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'HOURS']]);
+    publishMirrorTab_(src, dest);
+    devEq_(R, 'wholesale: name mirrored', g(dest, 2, 1), 'Whole');
+    devEq_(R, 'wholesale: hours mirrored', g(dest, 2, 3), '5');
+    devEq_(R, 'wholesale: Unique ID still scrubbed', g(dest, 2, 2), '');
+  })();
+
   return R;
 }
 
