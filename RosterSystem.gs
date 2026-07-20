@@ -2204,25 +2204,38 @@ function patrolCols_(sheet) {
  *   • Only when NO ID is given do we fall back to callsign, and ONLY when it matches EXACTLY ONE member (a reassigned /
  *     stale / duplicated callsign is ambiguous → refuse rather than credit the first row). @return {number} 1-based row, or -1.
  */
-function patrolFindRow_(roster, discord, callsign) {
+/**
+ * Snapshot the four roster columns patrolFindRow_ matches on, so a caller sweeping many rows reads them ONCE instead
+ * of once per lookup. Safe to hold for the length of one execution: patrol crediting only ever writes HOURS and
+ * ACTIVITY in place (updateStatusFromHours), so no row ever moves under a cached index.
+ */
+function patrolRosterIndex_(roster) {
   const RC = rosterCols_(roster);
   const last = roster.getLastRow();
-  if (last < CONFIG.rosterStartRow) return -1;
   const n = last - CONFIG.rosterStartRow + 1;
-  const ranks = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getValues();
-  const names = roster.getRange(CONFIG.rosterStartRow, RC.name, n, 1).getValues();
+  if (n < 1) return { RC: RC, n: 0, ranks: [], names: [], ids: [], units: [] };
+  const col = (c, disp) => {
+    const rg = roster.getRange(CONFIG.rosterStartRow, c, n, 1);
+    return disp ? rg.getDisplayValues() : rg.getValues();
+  };
+  return { RC: RC, n: n, ranks: col(RC.rank), names: col(RC.name), ids: col(RC.discord, true), units: col(RC.unit, true) };
+}
+
+/** @param {Object=} idx optional prebuilt patrolRosterIndex_ — pass it when looking up in a loop. */
+function patrolFindRow_(roster, discord, callsign, idx) {
+  const X = idx || patrolRosterIndex_(roster);
+  const n = X.n;
+  if (n < 1) return -1;
   const id = String(discord == null ? '' : discord).trim();
   if (id !== '') { // an ID was given — trust it, don't fall back to callsign
     if (!isValidId_(id)) return -1; // malformed ID → error (operator fixes it), not a callsign guess
-    const ids = roster.getRange(CONFIG.rosterStartRow, RC.discord, n, 1).getDisplayValues();
-    for (let i = 0; i < n; i++) { if (isValidMemberValues_(ranks[i][0], names[i][0]) && String(ids[i][0]).trim() === id) return CONFIG.rosterStartRow + i; }
+    for (let i = 0; i < n; i++) { if (isValidMemberValues_(X.ranks[i][0], X.names[i][0]) && String(X.ids[i][0]).trim() === id) return CONFIG.rosterStartRow + i; }
     return -1; // valid ID but not on the roster → error, NOT a callsign fallback
   }
   const cs = norm_(callsign); // no ID → callsign fallback, but only if it uniquely identifies a member
   if (cs) {
-    const units = roster.getRange(CONFIG.rosterStartRow, RC.unit, n, 1).getDisplayValues();
     let hit = -1, count = 0;
-    for (let i = 0; i < n; i++) { if (isValidMemberValues_(ranks[i][0], names[i][0]) && norm_(units[i][0]) === cs) { hit = CONFIG.rosterStartRow + i; count++; } }
+    for (let i = 0; i < n; i++) { if (isValidMemberValues_(X.ranks[i][0], X.names[i][0]) && norm_(X.units[i][0]) === cs) { hit = CONFIG.rosterStartRow + i; count++; } }
     if (count === 1) return hit; // unambiguous — safe to credit; 0 or 2+ falls through to -1
   }
   return -1;
@@ -2472,19 +2485,20 @@ function evaluatePatrolLog_(memberRow, startDT, endDT, hours, now) {
  * Process ONE Patrol Log data row: auto-fill member identity + TOTAL TIME, decide Pending/Flagged (+reason), and
  * reconcile the member's credited hours. Idempotent — safe on every edit and on the nightly refresh. Never throws.
  */
-function processPatrolLog_(sheet, row, PC, roster) {
+function processPatrolLog_(sheet, row, PC, roster, idx) {
   try {
+    idx = idx || patrolRosterIndex_(roster); // one roster snapshot serves all three lookups this row makes
     const disp = (c) => c ? String(sheet.getRange(row, c).getDisplayValue()).trim() : '';
     const rawv = (c) => c ? sheet.getRange(row, c).getValue() : '';
     const idv = disp(PC.discord);
     const anyInput = !!(idv || rawv(PC.startDate) !== '' || rawv(PC.startTime) !== '' || rawv(PC.endDate) !== '' || rawv(PC.endTime) !== '');
-    if (!anyInput) { reconcilePatrolCredit_(sheet, row, PC, roster, rosterCols_(roster), null); return; } // empty/deleted row → reverse any prior credit, stay blank
+    if (!anyInput) { reconcilePatrolCredit_(sheet, row, PC, roster, idx.RC, null, idx); return; } // empty/deleted row → reverse any prior credit, stay blank
 
     const startDT = combineDateTime_(rawv(PC.startDate), rawv(PC.startTime));
     const endDT = combineDateTime_(rawv(PC.endDate), rawv(PC.endTime));
     const complete = !!(idv && startDT && endDT);
-    const RCr = rosterCols_(roster);
-    const memberRow = isValidId_(idv) ? patrolFindRow_(roster, idv, '') : -1;
+    const RCr = idx.RC;
+    const memberRow = isValidId_(idv) ? patrolFindRow_(roster, idv, '', idx) : -1;
 
     if (memberRow !== -1) { // fill identity from the roster (source of truth)
       const rr = (c) => c ? String(roster.getRange(memberRow, c).getDisplayValue()).trim() : '';
@@ -2522,7 +2536,7 @@ function processPatrolLog_(sheet, row, PC, roster) {
         setStatus(P.processedStatus); setNote(''); desired = { hours: hours, mid: idv };                // fully valid → auto-mark Processed + credit
       }
     }
-    reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired);
+    reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx);
   } catch (e) { log_('processPatrolLog_', e); }
 }
 
@@ -2532,7 +2546,7 @@ function processPatrolLog_(sheet, row, PC, roster) {
  * new one so a member's HOURS always equals the sum of their VALID logs — idempotent across edits, flag/unflag, ID
  * changes and deletes. The marker is written BEFORE the roster is touched (a crash under-credits, never double-credits).
  */
-function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired) {
+function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx) {
   try {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
     if (!PC.mark || !RCr.hours) return;
@@ -2545,7 +2559,7 @@ function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired) {
     if (prior && priorMid === wantMid && Math.abs(priorHours - wantHours) < 0.005) return; // already exactly credited → no-op
 
     if (priorMid && priorHours) { // reverse the prior credit on whoever actually got it
-      const prow = patrolFindRow_(roster, priorMid, '');
+      const prow = patrolFindRow_(roster, priorMid, '', idx);
       if (prow !== -1) {
         const cur = parseHours_(roster.getRange(prow, RCr.hours).getValue());
         roster.getRange(prow, RCr.hours).setValue(Math.round((cur - priorHours) * 100) / 100);
@@ -2558,7 +2572,7 @@ function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired) {
     if (prior) { markCell.clearContent(); SpreadsheetApp.flush(); }
 
     if (desired && wantHours > 0 && wantMid) { // apply the new credit on the target member
-      const trow = patrolFindRow_(roster, wantMid, '');
+      const trow = patrolFindRow_(roster, wantMid, '', idx);
       if (trow !== -1) {
         markCell.setValue(wantHours + '|' + wantMid); SpreadsheetApp.flush(); // durable marker BEFORE the credit
         const cur = parseHours_(roster.getRange(trow, RCr.hours).getValue());
@@ -2630,7 +2644,8 @@ function refreshPatrolLog_() {
     const PC = patrolLogCols_(sheet);
     if (!PC.status) return;
     const last = sheet.getLastRow();
-    for (let r = CONFIG.patrolStartRow; r <= last; r++) processPatrolLog_(sheet, r, PC, roster);
+    const idx = patrolRosterIndex_(roster); // ONE roster read for the whole sweep, not three per row
+    for (let r = CONFIG.patrolStartRow; r <= last; r++) processPatrolLog_(sheet, r, PC, roster, idx);
     sortPatrolLog_(sheet);
   } catch (e) { log_('refreshPatrolLog_', e); }
 }

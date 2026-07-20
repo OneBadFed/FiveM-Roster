@@ -1789,9 +1789,16 @@ const PUBLISH_DIRTY_PROP_ = 'PUBLIC_DIRTY';
 const PUBLISH_LAST_PROP_ = 'PUBLIC_LAST_PUBLISH';
 
 /** Flag the public copy as stale WITHOUT publishing. Script writes (panel actions, the schedulers, patrol crediting)
- *  never fire onEdit, so they mark it here and the 1-minute sweep carries them. Cheap: one property write. */
+ *  never fire onEdit, so they mark it here and the 1-minute sweep carries them. Cheap: one property write.
+ *
+ *  The flag is a boolean, so writing it twice in one execution is pure waste — and the callers are LOOPS
+ *  (refreshPatrolLog_ processes every row, each row reconciling credit), which turned one of the slowest calls in
+ *  Apps Script into a per-row cost. Memoised per execution; globals reset on every run, so the next execution marks
+ *  again. The memo is cleared wherever the property is, so a mark landing after a mid-execution publish still counts. */
+let _pubDirtyMemo_ = false;
 function publishMarkDirty_() {
-  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_, '1'); } catch (e) { /* best-effort */ }
+  if (_pubDirtyMemo_) return;
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_, '1'); _pubDirtyMemo_ = true; } catch (e) { /* best-effort */ }
 }
 
 /** Publish under the lock, clearing the dirty flag FIRST so an edit landing mid-publish re-marks itself. */
@@ -1801,6 +1808,7 @@ function publishPublicRosterQuiet_(onlyTab) {
   if (!lock.tryLock(5000)) return; // another publish is already running — it will carry this change
   try {
     props.deleteProperty(PUBLISH_DIRTY_PROP_); // BEFORE publishing: a concurrent edit re-sets it, so nothing is lost
+    _pubDirtyMemo_ = false;                    // the flag is gone — a later mark in THIS execution must write it again
     publishPublicRoster_(onlyTab);
     props.setProperty(PUBLISH_LAST_PROP_, String(Date.now()));
   } catch (e) { log_('publishPublicRosterQuiet_', e); }
@@ -1818,6 +1826,7 @@ function publishOnChange(e) {
     try { only = (e && e.range) ? e.range.getSheet().getName() : ''; } catch (ig) { only = ''; }
     const props = PropertiesService.getDocumentProperties();
     props.setProperty(PUBLISH_DIRTY_PROP_, '1');
+    _pubDirtyMemo_ = true;
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
     if (Date.now() - last < PUBLISH_MIN_GAP_MS_) return; // too soon — the 1-minute sweep will carry it
     publishPublicRosterQuiet_(only || undefined);
