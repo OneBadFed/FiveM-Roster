@@ -1423,93 +1423,98 @@ function approveSignup_(signups, row, roster, slotRow) {
 
 const PUBLIC_FILE_PROP_ = 'PUBLIC_ROSTER_ID';
 
-/** Roster columns that go public, in order. Unique ID and every private column are deliberately absent. */
-const PUBLIC_ROSTER_COLS_ = Object.freeze([
-  { role: 'rank', label: 'RANK' }, { role: 'unit', label: 'UNIT NUMBER' }, { role: 'ooc', label: 'OOC NAME' },
-  { role: 'name', label: 'NAME' }, { role: 'shift', label: 'SHIFT' }, { role: 'hours', label: 'HOURS' },
-  { role: 'activity', label: 'STATUS' },
-]);
-
-/** Tracker columns that go public. The dedup key, Unique ID, Approved By and Notes stay internal. */
-const PUBLIC_TRACKER_COLS_ = Object.freeze([
-  { role: 'rank', label: 'RANK' }, { role: 'unit', label: 'UNIT NUMBER' }, { role: 'ooc', label: 'OOC NAME' },
-  { role: 'name', label: 'NAME' }, { role: 'shift', label: 'SHIFT' }, { role: 'start', label: 'START DATE' },
-  { role: 'end', label: 'END DATE' }, { role: 'length', label: 'LENGTH' }, { role: 'timeLeft', label: 'TIME LEFT' },
-  { role: 'status', label: 'STATUS' },
-]);
-
 /** The linked public spreadsheet, or null when none is set up yet. */
 function publicFile_() {
   const id = String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_) || '').trim();
   return id ? SpreadsheetApp.openById(id) : null;
 }
 
-/** A tab in the public file, created + given a styled frozen header on first use. Existing formatting is left alone. */
-function ensurePublicTab_(file, name, headerRow, labels) {
-  let sh = file.getSheetByName(name);
-  if (sh) return sh; // an existing tab (typically a COPY of the internal one) keeps its own layout and formatting
-  sh = file.insertSheet(name);
-  const hr = Math.max(1, headerRow || 1); // seed the header on the SAME row the source uses, so both paths align
-  sh.getRange(hr, 1, 1, labels.length).setValues([labels]).setFontWeight('bold');
-  if (sh.getFrozenRows() < hr) sh.setFrozenRows(hr);
-  return sh;
+/** Tabs that are NEVER mirrored, even if a same-named tab somehow exists in the public file. */
+function publishTabBlocked_(name) {
+  const n = norm_(name);
+  if (!n) return true;
+  return ['CONFIG', 'WEBHOOK', 'DISCIPLIN', 'SIGNUP', 'EDIT LOG', 'AUDIT', 'SNAPSHOT', 'HOURS HISTORY',
+    'SYS LOG', 'INTEGRITY', 'SYNC STATE'].some((b) => n.indexOf(b) !== -1);
+}
+
+/** Header labels whose column is NEVER written to the public copy — and is wiped there if a copy brought it along. */
+function publishSensitiveHeader_(h) {
+  const n = norm_(h);
+  if (!n) return false;
+  if (n === 'CID' || n === 'DOB') return true;                                   // exact: too short to match loosely
+  return ['UNIQUE ID', 'DISCORD', 'COMMUNITY ID', 'EMAIL', 'DATE OF BIRTH', 'PHONE', 'ADDRESS']
+    .some((k) => n.indexOf(k) !== -1);
+}
+
+/** Best-guess header row: the row in the first 15 with the most filled cells. 0 when the sheet has no header. */
+function publishHeaderRow_(sh) {
+  const rows = Math.min(15, sh.getLastRow());
+  if (rows < 1) return 0;
+  const grid = sh.getRange(1, 1, rows, Math.max(sh.getLastColumn(), 1)).getDisplayValues();
+  let best = 0, bestN = 1;
+  for (let r = 0; r < grid.length; r++) {
+    const n = grid[r].filter((v) => String(v).trim() !== '').length;
+    if (n > bestN) { bestN = n; best = r + 1; }
+  }
+  return best;
 }
 
 /**
- * Injectable core: copy the ALLOW-LISTED columns of one source sheet into a public tab, values only.
- * Rows are copied as-is from `startRow` (so rank dividers and ordering survive) but only for listed columns —
- * a column that isn't listed is never even read. @return {number} data rows written. Testable.
+ * Injectable core: mirror ONE tab into the public copy. Columns are matched BY HEADER, so the public tab keeps its own
+ * layout and only receives the columns it actually has — delete a column there and it simply stops being populated.
+ * Sensitive headers are never written and are wiped if present. Values only, so formatting survives. @return rows copied.
  */
-function publishSheet_(src, srcCols, srcStart, dest, destCols, spec, wipeCols) {
-  // Match roles by HEADER on BOTH sides, so the public tab can be a straight COPY of the internal one (identical
-  // widths/colours/banner) — or have columns deleted or reordered — and the data still lands in the right places.
-  const pairs = spec.map((s) => ({ sc: srcCols[s.role] || 0, dc: destCols[s.role] || 0 })).filter((p) => p.sc && p.dc);
-  if (!pairs.length) return 0;
-  const srcHdr = srcCols.headerRow || srcCols.labelRow || 1;
-  const destHdr = destCols.headerRow || destCols.labelRow || srcHdr;
-  const destStart = destHdr + (srcStart - srcHdr); // same offset below the header as the source uses
-  const last = src.getLastRow();
-  const n = Math.max(0, last - srcStart + 1);
+function publishMirrorTab_(src, dest) {
+  const sh = publishHeaderRow_(src), dh = publishHeaderRow_(dest);
+  if (!sh || !dh) return 0;
+  const sHdr = src.getRange(sh, 1, 1, Math.max(src.getLastColumn(), 1)).getDisplayValues()[0];
+  const dHdr = dest.getRange(dh, 1, 1, Math.max(dest.getLastColumn(), 1)).getDisplayValues()[0];
+  const byName = {};
+  sHdr.forEach((h, i) => { const k = norm_(h); if (k && !(k in byName)) byName[k] = i + 1; }); // first wins on duplicates
+  const pairs = [], scrub = [];
+  dHdr.forEach((h, i) => {
+    const k = norm_(h); if (!k) return;
+    if (publishSensitiveHeader_(h)) { scrub.push(i + 1); return; }
+    if (byName[k]) pairs.push({ sc: byName[k], dc: i + 1 });
+  });
+  if (!pairs.length && !scrub.length) return 0;
 
-  const needRows = destStart + n - 1;
-  if (needRows > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), needRows - dest.getMaxRows());
-  if (n) pairs.forEach((p) => dest.getRange(destStart, p.dc, n, 1).setValues(src.getRange(srcStart, p.sc, n, 1).getValues()));
-
-  // SAFETY NET: blank any sensitive column that still exists on the public tab (e.g. a Unique ID column left behind
-  // by the copy). The allow-list already means we never WRITE it — this makes sure stale copied data can't linger.
-  (wipeCols || []).forEach((c) => { if (c && n) dest.getRange(destStart, c, n, 1).clearContent(); });
-
-  const destLast = dest.getLastRow(); // drop rows left over from a previous, longer publish
-  if (destLast >= destStart + n) {
-    const widest = Math.max.apply(null, pairs.map((p) => p.dc).concat((wipeCols || []).filter(Boolean)));
-    dest.getRange(destStart + n, 1, destLast - (destStart + n) + 1, widest).clearContent();
+  const srcStart = sh + 1, destStart = dh + 1;
+  const n = Math.max(0, src.getLastRow() - srcStart + 1);
+  const need = destStart + n - 1;
+  if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
+  if (n) {
+    pairs.forEach((p) => dest.getRange(destStart, p.dc, n, 1).setValues(src.getRange(srcStart, p.sc, n, 1).getValues()));
+    scrub.forEach((c) => dest.getRange(destStart, c, n, 1).clearContent());
+  }
+  const dLast = dest.getLastRow(); // drop rows left over from a previous, longer publish
+  if (dLast >= destStart + n) {
+    const widest = Math.max.apply(null, pairs.map((p) => p.dc).concat(scrub).concat([1]));
+    dest.getRange(destStart + n, 1, dLast - (destStart + n) + 1, widest).clearContent();
   }
   return n;
 }
 
-/** Publish the roster + LOA tracker to the linked public file. Safe no-op when none is linked. */
+/**
+ * Publish: every tab in the PUBLIC file that has a same-named tab here is mirrored. The public file's OWN tab list is
+ * therefore the allow-list — copy a tab across to publish it, delete it to stop. Blocked tabs are never mirrored.
+ */
 function publishPublicRoster_() {
   const file = publicFile_();
-  if (!file) return { linked: false, roster: 0, tracker: 0 };
+  if (!file) return { linked: false, tabs: [], rows: 0, skipped: [] };
   const ss = SpreadsheetApp.getActive();
-  const out = { linked: true, roster: 0, tracker: 0, url: '' };
+  const out = { linked: true, tabs: [], rows: 0, skipped: [], url: '' };
   try { out.url = file.getUrl(); } catch (e) { /* cosmetic */ }
-  const roster = ss.getSheetByName(CONFIG.sheets.roster);
-  if (roster) {
-    const rc = rosterCols_(roster);
-    const dest = ensurePublicTab_(file, CONFIG.sheets.publicRosterTab, rc.headerRow, PUBLIC_ROSTER_COLS_.map((x) => x.label));
-    const dc = rosterCols_(dest), dp = rosterPiiCols_(dest);
-    out.roster = publishSheet_(roster, rc, CONFIG.rosterStartRow, dest, dc, PUBLIC_ROSTER_COLS_,
-      [dc.discord, dp.email, dp.dob, dp.phone]); // scrub anything sensitive a copied tab brought with it
-  }
-  const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
-  if (tracker) {
-    const tc = trackerCols_(tracker);
-    const dest = ensurePublicTab_(file, CONFIG.sheets.publicTrackerTab, tc.labelRow, PUBLIC_TRACKER_COLS_.map((x) => x.label));
-    const dc = trackerCols_(dest);
-    out.tracker = publishSheet_(tracker, tc, CONFIG.trackerStartRow, dest, dc, PUBLIC_TRACKER_COLS_,
-      [dc.discord, dc.key, dc.approvedBy, dc.notes]);
-  }
+  file.getSheets().forEach((dest) => {
+    const name = dest.getName();
+    if (publishTabBlocked_(name)) { out.skipped.push(name + ' (blocked)'); return; }
+    const src = ss.getSheetByName(name);
+    if (!src) { out.skipped.push(name + ' (no match here)'); return; }
+    try {
+      const n = publishMirrorTab_(src, dest);
+      out.tabs.push(`${name}: ${n}`); out.rows += n;
+    } catch (e) { log_('publishMirrorTab_.' + name, e); out.skipped.push(name + ' (error)'); }
+  });
   return out;
 }
 
@@ -1598,15 +1603,18 @@ function setupPublicRoster() {
     } else {
       file = SpreadsheetApp.create(`${SpreadsheetApp.getActive().getName()} — Public Roster`);
       const s1 = file.getSheets()[0];
-      try { if (s1 && s1.getLastRow() === 0) s1.setName(CONFIG.sheets.publicRosterTab); } catch (e) { /* cosmetic */ }
     }
     PropertiesService.getDocumentProperties().setProperty(PUBLIC_FILE_PROP_, file.getId());
     const sum = publishPublicRoster_();
     logInfo_('setupPublicRoster', `public roster linked: ${file.getId()}`);
     ui.alert('🌐 Public roster linked',
-      `${file.getName()}\n${file.getUrl()}\n\nPublished ${sum.roster} roster row(s) and ${sum.tracker} tracker row(s).\n\n` +
-      'NEXT: share THAT file with your members (Viewer), then restrict THIS workbook to command staff only. ' +
-      'Do it in that order so nobody is left without a roster.', ui.ButtonSet.OK);
+      file.getName() + '\n' + file.getUrl() + '\n\n' +
+      'NEXT — copy the tabs you want members to see into that file (right-click a tab ▸ Copy to ▸ that spreadsheet), ' +
+      'then rename each copy to EXACTLY match its name here. Publishing mirrors every public tab whose name matches a ' +
+      'tab here, matching columns by header — so delete a column there and it simply stops being filled.\n\n' +
+      'Unique ID / email / DOB / phone are never published and are wiped if a copy brought them along. Config, ' +
+      'Webhooks, Disciplinary Log and Signups are never published at all.\n\n' +
+      'Then share THAT file with members and restrict this one — in that order.', ui.ButtonSet.OK);
   });
 }
 

@@ -2531,82 +2531,86 @@ function devSignupTests_() {
 function devPublishTests_() {
   const R = devNewResults_('Public roster publish (sandbox)');
   const g = (sh, r, c) => String(sh.getRange(r, c).getDisplayValue()).trim();
-  const HDR = 5, DATA = CONFIG.rosterStartRow;
-  // A public tab shaped like a COPY of the internal roster: same header row, same column order.
-  const destLike = (suffix, extra) => {
-    const d = devFreshSheet_(suffix);
-    d.getRange(HDR, 2, 1, 8).setValues([['RANK', 'NAME', 'UNIT', 'DISCORD', 'JOIN', 'PROMO', 'ACTIVITY', 'HOURS']]);
-    if (extra) d.getRange(HDR, 10, 1, extra.length).setValues([extra]);
-    return d;
-  };
 
-  // Publishing into a copied-layout tab lands each value in the RIGHT column, at the same rows as the source.
+  // A public tab shaped like a COPY of the internal roster receives data matched BY HEADER.
   (() => {
-    const ro = devBuildRoster_([
-      { rank: 'Sergeant', name: 'Pub One', id: devId_(60), unit: 'S-1', activity: 'Active', hours: 12 },
-      { rank: 'Trooper', name: 'Pub Two', id: devId_(61), unit: 'S-2', activity: 'LOA', hours: 4 },
+    const src = devFreshSheet_('PubSrc');
+    src.getRange(5, 1, 1, 6).setValues([['RANK', 'UNIT NUMBER', 'NAME', 'UNIQUE ID', 'HOURS', 'EMAIL']]);
+    src.getRange(6, 1, 2, 6).setValues([
+      ['Sergeant', 'S-1', 'Pub One', devId_(60), 12, 'a@b.test'],
+      ['Trooper', 'S-2', 'Pub Two', devId_(61), 4, 'c@d.test'],
     ]);
-    ro.getRange(HDR, 10, 1, 3).setValues([['EMAIL', 'DATE OF BIRTH', 'PHONE']]);
-    ro.getRange(DATA, 10, 1, 3).setValues([['a@b.test', '1990-01-01', '555-0111']]);
-    const dest = destLike('PubRoster');
-    const n = publishSheet_(ro, rosterCols_(ro), DATA, dest, rosterCols_(dest), PUBLIC_ROSTER_COLS_, []);
-    devEq_(R, 'publish: both member rows exported', n, 2);
-    devEq_(R, 'publish: lands on the SAME row as the source', g(dest, DATA, CONFIG.roster.rank), 'Sergeant');
-    devEq_(R, 'publish: name in the destination NAME column', g(dest, DATA, CONFIG.roster.name), 'Pub One');
-    devEq_(R, 'publish: hours exported', g(dest, DATA, CONFIG.roster.hours), '12');
-    devEq_(R, 'publish: second row activity exported', g(dest, DATA + 1, CONFIG.roster.activity), 'LOA');
-
-    // THE GUARANTEE: nothing private reached the public copy, anywhere on the sheet.
-    const w = Math.max(dest.getLastColumn(), 1), h = Math.max(dest.getLastRow(), 1);
-    const flat = dest.getRange(1, 1, h, w).getDisplayValues().reduce((a, r) => a.concat(r), []).join(' | ');
-    devCheck_(R, 'ALLOW-LIST: no email published', flat.indexOf('a@b.test') === -1);
-    devCheck_(R, 'ALLOW-LIST: no date of birth published', flat.indexOf('1990-01-01') === -1);
-    devCheck_(R, 'ALLOW-LIST: no phone published', flat.indexOf('555-0111') === -1);
-    devCheck_(R, 'ALLOW-LIST: no Unique ID published', flat.indexOf(devId_(60)) === -1);
+    // The public copy kept UNIQUE ID and EMAIL columns, and reordered the rest.
+    const dest = devFreshSheet_('PubDest');
+    dest.getRange(5, 1, 1, 6).setValues([['NAME', 'RANK', 'UNIQUE ID', 'HOURS', 'EMAIL', 'UNIT NUMBER']]);
+    const n = publishMirrorTab_(src, dest);
+    devEq_(R, 'mirror: both rows copied', n, 2);
+    devEq_(R, 'mirror: NAME matched by header despite reorder', g(dest, 6, 1), 'Pub One');
+    devEq_(R, 'mirror: RANK matched by header', g(dest, 6, 2), 'Sergeant');
+    devEq_(R, 'mirror: HOURS matched by header', g(dest, 6, 4), '12');
+    devEq_(R, 'mirror: UNIT NUMBER matched by header', g(dest, 7, 6), 'S-2');
+    devEq_(R, 'SENSITIVE: Unique ID never written', g(dest, 6, 3), '');
+    devEq_(R, 'SENSITIVE: email never written', g(dest, 6, 5), '');
   })();
 
-  // A copied tab that still HAS a Unique ID / email column gets those columns scrubbed, not left stale.
+  // Stale sensitive values a copy brought along are WIPED, not left sitting there.
   (() => {
-    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Scrub', id: devId_(62), unit: 'S-9', activity: 'Active', hours: 7 }]);
-    const dest = destLike('PubScrub', ['EMAIL']);
-    dest.getRange(DATA, CONFIG.roster.discord).setValue(devId_(62));  // stale data the copy brought with it
-    dest.getRange(DATA, 10).setValue('stale@dept.test');
-    const dc = rosterCols_(dest), dp = rosterPiiCols_(dest);
-    publishSheet_(ro, rosterCols_(ro), DATA, dest, dc, PUBLIC_ROSTER_COLS_, [dc.discord, dp.email, dp.dob, dp.phone]);
-    devEq_(R, 'scrub: copied Unique ID wiped', g(dest, DATA, CONFIG.roster.discord), '');
-    devEq_(R, 'scrub: copied email wiped', g(dest, DATA, 10), '');
-    devEq_(R, 'scrub: public data still correct', g(dest, DATA, CONFIG.roster.name), 'Scrub');
+    const src = devFreshSheet_('PubSrc2');
+    src.getRange(5, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'EMAIL']]);
+    src.getRange(6, 1, 1, 3).setValues([['Scrub', devId_(62), 'live@dept.test']]);
+    const dest = devFreshSheet_('PubDest2');
+    dest.getRange(5, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'EMAIL']]);
+    dest.getRange(6, 1, 1, 3).setValues([['Scrub', devId_(62), 'stale@dept.test']]); // came across in the copy
+    publishMirrorTab_(src, dest);
+    devEq_(R, 'scrub: copied Unique ID wiped', g(dest, 6, 2), '');
+    devEq_(R, 'scrub: copied email wiped', g(dest, 6, 3), '');
+    devEq_(R, 'scrub: public data still updated', g(dest, 6, 1), 'Scrub');
   })();
 
-  // Re-publishing after the roster SHRINKS clears the leftover rows (no ghosts of departed members).
+  // A column the public tab does NOT have is simply not published (its tab list/headers are the spec).
   (() => {
-    const big = devBuildRoster_([
-      { rank: 'Trooper', name: 'Stay', id: devId_(63), activity: 'Active', hours: 1 },
-      { rank: 'Trooper', name: 'Leaver', id: devId_(64), activity: 'Active', hours: 2 },
-    ]);
-    const dest = destLike('PubShrink');
-    publishSheet_(big, rosterCols_(big), DATA, dest, rosterCols_(dest), PUBLIC_ROSTER_COLS_, []);
-    devEq_(R, 'shrink: second member present first', g(dest, DATA + 1, CONFIG.roster.name), 'Leaver');
-    const small = devBuildRoster_([{ rank: 'Trooper', name: 'Stay', id: devId_(63), activity: 'Active', hours: 1 }]);
-    publishSheet_(small, rosterCols_(small), DATA, dest, rosterCols_(dest), PUBLIC_ROSTER_COLS_, []);
-    devEq_(R, 'shrink: the departed member left no ghost row', g(dest, DATA + 1, CONFIG.roster.name), '');
-    devEq_(R, 'shrink: the remaining member survived', g(dest, DATA, CONFIG.roster.name), 'Stay');
+    const src = devFreshSheet_('PubSrc3');
+    src.getRange(5, 1, 1, 3).setValues([['NAME', 'HOURS', 'JOIN DATE']]);
+    src.getRange(6, 1, 1, 3).setValues([['Keep', 9, '2020-01-01']]);
+    const dest = devFreshSheet_('PubDest3');
+    dest.getRange(5, 1, 1, 2).setValues([['NAME', 'HOURS']]); // JOIN DATE deleted from the public copy
+    publishMirrorTab_(src, dest);
+    devEq_(R, 'omitted column: name published', g(dest, 6, 1), 'Keep');
+    devEq_(R, 'omitted column: hours published', g(dest, 6, 2), '9');
+    const flat = dest.getRange(1, 1, Math.max(dest.getLastRow(), 1), Math.max(dest.getLastColumn(), 1))
+      .getDisplayValues().reduce((a, r) => a.concat(r), []).join(' | ');
+    devCheck_(R, 'omitted column: join date never appears', flat.indexOf('2020-01-01') === -1);
   })();
 
-  // A fresh (never-copied) public tab is seeded so header resolution works and data still lands correctly.
+  // Shrinking the source clears the leftover rows (no ghost members).
   (() => {
-    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Fresh', id: devId_(66), unit: 'S-4', activity: 'Active', hours: 3 }]);
-    const file = SpreadsheetApp.getActive();
-    const nm = SANDBOX_PREFIX + 'PubFresh';
-    const old = file.getSheetByName(nm); if (old) file.deleteSheet(old);
-    const dest = ensurePublicTab_(file, nm, rosterCols_(ro).headerRow, PUBLIC_ROSTER_COLS_.map((x) => x.label));
-    try {
-      if (!dest.isSheetHidden()) dest.hideSheet();
-      const dc = rosterCols_(dest);
-      devCheck_(R, 'fresh tab: header seeded + resolvable', dc.rank > 0 && dc.name > 0);
-      publishSheet_(ro, rosterCols_(ro), DATA, dest, dc, PUBLIC_ROSTER_COLS_, []);
-      devEq_(R, 'fresh tab: member published', g(dest, DATA, dc.name), 'Fresh');
-    } finally { /* sandbox tab is reused next run */ }
+    const src = devFreshSheet_('PubSrc4');
+    src.getRange(5, 1, 1, 1).setValues([['NAME']]);
+    src.getRange(6, 1, 2, 1).setValues([['Stay'], ['Leaver']]);
+    const dest = devFreshSheet_('PubDest4');
+    dest.getRange(5, 1, 1, 1).setValues([['NAME']]);
+    publishMirrorTab_(src, dest);
+    devEq_(R, 'shrink: both rows present first', g(dest, 7, 1), 'Leaver');
+    src.getRange(7, 1).clearContent();
+    publishMirrorTab_(src, dest);
+    devEq_(R, 'shrink: departed row cleared', g(dest, 7, 1), '');
+    devEq_(R, 'shrink: remaining row survives', g(dest, 6, 1), 'Stay');
+  })();
+
+  // Tab-level blocks: private tabs are never mirrored even if a same-named tab exists publicly.
+  (() => {
+    ['⚙️ Config', 'Webhooks', 'Disciplinary Log', 'Roster Signups', 'Edit Log', '_Snapshots', '_Hours History']
+      .forEach((t) => devCheck_(R, 'blocked tab: ' + t, publishTabBlocked_(t) === true));
+    ['Member Information', 'LOA Tracker', 'Day Shift', 'Police Academy', 'Welcome Page']
+      .forEach((t) => devCheck_(R, 'publishable tab: ' + t, publishTabBlocked_(t) === false));
+  })();
+
+  // Sensitive-header detection, including the short names that must match EXACTLY.
+  (() => {
+    ['UNIQUE ID', 'Discord ID', 'Community ID', 'Email', 'Date of Birth', 'Phone', 'Home Address', 'CID', 'DOB']
+      .forEach((h) => devCheck_(R, 'sensitive: ' + h, publishSensitiveHeader_(h) === true));
+    ['NAME', 'OOC NAME', 'RANK', 'UNIT NUMBER', 'SHIFT', 'HOURS', 'STATUS', 'Accidents', 'Decided']
+      .forEach((h) => devCheck_(R, 'not sensitive: ' + h, publishSensitiveHeader_(h) === false));
   })();
 
   return R;
