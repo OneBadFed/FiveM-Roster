@@ -1465,6 +1465,50 @@ function publishHeaderRow_(sh) {
  * Sensitive headers are never written and are wiped if present. Values only, so formatting survives. @return rows copied.
  */
 
+/**
+ * Write a 2D block into `dest` at (top,left) WITHOUT spanning merged cells. A plain setValues over a range containing
+ * merges fails with Sheets' generic "Service error: Spreadsheets", and these layouts are full of merged banners/boxes.
+ * Merge-free row spans are written in ONE call (so the bulk stays fast); rows containing merges are written as runs,
+ * skipping every cell that is inside a merge but is not its top-left (the only writable cell of a merge).
+ */
+function publishWriteValues_(dest, top, left, values) {
+  const rows = values.length; if (!rows) return;
+  const cols = values[0].length; if (!cols) return;
+  let merges = [];
+  try { merges = dest.getRange(top, left, rows, cols).getMergedRanges(); } catch (e) { merges = []; }
+  if (!merges.length) { dest.getRange(top, left, rows, cols).setValues(values); return; }
+
+  const skip = [], rowHasMerge = [];
+  for (let r = 0; r < rows; r++) { skip.push(new Array(cols).fill(false)); rowHasMerge.push(false); }
+  merges.forEach((m) => {
+    const r0 = m.getRow() - top, c0 = m.getColumn() - left, nr = m.getNumRows(), nc = m.getNumColumns();
+    for (let r = Math.max(0, r0); r < Math.min(rows, r0 + nr); r++) {
+      rowHasMerge[r] = true;
+      for (let c = Math.max(0, c0); c < Math.min(cols, c0 + nc); c++) {
+        if (r === r0 && c === c0) continue; // a merge's top-left IS writable
+        skip[r][c] = true;
+      }
+    }
+  });
+
+  let r = 0;
+  while (r < rows) {
+    if (!rowHasMerge[r]) { // batch every consecutive merge-free row into a single write
+      let e = r; while (e + 1 < rows && !rowHasMerge[e + 1]) e++;
+      dest.getRange(top + r, left, e - r + 1, cols).setValues(values.slice(r, e + 1));
+      r = e + 1; continue;
+    }
+    let c = 0; // merged row → write only the runs of writable cells
+    while (c < cols) {
+      if (skip[r][c]) { c++; continue; }
+      let e = c; while (e + 1 < cols && !skip[r][e + 1]) e++;
+      dest.getRange(top + r, left + c, 1, e - c + 1).setValues([values[r].slice(c, e + 1)]);
+      c = e + 1;
+    }
+    r++;
+  }
+}
+
 function publishMirrorTab_(src, dest) {
   const sh = publishHeaderRow_(src), dh = publishHeaderRow_(dest);
   const sRows = src.getLastRow(), sCols = src.getLastColumn();
@@ -1483,7 +1527,7 @@ function publishMirrorTab_(src, dest) {
     if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
     const vals = step('read src ' + sRows + 'x' + sCols, () => src.getRange(1, 1, sRows, sCols).getValues());
     step('write dest ' + sRows + 'x' + sCols + ' (dest grid ' + dest.getMaxRows() + 'x' + dest.getMaxColumns() + ')',
-      () => dest.getRange(1, 1, sRows, sCols).setValues(vals));
+      () => publishWriteValues_(dest, 1, 1, vals));
     if (sh && sRows > sh) { // still wipe anything sensitive the copy brought along
       src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => {
         if (publishSensitiveHeader_(h)) dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent();
@@ -1513,7 +1557,7 @@ function publishMirrorTab_(src, dest) {
   const need = destStart + n - 1;
   if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
   if (n) {
-    pairs.forEach((p) => dest.getRange(destStart, p.dc, n, 1).setValues(src.getRange(srcStart, p.sc, n, 1).getValues()));
+    pairs.forEach((p) => publishWriteValues_(dest, destStart, p.dc, src.getRange(srcStart, p.sc, n, 1).getValues()));
     scrub.forEach((c) => dest.getRange(destStart, c, n, 1).clearContent());
   }
   const dLast = dest.getLastRow(); // drop rows left over from a previous, longer publish
