@@ -385,6 +385,9 @@ const BLOCK_SPECS_ = Object.freeze({
     PATROL_LOGGED_TITLE: { t: 'string', d: '🚔 {name} logged {hours}h of patrol', req: false, help: 'Title for the patrol-logged embed. Tokens: {name}, {hours} (this log), {total} (new total).' },
     PATROL_LOGGED_COLOR: { t: 'color', d: '#4ea7d6', req: false, help: 'Colour bar of the patrol-logged embed.' },
   } },
+  PUBLISH: { type: 'kv', help: 'Public-roster publishing. Cells on the PUBLIC copy that must never be overwritten. A destination cell containing a FORMULA is always left alone automatically (so its own live date/time/counters keep recalculating) — this list is for STATIC text that should differ, like the public title.', keys: {
+    KEEP_RANGES: { t: 'list', d: 'Welcome Page!F6:W7', req: false, help: 'Comma-separated Tab!Range entries the publish never writes to, e.g. "Welcome Page!F6:W7, Welcome Page!A1". Use * as the tab name to apply a range to every tab.' },
+  } },
   PATROL: { type: 'kv', help: 'Patrol-log form → member hours (v2.5.0). Each new submission on the [SHEETS].PATROL_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_RESPONSES is set.', keys: {
     MODE: { t: 'enum', d: 'START_END', req: false, enum: ['START_END', 'DURATION'], help: 'START_END = compute hours from a start + end time. DURATION = read a single "hours patrolled" number.' },
     MAX_HOURS: { t: 'int', d: 16, req: false, min: 1, max: 24, help: 'Reject a single patrol log longer than this many hours (guards typos / bad times).' },
@@ -456,7 +459,7 @@ const BLOCK_SPECS_ = Object.freeze({
 });
 
 const BLOCK_ORDER_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'RANKS', 'COLUMNS', 'SECTIONS', 'SECTION_TAGS',
-  'STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'LEAVE', 'FORM_MAP', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME',
+  'STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'LEAVE', 'FORM_MAP', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME',
   'DASHBOARD', 'DASHBOARD_GROUPS', 'DASHBOARD_CELLS', 'EMBEDS']);
 
 /* ======================================================================

@@ -2649,6 +2649,43 @@ function devPublishTests_() {
     devEq_(R, 'wholesale: Unique ID still scrubbed', g(dest, 2, 2), '');
   })();
 
+  // PRESERVED CELLS: the public copy's own formulas and any configured keep-range are never overwritten.
+  (() => {
+    const src = devFreshSheet_('PubKeepSrc');
+    src.getRange(1, 1, 1, 3).setValues([['TITLE', 'NAME', 'WHEN']]);
+    src.getRange(2, 1, 1, 3).setValues([['INTERNAL DEPARTMENT ROSTER', 'Alice', 'internal-time']]);
+    const dest = devFreshSheet_('PubKeepDest');
+    dest.getRange(1, 1, 1, 3).setValues([['TITLE', 'NAME', 'WHEN']]);
+    dest.getRange(2, 1).setValue('PUBLIC DEPARTMENT ROSTER'); // static text that must differ
+    dest.getRange(2, 2).setValue('');
+    dest.getRange(2, 3).setFormula('=UPPER("live")');          // the public copy computes this itself
+    const keep = publishKeepMask_(dest, 1, 1, 2, 3);
+    devCheck_(R, 'keep: a destination FORMULA cell is masked', keep[1][2] === true);
+    devCheck_(R, 'keep: an ordinary destination cell is not masked', keep[1][1] === false);
+    publishWriteValues_(dest, 1, 1, src.getRange(1, 1, 2, 3).getValues(), keep);
+    devEq_(R, 'keep: normal cell still published', g(dest, 2, 2), 'Alice');
+    devEq_(R, 'keep: the public formula survived (not frozen to a copied value)', dest.getRange(2, 3).getFormula(), '=UPPER("live")');
+  })();
+
+  // A configured KEEP_RANGE protects static text that is meant to differ between the two files.
+  (() => {
+    devWithConfig_({ PUBLISH: { kind: 'kv', kv: { KEEP_RANGES: 'PubTitleDest!A2:B2' } } }, () => {
+      const src = devFreshSheet_('PubTitleSrc');
+      src.getRange(1, 1, 1, 2).setValues([['TITLE', 'SUB']]);
+      src.getRange(2, 1, 1, 2).setValues([['INTERNAL ROSTER', 'internal sub']]);
+      const dest = devFreshSheet_('PubTitleDest');
+      dest.getRange(1, 1, 1, 2).setValues([['TITLE', 'SUB']]);
+      dest.getRange(2, 1, 1, 2).setValues([['PUBLIC ROSTER', 'public sub']]);
+      const keep = publishKeepMask_(dest, 1, 1, 2, 2);
+      devCheck_(R, 'keep-range: A2 masked', keep[1][0] === true);
+      devCheck_(R, 'keep-range: B2 masked', keep[1][1] === true);
+      publishWriteValues_(dest, 1, 1, src.getRange(1, 1, 2, 2).getValues(), keep);
+      devEq_(R, 'keep-range: public title untouched', g(dest, 2, 1), 'PUBLIC ROSTER');
+      devEq_(R, 'keep-range: public subtitle untouched', g(dest, 2, 2), 'public sub');
+      devEq_(R, 'keep-range: the header row still published', g(dest, 1, 1), 'TITLE');
+    });
+  })();
+
   return R;
 }
 

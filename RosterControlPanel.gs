@@ -1471,12 +1471,55 @@ function publishHeaderRow_(sh) {
  * Merge-free row spans are written in ONE call (so the bulk stays fast); rows containing merges are written as runs,
  * skipping every cell that is inside a merge but is not its top-left (the only writable cell of a merge).
  */
-function publishWriteValues_(dest, top, left, values) {
+/** [PUBLISH].KEEP_RANGES parsed into { normalisedTabName: ['F6:W7', ...] }. '*' applies to every tab. */
+function publishKeepRanges_() {
+  const out = {};
+  try {
+    (cfg_().kv.PUBLISH.KEEP_RANGES || []).forEach((spec) => {
+      const t = String(spec).trim(); if (!t) return;
+      const i = t.lastIndexOf('!'); if (i < 1) return;
+      const tab = norm_(t.slice(0, i).replace(/^'|'$/g, '')), a1 = t.slice(i + 1).trim();
+      if (a1) (out[tab] = out[tab] || []).push(a1);
+    });
+  } catch (e) { /* no config -> nothing kept */ }
+  return out;
+}
+
+/**
+ * Cells on the PUBLIC copy that publishing must leave alone:
+ *   1. any cell holding a FORMULA — the public sheet's own live date/time/counters must keep recalculating, and
+ *      copying the internal sheet's computed value would freeze them as plain text;
+ *   2. anything listed in [PUBLISH].KEEP_RANGES for this tab (static text that is meant to differ, e.g. the title).
+ */
+function publishKeepMask_(dest, top, left, rows, cols) {
+  const mask = [];
+  for (let r = 0; r < rows; r++) mask.push(new Array(cols).fill(false));
+  try {
+    const f = dest.getRange(top, left, rows, cols).getFormulas();
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (String(f[r][c] || '').trim() !== '') mask[r][c] = true;
+  } catch (e) { /* best-effort */ }
+  const all = publishKeepRanges_();
+  (all[norm_(dest.getName())] || []).concat(all['*'] || []).forEach((a1) => {
+    try {
+      const rg = dest.getRange(a1);
+      const r0 = rg.getRow() - top, c0 = rg.getColumn() - left;
+      for (let r = Math.max(0, r0); r < Math.min(rows, r0 + rg.getNumRows()); r++) {
+        for (let c = Math.max(0, c0); c < Math.min(cols, c0 + rg.getNumColumns()); c++) mask[r][c] = true;
+      }
+    } catch (e) { logWarn_('publishKeepMask_', dest.getName() + ': cannot resolve keep-range "' + a1 + '"'); }
+  });
+  return mask;
+}
+
+function publishWriteValues_(dest, top, left, values, keep) {
   const rows = values.length; if (!rows) return 0;
   const cols = values[0].length; if (!cols) return 0;
   let merges = [];
   try { merges = dest.getRange(top, left, rows, cols).getMergedRanges(); } catch (e) { merges = []; }
-  if (!merges.length) { // fast path: nothing merged, one write
+  const kept = (r, c) => !!(keep && keep[r] && keep[r][c]);
+  let anyKept = false;
+  if (keep) { for (let r = 0; r < rows && !anyKept; r++) for (let c = 0; c < cols; c++) if (keep[r][c]) { anyKept = true; break; } }
+  if (!merges.length && !anyKept) { // fast path: nothing merged, nothing preserved -> one write
     try { dest.getRange(top, left, rows, cols).setValues(values); return 0; } catch (e) { /* fall through to per-cell */ }
   }
 
@@ -1496,8 +1539,8 @@ function publishWriteValues_(dest, top, left, values) {
   for (let r = 0; r < rows; r++) {
     let c = 0;
     while (c < cols) {
-      if (blocked[r][c]) { c++; continue; }
-      let e = c; while (e + 1 < cols && !blocked[r][e + 1]) e++;
+      if (blocked[r][c] || kept(r, c)) { c++; continue; }
+      let e = c; while (e + 1 < cols && !blocked[r][e + 1] && !kept(r, e + 1)) e++;
       const block = [values[r].slice(c, e + 1)];
       try { dest.getRange(top + r, left + c, 1, block[0].length).setValues(block); }
       catch (err) { // one unwritable value (in-cell image, chip) must not lose the whole run
@@ -1509,6 +1552,7 @@ function publishWriteValues_(dest, top, left, values) {
     }
   }
   anchors.forEach((a) => {
+    if (kept(a.r, a.c)) return; // a preserved merge anchor (the public title block) is never overwritten
     try { dest.getRange(top + a.r, left + a.c).setValue(values[a.r][a.c]); } catch (e) { failed++; }
   });
   return failed;
@@ -1531,7 +1575,8 @@ function publishMirrorTab_(src, dest) {
   if (src.getMaxColumns() === dest.getMaxColumns()) {
     if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
     const vals = step('read src ' + sRows + 'x' + sCols, () => src.getRange(1, 1, sRows, sCols).getValues());
-    const bad = step('write dest ' + sRows + 'x' + sCols, () => publishWriteValues_(dest, 1, 1, vals));
+    const keep = publishKeepMask_(dest, 1, 1, sRows, sCols);
+    const bad = step('write dest ' + sRows + 'x' + sCols, () => publishWriteValues_(dest, 1, 1, vals, keep));
     if (bad) logWarn_('publishMirrorTab_', dest.getName() + ': ' + bad + ' cell(s) could not be written (in-cell image or chip).');
     if (sh && sRows > sh) { // still wipe anything sensitive the copy brought along
       src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => {
@@ -1562,7 +1607,8 @@ function publishMirrorTab_(src, dest) {
   const need = destStart + n - 1;
   if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
   if (n) {
-    pairs.forEach((p) => publishWriteValues_(dest, destStart, p.dc, src.getRange(srcStart, p.sc, n, 1).getValues()));
+    pairs.forEach((p) => publishWriteValues_(dest, destStart, p.dc, src.getRange(srcStart, p.sc, n, 1).getValues(),
+      publishKeepMask_(dest, destStart, p.dc, n, 1)));
     scrub.forEach((c) => dest.getRange(destStart, c, n, 1).clearContent());
   }
   const dLast = dest.getLastRow(); // drop rows left over from a previous, longer publish
