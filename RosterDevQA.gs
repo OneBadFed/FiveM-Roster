@@ -2623,8 +2623,10 @@ function devPublishTests_() {
     src.getRange(9, 2, 1, 3).setValues([['RANK', 'NAME', 'HOURS']]);
     src.getRange(10, 2, 2, 3).setValues([[1, 'Chen Reyes', 28.5], [2, 'Maria Nguyen', 24.25]]);
     const dest = devFreshSheet_('PubDashDest');
-    // an untouched tab copy: identical layout, values wiped as if never published
+    // an untouched tab copy: SAME WIDTH as the source but the dynamic values blank (never published yet).
     dest.getRange(9, 2, 1, 3).setValues([['RANK', 'NAME', 'HOURS']]);
+    dest.getRange(1, src.getLastColumn()).setValue('');            // match the source's width exactly
+    dest.getRange(11, src.getLastColumn()).setValue(' ');
     const n = publishMirrorTab_(src, dest);
     devCheck_(R, 'dashboard: rows mirrored', n > 0);
     devEq_(R, 'dashboard: leadership NAME at a fixed cell copied', g(dest, 3, 3), 'James Bennett');

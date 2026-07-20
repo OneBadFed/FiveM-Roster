@@ -1464,25 +1464,27 @@ function publishHeaderRow_(sh) {
  * layout and only receives the columns it actually has — delete a column there and it simply stops being populated.
  * Sensitive headers are never written and are wiped if present. Values only, so formatting survives. @return rows copied.
  */
-function publishSameHeader_(src, dest, row, width) {
-  const a = src.getRange(row, 1, 1, width).getDisplayValues()[0].map((h) => norm_(h)).join('|~|');
-  const b = dest.getRange(row, 1, 1, width).getDisplayValues()[0].map((h) => norm_(h)).join('|~|');
-  return a === b;
-}
 
 function publishMirrorTab_(src, dest) {
   const sh = publishHeaderRow_(src), dh = publishHeaderRow_(dest);
   const sRows = src.getLastRow(), sCols = src.getLastColumn();
   if (sRows < 1 || sCols < 1) return 0;
 
-  // UNTOUCHED COPY (identical header row in the same place) → mirror the sheet WHOLESALE. This is what dashboards and
-  // any other non-tabular layout need: the Welcome Page's leadership/promotions/leaderboard boxes sit at fixed cells,
-  // not under a header, so column-matching can't reproduce them. Sensitive columns are still scrubbed afterwards.
-  if (sh && sh === dh && sCols <= dest.getMaxColumns() && publishSameHeader_(src, dest, sh, sCols)) {
+  // MODE IS CHOSEN BY WIDTH, never by content. A tab copied across and left alone has the SAME number of columns, so
+  // it is mirrored WHOLESALE by position — which is the only thing that reproduces a dashboard, where the Welcome
+  // Page's leadership / promotions / leaderboard boxes sit at fixed cells under no header at all. Delete a column from
+  // a public tab and it becomes narrower, which switches that tab to header-matching below.
+  // (Content-based detection was tried and failed: the "header row" a dashboard exposes is really a row of KPI VALUES,
+  //  which differ between the two files by design, so the two sheets never compared equal.)
+  if (sCols === dest.getLastColumn()) {
     if (sRows > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows());
+    if (sCols > dest.getMaxColumns()) dest.insertColumnsAfter(dest.getMaxColumns(), sCols - dest.getMaxColumns());
     dest.getRange(1, 1, sRows, sCols).setValues(src.getRange(1, 1, sRows, sCols).getValues());
-    const hdr = src.getRange(sh, 1, 1, sCols).getDisplayValues()[0];
-    if (sRows > sh) hdr.forEach((h, i) => { if (publishSensitiveHeader_(h)) dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent(); });
+    if (sh && sRows > sh) { // still wipe anything sensitive the copy brought along
+      src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => {
+        if (publishSensitiveHeader_(h)) dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent();
+      });
+    }
     const dLast = dest.getLastRow();
     if (dLast > sRows) dest.getRange(sRows + 1, 1, dLast - sRows, sCols).clearContent();
     return sRows;
