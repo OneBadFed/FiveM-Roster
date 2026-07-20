@@ -1478,16 +1478,19 @@ function publishMirrorTab_(src, dest) {
   //  which differ between the two files by design, so the two sheets never compared equal.)
   // getMaxColumns is the GRID width — unlike getLastColumn it does not depend on which cells happen to be filled, so a
   // public copy whose dynamic cells are still blank is correctly recognised as an untouched copy of the same shape.
+  const step = (label, fn) => { try { return fn(); } catch (e) { throw new Error(label + ' -> ' + ((e && e.message) ? e.message : e)); } };
   if (src.getMaxColumns() === dest.getMaxColumns()) {
-    if (sRows > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows());
-    dest.getRange(1, 1, sRows, sCols).setValues(src.getRange(1, 1, sRows, sCols).getValues());
+    if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
+    const vals = step('read src ' + sRows + 'x' + sCols, () => src.getRange(1, 1, sRows, sCols).getValues());
+    step('write dest ' + sRows + 'x' + sCols + ' (dest grid ' + dest.getMaxRows() + 'x' + dest.getMaxColumns() + ')',
+      () => dest.getRange(1, 1, sRows, sCols).setValues(vals));
     if (sh && sRows > sh) { // still wipe anything sensitive the copy brought along
       src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => {
         if (publishSensitiveHeader_(h)) dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent();
       });
     }
     const dLast = dest.getLastRow();
-    if (dLast > sRows) dest.getRange(sRows + 1, 1, dLast - sRows, sCols).clearContent();
+    if (dLast > sRows) step('clear trailing ' + (dLast - sRows), () => dest.getRange(sRows + 1, 1, dLast - sRows, sCols).clearContent());
     return sRows;
   }
 
@@ -1546,7 +1549,7 @@ function publishPublicRoster_() {
     } catch (e) {
       log_('publishMirrorTab_.' + name, e);
       out.skipped.push(name);
-      out.detail.push(`${name}: ERROR — ${e && e.message ? e.message : e}`);
+      out.detail.push(`${name}: ERROR ${e && e.message ? e.message : e} | grid ${sg}/${dg} | src ${src.getLastRow()}x${src.getLastColumn()} | dest grid ${dest.getMaxRows()}x${dest.getMaxColumns()}`);
     }
   });
   return out;
