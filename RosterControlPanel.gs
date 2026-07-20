@@ -1445,10 +1445,13 @@ function publicFile_() {
 }
 
 /** A tab in the public file, created + given a styled frozen header on first use. Existing formatting is left alone. */
-function ensurePublicTab_(file, name) {
+function ensurePublicTab_(file, name, headerRow, labels) {
   let sh = file.getSheetByName(name);
-  if (!sh) { sh = file.insertSheet(name); }
-  if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
+  if (sh) return sh; // an existing tab (typically a COPY of the internal one) keeps its own layout and formatting
+  sh = file.insertSheet(name);
+  const hr = Math.max(1, headerRow || 1); // seed the header on the SAME row the source uses, so both paths align
+  sh.getRange(hr, 1, 1, labels.length).setValues([labels]).setFontWeight('bold');
+  if (sh.getFrozenRows() < hr) sh.setFrozenRows(hr);
   return sh;
 }
 
@@ -1457,22 +1460,31 @@ function ensurePublicTab_(file, name) {
  * Rows are copied as-is from `startRow` (so rank dividers and ordering survive) but only for listed columns —
  * a column that isn't listed is never even read. @return {number} data rows written. Testable.
  */
-function publishSheet_(src, srcCols, startRow, dest, spec) {
-  const cols = spec.map((s) => ({ label: s.label, c: srcCols[s.role] || 0 })).filter((x) => x.c);
-  if (!cols.length) return 0;
-  const last = src.getLastRow(), rows = [];
-  if (last >= startRow) {
-    const n = last - startRow + 1;
-    const wide = src.getRange(startRow, 1, n, Math.max(src.getLastColumn(), 1)).getValues();
-    for (let i = 0; i < n; i++) rows.push(cols.map((x) => wide[i][x.c - 1]));
+function publishSheet_(src, srcCols, srcStart, dest, destCols, spec, wipeCols) {
+  // Match roles by HEADER on BOTH sides, so the public tab can be a straight COPY of the internal one (identical
+  // widths/colours/banner) — or have columns deleted or reordered — and the data still lands in the right places.
+  const pairs = spec.map((s) => ({ sc: srcCols[s.role] || 0, dc: destCols[s.role] || 0 })).filter((p) => p.sc && p.dc);
+  if (!pairs.length) return 0;
+  const srcHdr = srcCols.headerRow || srcCols.labelRow || 1;
+  const destHdr = destCols.headerRow || destCols.labelRow || srcHdr;
+  const destStart = destHdr + (srcStart - srcHdr); // same offset below the header as the source uses
+  const last = src.getLastRow();
+  const n = Math.max(0, last - srcStart + 1);
+
+  const needRows = destStart + n - 1;
+  if (needRows > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), needRows - dest.getMaxRows());
+  if (n) pairs.forEach((p) => dest.getRange(destStart, p.dc, n, 1).setValues(src.getRange(srcStart, p.sc, n, 1).getValues()));
+
+  // SAFETY NET: blank any sensitive column that still exists on the public tab (e.g. a Unique ID column left behind
+  // by the copy). The allow-list already means we never WRITE it — this makes sure stale copied data can't linger.
+  (wipeCols || []).forEach((c) => { if (c && n) dest.getRange(destStart, c, n, 1).clearContent(); });
+
+  const destLast = dest.getLastRow(); // drop rows left over from a previous, longer publish
+  if (destLast >= destStart + n) {
+    const widest = Math.max.apply(null, pairs.map((p) => p.dc).concat((wipeCols || []).filter(Boolean)));
+    dest.getRange(destStart + n, 1, destLast - (destStart + n) + 1, widest).clearContent();
   }
-  const need = rows.length + 1;
-  if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
-  dest.getRange(1, 1, 1, cols.length).setValues([cols.map((x) => x.label)]).setFontWeight('bold');
-  if (rows.length) dest.getRange(2, 1, rows.length, cols.length).setValues(rows);
-  const destLast = dest.getLastRow(); // blank anything left over from a previous, longer publish
-  if (destLast > need - 1 + 1) dest.getRange(need + 1, 1, destLast - need, cols.length).clearContent();
-  return rows.length;
+  return n;
 }
 
 /** Publish the roster + LOA tracker to the linked public file. Safe no-op when none is linked. */
@@ -1483,9 +1495,21 @@ function publishPublicRoster_() {
   const out = { linked: true, roster: 0, tracker: 0, url: '' };
   try { out.url = file.getUrl(); } catch (e) { /* cosmetic */ }
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
-  if (roster) out.roster = publishSheet_(roster, rosterCols_(roster), CONFIG.rosterStartRow, ensurePublicTab_(file, CONFIG.sheets.publicRosterTab), PUBLIC_ROSTER_COLS_);
+  if (roster) {
+    const rc = rosterCols_(roster);
+    const dest = ensurePublicTab_(file, CONFIG.sheets.publicRosterTab, rc.headerRow, PUBLIC_ROSTER_COLS_.map((x) => x.label));
+    const dc = rosterCols_(dest), dp = rosterPiiCols_(dest);
+    out.roster = publishSheet_(roster, rc, CONFIG.rosterStartRow, dest, dc, PUBLIC_ROSTER_COLS_,
+      [dc.discord, dp.email, dp.dob, dp.phone]); // scrub anything sensitive a copied tab brought with it
+  }
   const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
-  if (tracker) out.tracker = publishSheet_(tracker, trackerCols_(tracker), CONFIG.trackerStartRow, ensurePublicTab_(file, CONFIG.sheets.publicTrackerTab), PUBLIC_TRACKER_COLS_);
+  if (tracker) {
+    const tc = trackerCols_(tracker);
+    const dest = ensurePublicTab_(file, CONFIG.sheets.publicTrackerTab, tc.labelRow, PUBLIC_TRACKER_COLS_.map((x) => x.label));
+    const dc = trackerCols_(dest);
+    out.tracker = publishSheet_(tracker, tc, CONFIG.trackerStartRow, dest, dc, PUBLIC_TRACKER_COLS_,
+      [dc.discord, dc.key, dc.approvedBy, dc.notes]);
+  }
   return out;
 }
 
