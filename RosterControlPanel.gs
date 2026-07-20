@@ -1340,9 +1340,9 @@ function sortSignups_(sheet) {
     dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
     if (SC.discord) sheet.getRange(2, SC.discord, sorted.length, 1).setNumberFormat('@');
-    sheet.getRange(2, 1, sorted.length, W).setValues(sorted);
+    writeValuesSafe_(sheet, 2, 1, sorted, null); // merge-safe (see sortTracker_)
     return sorted.length;
-  } catch (e) { log_('sortSignups_', e); return 0; }
+  } catch (e) { logWarn_('sortSignups_', 'signup sort failed: ' + ((e && e.message) ? e.message : e)); return 0; }
 }
 
 /** Read the signup rows an admin still has to act on (Pending + Approved), newest submission first. */
@@ -1552,7 +1552,10 @@ function publishSelfComputing_(dest) {
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         const fx = String(f[r][c] == null ? '' : f[r][c]);
-        if (fx && /'[^']+'!|[A-Za-z0-9_]+![A-Z$]/.test(fx)) return true; // a cross-sheet reference
+        // Cross-sheet AND spilling. A plain lookup like ='Member Information'!A1 must NOT disable the whole tab;
+        // only an array formula whose spill range we would block makes a tab genuinely self-computing.
+        if (!fx || !/'[^']+'!|[A-Za-z0-9_]+![A-Z$]/.test(fx)) continue;
+        if (/ARRAYFORMULA|ARRAY_CONSTRAIN|FILTER\s*\(|QUERY\s*\(|SORTN?\s*\(|IMPORTRANGE|SEQUENCE\s*\(/i.test(fx)) return true;
       }
     }
   } catch (e) { /* unreadable -> treat as ordinary */ }
@@ -1603,7 +1606,7 @@ function publishKeepMask_(dest, top, left, rows, cols) {
   return mask;
 }
 
-function publishWriteValues_(dest, top, left, values, keep) {
+function writeValuesSafe_(dest, top, left, values, keep) {
   const rows = values.length; if (!rows) return 0;
   const cols = values[0].length; if (!cols) return 0;
   let merges = [];
@@ -1611,40 +1614,52 @@ function publishWriteValues_(dest, top, left, values, keep) {
   const kept = (r, c) => !!(keep && keep[r] && keep[r][c]);
   let anyKept = false;
   if (keep) { for (let r = 0; r < rows && !anyKept; r++) for (let c = 0; c < cols; c++) if (keep[r][c]) { anyKept = true; break; } }
-  if (!merges.length && !anyKept) { // fast path: nothing merged, nothing preserved -> one write
-    try { dest.getRange(top, left, rows, cols).setValues(values); return 0; } catch (e) { /* fall through to per-cell */ }
+  if (!merges.length && !anyKept) {
+    try { dest.getRange(top, left, rows, cols).setValues(values); return 0; } catch (e) { /* fall through */ }
   }
 
-  // A merge's ONLY writable cell is its top-left, and a write range may not PARTIALLY overlap a merge — so treat every
-  // merged cell as unwritable for run purposes and set each anchor individually afterwards.
-  const blocked = [], anchors = [];
-  for (let r = 0; r < rows; r++) blocked.push(new Array(cols).fill(false));
+  // A merge's ONLY writable cell is its top-left, and a write may not PARTIALLY overlap a merge — so every merged cell
+  // is unwritable for run purposes and each anchor is set individually afterwards.
+  const blocked = [], anchors = [], rowDirty = [];
+  for (let r = 0; r < rows; r++) { blocked.push(new Array(cols).fill(false)); rowDirty.push(false); }
   merges.forEach((m) => {
     const r0 = m.getRow() - top, c0 = m.getColumn() - left, nr = m.getNumRows(), nc = m.getNumColumns();
     for (let r = Math.max(0, r0); r < Math.min(rows, r0 + nr); r++) {
+      rowDirty[r] = true;
       for (let c = Math.max(0, c0); c < Math.min(cols, c0 + nc); c++) blocked[r][c] = true;
     }
     if (r0 >= 0 && r0 < rows && c0 >= 0 && c0 < cols) anchors.push({ r: r0, c: c0 });
   });
+  for (let r = 0; r < rows; r++) { for (let c = 0; c < cols; c++) if (kept(r, c)) { rowDirty[r] = true; break; } }
 
   let failed = 0;
-  for (let r = 0; r < rows; r++) {
+  const writeBlock = (r0, r1) => { // one call for a span of completely clean rows - keeps big sheets fast
+    try { dest.getRange(top + r0, left, r1 - r0 + 1, cols).setValues(values.slice(r0, r1 + 1)); }
+    catch (e) { for (let r = r0; r <= r1; r++) writeRuns(r); }
+  };
+  const writeRuns = (r) => {
     let c = 0;
     while (c < cols) {
       if (blocked[r][c] || kept(r, c)) { c++; continue; }
       let e = c; while (e + 1 < cols && !blocked[r][e + 1] && !kept(r, e + 1)) e++;
       const block = [values[r].slice(c, e + 1)];
       try { dest.getRange(top + r, left + c, 1, block[0].length).setValues(block); }
-      catch (err) { // one unwritable value (in-cell image, chip) must not lose the whole run
+      catch (err) {
         for (let j = 0; j < block[0].length; j++) {
           try { dest.getRange(top + r, left + c + j).setValue(block[0][j]); } catch (e2) { failed++; }
         }
       }
       c = e + 1;
     }
+  };
+
+  let r = 0;
+  while (r < rows) {
+    if (!rowDirty[r]) { let e = r; while (e + 1 < rows && !rowDirty[e + 1]) e++; writeBlock(r, e); r = e + 1; continue; }
+    writeRuns(r); r++;
   }
   anchors.forEach((a) => {
-    if (kept(a.r, a.c)) return; // a preserved merge anchor (the public title block) is never overwritten
+    if (kept(a.r, a.c)) return;
     try { dest.getRange(top + a.r, left + a.c).setValue(values[a.r][a.c]); } catch (e) { failed++; }
   });
   return failed;
@@ -1668,7 +1683,7 @@ function publishMirrorTab_(src, dest) {
     if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
     const vals = step('read src ' + sRows + 'x' + sCols, () => publishReadCells_(src.getRange(1, 1, sRows, sCols)));
     const keep = publishKeepMask_(dest, 1, 1, sRows, sCols);
-    const bad = step('write dest ' + sRows + 'x' + sCols, () => publishWriteValues_(dest, 1, 1, vals, keep));
+    const bad = step('write dest ' + sRows + 'x' + sCols, () => writeValuesSafe_(dest, 1, 1, vals, keep));
     if (bad) logWarn_('publishMirrorTab_', dest.getName() + ': ' + bad + ' cell(s) could not be written (in-cell image or chip).');
     if (sh && sRows > sh) { // still wipe anything sensitive the copy brought along
       src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => {
@@ -1704,7 +1719,7 @@ function publishMirrorTab_(src, dest) {
   if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
   if (n) {
     pairs.forEach((p) => {
-      publishWriteValues_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1)),
+      writeValuesSafe_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1)),
         publishKeepMask_(dest, destStart, p.dc, n, 1));
       try { dest.getRange(destStart, p.dc, n, 1).setNumberFormats(src.getRange(srcStart, p.sc, n, 1).getNumberFormats()); }
       catch (e) { log_('publishMirrorTab_.formats', e); }

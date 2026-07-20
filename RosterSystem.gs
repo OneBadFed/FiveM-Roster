@@ -2107,7 +2107,9 @@ function sortTracker_(prepend, trackerSheet) {
     // Write reordered VALUES back into the SAME physical rows. '@' the ID column BEFORE writing so long IDs stay exact.
     if (start + sorted.length - 1 > tracker.getMaxRows()) tracker.insertRowsAfter(tracker.getMaxRows(), start + sorted.length - 1 - tracker.getMaxRows());
     if (RC.discord) tracker.getRange(start, RC.discord, sorted.length, 1).setNumberFormat('@');
-    tracker.getRange(start, 1, sorted.length, W).setValues(sorted);
+    // Merge-safe: a merged cell anywhere in the tracker's data rows would make a full-width setValues throw, and this
+    // whole function is wrapped in a catch — so sorting would silently stop working.
+    writeValuesSafe_(tracker, start, 1, sorted, null);
     if (last > start + sorted.length - 1) tracker.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent(); // blank any now-unused trailing rows
 
     // Date formats + regenerated computed columns (batched setFormulas — only the columns that actually exist).
@@ -2121,7 +2123,7 @@ function sortTracker_(prepend, trackerSheet) {
       if (RC.timeLeft) tracker.getRange(start, RC.timeLeft, sorted.length, 1).setFormulas(lftF);
       if (RC.returnDate) tracker.getRange(start, RC.returnDate, sorted.length, 1).setFormulas(retF).setNumberFormat('d mmm. yyyy');
     }
-  } catch (e) { log_('sortTracker_', e); }
+  } catch (e) { logWarn_('sortTracker_', 'tracker sort failed: ' + ((e && e.message) ? e.message : e)); }
 }
 
 /* ======================================================================
@@ -2426,7 +2428,10 @@ function evaluatePatrolLog_(memberRow, startDT, endDT, hours, now) {
   if (!(hours > 0)) return { reason: 'End is not after start.', blocking: true };
   if (hours > 24) return { reason: 'Over 24 hrs — check the dates.', blocking: true }; // a single session can't exceed a day → force a fix, don't let it be approved
   if (hours > CONFIG.patrol.maxHours) return { reason: `Exceeds ${CONFIG.patrol.maxHours} hr max.`, blocking: false };
-  if (startDT.getTime() > now.getTime() || endDT.getTime() > now.getTime()) return { reason: 'Dated in the future.', blocking: false };
+  // Compare DATES (sheet timezone), not instants: a script/sheet timezone gap would otherwise flag a log entered
+  // earlier today as "future" purely from the offset.
+  const endOfToday = (function () { const t = todayInSheetTz_(); return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23, 59, 59); })();
+  if (startDT.getTime() > endOfToday.getTime() || endDT.getTime() > endOfToday.getTime()) return { reason: 'Dated in the future.', blocking: false };
   return { reason: '', blocking: false };
 }
 
@@ -2567,7 +2572,7 @@ function sortPatrolLog_(patrolSheet) {
 
     if (start + sorted.length - 1 > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), start + sorted.length - 1 - sheet.getMaxRows());
     if (PC.discord) sheet.getRange(start, PC.discord, sorted.length, 1).setNumberFormat('@');
-    sheet.getRange(start, 1, sorted.length, W).setValues(sorted);
+    writeValuesSafe_(sheet, start, 1, sorted, null); // merge-safe (see sortTracker_)
     if (last > start + sorted.length - 1) sheet.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent();
 
     if (PC.total && PC.startDate && PC.endDate && PC.startTime && PC.endTime) { // TOTAL formula per physical row
@@ -2578,7 +2583,7 @@ function sortPatrolLog_(patrolSheet) {
     if (PC.endDate) sheet.getRange(start, PC.endDate, sorted.length, 1).setNumberFormat(PATROL_DATE_FMT_);
     if (PC.startTime) sheet.getRange(start, PC.startTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
     if (PC.endTime) sheet.getRange(start, PC.endTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
-  } catch (e) { log_('sortPatrolLog_', e); }
+  } catch (e) { logWarn_('sortPatrolLog_', 'patrol sort failed: ' + ((e && e.message) ? e.message : e)); }
 }
 
 /** Nightly/refresh: re-process every Patrol Log row (matures a once-future log, re-credits deltas) + re-group. No-op if OFF. */

@@ -2662,7 +2662,7 @@ function devPublishTests_() {
     const keep = publishKeepMask_(dest, 1, 1, 2, 3);
     devCheck_(R, 'keep: a destination FORMULA cell is masked', keep[1][2] === true);
     devCheck_(R, 'keep: an ordinary destination cell is not masked', keep[1][1] === false);
-    publishWriteValues_(dest, 1, 1, src.getRange(1, 1, 2, 3).getValues(), keep);
+    writeValuesSafe_(dest, 1, 1, src.getRange(1, 1, 2, 3).getValues(), keep);
     devEq_(R, 'keep: normal cell still published', g(dest, 2, 2), 'Alice');
     devEq_(R, 'keep: the public formula survived (not frozen to a copied value)', dest.getRange(2, 3).getFormula(), '=UPPER("live")');
   })();
@@ -2679,7 +2679,7 @@ function devPublishTests_() {
       const keep = publishKeepMask_(dest, 1, 1, 2, 2);
       devCheck_(R, 'keep-range: A2 masked', keep[1][0] === true);
       devCheck_(R, 'keep-range: B2 masked', keep[1][1] === true);
-      publishWriteValues_(dest, 1, 1, src.getRange(1, 1, 2, 2).getValues(), keep);
+      writeValuesSafe_(dest, 1, 1, src.getRange(1, 1, 2, 2).getValues(), keep);
       devEq_(R, 'keep-range: public title untouched', g(dest, 2, 1), 'PUBLIC ROSTER');
       devEq_(R, 'keep-range: public subtitle untouched', g(dest, 2, 2), 'public sub');
       devEq_(R, 'keep-range: the header row still published', g(dest, 1, 1), 'TITLE');
@@ -2697,7 +2697,7 @@ function devPublishTests_() {
     dest.getRange(2, 1).setValue('19 JULY 2026');  // a previously-published FROZEN value, no formula left
     const keep = publishKeepMask_(dest, 1, 1, 2, 2);
     devCheck_(R, 'formula: a frozen destination value is NOT treated as protected', keep[1][0] === false);
-    publishWriteValues_(dest, 1, 1, publishReadCells_(src.getRange(1, 1, 2, 2)), keep);
+    writeValuesSafe_(dest, 1, 1, publishReadCells_(src.getRange(1, 1, 2, 2)), keep);
     devCheck_(R, 'formula: source formula arrives as a LIVE formula', dest.getRange(2, 1).getFormula().indexOf('TODAY(') !== -1);
     devEq_(R, 'formula: ordinary values still published', g(dest, 2, 2), 'Alice');
   })();
@@ -2715,6 +2715,32 @@ function devPublishTests_() {
     devEq_(R, 'format: date format carried to the public copy', dest.getRange(2, 2).getNumberFormat(), 'd mmm. yyyy');
     devEq_(R, 'format: time format carried to the public copy', dest.getRange(2, 3).getNumberFormat(), 'h:mm am/pm');
     devCheck_(R, 'format: the date did not land as a raw serial', String(dest.getRange(2, 2).getDisplayValue()).indexOf('4') !== 0);
+  })();
+
+  // MERGE SAFETY: a merged cell in the data block must not break a write (this silently killed the sorts).
+  (() => {
+    const sh = devFreshSheet_('MergeWrite');
+    sh.getRange(2, 2, 1, 3).merge();                       // a merge sitting inside the target block
+    const vals = [['a1', 'b1', 'c1', 'd1'], ['a2', 'b2', 'c2', 'd2'], ['a3', 'b3', 'c3', 'd3']];
+    let threw = false;
+    try { writeValuesSafe_(sh, 1, 1, vals, null); } catch (e) { threw = true; }
+    devCheck_(R, 'merge-safe: write did not throw', !threw);
+    devEq_(R, 'merge-safe: clean row above written', g(sh, 1, 1), 'a1');
+    devEq_(R, 'merge-safe: clean row below written', g(sh, 3, 4), 'd3');
+    devEq_(R, 'merge-safe: cell left of the merge written', g(sh, 2, 1), 'a2');
+    devEq_(R, 'merge-safe: the merge anchor got its value', g(sh, 2, 2), 'b2');
+  })();
+
+  // A plain cross-sheet lookup must NOT mark a tab self-computing (that would stop it publishing entirely).
+  (() => {
+    const plain = devFreshSheet_('SelfPlain');
+    plain.getRange(1, 1).setValue('NAME');
+    plain.getRange(2, 1).setFormula("='" + plain.getName() + "'!A1");
+    devCheck_(R, 'self-computing: a plain cross-sheet lookup does NOT disable the tab', publishSelfComputing_(plain) === false);
+    const spill = devFreshSheet_('SelfSpill');
+    spill.getRange(1, 1).setValue('NAME');
+    spill.getRange(2, 1).setFormula("=ARRAY_CONSTRAIN(FILTER('" + spill.getName() + "'!A1:A2,'" + spill.getName() + "'!A1:A2<>\"\"),1,1)");
+    devCheck_(R, 'self-computing: a spilling cross-sheet formula DOES', publishSelfComputing_(spill) === true);
   })();
 
   return R;
