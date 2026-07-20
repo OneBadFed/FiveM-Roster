@@ -360,7 +360,7 @@ function onOpenLib(libId) {
 /** Creates the installable triggers (form submit + daily check), replacing any duplicates. */
 function installTriggers() {
   runAction_('Install Triggers', () => {
-    const keep = { onFormSubmit: true, processDailyLOAs: true, publishPublicRoster: true };
+    const keep = { onFormSubmit: true, processDailyLOAs: true, publishPublicRoster: true, publishOnChange: true, publishSweep: true };
     ScriptApp.getProjectTriggers().forEach((t) => {
       if (keep[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t);
     });
@@ -368,14 +368,16 @@ function installTriggers() {
     const hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; // [SCHEDULE].NIGHTLY_HOUR — default 0 (midnight, the classic behavior)
     ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
     ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(hour).everyDays(1).create();
-    // Public roster re-publish. One-way, so a stale public copy is the worst case a missed run can cause.
+    // Public roster: near-live. An INSTALLABLE onEdit runs authorized (unlike the simple one) so it can write to the
+    // other file; onChange additionally catches row insert/DELETE, which onEdit never fires for. The 1-minute sweep
+    // publishes anything a burst skipped, and does nothing at all when the sheet is idle.
     let pubLine = '';
     try {
-      const mins = parseInt(cfg_().kv.SCHEDULE.PUBLISH_MINUTES, 10) || 0;
-      if (mins > 0 && typeof publishPublicRoster === 'function') {
-        ScriptApp.newTrigger('publishPublicRoster').timeBased().everyMinutes(mins).create();
-        pubLine = `
-• Public roster publish (every ${mins} min)`;
+      if (typeof publishOnChange === 'function') {
+        ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onEdit().create();
+        ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onChange().create();
+        ScriptApp.newTrigger('publishSweep').timeBased().everyMinutes(1).create();
+        pubLine = '\n• Public roster: live on edit + row delete (1-min catch-up)';
       }
     } catch (e) { log_('installTriggers.publish', e); }
     // v2.5.0 — ONE installer: also (re)install the Extras triggers when that companion file is present (integrity scan,

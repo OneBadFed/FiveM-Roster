@@ -1489,6 +1489,51 @@ function publishPublicRoster_() {
   return out;
 }
 
+/* Near-live publishing. A SIMPLE onEdit can't open another file, but an INSTALLABLE one runs authorized and can —
+ * so 🔌 Install Triggers registers publishOnChange for both onEdit (cell edits) and onChange (row insert/DELETE,
+ * which onEdit never sees). Bursts are rate-limited and a 1-minute sweep publishes anything that was skipped. */
+const PUBLISH_MIN_GAP_MS_ = 15000;
+const PUBLISH_DIRTY_PROP_ = 'PUBLIC_DIRTY';
+const PUBLISH_LAST_PROP_ = 'PUBLIC_LAST_PUBLISH';
+
+/** Publish under the lock, clearing the dirty flag FIRST so an edit landing mid-publish re-marks itself. */
+function publishPublicRosterQuiet_() {
+  const props = PropertiesService.getDocumentProperties();
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(5000)) return; // another publish is already running — it will carry this change
+  try {
+    props.deleteProperty(PUBLISH_DIRTY_PROP_); // BEFORE publishing: a concurrent edit re-sets it, so nothing is lost
+    publishPublicRoster_();
+    props.setProperty(PUBLISH_LAST_PROP_, String(Date.now()));
+  } catch (e) { log_('publishPublicRosterQuiet_', e); }
+  finally { lock.releaseLock(); }
+}
+
+/** Installable onEdit + onChange handler: republish the public copy promptly, rate-limited against edit bursts. */
+function publishOnChange(e) {
+  try {
+    if (!publicFile_()) return; // no public roster linked → nothing to do
+    let name = '';
+    try { name = (e && e.range) ? e.range.getSheet().getName() : ''; } catch (ig) { /* onChange has no range */ }
+    // Cell edits only matter on the two PUBLISHED sheets; structural changes (no range) always count.
+    if (name && name !== CONFIG.sheets.roster && name !== CONFIG.sheets.tracker) return;
+    const props = PropertiesService.getDocumentProperties();
+    props.setProperty(PUBLISH_DIRTY_PROP_, '1');
+    const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
+    if (Date.now() - last < PUBLISH_MIN_GAP_MS_) return; // too soon — the 1-minute sweep will carry it
+    publishPublicRosterQuiet_();
+  } catch (err) { log_('publishOnChange', err); }
+}
+
+/** 1-minute safety net: publishes only when something actually changed, so an idle sheet costs nothing. */
+function publishSweep() {
+  try {
+    if (PropertiesService.getDocumentProperties().getProperty(PUBLISH_DIRTY_PROP_) !== '1') return;
+    if (!publicFile_()) return;
+    publishPublicRosterQuiet_();
+  } catch (e) { log_('publishSweep', e); }
+}
+
 /** Time-driven + menu entry point for the publish. */
 function publishPublicRoster() {
   const lock = LockService.getScriptLock();
