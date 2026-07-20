@@ -1494,14 +1494,19 @@ function publishReadCells_(range) {
 
 function publishKeepRanges_() {
   const out = {};
-  try {
-    (cfg_().kv.PUBLISH.KEEP_RANGES || []).forEach((spec) => {
-      const t = String(spec).trim(); if (!t) return;
-      const i = t.lastIndexOf('!'); if (i < 1) return;
-      const tab = norm_(t.slice(0, i).replace(/^'|'$/g, '')), a1 = t.slice(i + 1).trim();
-      if (a1) (out[tab] = out[tab] || []).push(a1);
-    });
-  } catch (e) { /* no config -> nothing kept */ }
+  const add = (spec) => {
+    const t = String(spec).trim(); if (!t) return;
+    const i = t.lastIndexOf('!'); if (i < 1) return;
+    const tab = norm_(t.slice(0, i).replace(/^'|'$/g, '')), a1 = t.slice(i + 1).trim();
+    if (!a1) return;
+    const list = (out[tab] = out[tab] || []);
+    if (list.indexOf(a1) === -1) list.push(a1);
+  };
+  // BUILT-IN: the title blocks that are meant to read differently in the two files. These are applied even when the
+  // operator's Config tab already carries a KEEP_RANGES row (a stored row overrides the schema default, so relying on
+  // the default alone silently did nothing). Config entries ADD to these rather than replacing them.
+  ['Welcome Page!F6:W7', 'Member Information!D3:H3'].forEach(add);
+  try { (cfg_().kv.PUBLISH.KEEP_RANGES || []).forEach(add); } catch (e) { /* config absent -> built-ins only */ }
   return out;
 }
 
