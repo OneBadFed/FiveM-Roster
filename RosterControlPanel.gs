@@ -1827,6 +1827,9 @@ function publishOnChange(e) {
 /** 1-minute safety net: publishes only when something actually changed, so an idle sheet costs nothing. */
 function publishSweep() {
   try {
+    // Also the general maintenance tick: flush queued whole-tab rebuilds (Academy / groups / dashboard) so a burst of
+    // edits costs ONE rebuild rather than one per keystroke.
+    try { if (typeof runDeferredWork_ === 'function') runDeferredWork_(); } catch (e) { log_('publishSweep.deferred', e); }
     if (PropertiesService.getDocumentProperties().getProperty(PUBLISH_DIRTY_PROP_) !== '1') return;
     if (!publicFile_()) return;
     publishPublicRosterQuiet_();

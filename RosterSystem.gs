@@ -1062,6 +1062,38 @@ function refreshDashboard() {
 }
 
 /** Simple trigger: routes roster edits (transfer / hours) and tracker approvals. */
+/* ----------------------------------------------------------------------
+ * DEFERRED WORK — the Academy/group rebuilds and the dashboard refresh are
+ * whole-tab rebuilds. Running them from onEdit meant a single keystroke rebuilt
+ * three tabs, and editing twenty cells did it twenty times. They are now QUEUED
+ * and run at most ONCE per sweep, so a burst of edits costs one rebuild.
+ * -------------------------------------------------------------------- */
+const DEFER_PROP_ = 'DEFERRED_WORK';
+
+/** Queue a heavy rebuild. Cheap: one property write, no sheet access. */
+function deferWork_(key) {
+  try {
+    const p = PropertiesService.getDocumentProperties();
+    const cur = String(p.getProperty(DEFER_PROP_) || '|');
+    if (cur.indexOf('|' + key + '|') === -1) p.setProperty(DEFER_PROP_, cur + key + '|');
+  } catch (e) { /* best-effort: the nightly run rebuilds anyway */ }
+}
+
+/** Run whatever is queued, clearing the queue FIRST so edits during a rebuild re-queue rather than being lost. */
+function runDeferredWork_() {
+  let pending = '';
+  try {
+    const p = PropertiesService.getDocumentProperties();
+    pending = String(p.getProperty(DEFER_PROP_) || '');
+    if (pending.replace(/\|/g, '') === '') return;
+    p.deleteProperty(DEFER_PROP_);
+  } catch (e) { return; }
+  const has = (k) => pending.indexOf('|' + k + '|') !== -1;
+  if (has('academy')) { try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('deferred.academy', e); } }
+  if (has('groups')) { try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e) { log_('deferred.groups', e); } }
+  if (has('dashboard')) { try { refreshDashboard_(); } catch (e) { log_('deferred.dashboard', e); } }
+}
+
 function onEdit(e) {
   try {
     if (!e?.range) return;
@@ -1088,8 +1120,8 @@ function onEdit(e) {
       const cLast = (e.range && e.range.getLastColumn) ? e.range.getLastColumn() : col;
       const spansCol = (t) => t && col <= t && cLast >= t;
       if (row >= CONFIG.rosterStartRow && (spansCol(RC.rank) || spansCol(RC.shift) || spansCol(RC.name) || spansCol(RC.discord))) {
-        try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('onEdit.academy', e2); }
-        try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('onEdit.groups', e2); }
+        deferWork_('academy'); // whole-tab rebuilds: queued, then run once by the sweep instead of per keystroke
+        deferWork_('groups');
       }
     }
     if (name === CONFIG.sheets.tracker && row >= CONFIG.trackerStartRow) {
@@ -1142,7 +1174,7 @@ function onEdit(e) {
     //  • any other tab → only when THIS edit could touch a #stat tag (new value is a tag, or the cell was a managed
     //    tag), and then re-render ONLY that one sheet — a non-data edit can't change roster stats elsewhere.
     if (name === CONFIG.sheets.roster || name === CONFIG.sheets.tracker || (CONFIG.sheets.patrolLog && name === CONFIG.sheets.patrolLog)) {
-      try { refreshDashboard_(); } catch (e2) { log_('onEdit.dashboard', e2); }
+      deferWork_('dashboard'); // queued for the same reason
     } else if (!dashboardSkip_(name)) {
       let touchesTag = /^#\s*[A-Za-z]/.test(String(e.value || ''));
       if (!touchesTag) { try { touchesTag = String(e.range.getNote() || '').indexOf('roster-stat:') === 0; } catch (ig) {} }
@@ -1732,6 +1764,7 @@ function processDailyLOAs() {
       if (!tracker || !roster) return;
       summary = processDailyLOAs_(roster, tracker, todayInSheetTz_(), { sendWebhooks: true });
       try { sortTracker_(null, tracker); } catch (e) { log_('processDailyLOAs.sort', e); } // expiries/starts changed statuses → re-group (Pending, Approved, Denied, Expired)
+      try { runDeferredWork_(); } catch (e) { log_('processDailyLOAs.deferred', e); } // flush anything queued
       try { refreshPatrolLog_(); } catch (e) { log_('processDailyLOAs.patrol', e); } // matures once-future patrol logs, re-credits any deltas, re-groups the Patrol Log
       try { refreshDashboard_(true); } catch (e) { log_('processDailyLOAs.dashboard', e); } // nightly = full discovery rescan (self-heals renames/missed tabs daily)
       logInfo_('processDailyLOAs', `scanned ${summary.scanned}, expired ${summary.expired.length}, started ${summary.started.length}.`);
