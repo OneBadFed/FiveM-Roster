@@ -1472,41 +1472,46 @@ function publishHeaderRow_(sh) {
  * skipping every cell that is inside a merge but is not its top-left (the only writable cell of a merge).
  */
 function publishWriteValues_(dest, top, left, values) {
-  const rows = values.length; if (!rows) return;
-  const cols = values[0].length; if (!cols) return;
+  const rows = values.length; if (!rows) return 0;
+  const cols = values[0].length; if (!cols) return 0;
   let merges = [];
   try { merges = dest.getRange(top, left, rows, cols).getMergedRanges(); } catch (e) { merges = []; }
-  if (!merges.length) { dest.getRange(top, left, rows, cols).setValues(values); return; }
+  if (!merges.length) { // fast path: nothing merged, one write
+    try { dest.getRange(top, left, rows, cols).setValues(values); return 0; } catch (e) { /* fall through to per-cell */ }
+  }
 
-  const skip = [], rowHasMerge = [];
-  for (let r = 0; r < rows; r++) { skip.push(new Array(cols).fill(false)); rowHasMerge.push(false); }
+  // A merge's ONLY writable cell is its top-left, and a write range may not PARTIALLY overlap a merge — so treat every
+  // merged cell as unwritable for run purposes and set each anchor individually afterwards.
+  const blocked = [], anchors = [];
+  for (let r = 0; r < rows; r++) blocked.push(new Array(cols).fill(false));
   merges.forEach((m) => {
     const r0 = m.getRow() - top, c0 = m.getColumn() - left, nr = m.getNumRows(), nc = m.getNumColumns();
     for (let r = Math.max(0, r0); r < Math.min(rows, r0 + nr); r++) {
-      rowHasMerge[r] = true;
-      for (let c = Math.max(0, c0); c < Math.min(cols, c0 + nc); c++) {
-        if (r === r0 && c === c0) continue; // a merge's top-left IS writable
-        skip[r][c] = true;
-      }
+      for (let c = Math.max(0, c0); c < Math.min(cols, c0 + nc); c++) blocked[r][c] = true;
     }
+    if (r0 >= 0 && r0 < rows && c0 >= 0 && c0 < cols) anchors.push({ r: r0, c: c0 });
   });
 
-  let r = 0;
-  while (r < rows) {
-    if (!rowHasMerge[r]) { // batch every consecutive merge-free row into a single write
-      let e = r; while (e + 1 < rows && !rowHasMerge[e + 1]) e++;
-      dest.getRange(top + r, left, e - r + 1, cols).setValues(values.slice(r, e + 1));
-      r = e + 1; continue;
-    }
-    let c = 0; // merged row → write only the runs of writable cells
+  let failed = 0;
+  for (let r = 0; r < rows; r++) {
+    let c = 0;
     while (c < cols) {
-      if (skip[r][c]) { c++; continue; }
-      let e = c; while (e + 1 < cols && !skip[r][e + 1]) e++;
-      dest.getRange(top + r, left + c, 1, e - c + 1).setValues([values[r].slice(c, e + 1)]);
+      if (blocked[r][c]) { c++; continue; }
+      let e = c; while (e + 1 < cols && !blocked[r][e + 1]) e++;
+      const block = [values[r].slice(c, e + 1)];
+      try { dest.getRange(top + r, left + c, 1, block[0].length).setValues(block); }
+      catch (err) { // one unwritable value (in-cell image, chip) must not lose the whole run
+        for (let j = 0; j < block[0].length; j++) {
+          try { dest.getRange(top + r, left + c + j).setValue(block[0][j]); } catch (e2) { failed++; }
+        }
+      }
       c = e + 1;
     }
-    r++;
   }
+  anchors.forEach((a) => {
+    try { dest.getRange(top + a.r, left + a.c).setValue(values[a.r][a.c]); } catch (e) { failed++; }
+  });
+  return failed;
 }
 
 function publishMirrorTab_(src, dest) {
@@ -1526,8 +1531,8 @@ function publishMirrorTab_(src, dest) {
   if (src.getMaxColumns() === dest.getMaxColumns()) {
     if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
     const vals = step('read src ' + sRows + 'x' + sCols, () => src.getRange(1, 1, sRows, sCols).getValues());
-    step('write dest ' + sRows + 'x' + sCols + ' (dest grid ' + dest.getMaxRows() + 'x' + dest.getMaxColumns() + ')',
-      () => publishWriteValues_(dest, 1, 1, vals));
+    const bad = step('write dest ' + sRows + 'x' + sCols, () => publishWriteValues_(dest, 1, 1, vals));
+    if (bad) logWarn_('publishMirrorTab_', dest.getName() + ': ' + bad + ' cell(s) could not be written (in-cell image or chip).');
     if (sh && sRows > sh) { // still wipe anything sensitive the copy brought along
       src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => {
         if (publishSensitiveHeader_(h)) dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent();
