@@ -1441,7 +1441,7 @@ function publishTabBlocked_(name) {
 function publishSensitiveHeader_(h) {
   const n = norm_(h);
   if (!n) return false;
-  let list = ['UNIQUE ID', 'DISCORD', 'COMMUNITY ID', 'CID', 'EMAIL', 'DATE OF BIRTH', 'DOB', 'PHONE', 'ADDRESS'];
+  let list = ['EMAIL', 'DATE OF BIRTH', 'DOB', 'PHONE', 'ADDRESS'];
   try { const c = cfg_().kv.PUBLISH.NEVER_PUBLISH; if (c && c.length) list = c; } catch (e) { /* config absent -> shipped default */ }
   return list.some((raw) => {
     const k = norm_(raw); if (!k) return false;
