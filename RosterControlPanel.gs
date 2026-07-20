@@ -1441,9 +1441,12 @@ function publishTabBlocked_(name) {
 function publishSensitiveHeader_(h) {
   const n = norm_(h);
   if (!n) return false;
-  if (n === 'CID' || n === 'DOB') return true;                                   // exact: too short to match loosely
-  return ['UNIQUE ID', 'DISCORD', 'COMMUNITY ID', 'EMAIL', 'DATE OF BIRTH', 'PHONE', 'ADDRESS']
-    .some((k) => n.indexOf(k) !== -1);
+  let list = ['UNIQUE ID', 'DISCORD', 'COMMUNITY ID', 'CID', 'EMAIL', 'DATE OF BIRTH', 'DOB', 'PHONE', 'ADDRESS'];
+  try { const c = cfg_().kv.PUBLISH.NEVER_PUBLISH; if (c && c.length) list = c; } catch (e) { /* config absent -> shipped default */ }
+  return list.some((raw) => {
+    const k = norm_(raw); if (!k) return false;
+    return (k === 'CID' || k === 'DOB') ? (n === k) : (n.indexOf(k) !== -1); // short tokens must match exactly
+  });
 }
 
 /** Best-guess header row: the row in the first 15 with the most filled cells. 0 when the sheet has no header. */
@@ -1644,6 +1647,11 @@ function publishPublicRoster_() {
   const file = publicFile_();
   if (!file) return { linked: false, tabs: [], rows: 0, skipped: [] };
   const ss = SpreadsheetApp.getActive();
+  // A public target pointing at THIS workbook would mirror the sheet onto itself and scrub its own Unique ID column.
+  if (file.getId() === ss.getId()) {
+    logWarn_('publishPublicRoster_', 'the linked public file IS this workbook — refusing to publish onto itself.');
+    return { linked: true, selfTarget: true, tabs: [], rows: 0, skipped: [], detail: ['Refused: the linked public roster is THIS workbook. Re-link it to a separate spreadsheet.'] };
+  }
   const out = { linked: true, tabs: [], rows: 0, skipped: [], url: '' };
   try { out.url = file.getUrl(); } catch (e) { /* cosmetic */ }
   out.detail = [];
