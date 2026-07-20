@@ -1492,6 +1492,29 @@ function publishReadCells_(range) {
   return v;
 }
 
+/**
+ * True when the destination tab COMPUTES ITSELF from other tabs — i.e. it holds a formula referencing another sheet
+ * (the shift tabs and Police Academy are FILTER/ARRAY_CONSTRAIN views over 'Member Information').
+ *
+ * Such tabs must not be published into. Their array formulas SPILL, and writing the source's spilled values into that
+ * spill range blocks it, which Sheets reports as #REF!. Left alone they rebuild themselves from the public copy of the
+ * tab they reference, which the publish does populate — so they stay correct with no work at all.
+ */
+function publishSelfComputing_(dest) {
+  try {
+    const rows = Math.min(dest.getLastRow(), 300), cols = Math.min(dest.getLastColumn(), 60);
+    if (rows < 1 || cols < 1) return false;
+    const f = dest.getRange(1, 1, rows, cols).getFormulas();
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
+        const fx = String(f[r][c] == null ? '' : f[r][c]);
+        if (fx && /'[^']+'!|[A-Za-z0-9_]+![A-Z$]/.test(fx)) return true; // a cross-sheet reference
+      }
+    }
+  } catch (e) { /* unreadable -> treat as ordinary */ }
+  return false;
+}
+
 function publishKeepRanges_() {
   const out = {};
   const add = (spec) => {
@@ -1665,6 +1688,9 @@ function publishPublicRoster_() {
     if (publishTabBlocked_(name)) { out.skipped.push(name); out.detail.push(`${name}: BLOCKED (never published)`); return; }
     const src = ss.getSheetByName(name);
     if (!src) { out.skipped.push(name); out.detail.push(`${name}: no tab of that name here`); return; }
+    if (publishSelfComputing_(dest)) { // rebuilds itself from the tabs we DO publish; writing into it blocks its spills
+      out.skipped.push(name); out.detail.push(`${name}: self-computing (formulas pull from another tab) - left alone`); return;
+    }
     const sg = src.getMaxColumns(), dg = dest.getMaxColumns();
     const mode = (sg === dg) ? 'FULL' : 'match';
     try {
