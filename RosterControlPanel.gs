@@ -1425,9 +1425,12 @@ function approveSignup_(signups, row, roster, slotRow) {
 const PUBLIC_FILE_PROP_ = 'PUBLIC_ROSTER_ID';
 
 /** The linked public spreadsheet, or null when none is set up yet. */
+let _publicFileMemo_ = undefined; // per-execution: openById is a round trip and this is hit several times per publish
 function publicFile_() {
+  if (_publicFileMemo_ !== undefined) return _publicFileMemo_;
   const id = String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_) || '').trim();
-  return id ? SpreadsheetApp.openById(id) : null;
+  _publicFileMemo_ = id ? SpreadsheetApp.openById(id) : null;
+  return _publicFileMemo_;
 }
 
 /** Tabs that are NEVER mirrored, even if a same-named tab somehow exists in the public file. */
@@ -1738,7 +1741,7 @@ function publishMirrorTab_(src, dest) {
  * Publish: every tab in the PUBLIC file that has a same-named tab here is mirrored. The public file's OWN tab list is
  * therefore the allow-list — copy a tab across to publish it, delete it to stop. Blocked tabs are never mirrored.
  */
-function publishPublicRoster_() {
+function publishPublicRoster_(onlyTab) {
   const file = publicFile_();
   if (!file) return { linked: false, tabs: [], rows: 0, skipped: [] };
   const ss = SpreadsheetApp.getActive();
@@ -1752,6 +1755,7 @@ function publishPublicRoster_() {
   out.detail = [];
   file.getSheets().forEach((dest) => {
     const name = dest.getName();
+    if (onlyTab && norm_(name) !== norm_(onlyTab)) return; // incremental: only the tab that actually changed
     if (publishTabBlocked_(name)) { out.skipped.push(name); out.detail.push(`${name}: BLOCKED (never published)`); return; }
     const src = ss.getSheetByName(name);
     if (!src) { out.skipped.push(name); out.detail.push(`${name}: no tab of that name here`); return; }
@@ -1791,13 +1795,13 @@ function publishMarkDirty_() {
 }
 
 /** Publish under the lock, clearing the dirty flag FIRST so an edit landing mid-publish re-marks itself. */
-function publishPublicRosterQuiet_() {
+function publishPublicRosterQuiet_(onlyTab) {
   const props = PropertiesService.getDocumentProperties();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return; // another publish is already running — it will carry this change
   try {
     props.deleteProperty(PUBLISH_DIRTY_PROP_); // BEFORE publishing: a concurrent edit re-sets it, so nothing is lost
-    publishPublicRoster_();
+    publishPublicRoster_(onlyTab);
     props.setProperty(PUBLISH_LAST_PROP_, String(Date.now()));
   } catch (e) { log_('publishPublicRosterQuiet_', e); }
   finally { lock.releaseLock(); }
@@ -1807,13 +1811,16 @@ function publishPublicRosterQuiet_() {
 function publishOnChange(e) {
   try {
     if (!publicFile_()) return; // no public roster linked → nothing to do
-    // ANY edit anywhere counts: every tab in the public file is mirrored, so a change on the Patrol Log, the Welcome
-    // Page or any other published tab must republish just like a roster edit.
+    // ANY edit anywhere counts (every public tab is mirrored), but only the EDITED tab is republished — re-mirroring
+    // all four tabs on every keystroke is the "rebuild everything" trap and would blow the onEdit budget. Structural
+    // changes (onChange, no range) and script writes fall back to the full pass via the sweep.
+    let only = '';
+    try { only = (e && e.range) ? e.range.getSheet().getName() : ''; } catch (ig) { only = ''; }
     const props = PropertiesService.getDocumentProperties();
     props.setProperty(PUBLISH_DIRTY_PROP_, '1');
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
     if (Date.now() - last < PUBLISH_MIN_GAP_MS_) return; // too soon — the 1-minute sweep will carry it
-    publishPublicRosterQuiet_();
+    publishPublicRosterQuiet_(only || undefined);
   } catch (err) { log_('publishOnChange', err); }
 }
 

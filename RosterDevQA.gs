@@ -2743,6 +2743,19 @@ function devPublishTests_() {
     devCheck_(R, 'self-computing: a spilling cross-sheet formula DOES', publishSelfComputing_(spill) === true);
   })();
 
+  // INCREMENTAL PUBLISH: naming a tab must mirror ONLY that tab (re-mirroring everything on each edit is the trap).
+  (() => {
+    const a = devFreshSheet_('IncA'), b = devFreshSheet_('IncB');
+    a.getRange(1, 1, 2, 1).setValues([['NAME'], ['from A']]);
+    b.getRange(1, 1, 2, 1).setValues([['NAME'], ['from B']]);
+    const da = devFreshSheet_('IncADest'), db = devFreshSheet_('IncBDest');
+    da.getRange(1, 1).setValue('NAME');
+    db.getRange(1, 1).setValue('NAME');
+    publishMirrorTab_(a, da);                       // only A is mirrored
+    devEq_(R, 'incremental: named tab mirrored', g(da, 2, 1), 'from A');
+    devEq_(R, 'incremental: other tab untouched', g(db, 2, 1), '');
+  })();
+
   return R;
 }
 
