@@ -13,7 +13,7 @@
  * SETUP (after RosterSystem.gs is in and working):
  *   1. Paste this file, save.
  *   2. Run installExtras().
- *   3. In your core onOpen(), add one line:  addExtrasMenu_();
+ *   3. Extras menu items are added by the core buildMenus_() — no extra call needed.
  *   4. Reload the sheet for the "🛠️ Extras" menu.
  *
  * NOTE: do NOT install an onEdit trigger for recordEdit — the Control Panel's audit log (auditEdit in

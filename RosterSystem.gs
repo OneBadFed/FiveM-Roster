@@ -2501,7 +2501,10 @@ function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired) {
         if (CONFIG.patrol.recompute) { try { updateStatusFromHours(roster, prow); } catch (e) { /* best-effort */ } }
       }
     }
-    markCell.clearContent(); SpreadsheetApp.flush(); // durably "uncredited" before any re-credit (self-heals on the next process if we die here)
+    // Durably "uncredited" before any re-credit (self-heals on the next process if we die here). Only when there IS a
+    // marker: an uncredited row (flagged/incomplete) must not pay for a write + flush on every single edit and on every
+    // row of the nightly refreshPatrolLog_ sweep.
+    if (prior) { markCell.clearContent(); SpreadsheetApp.flush(); }
 
     if (desired && wantHours > 0 && wantMid) { // apply the new credit on the target member
       const trow = patrolFindRow_(roster, wantMid, '');
