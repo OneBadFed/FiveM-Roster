@@ -1476,9 +1476,10 @@ function publishMirrorTab_(src, dest) {
   // a public tab and it becomes narrower, which switches that tab to header-matching below.
   // (Content-based detection was tried and failed: the "header row" a dashboard exposes is really a row of KPI VALUES,
   //  which differ between the two files by design, so the two sheets never compared equal.)
-  if (sCols === dest.getLastColumn()) {
+  // getMaxColumns is the GRID width — unlike getLastColumn it does not depend on which cells happen to be filled, so a
+  // public copy whose dynamic cells are still blank is correctly recognised as an untouched copy of the same shape.
+  if (src.getMaxColumns() === dest.getMaxColumns()) {
     if (sRows > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows());
-    if (sCols > dest.getMaxColumns()) dest.insertColumnsAfter(dest.getMaxColumns(), sCols - dest.getMaxColumns());
     dest.getRange(1, 1, sRows, sCols).setValues(src.getRange(1, 1, sRows, sCols).getValues());
     if (sh && sRows > sh) { // still wipe anything sensitive the copy brought along
       src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => {

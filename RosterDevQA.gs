@@ -2542,6 +2542,7 @@ function devPublishTests_() {
     ]);
     // The public copy kept UNIQUE ID and EMAIL columns, and reordered the rest.
     const dest = devFreshSheet_('PubDest');
+    if (dest.getMaxColumns() > 6) dest.deleteColumns(7, dest.getMaxColumns() - 6); // narrower GRID → header-matching
     dest.getRange(5, 1, 1, 6).setValues([['NAME', 'RANK', 'UNIQUE ID', 'HOURS', 'EMAIL', 'UNIT NUMBER']]);
     const n = publishMirrorTab_(src, dest);
     devEq_(R, 'mirror: both rows copied', n, 2);
@@ -2559,6 +2560,7 @@ function devPublishTests_() {
     src.getRange(5, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'EMAIL']]);
     src.getRange(6, 1, 1, 3).setValues([['Scrub', devId_(62), 'live@dept.test']]);
     const dest = devFreshSheet_('PubDest2');
+    if (dest.getMaxColumns() > 3) dest.deleteColumns(4, dest.getMaxColumns() - 3); // narrower GRID → header-matching
     dest.getRange(5, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'EMAIL']]);
     dest.getRange(6, 1, 1, 3).setValues([['Scrub', devId_(62), 'stale@dept.test']]); // came across in the copy
     publishMirrorTab_(src, dest);
@@ -2574,6 +2576,7 @@ function devPublishTests_() {
     src.getRange(6, 1, 1, 3).setValues([['Keep', 9, '2020-01-01']]);
     const dest = devFreshSheet_('PubDest3');
     dest.getRange(5, 1, 1, 2).setValues([['NAME', 'HOURS']]); // JOIN DATE deleted from the public copy
+    if (dest.getMaxColumns() > 2) dest.deleteColumns(3, dest.getMaxColumns() - 2); // narrower GRID → header-matching
     publishMirrorTab_(src, dest);
     devEq_(R, 'omitted column: name published', g(dest, 6, 1), 'Keep');
     devEq_(R, 'omitted column: hours published', g(dest, 6, 2), '9');
@@ -2625,8 +2628,6 @@ function devPublishTests_() {
     const dest = devFreshSheet_('PubDashDest');
     // an untouched tab copy: SAME WIDTH as the source but the dynamic values blank (never published yet).
     dest.getRange(9, 2, 1, 3).setValues([['RANK', 'NAME', 'HOURS']]);
-    dest.getRange(1, src.getLastColumn()).setValue('');            // match the source's width exactly
-    dest.getRange(11, src.getLastColumn()).setValue(' ');
     const n = publishMirrorTab_(src, dest);
     devCheck_(R, 'dashboard: rows mirrored', n > 0);
     devEq_(R, 'dashboard: leadership NAME at a fixed cell copied', g(dest, 3, 3), 'James Bennett');
