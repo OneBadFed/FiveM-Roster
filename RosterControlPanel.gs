@@ -1500,6 +1500,49 @@ function publishReadCells_(range) {
  * spill range blocks it, which Sheets reports as #REF!. Left alone they rebuild themselves from the public copy of the
  * tab they reference, which the publish does populate — so they stay correct with no work at all.
  */
+/**
+ * Repair a self-computing tab: earlier publishes wrote literal values into the ranges its array formulas need to SPILL
+ * into, which blocks them (#REF!). Clear only that residue — for each formula anchor, the cells to its RIGHT and BELOW
+ * within its block (the block ends at the next anchor in the same column). Never touches the anchor itself, anything to
+ * its LEFT (the rank-group labels), the header rows above it, or any other formula. @return cells cleared.
+ */
+function publishFreeSpills_(dest) {
+  const rows = dest.getLastRow(), cols = dest.getLastColumn();
+  if (rows < 1 || cols < 1) return 0;
+  let f;
+  try { f = dest.getRange(1, 1, rows, cols).getFormulas(); } catch (e) { return 0; }
+  const anchors = [];
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (String(f[r][c] == null ? '' : f[r][c]).trim() !== '') anchors.push({ r: r, c: c });
+  if (!anchors.length) return 0;
+
+  const drop = []; // 0-based cells that are residue: inside an anchor's block, not a formula themselves
+  anchors.forEach((a) => {
+    let end = rows - 1;
+    anchors.forEach((b) => { if (b.c === a.c && b.r > a.r && b.r - 1 < end) end = b.r - 1; });
+    for (let r = a.r; r <= end; r++) {
+      for (let c = a.c; c < cols; c++) {
+        if (r === a.r && c === a.c) continue;                                   // the anchor stays
+        if (String(f[r][c] == null ? '' : f[r][c]).trim() !== '') continue;      // never clear another formula
+        drop.push({ r: r, c: c });
+      }
+    }
+  });
+  if (!drop.length) return 0;
+
+  const seen = {}; let cleared = 0;                                             // clear in row runs
+  drop.forEach((d) => { (seen[d.r] = seen[d.r] || {})[d.c] = true; });
+  Object.keys(seen).forEach((rk) => {
+    const r = Number(rk), colsIn = Object.keys(seen[r]).map(Number).sort((x, y) => x - y);
+    let i = 0;
+    while (i < colsIn.length) {
+      let j = i; while (j + 1 < colsIn.length && colsIn[j + 1] === colsIn[j] + 1) j++;
+      try { dest.getRange(r + 1, colsIn[i] + 1, 1, colsIn[j] - colsIn[i] + 1).clearContent(); cleared += colsIn[j] - colsIn[i] + 1; } catch (e) { /* skip */ }
+      i = j + 1;
+    }
+  });
+  return cleared;
+}
+
 function publishSelfComputing_(dest) {
   try {
     const rows = Math.min(dest.getLastRow(), 300), cols = Math.min(dest.getLastColumn(), 60);
@@ -1689,7 +1732,11 @@ function publishPublicRoster_() {
     const src = ss.getSheetByName(name);
     if (!src) { out.skipped.push(name); out.detail.push(`${name}: no tab of that name here`); return; }
     if (publishSelfComputing_(dest)) { // rebuilds itself from the tabs we DO publish; writing into it blocks its spills
-      out.skipped.push(name); out.detail.push(`${name}: self-computing (formulas pull from another tab) - left alone`); return;
+      let freed = 0;
+      try { freed = publishFreeSpills_(dest); } catch (e) { log_('publishFreeSpills_.' + name, e); }
+      out.skipped.push(name);
+      out.detail.push(`${name}: self-computing - left alone` + (freed ? ` (freed ${freed} blocked spill cell(s))` : ''));
+      return;
     }
     const sg = src.getMaxColumns(), dg = dest.getMaxColumns();
     const mode = (sg === dg) ? 'FULL' : 'match';
