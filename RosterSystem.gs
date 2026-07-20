@@ -2352,6 +2352,9 @@ function manualSyncPatrol() {
  * OFF unless a tab named [SHEETS].PATROL_LOG exists.
  * ====================================================================== */
 
+const PATROL_DATE_FMT_ = 'd mmm. yyyy';
+const PATROL_TIME_FMT_ = 'h:mm am/pm';
+
 /** The Patrol Log's 1-based label row (scans the top rows for STATUS + a member column). 0 if none. */
 function patrolLabelRow_(sheet) {
   try {
@@ -2451,6 +2454,12 @@ function processPatrolLog_(sheet, row, PC, roster) {
     }
     if (PC.discord) sheet.getRange(row, PC.discord).setNumberFormat('@');
     if (PC.total && PC.startDate && PC.endDate && PC.startTime && PC.endTime) sheet.getRange(row, PC.total).setFormula(patrolTotalFormula_(PC, row)).setNumberFormat('0.00" hrs"');
+    // Dates and TIMES both need an explicit format: a row typed by hand (or arriving on a new row past whatever the
+    // sheet was formatted down to) would otherwise render a time as a raw serial or a full datetime.
+    if (PC.startDate) sheet.getRange(row, PC.startDate).setNumberFormat(PATROL_DATE_FMT_);
+    if (PC.endDate) sheet.getRange(row, PC.endDate).setNumberFormat(PATROL_DATE_FMT_);
+    if (PC.startTime) sheet.getRange(row, PC.startTime).setNumberFormat(PATROL_TIME_FMT_);
+    if (PC.endTime) sheet.getRange(row, PC.endTime).setNumberFormat(PATROL_TIME_FMT_);
 
     const hours = (startDT && endDT) ? Math.round(((endDT.getTime() - startDT.getTime()) / 3600000) * 100) / 100 : null;
     const P = CONFIG.patrol;
@@ -2562,8 +2571,10 @@ function sortPatrolLog_(patrolSheet) {
       const tf = []; for (let k = 0; k < sorted.length; k++) tf.push([patrolTotalFormula_(PC, start + k)]);
       sheet.getRange(start, PC.total, sorted.length, 1).setFormulas(tf).setNumberFormat('0.00" hrs"');
     }
-    if (PC.startDate) sheet.getRange(start, PC.startDate, sorted.length, 1).setNumberFormat('d mmm. yyyy');
-    if (PC.endDate) sheet.getRange(start, PC.endDate, sorted.length, 1).setNumberFormat('d mmm. yyyy');
+    if (PC.startDate) sheet.getRange(start, PC.startDate, sorted.length, 1).setNumberFormat(PATROL_DATE_FMT_);
+    if (PC.endDate) sheet.getRange(start, PC.endDate, sorted.length, 1).setNumberFormat(PATROL_DATE_FMT_);
+    if (PC.startTime) sheet.getRange(start, PC.startTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
+    if (PC.endTime) sheet.getRange(start, PC.endTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
   } catch (e) { log_('sortPatrolLog_', e); }
 }
 

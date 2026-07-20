@@ -2702,6 +2702,21 @@ function devPublishTests_() {
     devEq_(R, 'formula: ordinary values still published', g(dest, 2, 2), 'Alice');
   })();
 
+  // DATES/TIMES must arrive on the public copy with their FORMAT, not as raw serials.
+  (() => {
+    const src = devFreshSheet_('PubFmtSrc');
+    src.getRange(1, 1, 1, 3).setValues([['NAME', 'START DATE', 'START TIME']]);
+    src.getRange(2, 1).setValue('Alice');
+    src.getRange(2, 2).setNumberFormat('d mmm. yyyy').setValue(devDay_(-1));
+    src.getRange(2, 3).setNumberFormat('h:mm am/pm').setValue(devTime_(9, 30));
+    const dest = devFreshSheet_('PubFmtDest');
+    dest.getRange(1, 1, 1, 3).setValues([['NAME', 'START DATE', 'START TIME']]);
+    publishMirrorTab_(src, dest);
+    devEq_(R, 'format: date format carried to the public copy', dest.getRange(2, 2).getNumberFormat(), 'd mmm. yyyy');
+    devEq_(R, 'format: time format carried to the public copy', dest.getRange(2, 3).getNumberFormat(), 'h:mm am/pm');
+    devCheck_(R, 'format: the date did not land as a raw serial', String(dest.getRange(2, 2).getDisplayValue()).indexOf('4') !== 0);
+  })();
+
   return R;
 }
 
