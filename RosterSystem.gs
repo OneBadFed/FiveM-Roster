@@ -3194,15 +3194,27 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   } finally {
     lock.releaseLock();
   }
+  // Cheap, important, and AuthMode.LIMITED-safe — do these RIGHT AFTER the move, BEFORE the heavy rebuilds below.
+  // checkForMemberMove runs on the SIMPLE onEdit trigger, whose ~30s budget also spans the (human) confirm dialog; a big
+  // Academy rebuild afterwards could blow it, so record the promotion and flag the public copy FIRST — then neither is
+  // lost even if the rebuild gets cut short.
+  promoRecord_(sourceRow, targetRow, memberName, sourceRank, targetRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
+  // Flag the public copy stale so the ~8s catch-up + 1-minute sweep publish it. We must NOT publish from here: the SIMPLE
+  // trigger is AuthMode.LIMITED and can't open the separate public file — the previous direct publish failed at openById
+  // AND deleted the dirty flag on the way in, which made the sweep SKIP the move (the public roster never caught up).
+  // publishOnChange (installable) schedules the catch-up on the ID paste.
+  if (sheet.getName() === CONFIG.sheets.roster) {
+    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
+  }
   // A transfer changes the member's rank (SLOT rank stays with the destination), which can move them in/out of the
-  // Police Academy's rank-group bands — re-sync it (and the group-tab bands). Group data itself is live formulas.
-  // Guarded to the real roster tab so test-sandbox moves don't rebuild the live sheets.
+  // Police Academy's rank-group bands — re-sync it (and the group tabs). Heavy, but ALSO queued by onEdit's deferWork_,
+  // so the sweep still carries it if this is cut short. Live roster tab only (sandbox moves must not rebuild).
   if (sheet.getName() === CONFIG.sheets.roster) {
     try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('checkForMemberMove.academy', e2); }
     try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('checkForMemberMove.groups', e2); }
   }
-  promoRecord_(sourceRow, targetRow, memberName, sourceRank, targetRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
-  notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; after the lock is released, only reached on a successful move
+  // Discord webhook LAST: UrlFetchApp is unavailable in AuthMode.LIMITED, so this may throw — nothing important is after it.
+  notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; only reached on a successful move
     title: fill_(CONFIG.notify.transferTitle, { name: memberName, from: sourceRank, to: targetRank }),
     color: hexToInt_(CONFIG.notify.transferColor, 5793266),
     fields: [
@@ -3211,13 +3223,6 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
       { name: '🛡️ To', value: clamp_(dash_(withIcon_(targetRank)), 1000), inline: true },
     ],
   }, mention_(target));
-  // The move rewrote rows with SCRIPT writes (no onEdit fires), and publishOnChange deliberately skipped the racing
-  // publish on the ID paste — so push the settled roster to the public copy now. Live roster tab only (sandbox moves
-  // in the QA suite must not publish); marking dirty first guarantees the sweep still carries it if the lock is busy.
-  if (sheet.getName() === CONFIG.sheets.roster) {
-    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
-    try { if (typeof publishPublicRosterQuiet_ === 'function') publishPublicRosterQuiet_(); } catch (e3) { log_('checkForMemberMove.publish', e3); }
-  }
 }
 
 /** Menu action: insert N blank member rows below the cursor (asks how many) and renumber units. */

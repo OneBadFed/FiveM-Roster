@@ -1833,7 +1833,7 @@ function publishOnChange(e) {
       try {
         const RC = rosterCols_(e.range.getSheet());
         const c = e.range.getColumn(), cL = e.range.getLastColumn ? e.range.getLastColumn() : c;
-        if (RC.discord && c <= RC.discord && cL >= RC.discord) return;
+        if (RC.discord && c <= RC.discord && cL >= RC.discord) { scheduleCatchup_(); return; } // move/ID edit → publish via the ~8s catch-up (checkForMemberMove can't, it's AuthMode.LIMITED)
       } catch (ig) { /* fall through to a normal publish */ }
     }
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
