@@ -1813,11 +1813,21 @@ function publishOnChange(e) {
     const props = PropertiesService.getDocumentProperties();
     props.setProperty(PUBLISH_DIRTY_PROP_, '1');
     _pubDirtyMemo_ = true;
+    // No range = an onChange firing (a paste/edit, a row/column insert-delete, or a format change). A full synchronous
+    // publish here grabs the script lock and would race — and cancel — an in-flight member transfer that is about to
+    // rewrite rows under that same lock (the transfer's ID paste ALSO reaches here as an onChange). VALUE/format changes
+    // are already republished immediately by the matching onEdit firing, so defer those to the sweep (dirty is set).
+    // STRUCTURAL changes (INSERT_ROW/REMOVE_ROW/…) don't fire onEdit at all, so let those publish now to stay immediate.
+    if (!e || !e.range) {
+      const ct = String((e && e.changeType) || '').toUpperCase();
+      if (ct === 'EDIT' || ct === 'OTHER' || ct === 'FORMAT' || ct === '') return; // value/format/unknown → onEdit + sweep cover it
+      // else fall through: a structural change onEdit can't see → publish it (only === '' → full publish)
+    }
     // A Unique-ID edit on the roster starts a member TRANSFER (or a roster/tracker autofill) that briefly takes the
     // script lock to rewrite rows. Publishing synchronously here would race that mutation for the SAME lock and cancel
     // the transfer ("Another roster change is in progress"). So for ID-column edits we only mark dirty (done above) and
     // let the transfer's own end-of-move publish — or the 1-minute sweep — carry the settled result.
-    if (only === CONFIG.sheets.roster && e && e.range) {
+    if (only === CONFIG.sheets.roster) {
       try {
         const RC = rosterCols_(e.range.getSheet());
         const c = e.range.getColumn(), cL = e.range.getLastColumn ? e.range.getLastColumn() : c;
