@@ -542,19 +542,6 @@ function devBuildPatrolLog_(logs) {
   return sh;
 }
 
-
-
-/** Sandbox Disciplinary Log: Date | Unique ID | Name | Action | Reason | Issued By | Status. */
-function devBuildDiscLog_(entries) {
-  const sh = devFreshSheet_('DiscLog');
-  sh.getRange(1, 1, 1, 7).setValues([['Date', 'Discord ID', 'Name', 'Action', 'Reason', 'Issued By', 'Status']]);
-  if (entries && entries.length) {
-    sh.getRange(2, 2, entries.length, 1).setNumberFormat('@');
-    sh.getRange(2, 1, entries.length, 7).setValues(entries.map((e) => [e.date ?? '', e.id ?? '', e.name ?? '', e.action ?? '', e.reason ?? '', e.by ?? '', e.status ?? '']));
-  }
-  return sh;
-}
-
 /** Sandbox signup response tab — the exact shape the Roster Signup form produces, plus the appended Status/Notes. */
 function devBuildSignups_(rows) {
   const sh = devFreshSheet_('Signups');
@@ -2416,7 +2403,6 @@ function devPatrolLogTests_() {
   return R;
 }
 
-
 /* ======================================================================
  * SECTION 23 — ROSTER SIGNUPS (sandbox): header resolution, the Pending →
  * Approved → Processed sort, the review queue, and approveSignup_ — including
@@ -2521,7 +2507,6 @@ function devSignupTests_() {
 
   return R;
 }
-
 
 /* ======================================================================
  * SECTION 23 — PUBLIC ROSTER PUBLISH (sandbox): the one-way export and,
@@ -2764,38 +2749,6 @@ function devPublishTests_() {
  * synthetic-config harness (used by the sections above). Kept verbatim from
  * the prior harness; preflight's trackerStartRow default updated to 8.
  * ====================================================================== */
-
-/** Builds a sandbox _Snapshots-schema sheet: `idCount` distinct IDs ("1".."N"), each repeated `perId` rows. */
-function devSnapshotSheet_(idCount, perId) {
-  const sh = devFreshSheet_('Snapshots');
-  sh.getRange(1, 1, 1, 8).setValues([['SnapshotId', 'When', 'Row', 'Name', 'Discord', 'Status', 'Hours', 'Rank']]);
-  const rows = [];
-  for (let i = 1; i <= idCount; i++) {
-    for (let j = 0; j < perId; j++) {
-      rows.push([String(i), 'when', CONFIG.rosterStartRow + j, `N${i}-${j}`, devId_(i * 10 + j), 'Active', 5, 'Trooper']);
-    }
-  }
-  sh.getRange(2, 1, rows.length, 1).setNumberFormat('@'); // SnapshotIds as exact text
-  sh.getRange(2, 1, rows.length, 8).setValues(rows);
-  if (DEV_THEME_SANDBOX) devTheme_(sh, 1, 5);
-  return sh;
-}
-
-/** Distinct snapshot IDs currently in column A (rows 2..last) of a snapshot sheet, in first-seen order. */
-function devDistinctSnapshotIds_(sh) {
-  if (sh.getLastRow() < 2) return [];
-  const v = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getDisplayValues();
-  const out = [];
-  v.forEach((r) => { const id = String(r[0]).trim(); if (id && out.indexOf(id) === -1) out.push(id); });
-  return out;
-}
-
-/** Count of rows in a snapshot sheet belonging to a given snapshot ID. */
-function devSnapshotRowCount_(sh, id) {
-  if (sh.getLastRow() < 2) return 0;
-  const v = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getDisplayValues();
-  return v.filter((r) => String(r[0]).trim() === String(id)).length;
-}
 
 /**
  * PREFLIGHT — live-config guard (F-028). Runs FIRST in devRunAllTests(). The sandbox builders + many assertions

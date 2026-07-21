@@ -1259,18 +1259,6 @@ function styleFormResponses_(sheet) {
   SpreadsheetApp.flush();
 }
 
-/** Menu action: restyle the existing Form Response sheet to match the theme (re-syncs to repaint status tints). */
-function styleFormResponsesNow() {
-  runAction_('Style Form Responses', () => {
-    const ss = SpreadsheetApp.getActive();
-    const form = getSheetOrWarn_(ss, CONFIG.sheets.form);
-    if (!form) return;
-    styleFormResponses_(form);   // theme chrome + fonts + monospace IDs + canvas
-    syncFormToTracker();         // repaint existing rows with the new themed status tints
-    SpreadsheetApp.getUi().alert('✨ Form Responses restyled to match the theme.');
-  });
-}
-
 /* ======================================================================
  * SHARED HELPERS
  * ====================================================================== */
@@ -1682,40 +1670,6 @@ function captureLastActivity() {
 }
 
 /**
- * Persist [ROSTER_LAYOUT].LAST_ACTIVITY_STYLE and apply it to the LAST ACTIVITY column NOW — applied directly (not via
- * a CONFIG re-read) so it works even if only some engine files were re-pasted. @return {Sheet|null} the roster, or null.
- */
-function setLastActivityStyle_(style) {
-  const ss = SpreadsheetApp.getActive();
-  const roster = getSheetOrWarn_(ss, CONFIG.sheets.roster);
-  if (!roster) return null;
-  const laCol = lastActivityCol_(roster);
-  if (laCol === -1) { SpreadsheetApp.getUi().alert('No "LAST ACTIVITY" header found in row 5.\n\nAdd that header, then run this again.'); return null; }
-  let configSheet = findConfigSheet_(ss);
-  if (!configSheet) { seedConfigTab_(ss); configSheet = findConfigSheet_(ss); } // create the ⚙️ Config tab so the choice persists
-  if (configSheet) setKvValue_(configSheet, 'ROSTER_LAYOUT', 'LAST_ACTIVITY_STYLE', style);
-  cfgInvalidate_();
-  const RC = rosterCols_(roster);
-  if (style === 'NEUTRAL') neutralizeLastActivityCol_(roster, laCol, RC);
-  else colorMatchLastActivityCol_(roster, laCol, RC);
-  return roster;
-}
-
-/** Menu: make LAST ACTIVITY blend into the row's normal colours (only CURRENT ACTIVITY stays status-coloured). */
-function lastActivityNeutral() {
-  runAction_('Last Activity: Neutral', () => {
-    if (setLastActivityStyle_('NEUTRAL')) SpreadsheetApp.getUi().alert("✅ LAST ACTIVITY now matches the row's normal colours — only CURRENT ACTIVITY stays colour-coded.");
-  });
-}
-
-/** Menu: make LAST ACTIVITY mirror CURRENT ACTIVITY's status colours again. */
-function lastActivityMatch() {
-  runAction_('Last Activity: Match', () => {
-    if (setLastActivityStyle_('MATCH')) SpreadsheetApp.getUi().alert("✅ LAST ACTIVITY now mirrors CURRENT ACTIVITY's status colours again.");
-  });
-}
-
-/**
  * Persist [ROSTER_LAYOUT].ID_TYPE — the department's Unique-ID switch ('DISCORD' 17-19 | 'COMMUNITY' 1-8) — and re-apply
  * the roster/tracker ID data-validation so the new length range takes effect immediately. Creates the ⚙️ Config tab if
  * missing so the choice persists. @return {string} the new accepted-digit label (e.g. "17-19" or "1-8").
@@ -1990,14 +1944,6 @@ function autoFillTrackerRow_(tracker, row, TC, id) {
     if (TC.status && !String(tracker.getRange(row, TC.status).getValue()).trim()) tracker.getRange(row, TC.status).setValue(CONFIG.pendingStatus);
     writeLeaveFormulas_(tracker, row, TC);
   } catch (e) { log_('autoFillTrackerRow_', e); }
-}
-
-/** Append a tracker data row at the first free row AT/AFTER trackerStartRow — the layout has a divider gap (row 7) between the header and row 1, so appendRow (content-based) could land in the gap. Extends the sheet if needed. @return the row written. */
-function appendTrackerRow_(tracker, values) {
-  const r = Math.max(tracker.getLastRow() + 1, CONFIG.trackerStartRow);
-  if (r > tracker.getMaxRows()) tracker.insertRowsAfter(tracker.getMaxRows(), r - tracker.getMaxRows());
-  tracker.getRange(r, 1, 1, values.length).setValues([values]);
-  return r;
 }
 
 /** The computed-leave formula strings for tracker row r, referencing the resolved START/END columns (RC). */
@@ -2366,25 +2312,6 @@ function syncPatrolHours() {
   if (!lock.tryLock(20000)) return false;
   try { return syncPatrolHours_(patrolSheet, roster, { sendWebhooks: true }); }
   finally { lock.releaseLock(); }
-}
-
-/** Menu action: manually credit any un-processed patrol logs to member hours. */
-function manualSyncPatrol() {
-  runAction_('Sync Patrol Hours', () => {
-    const ui = SpreadsheetApp.getUi();
-    if (!CONFIG.sheets.patrol) {
-      ui.alert('Patrol-hours sync is OFF.\n\nSet [SHEETS].PATROL_RESPONSES (⚙️ Engine Settings ▸ Sheets & layout, or the ⚙️ Config tab) to your patrol form\'s response tab, then run this again.');
-      return;
-    }
-    const res = syncPatrolHours();
-    if (res === false) { ui.alert('Sync skipped — another sync is already running.'); return; }
-    if (res.missing) { ui.alert(`The patrol response tab "${CONFIG.sheets.patrol}" or the roster tab was not found.`); return; }
-    if (!res.credited.length && !res.errored) { ui.alert('✅ No new patrol logs to credit.'); return; }
-    const lines = res.credited.slice(0, 15).map((c) => `•  ${c.name}: +${c.hours}h → ${c.total}h`).join('\n');
-    const more = res.credited.length > 15 ? `\n…and ${res.credited.length - 15} more` : '';
-    ui.alert(`🚔 Patrol hours credited.\n\n${res.credited.length} log(s) · ${res.hoursAdded} hrs total\n${lines}${more}` +
-      (res.errored ? `\n\n⚠️ ${res.errored} row(s) had no matching member or a bad time — flagged red on the "${CONFIG.sheets.patrol}" tab. Fix them and re-run.` : ''));
-  });
 }
 
 /* ======================================================================

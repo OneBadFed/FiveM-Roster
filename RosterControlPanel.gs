@@ -1197,12 +1197,6 @@ function adminFile_() {
   return SpreadsheetApp.getActive();
 }
 
-/** Non-PII link metadata (who linked it, when) — makes a rogue pre-link visible to every panel user. */
-function adminLinkMeta_() {
-  try { const m = JSON.parse(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_ + '_META') || '{}'); return { by: String(m.by || ''), at: String(m.at || '') }; }
-  catch (e) { return { by: '', at: '' }; }
-}
-
 /** Cheap bootstrap probe: is an admin file linked, and can THIS user open it? Never throws. */
 function cpAdminStatus_() {
   // Always available: the private tabs live in THIS workbook, and anyone who can open the Control Panel can open it.
@@ -1250,14 +1244,6 @@ function seedAdminSheet_(file) {
  * PII lives directly on this workbook's roster — no mirroring, no merge, nothing to reconcile.
  * Columns the engine does not recognize are private and never touched.
  * ------------------------------------------------------------------------- */
-
-
-
-
-
-
-
-
 
 /* -------------------------------------------------------------------------
  * ROSTER SIGNUPS — a Google Form whose responses land INSIDE the protected
@@ -1995,7 +1981,6 @@ function cpSignupApprove(payload) {
   } finally { lock.releaseLock(); }
 }
 
-
 /** Grow the grid when a write would land past the last row (a full 1000-row grid would otherwise throw). */
 function adminEnsureRow_(sheet, r) {
   if (r > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 100);
@@ -2024,7 +2009,6 @@ function cpAdminRead_(logSheet, discordId, cap) {
   return out;
 }
 
-
 /** Injectable core: append a disciplinary entry (append-only — history is never edited from the panel). Text columns are '@'-formatted before the write (formula-injection guard); the Date column stays a real date. Testable. */
 function cpAppendDiscipline_(logSheet, entry) {
   const id = String((entry && entry.discordId) || '').trim();
@@ -2040,38 +2024,6 @@ function cpAppendDiscipline_(logSheet, entry) {
   logSheet.getRange(r, 2, 1, 6).setNumberFormat('@'); // ID exact + no formula execution from reason/notes text — BEFORE the write
   logSheet.getRange(r, 1, 1, 7).setValues([[new Date(), id, name, action, reason, issuedBy, status]]);
   return { row: r };
-}
-
-/**
- * POINTER-INTEGRITY GATE: once an admin file is linked, only an ESTABLISHED ADMIN (someone who can open the
- * currently-linked file) or the SPREADSHEET OWNER may change the link. Without this, any main-sheet editor could
- * silently re-point ADMIN_ROSTER_ID at a file THEY own and capture every future email/DOB/discipline write (or
- * blank it as a DoS) — the read-time ACL protects the legitimate file, but the pointer selects the WRITE SINK.
- * Throws (blocking the change) when the caller is neither; first-time linking (no pointer yet) is open.
- * DOCUMENTED TRADEOFFS: (1) "can open the admin file" includes VIEW access — a view-only share grants relink
- * authority, consistent with the can-open=admin model; (2) on a Shared Drive getOwner() is null, so the owner
- * escape hatch is unavailable — recovery from a dead link there = the script editor (Project Settings ▸ Document
- * properties, delete ADMIN_ROSTER_ID); (3) the who/when of every link is stored in ADMIN_ROSTER_ID_META and
- * shown on the Tools tab, so a rogue first-link is visible to everyone even when the SYS-Log actor is blank.
- */
-function assertMayRelink_() {
-  const existing = String(PropertiesService.getDocumentProperties().getProperty(ADMIN_SHEET_PROP_) || '').trim();
-  if (!existing) return; // bootstrap — nothing to protect yet
-  try { SpreadsheetApp.openById(existing).getName(); return; } catch (e) { /* caller can't open the current admin file */ }
-  try { // owner escape hatch — covers a permanently-deleted admin file locking everyone out
-    const ownerEmail = String((SpreadsheetApp.getActive().getOwner() || { getEmail: () => '' }).getEmail() || '');
-    const me = String(Session.getActiveUser().getEmail() || '');
-    if (ownerEmail && me && ownerEmail === me) return;
-  } catch (e) { /* fall through to the refusal */ }
-  throw new Error('An admin roster is already linked, and only a current admin (or the sheet owner) can change it. Ask an admin to relink, or to share the existing admin file with you.');
-}
-
-/** Extract a Sheets file ID from a URL or bare ID — prefers the /d/<id> segment so query params can't false-match. */
-function adminIdFromUrl_(url) {
-  if (/\/d\/e\//.test(url)) throw new Error('That is a published-to-web link — paste the EDIT link (…/spreadsheets/d/<id>/edit) or the bare file ID instead.');
-  const m = url.match(/\/d\/([-\w]{25,})/) || url.match(/^([-\w]{25,})$/);
-  if (!m) throw new Error('That does not look like a Google Sheets link or ID.');
-  return m[1];
 }
 
 /** Panel endpoint: create a new admin spreadsheet (owned by the acting admin) or link an existing one by URL/ID. Gated + logged. */

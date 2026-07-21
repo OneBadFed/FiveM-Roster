@@ -602,19 +602,6 @@ function cpAuditAutoStatus() {
   }
 }
 
-/** Turns audit logging on/off by managing the installable onEdit trigger. @return {{enabled:boolean}} */
-function cpSetAuditAuto(on) {
-  // Remove any existing audit onEdit triggers (auditEdit or RosterExtras' recordEdit) to avoid double logging.
-  ScriptApp.getProjectTriggers().forEach((t) => {
-    const fn = t.getHandlerFunction();
-    if ((fn === 'auditEdit' || fn === 'recordEdit') && String(t.getEventType()) === 'ON_EDIT') ScriptApp.deleteTrigger(t);
-  });
-  if (on) {
-    ScriptApp.newTrigger('auditEdit').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
-  }
-  return { enabled: !!on };
-}
-
 /** Guarantees the audit trigger exists (audit is always-on). Idempotent; removes dup recordEdit triggers. */
 function cpEnsureAuditTrigger() {
   // Lock so two near-simultaneous panel opens can't both pass the "no auditEdit" check and create duplicate triggers (double-logging).
