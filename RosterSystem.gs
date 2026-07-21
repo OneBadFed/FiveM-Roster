@@ -1096,6 +1096,26 @@ function runDeferredWork_() {
   if (has('dashboard')) { try { refreshDashboard_(); } catch (e) { log_('deferred.dashboard', e); } }
 }
 
+const DERIVED_LAST_PROP_ = 'DERIVED_LAST_SYNC';
+const DERIVED_GAP_MS_ = 4000; // isolated edits rebuild instantly; edits closer together than this batch onto the sweep
+
+/**
+ * Reflect a roster edit in the derived tabs (editable Police Academy + group tabs) RIGHT NOW instead of leaving it for
+ * the 1-minute sweep — but throttled so a burst of edits still costs one rebuild, not one per keystroke. The caller has
+ * already queued the work via deferWork_, so when this is throttled (or fails / times out under the simple-trigger
+ * budget) the sweep is the guaranteed backstop and nothing is lost. Runs runDeferredWork_, which clears the queue it
+ * satisfies so the next sweep won't redo it.
+ */
+function syncDerivedNow_() {
+  try {
+    const p = PropertiesService.getDocumentProperties();
+    const now = Date.now();
+    if (now - Number(p.getProperty(DERIVED_LAST_PROP_) || 0) < DERIVED_GAP_MS_) return; // inside the burst window → the sweep batches it
+    p.setProperty(DERIVED_LAST_PROP_, String(now));
+  } catch (e) { return; }
+  try { runDeferredWork_(); } catch (e) { log_('syncDerivedNow_', e); }
+}
+
 function onEdit(e) {
   try {
     if (!e?.range) return;
@@ -1115,15 +1135,18 @@ function onEdit(e) {
       if (col === RC.hours && row >= CONFIG.rosterStartRow && isValidMemberRow(sheet, row)) {
         updateStatusFromHours(sheet, row);
       }
-      // A change to a member's RANK / SHIFT / NAME / UNIQUE ID — including CLEARING or bulk-deleting them — adds,
-      // removes, or re-bands a member, so re-sync the editable Police Academy + the group bands. No isValidMemberRow
-      // guard: a just-cleared row is "invalid" but still needs the rebuild to REMOVE the member. Span-check the edited
-      // range so a block clear/paste that covers any of those columns still fires.
+      // Any edit to a member row can change what the derived Police Academy / group tabs show — RANK re-bands a member
+      // (and a CLEAR/bulk-delete removes them), while NAME / SHIFT / HOURS / STATUS and the rest are mirrored. Queue the
+      // rebuild as the guaranteed backstop, then reflect it IMMEDIATELY for isolated edits (syncDerivedNow_ throttles a
+      // burst down to one rebuild, and the sweep carries the tail). No isValidMemberRow guard: a just-cleared row must
+      // still rebuild to REMOVE the member. The Unique-ID column is left to the sweep / transfer path so a heavy rebuild
+      // never runs inside the member-transfer flow (which is on the same script lock).
       const cLast = (e.range && e.range.getLastColumn) ? e.range.getLastColumn() : col;
-      const spansCol = (t) => t && col <= t && cLast >= t;
-      if (row >= CONFIG.rosterStartRow && (spansCol(RC.rank) || spansCol(RC.shift) || spansCol(RC.name) || spansCol(RC.discord))) {
-        deferWork_('academy'); // whole-tab rebuilds: queued, then run once by the sweep instead of per keystroke
+      if (row >= CONFIG.rosterStartRow) {
+        deferWork_('academy'); // whole-tab rebuilds: queued so the sweep is always a backstop
         deferWork_('groups');
+        const spansDiscord = RC.discord && col <= RC.discord && cLast >= RC.discord;
+        if (!spansDiscord) syncDerivedNow_(); // isolated edit → rebuild the derived tabs now, not in ≤60s
       }
     }
     if (name === CONFIG.sheets.tracker && row >= CONFIG.trackerStartRow) {
