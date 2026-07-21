@@ -1203,6 +1203,19 @@ function demoName_(i) {
   return F[i % F.length] + ' ' + L[i % L.length];
 }
 
+/** A fake work email from a full name — "James Bennett" → "james.bennett@lspd.example" (RFC-2606 reserved TLD, never routable). */
+function demoEmail_(name) {
+  const slug = String(name || '').trim().toLowerCase().replace(/[^a-z0-9]+/g, '.').replace(/^\.+|\.+$/g, '');
+  return slug ? slug + '@lspd.example' : '';
+}
+
+/** A believable adult date of birth for slot `i` (age 21–55, day-jittered so birthdays spread across the year). Deterministic — reseeds identically. */
+function demoDob_(i) {
+  const age = 21 + Math.floor(demoRand_(i, 11) * 35);        // 21–55
+  const jitter = Math.floor(demoRand_(i, 12) * 365);         // scatter across the year, not all on one date
+  return demoDay_(-(Math.round(age * 365.25) + jitter));
+}
+
 /**
  * Build a believable demo member for member-slot index `i` (0-based), given the rank already in the row.
  * Deterministic (salted hash, no RNG — reseeding the same layout reproduces the same demo).
@@ -1232,8 +1245,9 @@ function demoPerson_(i, rank, total) {
   const shift = ''; // real shift is assigned per-rank (evenly across the 3 shifts) once all people are built — see seedDemoRoster
   const may = demoQuarter_(demoRand_(i, 3) * demoRand_(i, 6) * 30); // prior-month totals — right-skewed 0–30h
   const jun = demoQuarter_(demoRand_(i, 4) * demoRand_(i, 7) * 30);
+  const nm = demoName_(i);
   return {
-    name: demoName_(i), id: demoId_(i), shift: shift, may: may, jun: jun,
+    name: nm, id: demoId_(i), email: demoEmail_(nm), dob: demoDob_(i), shift: shift, may: may, jun: jun,
     join: demoDay_(-tenure), promo: demoDay_(-(20 + (i % 10) * 16)),
     hours: hours, act: act, last: last, leave: leave, pastLeave: pastLeave,
     checks: checks || [act, act, act, act],
@@ -1248,7 +1262,7 @@ function demoIsOpen_(i, total) {
 }
 
 /** A blank "open position" — the row keeps the operator's rank + callsign but carries no member data. */
-function demoBlank_() { return { open: true, name: '', id: '', shift: '', may: '', jun: '', join: '', promo: '', hours: '', act: '', last: '', leave: null, pastLeave: null, checks: null }; }
+function demoBlank_() { return { open: true, name: '', id: '', email: '', dob: '', shift: '', may: '', jun: '', join: '', promo: '', hours: '', act: '', last: '', leave: null, pastLeave: null, checks: null }; }
 
 /** Classify a member into a stats group by their section label (rank as fallback). Supervisors = command/staff tiers, Auxiliary = reserve, else Troopers. */
 function demoGroupOf_(section, rank) {
@@ -1370,6 +1384,8 @@ function seedDemoRoster() {
       if (laCol > 0) roster.getRange(run.startRow, laCol, len, 1).setValues(s.map((p) => [p.last]));
       // Optional display columns — filled only when the sheet has them (RC.* is 0 when absent).
       if (RC.ooc) roster.getRange(run.startRow, RC.ooc, len, 1).setValues(s.map((p) => [p.name ? demoOocName_(p.name) : '']));
+      if (RC.email) roster.getRange(run.startRow, RC.email, len, 1).setValues(s.map((p) => [p.email]));
+      if (RC.dob) roster.getRange(run.startRow, RC.dob, len, 1).setValues(s.map((p) => [p.dob])).setNumberFormat('d mmm yyyy'); // else a raw Date renders as a serial
       if (RC.shift) roster.getRange(run.startRow, RC.shift, len, 1).setValues(s.map((p) => [p.shift]));
       if (RC.mayHours) roster.getRange(run.startRow, RC.mayHours, len, 1).setValues(s.map((p) => [p.may]));
       if (RC.junHours) roster.getRange(run.startRow, RC.junHours, len, 1).setValues(s.map((p) => [p.jun]));

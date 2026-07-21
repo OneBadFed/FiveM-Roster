@@ -91,7 +91,7 @@ function rosterCols_(sheet) {
   if (_rosterColCache[id]) return _rosterColCache[id];
   const d = CONFIG.roster;
   const cols = { rank: d.rank, name: d.name, unit: d.unit, discord: d.discord, join: 6, promo: 7, activity: d.activity, hours: d.hours,
-    ooc: 0, shift: 0, mayHours: 0, junHours: 0, timeInRank: 0, headerRow: 0 }; // optional display columns — 0 = not present; headerRow = the resolved label row
+    ooc: 0, shift: 0, mayHours: 0, junHours: 0, timeInRank: 0, email: 0, dob: 0, headerRow: 0 }; // optional display columns — 0 = not present; headerRow = the resolved label row
   try {
     const lastCol = sheet.getLastColumn();
     const lastRow = sheet.getLastRow();
@@ -110,6 +110,8 @@ function rosterCols_(sheet) {
         mayHours: (h) => h.indexOf('MAY') !== -1 && h.indexOf('HOUR') !== -1,
         junHours: (h) => h.indexOf('JUN') !== -1 && h.indexOf('HOUR') !== -1,
         timeInRank: (h) => h.indexOf('TIME') !== -1 && h.indexOf('RANK') !== -1,
+        email: (h) => h.indexOf('EMAIL') !== -1,
+        dob: (h) => h.indexOf('DOB') !== -1 || h.indexOf('BIRTH') !== -1,          // "DOB" or "DATE OF BIRTH"
       };
       const readRow = (r) => sheet.getRange(r, 1, 1, lastCol).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
       const looksHdr = (row) => !!row && row.some((h) => match.rank(h)) && row.some((h) => match.hours(h) || match.name(h));
