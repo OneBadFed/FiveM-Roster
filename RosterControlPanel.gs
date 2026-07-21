@@ -1773,6 +1773,8 @@ function publishPublicRoster_(onlyTab) {
 const PUBLISH_MIN_GAP_MS_ = 3000; // burst guard only - small enough that a normal edit publishes straight away
 const PUBLISH_DIRTY_PROP_ = 'PUBLIC_DIRTY';
 const PUBLISH_LAST_PROP_ = 'PUBLIC_LAST_PUBLISH';
+const PUBLISH_CATCHUP_PROP_ = 'PUBLIC_CATCHUP_AT';
+const PUBLISH_CATCHUP_MS_ = 8000; // trailing publish ~8s after a burst's last deferred edit — so the tail shows in seconds, not on the 1-minute sweep
 
 /** Flag the public copy as stale WITHOUT publishing. Script writes (panel actions, the schedulers, patrol crediting)
  *  never fire onEdit, so they mark it here and the 1-minute sweep carries them. Cheap: one property write.
@@ -1835,7 +1837,7 @@ function publishOnChange(e) {
       } catch (ig) { /* fall through to a normal publish */ }
     }
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
-    if (Date.now() - last < PUBLISH_MIN_GAP_MS_) return; // too soon — the 1-minute sweep will carry it
+    if (Date.now() - last < PUBLISH_MIN_GAP_MS_) { scheduleCatchup_(); return; } // too soon → a trailing catch-up publishes the tail in ~8s (not the 1-minute sweep)
     publishPublicRosterQuiet_(only || undefined);
   } catch (err) { log_('publishOnChange', err); }
 }
@@ -1850,6 +1852,35 @@ function publishSweep() {
     if (!publicFile_()) return;
     publishPublicRosterQuiet_();
   } catch (e) { log_('publishSweep', e); }
+}
+
+/**
+ * Ensure ONE one-off "catch-up" publish is scheduled ~PUBLISH_CATCHUP_MS_ out. When a burst of edits keeps deferring on
+ * the 3s burst-guard, the FINAL state would otherwise wait for the 1-minute sweep; this trailing trigger publishes it in
+ * seconds instead. Deduped via a document property so a flurry schedules at most one pending trigger (ScriptApp is
+ * touched ~once per window, never per keystroke), and publishCatchup deletes the trigger when it fires. Best-effort: if
+ * trigger creation is unavailable or quota-limited, the 1-minute sweep is still the backstop. Requires the installable
+ * (authorized) context — publishOnChange runs installed, so ScriptApp is available here.
+ */
+function scheduleCatchup_() {
+  try {
+    const p = PropertiesService.getDocumentProperties();
+    const now = Date.now();
+    if (Number(p.getProperty(PUBLISH_CATCHUP_PROP_) || 0) > now) return; // one is already pending → don't touch ScriptApp again
+    ScriptApp.getProjectTriggers().forEach((t) => { if (t.getHandlerFunction() === 'publishCatchup') ScriptApp.deleteTrigger(t); }); // clear spent/orphaned ones → stay at ≤1, far under the trigger quota
+    ScriptApp.newTrigger('publishCatchup').timeBased().after(PUBLISH_CATCHUP_MS_).create();
+    p.setProperty(PUBLISH_CATCHUP_PROP_, String(now + PUBLISH_CATCHUP_MS_));
+  } catch (e) { /* best-effort: the 1-minute sweep still carries it */ }
+}
+
+/** One-off trailing publish (scheduled by scheduleCatchup_): clear its own marker + self-delete the trigger, then run
+ *  the sweep (flush deferred rebuilds + publish if dirty). */
+function publishCatchup() {
+  try {
+    PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_CATCHUP_PROP_);
+    ScriptApp.getProjectTriggers().forEach((t) => { if (t.getHandlerFunction() === 'publishCatchup') ScriptApp.deleteTrigger(t); });
+  } catch (e) { /* ignore — a stale trigger is cleared by the next scheduleCatchup_ */ }
+  try { publishSweep(); } catch (e) { log_('publishCatchup', e); }
 }
 
 /** Time-driven + menu entry point for the publish. */

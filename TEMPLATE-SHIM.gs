@@ -68,3 +68,4 @@ function scanIntegrity() { RE.scanIntegrity(); }
 function buildCoverage() { RE.buildCoverage(); }
 function auditEdit(e) { RE.auditEdit(e); }
 function weeklySnapshotScheduled() { RE.weeklySnapshotScheduled(); }
+function publishCatchup() { RE.publishCatchup(); }
