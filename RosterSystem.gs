@@ -3153,7 +3153,7 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   // F-008: serialize the mutation and re-verify the source didn't shift during the (open-ended) confirm dialog —
   // a concurrent row insert/delete could otherwise make sourceRow point at a different member.
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) { targetRange.clearContent(); notify('⏳ Another roster change is in progress — the transfer was cancelled. Please try again.'); return; }
+  if (!lock.tryLock(15000)) { targetRange.clearContent(); notify('⏳ Another roster change is in progress — the transfer was cancelled. Please try again.'); return; }
   try {
     if (String(sheet.getRange(sourceRow, RC.discord).getDisplayValue()).trim() !== target) {
       targetRange.clearContent();
@@ -3188,6 +3188,13 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
       { name: '🛡️ To', value: clamp_(dash_(withIcon_(targetRank)), 1000), inline: true },
     ],
   }, mention_(target));
+  // The move rewrote rows with SCRIPT writes (no onEdit fires), and publishOnChange deliberately skipped the racing
+  // publish on the ID paste — so push the settled roster to the public copy now. Live roster tab only (sandbox moves
+  // in the QA suite must not publish); marking dirty first guarantees the sweep still carries it if the lock is busy.
+  if (sheet.getName() === CONFIG.sheets.roster) {
+    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
+    try { if (typeof publishPublicRosterQuiet_ === 'function') publishPublicRosterQuiet_(); } catch (e3) { log_('checkForMemberMove.publish', e3); }
+  }
 }
 
 /** Menu action: insert N blank member rows below the cursor (asks how many) and renumber units. */

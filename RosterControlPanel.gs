@@ -1813,6 +1813,17 @@ function publishOnChange(e) {
     const props = PropertiesService.getDocumentProperties();
     props.setProperty(PUBLISH_DIRTY_PROP_, '1');
     _pubDirtyMemo_ = true;
+    // A Unique-ID edit on the roster starts a member TRANSFER (or a roster/tracker autofill) that briefly takes the
+    // script lock to rewrite rows. Publishing synchronously here would race that mutation for the SAME lock and cancel
+    // the transfer ("Another roster change is in progress"). So for ID-column edits we only mark dirty (done above) and
+    // let the transfer's own end-of-move publish — or the 1-minute sweep — carry the settled result.
+    if (only === CONFIG.sheets.roster && e && e.range) {
+      try {
+        const RC = rosterCols_(e.range.getSheet());
+        const c = e.range.getColumn(), cL = e.range.getLastColumn ? e.range.getLastColumn() : c;
+        if (RC.discord && c <= RC.discord && cL >= RC.discord) return;
+      } catch (ig) { /* fall through to a normal publish */ }
+    }
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
     if (Date.now() - last < PUBLISH_MIN_GAP_MS_) return; // too soon — the 1-minute sweep will carry it
     publishPublicRosterQuiet_(only || undefined);
