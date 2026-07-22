@@ -214,6 +214,17 @@
   @media (max-width:440px){ .addgrid{grid-template-columns:1fr;} }
   .addbtn{margin-top:var(--s5);background:linear-gradient(155deg,#54c294,#3a9f79);}
   .addbtn:hover{filter:brightness(1.06);}
+  /* ── signups pane ── */
+  .ro{width:100%;background:var(--e2);color:var(--txt);border-radius:var(--r-md);padding:10px 13px;font-size:13px;box-shadow:var(--hi),var(--sh-1);min-height:39px;display:flex;align-items:center;word-break:break-word;}
+  .ro.mono{font-family:var(--mono);font-size:12.5px;} .ro.empty{color:var(--txt-3);}
+  .apps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:var(--s4);}
+  .appchip{display:inline-flex;align-items:center;gap:9px;background:var(--e2);border:none;color:var(--txt-2);border-radius:12px;padding:8px 13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t);}
+  .appchip:hover{background:var(--e3);color:var(--txt);transform:translateY(-1px);}
+  .appchip.on{color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 14px -6px var(--accent);}
+  .appchip .ci{width:26px;height:26px;border-radius:8px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#c4dbff;background:linear-gradient(155deg,rgba(79,142,232,.34),rgba(79,142,232,.08));box-shadow:var(--hi);}
+  .appchip .cn{font-size:12.5px;font-weight:700;white-space:nowrap;} .appchip .cs{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--amber-f);}
+  .skblk{height:150px;border-radius:16px;background:linear-gradient(90deg,var(--e1) 25%,var(--e2) 50%,var(--e1) 75%);background-size:200% 100%;animation:shk 1.25s infinite;}
+  @keyframes shk{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
   .search-wrap{position:relative;}
   .search-wrap .si{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--txt-3);width:15px;height:15px;pointer-events:none;transition:color var(--t),transform var(--t) var(--ease);}
@@ -627,6 +638,7 @@
       <div class="ngroup">Roster</div>
       <button class="tab active" data-tab="members" style="--a:var(--accent)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Members</button>
       <button class="tab" data-tab="add" style="--a:var(--patrol)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
+      <button class="tab" data-tab="signups" style="--a:var(--green)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups</button>
       <button class="tab" data-tab="dividers" style="--a:var(--purple)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>Dividers</button>
       <div class="ngroup">Operations</div>
       <button class="tab" data-tab="tools" style="--a:var(--amber)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</button>
@@ -716,6 +728,12 @@
         <div class="nextbox"><b>What happens next</b>The member is seated into this slot and appears on the roster immediately. Set their status or schedule leave from their profile on the Members tab.</div>
       </div>
     </div>
+  </div>
+
+  <div class="pane" id="pane-signups">
+    <div class="addhead"><h2 class="addtitle">Approve a signup</h2>
+      <p class="addsub">Seat a pending applicant into an existing open slot — this never inserts a row or disturbs your layout.</p></div>
+    <div id="suBody"><div class="skblk"></div></div>
   </div>
 
   <div class="pane" id="pane-tools">
@@ -816,6 +834,7 @@
 
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
+  var INIT_TAB = "<?= initialTab ?>"; // deep-link target tab (e.g. 'signups' from 🧾 Review Roster Signups); '' = default
   var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],rankIcons:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{}};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
@@ -1246,6 +1265,105 @@
       toast('Seated '+m.name+' as '+m.rank+'.','ok'); refresh(); document.querySelector('.tab[data-tab="members"]').click();
     }, function(e){ $('addBtn').disabled=false; onError(e); }, "cpAssignMember", {row:row,name:name,discord:discord,joinDate:$('addJoin').value,ooc:ooc,shift:shift});
   }
+
+  /* ── Signups pane: approve a pending applicant into an open slot (mirrors Add member) ── */
+  var SU={signups:[],slots:[],linked:false,ready:false,loaded:false,cur:null,slot:null};
+  function suApp(row){ for(var i=0;i<SU.signups.length;i++){ if(String(SU.signups[i].row)===String(row)) return SU.signups[i]; } return null; }
+  function suSlotObj(row){ for(var i=0;i<SU.slots.length;i++){ if(String(SU.slots[i].row)===String(row)) return SU.slots[i]; } return null; }
+  function suRo(v,mono){ return v?'<div class="ro'+(mono?' mono':'')+'">'+esc(v)+'</div>':'<div class="ro empty">—</div>'; }
+  function suKv(k,vHtml){ return vHtml?'<div class="pkv-r"><span class="pkv-k">'+k+'</span><span class="pkv-v">'+vHtml+'</span></div>':''; }
+  function suEmpty(title,sub){ return '<div class="empty" style="margin-top:var(--s3)"><span class="ei">'+IEMPTY+'</span><div><b>'+title+'</b><br>'+sub+'</div></div>'; }
+  function suSlotMenuHtml(){
+    if(!SU.slots.length) return '<div class="sdrop-empty">No open slots — free one on the roster.</div>';
+    var groups={},order=[];
+    SU.slots.forEach(function(s){ if(!groups[s.rank]){groups[s.rank]=[];order.push(s.rank);} groups[s.rank].push(s); });
+    return order.map(function(r){
+      return '<div class="sdrop-group"><div class="sdrop-ghead">'+rankAvatar(r)+'<span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
+        +groups[r].map(function(s){ return '<button type="button" class="sdrop-opt'+(SU.slot===s.row?' sel':'')+'" data-suslot="'+s.row+'"><span class="so-call">'+esc(s.unit||('Row '+s.row))+'</span><span class="so-rank">'+esc(r)+'</span></button>'; }).join('')+'</div>';
+    }).join('');
+  }
+  function suPreview(){
+    var host=$('suPrev'); if(!host) return;
+    var a=suApp(SU.cur), s=(SU.slot!=null)?suSlotObj(SU.slot):null;
+    if(!a||!s){ host.innerHTML='<div class="empty" style="margin-top:var(--s2)"><span class="ei">'+IEMPTY+'</span><div><b>No slot selected</b><br>Pick an open slot to preview the assignment.</div></div>'; return; }
+    host.innerHTML='<div class="prev-hero"><span class="mav">'+esc(mInitials(a.name))+'</span>'
+      +'<div class="prev-id"><b class="prev-nm">'+esc(a.name||'(no name)')+'</b>'
+      +'<div class="prev-line"><span class="prev-rk">'+esc(s.rank)+'</span>'+(s.unit?('<span class="callchip">'+esc(s.unit)+'</span>'):'')+'</div></div></div>'
+      +'<div class="pkv">'+suKv('Unique ID','<span class="mono">'+esc(a.discord||'—')+'</span>')+suKv('Email',esc(a.email))+suKv('Date of birth',esc(a.dob))+suKv('Join date',esc(a.join))+'</div>';
+  }
+  function suForm(){
+    var a=suApp(SU.cur), s=(SU.slot!=null)?suSlotObj(SU.slot):null;
+    var cur=s?(rankAvatar(s.rank)+'<span>'+esc(s.unit||('Row '+SU.slot))+' · '+esc(s.rank)+'</span>'):'';
+    return '<div class="addcols"><div class="addform">'
+      +'<div class="stepcard"><div class="step-h"><span class="stepn">1</span>Assignment</div>'
+      +'<label class="lbl">Open slot</label>'
+      +'<div class="sdrop" id="suSlotDrop"><button type="button" class="sdrop-btn" id="suSlotBtn" aria-haspopup="listbox" aria-expanded="false">'
+      +'<span class="sdrop-cur'+(cur?'':' ph')+'" id="suSlotCur">'+(cur||'Select slot')+'</span>'
+      +'<svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>'
+      +'<div class="sdrop-menu" id="suSlotMenu" role="listbox" hidden>'+suSlotMenuHtml()+'</div></div>'
+      +'<p class="stephint">The applicant inherits this slot&rsquo;s rank and callsign.</p></div>'
+      +'<div class="stepcard"><div class="step-h"><span class="stepn">2</span>Applicant details <span class="lopt" style="font-size:11px">· from their signup</span></div>'
+      +'<div class="addgrid"><div><label class="lbl">Name</label>'+suRo(a.name)+'</div>'
+      +'<div><label class="lbl">Unique ID</label>'+suRo(a.discord,true)+'</div>'
+      +'<div><label class="lbl">OOC name</label>'+suRo(a.ooc)+'</div>'
+      +'<div><label class="lbl">Email</label>'+suRo(a.email)+'</div>'
+      +'<div><label class="lbl">Date of birth</label>'+suRo(a.dob)+'</div>'
+      +'<div><label class="lbl">Phone</label>'+suRo(a.phone)+'</div></div></div>'
+      +'<div class="stepcard"><div class="step-h"><span class="stepn">3</span>Employment</div>'
+      +'<label class="lbl">Department join date <span class="lopt">· from their signup</span></label>'+suRo(a.join)+'</div>'
+      +'<button class="btn addbtn" id="suSeat">Approve &amp; seat on roster</button>'
+      +'</div><div class="addprev">'
+      +'<div class="prevcard"><div class="pc-lbl">Slot preview</div><div id="suPrev"></div></div>'
+      +'<div class="nextbox"><b>What happens next</b>'+esc(a.name||'The applicant')+' is seated into the chosen slot and appears on the roster immediately, with their DOB, email and join date copied over. The signup is marked Processed.</div>'
+      +'</div></div>';
+  }
+  function renderSignups(){
+    var el=$('suBody'); if(!el) return;
+    var list=SU.signups||[];
+    if(!SU.linked){ el.innerHTML=suEmpty('No admin file linked','Link the admin roster under the System tab first.'); return; }
+    if(!SU.ready){ el.innerHTML=suEmpty('No signup review tab','Set it under Engine Settings ▸ Sheets &amp; layout ▸ SIGNUPS.'); return; }
+    if(!list.length){ el.innerHTML=suEmpty('Nothing to review','Every signup has been processed.'); return; }
+    if(SU.cur==null||!suApp(SU.cur)) SU.cur=list[0].row;
+    var chips='<div class="apps">'+list.map(function(a){
+      return '<button type="button" class="appchip'+(String(a.row)===String(SU.cur)?' on':'')+'" data-suapp="'+a.row+'"><span class="ci">'+esc(mInitials(a.name))+'</span><span class="cn">'+esc(a.name||'(no name)')+'</span><span class="cs">'+esc(a.status)+'</span></button>';
+    }).join('')+'</div>';
+    el.innerHTML=chips+suForm();
+    suPreview();
+  }
+  function suOpenMenu(on){ var d=$('suSlotDrop'),menu=$('suSlotMenu'),btn=$('suSlotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false'); }
+  function suSetSlot(row){
+    SU.slot=(row==null?null:Number(row));
+    var s=(SU.slot!=null)?suSlotObj(SU.slot):null, cur=$('suSlotCur');
+    if(cur){ if(s){ cur.className='sdrop-cur'; cur.innerHTML=rankAvatar(s.rank)+'<span>'+esc(s.unit||('Row '+s.row))+' · '+esc(s.rank)+'</span>'; } else { cur.className='sdrop-cur ph'; cur.textContent='Select slot'; } }
+    var menu=$('suSlotMenu'); if(menu) menu.querySelectorAll('.sdrop-opt').forEach(function(b){ b.classList.toggle('sel', Number(b.dataset.suslot)===SU.slot); });
+    suPreview();
+  }
+  function suApprove(){
+    if(SU.slot==null){ toast('Pick an open slot first.','err'); suOpenMenu(true); return; }
+    if(SU.cur==null){ toast('Pick an applicant first.','err'); return; }
+    var btn=$('suSeat'); if(btn){ btn.disabled=true; btn.textContent='Seating…'; }
+    api(function(r){
+      toast('✅ '+(r.name||'Applicant')+' seated'+(r.piiWritten?(' · '+r.piiWritten+' private field'+(r.piiWritten===1?'':'s')+' copied'):'')+'.','ok');
+      SU.slot=null; refresh(); loadSignups(true);
+    }, function(e){ if(btn){ btn.disabled=false; btn.textContent='Approve & seat on roster'; } onError(e); }, 'cpSignupApprove', {row:SU.cur, slotRow:SU.slot});
+  }
+  function loadSignups(force){
+    if(SU.loaded && !force){ renderSignups(); return; }
+    var el=$('suBody'); if(el) el.innerHTML='<div class="skblk"></div>';
+    api(function(d){
+      SU.signups=d.signups||[]; SU.slots=d.slots||[]; SU.linked=!!d.linked; SU.ready=!!d.ready; SU.loaded=true;
+      if(d.rankIcons){ STATE.rankIcons=STATE.rankIcons||{}; for(var k in d.rankIcons) STATE.rankIcons[k]=d.rankIcons[k]; }
+      renderSignups();
+    }, function(e){ var el2=$('suBody'); if(el2) el2.innerHTML=suEmpty('Couldn\'t load signups',esc((e&&e.message)||'')); }, 'cpSignupList');
+  }
+  document.addEventListener('click',function(e){
+    var chip=e.target.closest('[data-suapp]'); if(chip){ SU.cur=Number(chip.dataset.suapp); SU.slot=null; renderSignups(); return; }
+    var opt=e.target.closest('[data-suslot]'); if(opt){ suSetSlot(Number(opt.dataset.suslot)); suOpenMenu(false); return; }
+    if(e.target.closest('#suSlotBtn')){ e.stopPropagation(); suOpenMenu(); return; }
+    if(e.target.closest('#suSeat')){ suApprove(); return; }
+    if(!e.target.closest('#suSlotDrop')) suOpenMenu(false);
+  });
+
   function runAction(act,btn){
     btn.disabled=true; btn.classList.add('busy');
     api(function(msg){
@@ -1470,7 +1588,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); $('stats').style.display=(t.dataset.tab==='members')?'':'none'; if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); $('stats').style.display=(t.dataset.tab==='members')?'':'none'; if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('rediv').addEventListener('click',function(){ loadDividers(); });
   $('divBody').addEventListener('click',function(e){
@@ -1595,6 +1713,7 @@
   });
 
   boot();
+  if(INIT_TAB){ var _dl=document.querySelector('.tab[data-tab="'+INIT_TAB+'"]'); if(_dl) _dl.click(); } // deep-link (e.g. open straight to Signups)
   // Live-ish updates: while the System tab is open, refresh it every 15s so new audit entries appear.
   setInterval(function(){ if(STATE.systemLoaded && document.querySelector('.tab[data-tab="system"]').classList.contains('active')) loadSystem(true); }, 15000);
 </script>

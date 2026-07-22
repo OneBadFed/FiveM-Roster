@@ -379,7 +379,7 @@ function cpApplyConfig(payload) {
 }
 
 /** Menu target: open the Control Panel as a roomy, non-blocking dialog. */
-function openControlPanel() {
+function openControlPanel(initialTab) {
   runAction_('Open Control Panel', () => {
     // A sidebar is locked to 300px; a modeless dialog can be wider and still
     // stays open while you work in the sheet.
@@ -391,6 +391,7 @@ function openControlPanel() {
     try { boot = JSON.stringify(cpBootstrap()).replace(/</g, '\\u003c'); } catch (e) { log_('openControlPanel.boot', e); }
     const t = HtmlService.createTemplateFromFile('ControlPanel');
     t.bootJson = boot;
+    t.initialTab = (typeof initialTab === 'string' && /^[a-z]+$/.test(initialTab)) ? initialTab : ''; // deep-link to a tab (e.g. from 🧾 Review Roster Signups)
     const html = t.evaluate()
       .setWidth(1180)   // matches the Settings Studio shell (sidebar + content)
       .setHeight(760)
@@ -2152,10 +2153,7 @@ function setupPublicRoster() {
 
 /** Menu: the signup review dialog — pick a signup, pick an open slot, approve. Reads/writes only through the ACL-gated admin file. */
 function openSignupsDialog() {
-  runAction_('Roster Signups', () => {
-    const html = HtmlService.createHtmlOutputFromFile('Signups').setWidth(920).setHeight(720);
-    SpreadsheetApp.getUi().showModalDialog(html, 'Roster Signups');
-  });
+  openControlPanel('signups'); // the signup review now lives IN the Control Panel (Signups tab), not a separate popup
 }
 
 /** Menu: create the Roster Signup form and point its responses INSIDE the protected admin file. */
