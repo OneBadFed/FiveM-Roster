@@ -1456,7 +1456,7 @@ function signupQueue_(sheet, cap) {
     const st = g(SC.status) || SIGNUP_STATUSES_[0];
     if (norm_(st) === norm_(SIGNUP_STATUSES_[2])) continue; // Processed → done
     out.push({ row: SC.dataStart + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
-      email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), submitted: g(SC.timestamp) });
+      email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), join: g(SC.join), submitted: g(SC.timestamp) });
   }
   return out;
 }
