@@ -37,6 +37,7 @@ function addDevMenu_(prefix) {
     .addItem('🎬 Load Demo Roster (preview)', p + 'seedDemoRoster')
     .addItem('🎲 Add Random LOA (test)', p + 'devAddRandomLOA')
     .addItem('🚔 Add Random Patrol Log (test)', p + 'devAddRandomPatrol')
+    .addItem('🧾 Add Random Signup (test)', p + 'devAddRandomSignup')
     .addSeparator()
     .addItem('▶️ Run ALL Tests', p + 'devRunAllTests')
     .addSubMenu(ui.createMenu('🔬 Run one section')
@@ -127,6 +128,58 @@ function devAddRandomLOA() {
  * the hours, flag if bad, then re-group). ~70% are valid (credit hours); the rest are intentionally bad to demo each
  * flag (over-max / future-dated / end-before-start). Real test rows — clear a row's cells to remove it (un-credits).
  */
+/**
+ * Simulate a Roster Signup submission. If a signup form tab is linked, drop a fake submission on IT and run the real
+ * sync (field-match → review tab); otherwise write the applicant straight onto the review tab. Either way it lands as
+ * Pending, ready to approve. The applicant uses a HIGH demo index so its Unique ID won't collide with the demo roster.
+ */
+function devAddRandomSignup() {
+  const ui = SpreadsheetApp.getUi();
+  const ss = SpreadsheetApp.getActive();
+  const review = CONFIG.sheets.signups ? ss.getSheetByName(CONFIG.sheets.signups) : null;
+  if (!review) { ui.alert('🧾 Add Random Signup', `Need the "${CONFIG.sheets.signups}" review tab.\n\nSet it under ⚙️ Engine Settings ▸ Sheets & layout ▸ SIGNUPS, then run this again.`, ui.ButtonSet.OK); return; }
+
+  const i = 700 + Math.floor(Math.random() * 260); // high index → an ID that won't collide with the demo roster (so it can be approved)
+  const nm = (typeof demoName_ === 'function') ? demoName_(i) : ('Applicant ' + i);
+  const app = {
+    name: nm,
+    ooc: (typeof demoOocName_ === 'function') ? demoOocName_(nm) : nm,
+    discord: (typeof demoId_ === 'function') ? demoId_(i) : ('7700000000000008' + (10 + (i % 90))),
+    email: (typeof demoEmail_ === 'function') ? demoEmail_(nm) : (String(nm).toLowerCase().replace(/[^a-z0-9]+/g, '.') + '@lspd.example'),
+    dob: (typeof demoDob_ === 'function') ? demoDob_(i) : new Date(1996, 3, 12),
+  };
+  const put = (arr, c, v) => { if (c) arr[c - 1] = v; };
+
+  const form = CONFIG.sheets.signupForm ? ss.getSheetByName(CONFIG.sheets.signupForm) : null;
+  if (form) { // simulate a real submission on the FORM's own tab, then run the actual sync
+    const FSC = signupCols_(form);
+    const width = Math.max(form.getLastColumn(), 1);
+    const rowV = new Array(width).fill('');
+    put(rowV, FSC.timestamp, new Date()); put(rowV, FSC.name, app.name); put(rowV, FSC.ooc, app.ooc);
+    put(rowV, FSC.discord, app.discord); put(rowV, FSC.email, app.email); put(rowV, FSC.dob, app.dob);
+    const at = form.getLastRow() + 1;
+    if (at > form.getMaxRows()) form.insertRowsAfter(form.getMaxRows(), 1);
+    form.getRange(at, 1, 1, width).setValues([rowV]);
+    if (FSC.discord) form.getRange(at, FSC.discord).setNumberFormat('@');
+    const added = (typeof syncSignupForm === 'function') ? syncSignupForm() : 0;
+    SpreadsheetApp.flush();
+    ui.alert('🧾 Add Random Signup', `Simulated a form submission from ${app.name} (${app.discord}) on "${CONFIG.sheets.signupForm}", then synced ${added} row into "${CONFIG.sheets.signups}" as Pending.\n\nReview it in 🎛️ Control Panel ▸ Signups, or 🧾 Review Roster Signups.`, ui.ButtonSet.OK);
+  } else { // no form linked yet → drop the applicant straight onto the review tab so the demo still works
+    const SC = signupCols_(review);
+    if (!SC.status || !SC.discord) { ui.alert('🧾 Add Random Signup', `The "${CONFIG.sheets.signups}" tab needs a header row with at least NAME, UNIQUE ID and STATUS columns.`, ui.ButtonSet.OK); return; }
+    const rowV = new Array(SC.width).fill('');
+    put(rowV, SC.name, app.name); put(rowV, SC.ooc, app.ooc); put(rowV, SC.discord, app.discord); put(rowV, SC.email, app.email); put(rowV, SC.dob, app.dob);
+    rowV[SC.status - 1] = SIGNUP_STATUSES_[0];
+    const at = signupFirstFreeRow_(review, SC);
+    if (at > review.getMaxRows()) review.insertRowsAfter(review.getMaxRows(), at - review.getMaxRows());
+    writeValuesSafe_(review, at, 1, [rowV], null);
+    review.getRange(at, SC.discord).setNumberFormat('@');
+    try { sortSignups_(review); } catch (e) { log_('devAddRandomSignup.sort', e); }
+    SpreadsheetApp.flush();
+    ui.alert('🧾 Add Random Signup', `No signup form is linked yet ([SHEETS].SIGNUP_FORM_RESPONSES is blank), so I added demo applicant ${app.name} (${app.discord}) straight to "${CONFIG.sheets.signups}" as Pending.\n\nLink a form to exercise the real sync path.`, ui.ButtonSet.OK);
+  }
+}
+
 function devAddRandomPatrol() {
   const ui = SpreadsheetApp.getUi();
   const ss = SpreadsheetApp.getActive();

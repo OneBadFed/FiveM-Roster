@@ -307,6 +307,7 @@ function buildMenus_(prefix) {
       // Daily operations
       .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
+      .addItem('🧾 Sync Signup Form to Review', p + 'manualSyncSignups')
       .addItem('📸 Capture & Reset Activity', p + 'weeklyResetWithHistory')
       .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
       .addItem('🧾 Review Roster Signups', p + 'openSignupsDialog')
@@ -1232,16 +1233,10 @@ function onFormSubmit(e) {
   // v2.5.0 — the same spreadsheet onFormSubmit fires for BOTH forms; the patrol sync only scans its own tab (no-op when
   // that form wasn't the one submitted, or when the feature is off), so running it here needs no per-form routing.
   try { syncPatrolHours(); } catch (err) { log_('onFormSubmit.patrol', err); }
-  // Roster Signups arrive with a BLANK Status. When THIS submission is a signup, stamp it Pending + regroup so the tab
-  // self-maintains like the LOA tracker (installable onFormSubmit has the auth to touch the admin file). Routed by the
-  // response tab so an LOA/patrol submission doesn't needlessly re-sort the signups.
-  try {
-    const subTab = (e && e.range && e.range.getSheet) ? e.range.getSheet().getName() : '';
-    if (subTab && CONFIG.sheets.signups && subTab === CONFIG.sheets.signups && typeof ensureSignupTab_ === 'function') {
-      const sh = ensureSignupTab_(SpreadsheetApp.getActive());
-      if (sh && typeof sortSignups_ === 'function') sortSignups_(sh);
-    }
-  } catch (err) { log_('onFormSubmit.signups', err); }
+  // Roster Signups: a submission lands on the FORM's own response tab (SIGNUP_FORM_RESPONSES); the sync field-matches it
+  // into the themed SIGNUPS review tab and stamps Pending — just like the LOA form feeds the LOA Tracker. syncSignupForm
+  // only scans its own tab and no-ops when the feature is off, so (like the patrol sync) it needs no per-form routing.
+  try { if (typeof syncSignupForm === 'function') syncSignupForm(); } catch (err) { log_('onFormSubmit.signups', err); }
   // Re-apply the dark theme so every new submission looks polished + on-brand (runs even if the sync above threw).
   try {
     const form = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.form);

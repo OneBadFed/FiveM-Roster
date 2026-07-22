@@ -1257,14 +1257,26 @@ function seedAdminSheet_(file) {
 
 const SIGNUP_STATUSES_ = Object.freeze(['Pending', 'Approved', 'Processed']);
 
-/** Header-resolve the signup response tab (exact header wins, so an application free-text column can't hijack a role). */
+/**
+ * Header-resolve a signup tab (exact header wins, so a free-text application column can't hijack a role). Works on BOTH
+ * shapes: a plain Google-Form responses tab (header on row 1, data row 2) AND a themed REVIEW tab laid out like the
+ * roster (banner up top, header lower, data below a divider gap). The header row is auto-detected, so `headerRow` /
+ * `dataStart` tell callers where the real data begins.
+ */
 function signupCols_(sheet) {
-  const out = { timestamp: 1, name: 0, ooc: 0, discord: 0, email: 0, dob: 0, phone: 0, status: 0, notes: 0, width: 0 };
+  const out = { timestamp: 0, name: 0, ooc: 0, discord: 0, email: 0, dob: 0, phone: 0, status: 0, notes: 0, width: 0, headerRow: 1, dataStart: 2 };
   try {
     const lastCol = Math.max(sheet.getLastColumn(), 1);
-    const hdr = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
+    const lastRow = Math.max(sheet.getLastRow(), 1);
+    const readRow = (r) => sheet.getRange(r, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
+    // A header row carries a NAME column AND a STATUS or UNIQUE-ID column. Scan the top rows so a banner above it is skipped.
+    const looksHdr = (row) => !!row && row.some((h) => h.indexOf('NAME') !== -1) && row.some((h) => h.indexOf('STATUS') !== -1 || h.indexOf('UNIQUE') !== -1);
+    let hRow = 0, hdr = null;
+    for (let r = 1; r <= Math.min(15, lastRow); r++) { const row = readRow(r); if (looksHdr(row)) { hRow = r; hdr = row; break; } }
+    if (!hRow) { hRow = 1; hdr = readRow(1); } // nothing matched → treat row 1 as the header (plain Forms tab)
     const exact = (l) => { const k = norm_(l); for (let c = 0; c < hdr.length; c++) { if (hdr[c] === k) return c + 1; } return 0; };
     const all = (...toks) => { for (let c = 0; c < hdr.length; c++) { if (toks.every((t) => hdr[c].indexOf(norm_(t)) !== -1)) return c + 1; } return 0; };
+    out.timestamp = exact('TIMESTAMP') || all('TIMESTAMP') || (hRow === 1 ? 1 : 0);
     out.ooc = exact('OOC NAME') || all('OOC');
     out.name = exact('NAME') || exact('NAME (IN-CHARACTER)') || 0;
     if (!out.name) { for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } }
@@ -1275,16 +1287,99 @@ function signupCols_(sheet) {
     out.status = exact('STATUS') || all('STATUS');
     out.notes = exact('NOTES') || all('NOTES');
     out.width = lastCol;
+    out.headerRow = hRow;
+    // Data begins below the header. A plain Forms tab (header row 1) → row 2; a themed tab → skip the same header-to-data
+    // gap the roster leaves (e.g. header row 6 → data row 8), mirroring the roster's layout convention.
+    out.dataStart = (hRow === 1) ? 2 : hRow + Math.max(1, CONFIG.rosterStartRow - (CONFIG.headerRow || 6));
   } catch (e) { log_('signupCols_', e); }
   return out;
 }
 
-/** The signup tab inside the admin file, with the STATUS/NOTES columns + dropdown ensured. null when it doesn't exist yet. */
+/** First empty data row on a review tab (nothing in NAME / UNIQUE ID / STATUS), or the row past the end. */
+function signupFirstFreeRow_(sheet, SC) {
+  const last = sheet.getLastRow();
+  if (last < SC.dataStart) return SC.dataStart;
+  const n = last - SC.dataStart + 1;
+  const block = sheet.getRange(SC.dataStart, 1, n, SC.width).getDisplayValues();
+  for (let i = 0; i < n; i++) {
+    const row = block[i];
+    const has = (SC.name && String(row[SC.name - 1] || '').trim()) || (SC.discord && String(row[SC.discord - 1] || '').trim()) || (SC.status && String(row[SC.status - 1] || '').trim());
+    if (!has) return SC.dataStart + i;
+  }
+  return last + 1;
+}
+
+/**
+ * Sync new signup-form submissions into the SIGNUPS review tab, matched by ROLE (name/ooc/id/email/dob/phone). Mirrors
+ * syncFormToTracker_: a synced form row is marked "done" (background) so re-scans never double-add. STATUS is stamped
+ * Pending; NOTES and any admin-only columns are left untouched. Never throws. @return rows added.
+ */
+function syncSignupForm_(formSheet, signupSheet) {
+  let added = 0;
+  try {
+    const formLast = formSheet.getLastRow();
+    if (formLast < 2) return 0;
+    const fSC = signupCols_(formSheet), sSC = signupCols_(signupSheet);
+    if (!sSC.status || !sSC.discord) return 0;               // the review tab needs at least STATUS + UNIQUE ID columns
+    const width = formSheet.getLastColumn();
+    const range = formSheet.getRange(2, 1, formLast - 1, width);
+    const values = range.getValues();
+    const backgrounds = range.getBackgrounds();
+    const doneBg = String(CONFIG.bg.done).toLowerCase();
+    const roles = ['name', 'ooc', 'discord', 'email', 'dob', 'phone'];
+    for (let i = 0; i < values.length; i++) {
+      const bg = String(backgrounds[i][0] || '').toLowerCase();
+      if (bg === doneBg || bg === '#00ff00') continue;       // already synced
+      const frow = values[i];
+      const rowVals = new Array(sSC.width).fill('');
+      roles.forEach((role) => { if (fSC[role] && sSC[role]) rowVals[sSC[role] - 1] = frow[fSC[role] - 1]; });
+      rowVals[sSC.status - 1] = SIGNUP_STATUSES_[0];         // new submission → Pending
+      const at = signupFirstFreeRow_(signupSheet, sSC);
+      if (at > signupSheet.getMaxRows()) signupSheet.insertRowsAfter(signupSheet.getMaxRows(), at - signupSheet.getMaxRows());
+      writeValuesSafe_(signupSheet, at, 1, [rowVals], null); // merge-safe row write
+      signupSheet.getRange(at, sSC.discord).setNumberFormat('@'); // keep the Unique ID exact
+      formSheet.getRange(i + 2, 1, 1, width).setBackground(CONFIG.bg.done); // mark this form row synced
+      added++;
+    }
+    if (added) { try { sortSignups_(signupSheet); } catch (e) { log_('syncSignupForm_.sort', e); } }
+  } catch (e) { log_('syncSignupForm_', e); }
+  return added;
+}
+
+/** Entry point: sync the linked signup form into the review tab. No-op when the feature is off (no form tab set). */
+function syncSignupForm() {
+  try {
+    if (!CONFIG.sheets.signupForm) return 0;
+    const ss = SpreadsheetApp.getActive();
+    const form = ss.getSheetByName(CONFIG.sheets.signupForm);
+    const review = ss.getSheetByName(CONFIG.sheets.signups);
+    if (!form || !review) return 0;
+    return syncSignupForm_(form, review);
+  } catch (e) { log_('syncSignupForm', e); return 0; }
+}
+
+/** Menu action: manually pull the signup form into the review tab (backfill / on-demand; the same sync runs on submit). */
+function manualSyncSignups() {
+  runAction_('Sync Signup Form', () => {
+    const ui = SpreadsheetApp.getUi();
+    if (!CONFIG.sheets.signupForm) {
+      ui.alert('🧾 Sync Signup Form', 'Signup sync is OFF.\n\nSet [SHEETS].SIGNUP_FORM_RESPONSES to your signup form\'s response tab (⚙️ Engine Settings ▸ Sheets & layout), then run this again.', ui.ButtonSet.OK);
+      return;
+    }
+    const ss = SpreadsheetApp.getActive();
+    if (!ss.getSheetByName(CONFIG.sheets.signupForm)) { ui.alert('🧾 Sync Signup Form', `The form response tab "${CONFIG.sheets.signupForm}" was not found.`, ui.ButtonSet.OK); return; }
+    if (!ss.getSheetByName(CONFIG.sheets.signups)) { ui.alert('🧾 Sync Signup Form', `The review tab "${CONFIG.sheets.signups}" was not found.`, ui.ButtonSet.OK); return; }
+    const added = syncSignupForm();
+    ui.alert('🧾 Sync Signup Form', added ? `✅ Added ${added} new signup${added === 1 ? '' : 's'} to "${CONFIG.sheets.signups}" (Pending).` : 'No new signups to add — everything on the form is already synced.', ui.ButtonSet.OK);
+  });
+}
+
+/** The signup review tab, with the STATUS dropdown + Unique-ID format ensured on its data rows. null when it doesn't exist yet. */
 function ensureSignupTab_(file) {
   const sh = file.getSheetByName(CONFIG.sheets.signups);
   if (!sh) return null;
   let SC = signupCols_(sh);
-  if (!SC.status) { // append STATUS (+ NOTES) after the form's own question columns
+  if (!SC.status && SC.headerRow === 1) { // a plain Forms-shaped tab with no STATUS yet → append STATUS (+ NOTES) on row 1
     const c = sh.getLastColumn() + 1;
     sh.getRange(1, c).setValue('Status');
     sh.getRange(1, c + 1).setValue('Notes');
@@ -1292,11 +1387,12 @@ function ensureSignupTab_(file) {
     SC = signupCols_(sh);
   }
   try {
-    const n = Math.max(sh.getMaxRows() - 1, 1);
-    sh.getRange(2, SC.status, n, 1).setDataValidation(
-      SpreadsheetApp.newDataValidation().requireValueInList(SIGNUP_STATUSES_.slice(), true).setAllowInvalid(true).setHelpText('Pending → Approved → Processed').build());
-    if (SC.discord) sh.getRange(2, SC.discord, n, 1).setNumberFormat('@'); // keep the Unique ID exact
-    if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
+    if (SC.status && sh.getMaxRows() >= SC.dataStart) { // dropdown on the STATUS data rows (themed tab: never touch the banner/header)
+      const n = sh.getMaxRows() - SC.dataStart + 1;
+      sh.getRange(SC.dataStart, SC.status, n, 1).setDataValidation(
+        SpreadsheetApp.newDataValidation().requireValueInList(SIGNUP_STATUSES_.slice(), true).setAllowInvalid(true).setHelpText('Pending → Approved → Processed').build());
+      if (SC.discord) sh.getRange(SC.dataStart, SC.discord, n, 1).setNumberFormat('@'); // keep the Unique ID exact
+    }
   } catch (e) { log_('ensureSignupTab_.validation', e); }
   return sh;
 }
@@ -1304,13 +1400,13 @@ function ensureSignupTab_(file) {
 /** Stamp blank statuses as Pending, then re-group Pending → Approved → Processed (value rewrite; keeps formatting). */
 function sortSignups_(sheet) {
   try {
-    const SC = signupCols_(sheet), W = SC.width;
+    const SC = signupCols_(sheet), W = SC.width, ds = SC.dataStart;
     if (!SC.status || !W) return 0;
     const last = sheet.getLastRow();
-    if (last < 2) return 0;
-    const n = last - 1;
-    const vals = sheet.getRange(2, 1, n, W).getValues();
-    const ids = SC.discord ? sheet.getRange(2, SC.discord, n, 1).getDisplayValues() : null;
+    if (last < ds) return 0;
+    const n = last - ds + 1;
+    const vals = sheet.getRange(ds, 1, n, W).getValues();
+    const ids = SC.discord ? sheet.getRange(ds, SC.discord, n, 1).getDisplayValues() : null;
     const rows = [];
     for (let i = 0; i < n; i++) {
       const r = vals[i].slice(0, W);
@@ -1325,8 +1421,12 @@ function sortSignups_(sheet) {
     const dec = rows.map((r, i) => ({ r: r, i: i, p: (norm_(String(r[SC.status - 1] || '').trim()) in rank) ? rank[norm_(String(r[SC.status - 1]).trim())] : SIGNUP_STATUSES_.length }));
     dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
-    if (SC.discord) sheet.getRange(2, SC.discord, sorted.length, 1).setNumberFormat('@');
-    writeValuesSafe_(sheet, 2, 1, sorted, null); // merge-safe (see sortTracker_)
+    if (SC.discord) sheet.getRange(ds, SC.discord, sorted.length, 1).setNumberFormat('@');
+    writeValuesSafe_(sheet, ds, 1, sorted, null); // merge-safe (see sortTracker_)
+    if (last > ds + sorted.length - 1) { // survivors slid up → blank the rows they vacated so nothing is duplicated at the bottom
+      const blanks = []; for (let k = ds + sorted.length; k <= last; k++) blanks.push(new Array(W).fill(''));
+      writeValuesSafe_(sheet, ds + sorted.length, 1, blanks, null);
+    }
     return sorted.length;
   } catch (e) { logWarn_('sortSignups_', 'signup sort failed: ' + ((e && e.message) ? e.message : e)); return 0; }
 }
@@ -1336,14 +1436,15 @@ function signupQueue_(sheet, cap) {
   const out = [];
   const SC = signupCols_(sheet);
   const last = sheet.getLastRow();
-  if (!SC.status || last < 2) return out;
-  const n = last - 1;
-  const vals = sheet.getRange(2, 1, n, SC.width).getDisplayValues();
+  if (!SC.status || last < SC.dataStart) return out;
+  const n = last - SC.dataStart + 1;
+  const vals = sheet.getRange(SC.dataStart, 1, n, SC.width).getDisplayValues();
   for (let i = 0; i < n && out.length < (cap || 100); i++) {
-    const st = String(vals[i][SC.status - 1] || '').trim() || SIGNUP_STATUSES_[0];
-    if (norm_(st) === norm_(SIGNUP_STATUSES_[2])) continue; // Processed → done
     const g = (c) => c ? String(vals[i][c - 1] || '').trim() : '';
-    out.push({ row: 2 + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
+    if (!g(SC.name) && !g(SC.discord)) continue; // blank scaffolding row on a themed tab → not a submission
+    const st = g(SC.status) || SIGNUP_STATUSES_[0];
+    if (norm_(st) === norm_(SIGNUP_STATUSES_[2])) continue; // Processed → done
+    out.push({ row: SC.dataStart + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
       email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), submitted: g(SC.timestamp) });
   }
   return out;

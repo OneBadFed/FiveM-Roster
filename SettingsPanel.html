@@ -606,7 +606,7 @@
     return ICONS.ftext;
   }
   // Friendlier display labels/help for keys whose config names read wrong in the UI (display only — keys unchanged).
-  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'ROSTER SIGNUPS TAB',
+  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'SIGNUP REVIEW TAB','SHEETS.SIGNUP_FORM_RESPONSES':'SIGNUP FORM RESPONSES',
     'PATROL.COL_DISCORD':'DISCORD COLUMN','PATROL.COL_CALLSIGN':'CALLSIGN COLUMN','PATROL.COL_START':'START TIME COLUMN','PATROL.COL_END':'END TIME COLUMN','PATROL.COL_DURATION':'HOURS COLUMN',
     'LEAVE.STATUS_FLOW':'TRACKER STATUSES','LEAVE.APPROVED_STATUS':'COUNTS AS APPROVED','LEAVE.EXPIRED_STATUS':'MARK ENDED AS',
     'LEAVE.AUTO_EXPIRE':'AUTO-END LEAVES','LEAVE.EXPIRE_NEVER_APPROVED':'EXPIRE UNAPPROVED TOO',
@@ -630,7 +630,9 @@
       return (ex?'ACTIVE — Divider mode is EXPLICIT_LIST. ':'Dormant right now — Divider mode is ALLCAPS_RANK (see Sheets & layout). ')
         +'Value = the exact label; Kind = RANK (member slot) or DIVIDER (section header). Unlisted labels fall back to the all-caps rule.'; }};
   var HELPS={'SHEETS.FORM_RESPONSES':'Google Form responses for LOAs.','SHEETS.PATROL_RESPONSES':'Google Form responses for Patrol Logs.',
-    'SHEETS.PATROL_LOG':'Manual Patrol Log tracker tab (not a form). Blank = off.','SHEETS.SIGNUPS':'Roster Signup form responses tab, in this file. Blank = default "Roster Signups".',
+    'SHEETS.PATROL_LOG':'Manual Patrol Log tracker tab (not a form). Blank = off.',
+    'SHEETS.SIGNUPS':'Signup REVIEW tab (like the LOA Tracker): synced form submissions land here for admins; STATUS + NOTES are admin-owned.',
+    'SHEETS.SIGNUP_FORM_RESPONSES':'The signup Google Form\'s own responses tab. Each submission is field-matched into the review tab. Blank = signup sync off.',
     'ROSTER_LAYOUT.HEADER_ROW':'The row with your column titles (RANK, NAME, HOURS…).',
     'ROSTER_LAYOUT.DATA_START_ROW':'The first row that can hold a member — rows above it are ignored.',
     'ROSTER_LAYOUT.TRACKER_START_ROW':'The first leave-entry row on the LOA Tracker tab.',
@@ -694,7 +696,7 @@
       desc:'Every coded error the engine raises, throttled to one per code per five minutes.',
       events:['Coded engine errors (config, structure, permissions…) with their fix hints']},
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, and where headers and data begin on each of them.',
-      cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES','SHEETS.PATROL_RESPONSES','SHEETS.PATROL_LOG','SHEETS.SIGNUPS']},
+      cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.FORM_RESPONSES','SHEETS.PATROL_RESPONSES','SHEETS.PATROL_LOG','SHEETS.SIGNUPS','SHEETS.SIGNUP_FORM_RESPONSES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']},
              {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
              {t:'Patrol logs → hours', keys:['PATROL.MODE','PATROL.MAX_HOURS','PATROL.OVERNIGHT','PATROL.RECOMPUTE','PATROL.COL_DISCORD','PATROL.COL_CALLSIGN','PATROL.COL_START','PATROL.COL_END','PATROL.COL_DURATION']}]},
@@ -855,6 +857,7 @@
       if(bk==='SHEETS.PATROL_RESPONSES') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— off (no patrol form) —');
       if(bk==='SHEETS.PATROL_LOG') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— off (no patrol log tab) —');
       if(bk==='SHEETS.SIGNUPS') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Roster Signups) —');
+      if(bk==='SHEETS.SIGNUP_FORM_RESPONSES') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— off (no signup form) —');
       return '<input class="in" data-bk="'+esc(bk)+'" value="'+esc(v)+'" spellcheck="false" placeholder="'+esc(m.def)+'" autocomplete="off">';
     }
     if(bk==='SCHEDULE.NIGHTLY_HOUR'||bk==='SCHEDULE.WEEKLY_RESET_HOUR') return dd({bk:bk}, HOURS, String(v), false);
