@@ -554,7 +554,7 @@ function rankIconsMap_() {
     (parts[rank] || (parts[rank] = []))[idx] = all[k];
   });
   const map = {};
-  Object.keys(parts).forEach((rank) => { const uri = parts[rank].join('|~|'); if (uri) map[rank] = uri; });
+  Object.keys(parts).forEach((rank) => { const uri = parts[rank].join(''); if (uri) map[rank] = uri; }); // chunks were stored by substr() with NO separator — rejoin them raw (a separator corrupts any icon > 1 chunk)
   return map;
 }
 
