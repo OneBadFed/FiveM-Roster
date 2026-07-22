@@ -1246,15 +1246,27 @@ function demoPerson_(i, rank, total) {
   const rst = norm_(CONFIG.returnStatus || '');           // the "returning" leave (default ROA), if configured
   const DIST = [TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, MID, MID, MID, LOW, LOW, LOW, lv1, lv2];
   const act = DIST[(i * 7) % DIST.length];
-  let hours, last = act, leave = null, pastLeave = null, checks = null;
+  let hours, last = act, leave = null, checks = null;
+  const pastLeaves = [];
   const r = demoRand_(i, 1), r2 = demoRand_(i, 2);
   if (act === TOP) hours = demoQuarter_(10 + r * r * 15 + (r2 > 0.93 ? 6 : 0)); // right-skewed; rare ~30h grinder (top tier)
   else if (act === MID) hours = demoQuarter_(5 + r * 4.7);                       // mid tier band
   else if (act === LOW) hours = demoQuarter_(r * r * 4.7);                       // low tier, clustered low
   else if (rst && norm_(act) === rst) { hours = demoQuarter_(5 + r * 3.7); last = LOW; leave = { type: act, from: -(2 + i % 5), to: 6 + (i % 9), status: 'Approved' }; checks = [LOW, act, act, act]; } // returning leave (ROA-like)
   else { hours = 0; last = TOP; leave = { type: act, from: -(2 + i % 6), to: 5 + (i % 10), status: 'Approved' }; checks = [TOP, TOP, act, act]; } // protected leave (LOA-like)
-  // Sprinkle a few recently-EXPIRED leaves onto active members (tracker + activity-check variety).
-  if (!leave && i % 17 === 5) { pastLeave = { type: (i % 2 ? lv1 : lv2), from: -(48 + i % 10), to: -(30 + i % 8) }; checks = [pastLeave.type, pastLeave.type, TOP, act]; }
+  // Past (EXPIRED) leaves — a real LOA history. Members not currently ON leave accrue 0–3 finished leaves scattered
+  // across the past ~7 months (deterministic). The most recent one tints their activity checks. This is what makes the
+  // tracker's "history" section look lived-in instead of near-empty.
+  if (!leave) {
+    const cnt = [0, 0, 1, 1, 1, 2, 2, 3][Math.floor(demoRand_(i, 8) * 8)]; // ~25% none · mostly 1–2 · a few with 3
+    let back = 26 + Math.floor(demoRand_(i, 9) * 34);                       // most recent ended 26–60 days ago
+    for (let k = 0; k < cnt; k++) {
+      const dur = 5 + Math.floor(demoRand_(i, 20 + k) * 19);                // a 5–23 day leave
+      pastLeaves.push({ type: (k % 2 ? lv2 : lv1), from: -(back + dur), to: -back });
+      back += dur + 18 + Math.floor(demoRand_(i, 30 + k) * 45);            // walk further back for the previous one
+    }
+    if (pastLeaves.length) checks = [pastLeaves[0].type, TOP, act, act];
+  }
   const tenure = 1600 - Math.round((i / Math.max(total, 1)) * 1200); // seniority: earlier rows = longer tenure
   const shift = ''; // real shift is assigned per-rank (evenly across the 3 shifts) once all people are built — see seedDemoRoster
   const may = demoQuarter_(demoRand_(i, 3) * demoRand_(i, 6) * 30); // prior-month totals — right-skewed 0–30h
@@ -1263,7 +1275,7 @@ function demoPerson_(i, rank, total) {
   return {
     name: nm, id: demoId_(i), email: demoEmail_(nm), dob: demoDob_(i), shift: shift, may: may, jun: jun,
     join: demoDay_(-tenure), promo: demoDay_(-(20 + (i % 10) * 16)),
-    hours: hours, act: act, last: last, leave: leave, pastLeave: pastLeave,
+    hours: hours, act: act, last: last, leave: leave, pastLeaves: pastLeaves,
     checks: checks || [act, act, act, act],
   };
 }
@@ -1276,7 +1288,7 @@ function demoIsOpen_(i, total) {
 }
 
 /** A blank "open position" — the row keeps the operator's rank + callsign but carries no member data. */
-function demoBlank_() { return { open: true, name: '', id: '', email: '', dob: '', shift: '', may: '', jun: '', join: '', promo: '', hours: '', act: '', last: '', leave: null, pastLeave: null, checks: null }; }
+function demoBlank_() { return { open: true, name: '', id: '', email: '', dob: '', shift: '', may: '', jun: '', join: '', promo: '', hours: '', act: '', last: '', leave: null, pastLeaves: [], checks: null }; }
 
 /** Classify a member into a stats group by their section label (rank as fallback). Supervisors = command/staff tiers, Auxiliary = reserve, else Troopers. */
 function demoGroupOf_(section, rank) {
@@ -1305,17 +1317,142 @@ function demoInitialName_(name) {
 }
 
 /** Write one demo leave at tracker row `r` (mirrors the real append: dedup key + countdown formulas; keeps the tracker template). */
-function demoWriteLeave_(tracker, m, L, r) {
+function demoWriteLeave_(tracker, m, L, r, oiIn) {
   const TC = trackerCols_(tracker); // resolve columns by header (any layout)
   const start = demoDay_(L.from), end = demoDay_(L.to);
   const key = makeLeaveKey_(m.id, `${startOfDay_(start).getTime()}-${startOfDay_(end).getTime()}-${norm_(L.type)}`);
-  const oi = rosterOocShift_(m.id); // OOC + shift + unit/callsign from the already-filled demo roster
+  const oi = oiIn || rosterOocShift_(m.id); // OOC + shift + unit/callsign from the already-filled demo roster (passed in to skip a per-leave rescan)
   if (TC.discord) tracker.getRange(r, TC.discord).setNumberFormat('@'); // keep the 17-19 digit ID exact
   const row = buildTrackerRow_(TC, TC.width, { key: key, rank: m.rank, unit: oi.unit, ooc: oi.ooc, name: m.name, discord: m.id, shift: oi.shift, start: start, end: end, status: L.status || 'Approved' });
   tracker.getRange(r, 1, 1, TC.width).setValues([row]);
   if (TC.start) tracker.getRange(r, TC.start).setNumberFormat('d mmm. yyyy');
   if (TC.end) tracker.getRange(r, TC.end).setNumberFormat('d mmm. yyyy');
   writeLeaveFormulas_(tracker, r, TC);
+}
+
+/** A time-of-day Date on a FIXED date base (2020-01-01), so a patrol TOTAL formula that subtracts start from end cancels the date part out. */
+function demoTimeOfDay_(h, m) { return new Date(2020, 0, 1, h, m || 0, 0); }
+
+/** A deterministic, non-routable demo phone number (555 exchange — RFC-fictional, never a real line). */
+function demoPhone_(i) { const a = 100 + Math.floor(demoRand_(i, 13) * 900); const b = 1000 + Math.floor(demoRand_(i, 14) * 9000); return '(555) ' + a + '-' + b; }
+
+/** Split a member's total hours into 1–4 believable quarter-hour patrol sessions that sum EXACTLY back to it. */
+function demoSplitHours_(hours) {
+  const q = Math.round(Number(hours) * 4); // total quarter-hours
+  if (q <= 0) return [];
+  const k = Math.min(4, Math.max(1, Math.round(q / 12))); // ~3 hrs per session
+  const base = Math.floor(q / k), rem = q - base * k, out = [];
+  for (let s = 0; s < k; s++) out.push((base + (s < rem ? 1 : 0)) / 4);
+  return out; // sum === hours (quarter-exact)
+}
+
+/**
+ * Seed the Patrol Log so each member's VALID sessions sum to the hours they now hold on the roster — the log
+ * literally "reflects" their current hours. The hidden credit marker (col A = "hours|id") is set to match, so a
+ * later refreshPatrolLog_/onEdit sweep sees it already credited and is a no-op (never double-credits). Sessions are
+ * dated across the last ~4 weeks and auto-grouped. @return {number} rows written; 0 unless a Patrol Log tab exists.
+ */
+function seedDemoPatrolLog_(ss, memberRows, people, calls, start) {
+  const plName = CONFIG.sheets.patrolLog;
+  if (!plName) return 0;
+  const patrol = ss.getSheetByName(plName);
+  if (!patrol) return 0;
+  const PC = patrolLogCols_(patrol);
+  if (!PC.discord || !PC.startDate || !PC.endDate || !PC.startTime || !PC.endTime || !PC.status) return 0;
+  const ds = CONFIG.patrolStartRow, W = Math.max(PC.width, 14);
+  if (PC.labelRow && ds <= PC.labelRow) return 0; // misconfigured start row — never stomp the header
+  if (patrol.getLastRow() >= ds) patrol.getRange(ds, 1, patrol.getLastRow() - ds + 1, Math.max(patrol.getLastColumn(), W)).clearContent(); // keep header + formatting
+
+  const recs = [];
+  memberRows.forEach((m, i) => {
+    const p = people[i];
+    if (p.open || !(Number(p.hours) > 0)) return; // open slots + members on protected (0-hour) leave log nothing
+    const unit = String(calls[m.r - start][0] || '').trim(), ooc = demoOocName_(p.name);
+    demoSplitHours_(p.hours).forEach((dur, k) => {
+      const back = 1 + ((i * 3 + k * 7) % 27);                                       // 1–27 days ago (deterministic)
+      const startMin = (7 + ((i + k * 2) % 12)) * 60 + [0, 15, 30, 45][(i + k) % 4]; // 07:00–18:45 start
+      const endMin = startMin + Math.round(dur * 60);
+      recs.push({
+        mark: (Math.round(dur * 100) / 100) + '|' + p.id, rank: m.rank, unit: unit, ooc: ooc, name: p.name, id: p.id, shift: p.shift,
+        sd: demoDay_(-back), ed: demoDay_(-back + Math.floor(endMin / 1440)),
+        st: demoTimeOfDay_(Math.floor(startMin / 60), startMin % 60), et: demoTimeOfDay_(Math.floor((endMin % 1440) / 60), endMin % 60),
+        status: CONFIG.patrol.processedStatus,
+      });
+    });
+  });
+  if (!recs.length) return 0;
+  if (patrol.getMaxRows() < ds + recs.length - 1) patrol.insertRowsAfter(patrol.getMaxRows(), ds + recs.length - 1 - patrol.getMaxRows());
+  if (PC.discord) patrol.getRange(ds, PC.discord, recs.length, 1).setNumberFormat('@'); // 18-digit ID exact...
+  if (PC.mark) patrol.getRange(ds, PC.mark, recs.length, 1).setNumberFormat('@');       // ...and the "hours|id" marker as text
+  const grid = recs.map((r) => {
+    const a = new Array(W).fill('');
+    const put = (c, v) => { if (c) a[c - 1] = v; };
+    put(PC.mark, r.mark); put(PC.rank, r.rank); put(PC.unit, r.unit); put(PC.ooc, r.ooc); put(PC.name, r.name);
+    put(PC.discord, r.id); put(PC.shift, r.shift); put(PC.startDate, r.sd); put(PC.endDate, r.ed);
+    put(PC.startTime, r.st); put(PC.endTime, r.et); put(PC.status, r.status);
+    return a;
+  });
+  patrol.getRange(ds, 1, recs.length, W).setValues(grid);
+  if (PC.total) { const f = []; for (let k = 0; k < recs.length; k++) f.push([patrolTotalFormula_(PC, ds + k)]); patrol.getRange(ds, PC.total, recs.length, 1).setFormulas(f).setNumberFormat('0.00" hrs"'); }
+  patrol.getRange(ds, PC.startDate, recs.length, 1).setNumberFormat(PATROL_DATE_FMT_);
+  patrol.getRange(ds, PC.endDate, recs.length, 1).setNumberFormat(PATROL_DATE_FMT_);
+  patrol.getRange(ds, PC.startTime, recs.length, 1).setNumberFormat(PATROL_TIME_FMT_);
+  patrol.getRange(ds, PC.endTime, recs.length, 1).setNumberFormat(PATROL_TIME_FMT_);
+  try { if (typeof sortPatrolLog_ === 'function') sortPatrolLog_(patrol); } catch (e) { log_('seedDemoPatrolLog_.sort', e); }
+  return recs.length;
+}
+
+/**
+ * Seed the Roster Signups review tab so it reflects the department: every FILLED member is shown as a Processed
+ * signup (applied → approved → seated), plus a handful of fresh Pending applicants (IDs NOT on the roster) so the
+ * review/approve flow has something to action. Sorted Pending→Processed. @return {{processed,pending}} rows written.
+ */
+function seedDemoSignups_(ss, memberRows, people) {
+  const out = { processed: 0, pending: 0 };
+  const nm = CONFIG.sheets.signups;
+  if (!nm) return out;
+  const sh = ss.getSheetByName(nm);
+  if (!sh) return out;
+  const SC = signupCols_(sh);
+  if (!SC.status || !SC.name || !SC.discord) return out;
+  const ds = SC.dataStart, W = SC.width;
+  if (sh.getLastRow() >= ds) sh.getRange(ds, 1, sh.getLastRow() - ds + 1, W).clearContent(); // keep banner/header
+
+  const recs = [];
+  const mkRow = (o) => {
+    const a = new Array(W).fill('');
+    const put = (c, v) => { if (c) a[c - 1] = v; };
+    put(SC.timestamp, o.ts); put(SC.name, o.name); put(SC.ooc, o.ooc); put(SC.discord, o.id);
+    put(SC.email, o.email); put(SC.dob, o.dob); put(SC.phone, o.phone); put(SC.join, o.join);
+    put(SC.status, o.status); put(SC.notes, o.notes || '');
+    return a;
+  };
+  // Processed: one per filled member — they applied a few days before the join date they now carry.
+  memberRows.forEach((m, i) => {
+    const p = people[i];
+    if (p.open) return;
+    const j = (p.join instanceof Date) ? p.join : demoDay_(-30);
+    const ts = new Date(j.getFullYear(), j.getMonth(), j.getDate() - (2 + (i % 6)), 9 + (i % 10), [0, 15, 30, 45][i % 4]);
+    recs.push(mkRow({ ts: ts, name: p.name, ooc: demoOocName_(p.name), id: p.id, email: p.email, dob: p.dob, phone: demoPhone_(i), join: j, status: SIGNUP_STATUSES_[2], notes: 'Approved & seated' }));
+    out.processed++;
+  });
+  // Pending: a few fresh applicants whose IDs are NOT on the roster, so they can actually be approved in the demo.
+  const now = todayInSheetTz_();
+  for (let k = 0; k < 4; k++) {
+    const idx = 720 + k * 7, name = demoName_(idx);
+    const ts = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k, 8 + k, [5, 25, 40, 50][k % 4]);
+    recs.push(mkRow({ ts: ts, name: name, ooc: demoOocName_(name), id: demoId_(idx), email: demoEmail_(name), dob: demoDob_(idx), phone: demoPhone_(idx), join: '', status: SIGNUP_STATUSES_[0], notes: '' }));
+    out.pending++;
+  }
+  if (!recs.length) return out;
+  if (sh.getMaxRows() < ds + recs.length - 1) sh.insertRowsAfter(sh.getMaxRows(), ds + recs.length - 1 - sh.getMaxRows());
+  if (SC.discord) sh.getRange(ds, SC.discord, recs.length, 1).setNumberFormat('@'); // ID exact BEFORE the write
+  sh.getRange(ds, 1, recs.length, W).setValues(recs);
+  if (SC.dob) sh.getRange(ds, SC.dob, recs.length, 1).setNumberFormat('d mmm yyyy');
+  if (SC.join) sh.getRange(ds, SC.join, recs.length, 1).setNumberFormat('d mmm yyyy');
+  if (SC.timestamp) sh.getRange(ds, SC.timestamp, recs.length, 1).setNumberFormat('d mmm yyyy h:mm am/pm');
+  try { if (typeof sortSignups_ === 'function') sortSignups_(sh); } catch (e) { log_('seedDemoSignups_.sort', e); }
+  return out;
 }
 
 /** Menu / command: fill the member-info columns of the rows the operator already set up (see the header note). */
@@ -1420,11 +1557,14 @@ function seedDemoRoster() {
       const leaves = [];
       memberRows.forEach((m, i) => {
         const p = people[i];
-        if (p.leave) leaves.push({ m: { id: p.id, rank: m.rank, name: p.name }, L: p.leave });
-        if (p.pastLeave) leaves.push({ m: { id: p.id, rank: m.rank, name: p.name }, L: { type: p.pastLeave.type, from: p.pastLeave.from, to: p.pastLeave.to, status: 'Expired' } });
+        if (p.open) return;
+        const oi = { unit: String(calls[m.r - start][0] || '').trim(), ooc: demoOocName_(p.name), shift: p.shift }; // from the just-filled roster (skip a rescan per leave)
+        const who = { id: p.id, rank: m.rank, name: p.name };
+        if (p.leave) leaves.push({ m: who, L: p.leave, oi: oi });
+        (p.pastLeaves || []).forEach((pl) => leaves.push({ m: who, L: { type: pl.type, from: pl.from, to: pl.to, status: CONFIG.expiredStatus || 'Expired' }, oi: oi }));
       });
       if (leaves.length && tracker.getMaxRows() < ts + leaves.length - 1) tracker.insertRowsAfter(tracker.getMaxRows(), ts + leaves.length - 1 - tracker.getMaxRows());
-      leaves.forEach((x, i) => demoWriteLeave_(tracker, x.m, x.L, ts + i));
+      leaves.forEach((x, i) => demoWriteLeave_(tracker, x.m, x.L, ts + i, x.oi));
       try { if (typeof sortTracker_ === 'function') sortTracker_(null, tracker); } catch (e) { log_('seedDemoRoster.sortTracker', e); } // group the demo leaves by status too
       leaveCount = leaves.length;
     }
@@ -1464,11 +1604,24 @@ function seedDemoRoster() {
     let promoCount = 0;
     try { promoCount = seedDemoPromotions_(memberRows, people); } catch (e) { log_('seedDemoRoster.promotions', e); }
 
+    // ---- PATROL LOG: valid sessions per member that sum to their current hours (log reconciles to the roster) ----
+    let patrolCount = 0;
+    try { patrolCount = seedDemoPatrolLog_(ss, memberRows, people, calls, start); } catch (e) { log_('seedDemoRoster.patrol', e); }
+
+    // ---- SIGNUPS: every member reflects a processed signup; a few fresh Pending applicants left to review ----
+    let signupInfo = { processed: 0, pending: 0 };
+    try { signupInfo = seedDemoSignups_(ss, memberRows, people); } catch (e) { log_('seedDemoRoster.signups', e); }
+
     try { refreshDashboard_(); } catch (e) { log_('seedDemoRoster.dashboard', e); }
     try { if (typeof cpInvalidateHealth_ === 'function') cpInvalidateHealth_(); } catch (e) { /* Trust.gs may be absent */ }
-    logInfo_('seedDemoRoster', `demo filled ${filledCount}/${total} member rows (${total - filledCount} open); ${leaveCount} leave record(s); ${promoCount} promotion(s); stats ${statsFilled ? 'populated' : 'not found'}.`);
+    logInfo_('seedDemoRoster', `demo filled ${filledCount}/${total} member rows (${total - filledCount} open); ${leaveCount} leave record(s); ${patrolCount} patrol log(s); signups ${signupInfo.processed} processed + ${signupInfo.pending} pending; ${promoCount} promotion(s); stats ${statsFilled ? 'populated' : 'not found'}.`);
     ui.alert('🎬 Demo Roster Loaded',
-      `Filled ${filledCount} of ${total} member rows with names, Discord IDs, join/promotion dates, hours and activity status (${leaveCount} on active or recently-expired leave) — the other ${total - filledCount} are left as open positions. Added 4 weeks of activity-check history${statsFilled ? ', and populated the stats sheet (employee counts + leadership)' : ''}${promoCount ? `, and seeded ${promoCount} recent promotions` : ''}.\n\nYour ranks, callsigns, section dividers, colours and dropdowns were left untouched. Open 🎛️ Control Panel and click a member to see their recent activity checks.`,
+      `Filled ${filledCount} of ${total} member rows with names, Discord IDs, join/promotion dates, hours and activity status — the other ${total - filledCount} are left as open positions.\n\n` +
+      `• LOA/ROA Tracker — ${leaveCount} leave record(s): a few active, plus a deep history of expired leaves.\n` +
+      (patrolCount ? `• Patrol Log — ${patrolCount} session(s); each member's logged hours add up to the hours shown on the roster.\n` : '') +
+      (signupInfo.processed || signupInfo.pending ? `• Roster Signups — ${signupInfo.processed} processed (every member came through a signup) + ${signupInfo.pending} fresh Pending applicant(s) to review.\n` : '') +
+      `• Added 4 weeks of activity-check history${statsFilled ? ', populated the stats sheet (employee counts + leadership)' : ''}${promoCount ? `, and seeded ${promoCount} recent promotions` : ''}.\n\n` +
+      `Your ranks, callsigns, section dividers, colours and dropdowns were left untouched. Open 🎛️ Control Panel ▸ Signups to review the pending applicants.`,
       ui.ButtonSet.OK);
   });
 }
