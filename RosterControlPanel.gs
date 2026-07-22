@@ -2153,7 +2153,7 @@ function setupPublicRoster() {
 /** Menu: the signup review dialog — pick a signup, pick an open slot, approve. Reads/writes only through the ACL-gated admin file. */
 function openSignupsDialog() {
   runAction_('Roster Signups', () => {
-    const html = HtmlService.createHtmlOutputFromFile('Signups').setWidth(900).setHeight(640);
+    const html = HtmlService.createHtmlOutputFromFile('Signups').setWidth(920).setHeight(720);
     SpreadsheetApp.getUi().showModalDialog(html, 'Roster Signups');
   });
 }
@@ -2214,10 +2214,11 @@ function cpSignupList() {
       }
     }
   }
-  if (!file) return { linked: false, ready: false, signups: [], slots: slots };
+  let rankIcons = {}; try { if (typeof rankIconsMap_ === 'function') rankIcons = rankIconsMap_(); } catch (e) { /* icons optional */ }
+  if (!file) return { linked: false, ready: false, signups: [], slots: slots, rankIcons: rankIcons };
   const sh = file.getSheetByName(CONFIG.sheets.signups);
-  if (!sh) return { linked: true, ready: false, signups: [], slots: slots };
-  return { linked: true, ready: true, signups: signupQueue_(sh, 100), slots: slots };
+  if (!sh) return { linked: true, ready: false, signups: [], slots: slots, rankIcons: rankIcons };
+  return { linked: true, ready: true, signups: signupQueue_(sh, 100), slots: slots, rankIcons: rankIcons };
 }
 
 /** Panel endpoint: approve a signup into a chosen open slot (adds the member, copies PII, stamps Processed). */
