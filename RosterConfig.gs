@@ -729,6 +729,7 @@ function validateConfig_(raw) {
       '[SHEETS].AUDIT': c.kv.SHEETS.AUDIT || 'Edit Log', '[SHEETS].HOURS_HISTORY': c.kv.SHEETS.HOURS_HISTORY || '_Hours History',
       '[SHEETS].COVERAGE': c.kv.SHEETS.COVERAGE || 'Leave Coverage', '[SHEETS].INTEGRITY': c.kv.SHEETS.INTEGRITY || 'Integrity Log',
       '[SHEETS].SNAPSHOTS': c.kv.SHEETS.SNAPSHOTS || '_Snapshots', '[SHEETS].PATROL_RESPONSES': c.kv.SHEETS.PATROL_RESPONSES, // '' is skipped below
+      '[SHEETS].PATROL_LOG': c.kv.SHEETS.PATROL_LOG, '[SHEETS].SIGNUPS': c.kv.SHEETS.SIGNUPS || 'Roster Signups', // the manual patrol log + signup feeds each need their OWN tab too ('' skipped)
     };
     const byName = {};
     Object.keys(roles).forEach((role) => {
