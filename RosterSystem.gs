@@ -1195,6 +1195,11 @@ function onEdit(e) {
         try { sortPatrolLog_(sheet); } catch (e2) { log_('onEdit.sortPatrolLog', e2); }
       }
     }
+    // Roster Signups: setting a row's STATUS to Approved on the review tab pops a slot picker + places the applicant on
+    // the roster (sheet-driven approval). LIMITED-safe — every write is in THIS workbook.
+    if (CONFIG.sheets.signups && name === CONFIG.sheets.signups && e.value != null) {
+      if (typeof approveSignupFromSheet_ === 'function') { try { approveSignupFromSheet_(sheet, row, col, e.value, e.oldValue); } catch (e2) { log_('onEdit.approveSignup', e2); } }
+    }
     // F-003: refreshing the WHOLE workbook on every keystroke is the biggest recurring cost. Short-circuit:
     //  • roster/tracker edits change the numbers → full refresh (all tag/KPI locations may need updating).
     //  • any other tab → only when THIS edit could touch a #stat tag (new value is a tag, or the cell was a managed

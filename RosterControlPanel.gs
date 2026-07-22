@@ -1494,6 +1494,7 @@ function approveSignup_(signups, row, roster, slotRow) {
   cpAssignMember_(roster, { row: slotRow, name: name, discord: id }); // reuses the panel's slot guard + validation
   const RC = rosterCols_(roster);
   if (RC.ooc && g(SC.ooc)) roster.getRange(slotRow, RC.ooc).setValue(g(SC.ooc));
+  if (RC.join && SC.join) { const jr = signups.getRange(row, SC.join).getValue(); if (jr !== '' && jr != null) roster.getRange(slotRow, RC.join).setValue(jr); } // department join date carries onto the roster
 
   // Private details go straight onto the member's own roster row — this workbook IS the internal roster.
   let piiWritten = 0;
@@ -1504,6 +1505,73 @@ function approveSignup_(signups, row, roster, slotRow) {
   } catch (e) { log_('approveSignup_.pii', e); } // the roster write already succeeded — never fail an approval over the PII copy
   signups.getRange(row, SC.status).setValue(SIGNUP_STATUSES_[2]); // Processed — LAST, so a failure above leaves it actionable
   return { ok: true, name: name, discord: id, slotRow: slotRow, piiWritten: piiWritten };
+}
+
+/** Open member slots on the roster (a member-rank row with no NAME yet), in sheet order. */
+function rosterOpenSlots_(roster) {
+  const out = [];
+  try {
+    const RC = rosterCols_(roster), start = CONFIG.rosterStartRow, last = roster.getLastRow();
+    if (last < start) return out;
+    const n = last - start + 1;
+    const ranks = roster.getRange(start, RC.rank, n, 1).getDisplayValues();
+    const names = roster.getRange(start, RC.name, n, 1).getDisplayValues();
+    const units = RC.unit ? roster.getRange(start, RC.unit, n, 1).getDisplayValues() : null;
+    for (let i = 0; i < n; i++) {
+      const rank = String(ranks[i][0]).trim();
+      if (!isMemberSlot_(rank) || rank === '' || rank === 'Rank') continue;
+      if (String(names[i][0]).trim() !== '') continue; // filled → not open
+      out.push({ row: start + i, rank: rank, unit: units ? String(units[i][0]).trim() : '' });
+    }
+  } catch (e) { log_('rosterOpenSlots_', e); }
+  return out;
+}
+
+/**
+ * Sheet-driven approval: setting a signup row's STATUS to Approved pops a slot picker, places the applicant on the
+ * roster, copies their private details, and stamps the signup Processed. Cancelling or any failure resets STATUS to
+ * Pending so it can be retried. Runs from the SIMPLE onEdit (AuthMode.LIMITED) — every write is in THIS workbook, so
+ * it's allowed; a rich picker isn't (no HTML dialog from a simple trigger), hence the prompt.
+ */
+function approveSignupFromSheet_(signups, row, col, newVal, oldVal) {
+  const SC = signupCols_(signups);
+  if (!SC.status || col !== SC.status || row < SC.dataStart) return;
+  if (!/^APPROV/.test(norm_(String(newVal || '')))) return;   // only a change TO Approve/Approved triggers
+  if (/^APPROV/.test(norm_(String(oldVal || '')))) return;    // already approved → don't re-fire
+  const ui = SpreadsheetApp.getUi();
+  const toPending = () => { try { signups.getRange(row, SC.status).setValue(SIGNUP_STATUSES_[0]); } catch (ig) {} };
+  try {
+    const g = (c) => c ? String(signups.getRange(row, c).getDisplayValue()).trim() : '';
+    const name = g(SC.name), id = g(SC.discord);
+    if (!name && !id) { toPending(); return; } // blank/scaffolding row
+    const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+    if (!roster) { ui.alert('🧾 Approve Signup', `Roster tab "${CONFIG.sheets.roster}" not found.`, ui.ButtonSet.OK); toPending(); return; }
+    if (id && cpFindRowById_(roster, id) !== -1) { ui.alert('🧾 Approve Signup', `${name || id} is already on the roster — nothing to place.`, ui.ButtonSet.OK); toPending(); return; }
+    const slots = rosterOpenSlots_(roster);
+    if (!slots.length) { ui.alert('🧾 Approve Signup', 'No open roster slots to place them in. Free up a slot, then set STATUS to Approved again.', ui.ButtonSet.OK); toPending(); return; }
+    const listed = slots.slice(0, 30);
+    const lines = listed.map((s, i) => `${i + 1}.  ${s.unit ? s.unit + ' — ' : ''}${s.rank}`).join('\n');
+    const res = ui.prompt(`🧾 Approve ${name || id}`,
+      `Place them in which OPEN slot? Enter the number, a callsign, or a rank:\n\n${lines}${slots.length > listed.length ? `\n…and ${slots.length - listed.length} more (type its callsign)` : ''}`,
+      ui.ButtonSet.OK_CANCEL);
+    if (res.getSelectedButton() !== ui.Button.OK) { toPending(); return; }
+    const answer = String(res.getResponseText() || '').trim();
+    let slot = null;
+    const num = parseInt(answer, 10);
+    if (String(num) === answer && num >= 1 && num <= listed.length) slot = listed[num - 1];        // list number
+    if (!slot) slot = slots.find((s) => s.unit && norm_(s.unit) === norm_(answer));                // exact callsign
+    if (!slot) slot = slots.find((s) => norm_(s.rank) === norm_(answer));                          // exact rank
+    if (!slot && norm_(answer)) slot = slots.find((s) => norm_(s.rank).indexOf(norm_(answer)) !== -1); // rank contains
+    if (!slot) { ui.alert('🧾 Approve Signup', `Couldn't match "${answer}" to an open slot — nothing changed.`, ui.ButtonSet.OK); toPending(); return; }
+    const result = approveSignup_(signups, row, roster, slot.row); // assigns + copies PII + stamps Processed
+    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
+    try { if (typeof deferWork_ === 'function') { deferWork_('academy'); deferWork_('groups'); } } catch (ig) {} // rebuild derived tabs on the sweep
+    ui.alert('✅ Signup Approved', `${result.name} placed at ${slot.rank}${slot.unit ? ' (' + slot.unit + ')' : ''}.\nPrivate details copied to the roster. Signup marked Processed.`, ui.ButtonSet.OK);
+  } catch (e) {
+    log_('approveSignupFromSheet_', e);
+    try { ui.alert('🧾 Approve Signup', 'Could not approve: ' + ((e && e.message) || e) + '\n\nSTATUS reset to Pending — fix the issue and try again.', ui.ButtonSet.OK); } catch (ig) {}
+    toPending();
+  }
 }
 
 /* -------------------------------------------------------------------------
