@@ -549,21 +549,21 @@ function buildGroupSheets_() {
     for (let c = 0; c < rHdrUp.length; c++) { if (rHdrUp[c] && rHdrUp[c].indexOf(key) !== -1) return c + 1; }
     return 0;
   };
-  // The member block the FILTER pulls = every roster column from RANK to the last (skips the merged RANK GROUP band).
+  // Punctuation-tolerant match for the pulled block: a tab's "JUN. HOURS" must still find the roster's "JUN HOURS".
+  const hnorm = (h) => String(h == null ? '' : h).toUpperCase().replace(/[^A-Z0-9]+/g, ' ').trim();
+  const rHdrN = rHdrUp.map(hnorm);
+  const colForTab = (label) => {
+    const key = hnorm(label);
+    if (!key) return 0;
+    for (let c = 0; c < rHdrN.length; c++) { if (rHdrN[c] === key) return c + 1; }             // exact (normalized) wins
+    for (let c = 0; c < rHdrN.length; c++) { if (rHdrN[c] && rHdrN[c].indexOf(key) !== -1) return c + 1; } // then contains
+    return 0;
+  };
   const firstCol = RC.rank;
   const rosterWidth = lastCol - firstCol + 1;
   // Roster checkbox columns can't be REAL checkboxes in a live FILTER (the rule occupies the array's cells → #REF!), so
-  // mirror the roster's look with a filled box ☑ (checked) / empty box ☐ (unchecked) inside the block. No checkbox
-  // columns → keep the simple contiguous range.
+  // the per-tab block below mirrors them with a filled box ☑ (checked) / empty box ☐ (unchecked) instead.
   const cbSet = {}; checkboxOffsets_(roster, start, firstCol, rosterWidth).forEach((off) => { cbSet[firstCol + off] = true; });
-  let block;
-  if (!Object.keys(cbSet).length) {
-    block = rName + '!' + L(firstCol) + start + ':' + L(lastCol);
-  } else {
-    const parts = [];
-    for (let c = firstCol; c <= lastCol; c++) { const r = rName + '!' + L(c) + start + ':' + L(c); parts.push(cbSet[c] ? ('IF(' + r + ',"☑","☐")') : r); }
-    block = '{' + parts.join(',') + '}';
-  }
   const nameRange = rName + '!' + L(RC.name) + start + ':' + L(RC.name);
   // The roster's RANK GROUP column (merged bands) — header "RANK … GROUP", else the column just left of RANK.
   let rosterBandCol = 0;
@@ -596,8 +596,22 @@ function buildGroupSheets_() {
     if (!rankTabCol) rankTabCol = 1;
     if (!gCol) { skipped.push({ name: nm, why: 'couldn\'t match "' + (marker ? marker.raw : nm) + '" to a roster column' }); return; }
     const dataRow = hdr.row + headerToData; // skip the same divider gap the roster leaves below its header (member rows start there)
-    const fillW = Math.min(rosterWidth, sh.getMaxColumns() - rankTabCol + 1);
+    // Map THIS tab's headers (from its RANK column rightward) to roster columns, so each value lands under the matching
+    // header even when the tab OMITS columns (e.g. EMAIL/DOB) or REORDERS them (MAY before JUN). A header matching no
+    // roster column becomes a blank column, keeping everything after it aligned. Replaces the old contiguous mirror,
+    // which shifted every value right once the roster carried columns the tab doesn't show.
+    let tabLastCol = rankTabCol;
+    for (let i = hdr.headers.length - 1; i >= rankTabCol - 1; i--) { if (String(hdr.headers[i] || '').trim() !== '') { tabLastCol = i + 1; break; } }
+    const fillW = Math.min(tabLastCol - rankTabCol + 1, sh.getMaxColumns() - rankTabCol + 1);
     if (fillW <= 0) { skipped.push({ name: nm, why: 'not enough columns to the right of RANK' }); return; }
+    const blockParts = [];
+    for (let tc = rankTabCol; tc < rankTabCol + fillW; tc++) {
+      const rc = colForTab(hdr.headers[tc - 1] || '');
+      if (!rc) { blockParts.push('IF(' + firstColRange + '="","","")'); continue; } // header maps to no roster column → blank, aligned
+      const rgc = rName + '!' + L(rc) + start + ':' + L(rc);
+      blockParts.push(cbSet[rc] ? ('IF(' + rgc + ',"☑","☐")') : rgc);
+    }
+    const block = '{' + blockParts.join(',') + '}';
     // Find the tab's RANK GROUP column. Its "RANK GROUP" label is usually merged across the banner+label rows, so its
     // value only sits in the top row — scan both rows, and fall back to the column just left of RANK (mirrors the roster).
     const topHdr = hdr.row > 1 ? sh.getRange(hdr.row - 1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map((x) => String(x).toUpperCase()) : [];
@@ -623,7 +637,7 @@ function buildGroupSheets_() {
     bands.forEach((tb) => {
       const rb = rosterRanges[tb.label];
       if (!rb) return; // a tab band whose label isn't one of the roster's rank groups — leave it blank
-      const f = '=IFERROR(ARRAY_CONSTRAIN(FILTER(' + block + ',' + shiftOR + ',' + nameRange + '<>"",ROW(' + firstColRange + ')>=' + rb.top + ',ROW(' + firstColRange + ')<=' + rb.bottom + '),' + tb.height + ',' + rosterWidth + '),"")';
+      const f = '=IFERROR(ARRAY_CONSTRAIN(FILTER(' + block + ',' + shiftOR + ',' + nameRange + '<>"",ROW(' + firstColRange + ')>=' + rb.top + ',ROW(' + firstColRange + ')<=' + rb.bottom + '),' + tb.height + ',' + fillW + '),"")';
       sh.getRange(tb.top, rankTabCol).setFormula(f);
       placed++;
     });
