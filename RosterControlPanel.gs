@@ -723,15 +723,34 @@ function cpSetStatusBulk_(roster, rows, status, ids) {
   if (!Array.isArray(rows) || !rows.length) throw new Error('No members selected.');
   const RC = rosterCols_(roster);
   const idArr = Array.isArray(ids) ? ids : [];
-  const changed = [];
+  // One read per column + ONE write for the whole selection, instead of ~5 round-trips per member — a bulk action
+  // holds the script lock, so every saved call shortens the window in which other panel writes time out on it.
+  // The per-row semantics are unchanged: identity-verified when the client sent IDs (relocate a shifted member,
+  // skip a vanished one — F-027), slot-validated always, failures logged and skipped.
+  const start = CONFIG.rosterStartRow, last = roster.getLastRow();
+  const n = Math.max(0, last - start + 1);
+  const idCol = n ? roster.getRange(start, RC.discord, n, 1).getDisplayValues() : [];
+  const rankCol = n ? roster.getRange(start, RC.rank, n, 1).getDisplayValues() : [];
+  const nameCol = n ? roster.getRange(start, RC.name, n, 1).getDisplayValues() : [];
+  const at = (col, r) => (r >= start && r < start + n) ? String(col[r - start][0]).trim() : '';
+  const isSlot = (r) => { const k = at(rankCol, r); return isMemberSlot_(k) && k !== '' && k !== 'Rank'; };
+  const colA1 = (c) => { let s = ''; while (c > 0) { s = String.fromCharCode(65 + ((c - 1) % 26)) + s; c = Math.floor((c - 1) / 26); } return s; };
+  const changed = [], cells = [];
   rows.forEach((r, i) => {
     try {
-      const vr = cpResolveMemberRow_(roster, Number(r), idArr[i]); // identity-verified when the client supplies IDs
-      const before = String(roster.getRange(vr, RC.name).getDisplayValue()).trim();
-      roster.getRange(vr, RC.activity).setValue(status);
-      changed.push(before || `row ${vr}`);
+      const want = String(idArr[i] == null ? '' : idArr[i]).trim();
+      let vr = Number(r);
+      if (want !== '' && at(idCol, vr) !== want) { // identity moved → relocate by ID (the sheet is the source of truth)
+        vr = -1;
+        for (let k = 0; k < n; k++) { if (String(idCol[k][0]).trim() === want) { vr = start + k; break; } }
+        if (vr === -1) throw new Error('That member has moved or been removed since the panel loaded.');
+      }
+      if (!isSlot(vr)) throw new Error(`Row ${vr} is not a member slot.`);
+      cells.push(colA1(RC.activity) + vr);
+      changed.push(at(nameCol, vr) || `row ${vr}`);
     } catch (e) { log_('cpSetStatusBulk_', e); }
   });
+  if (cells.length) roster.getRangeList(cells).setValue(status);
   return { count: changed.length, status, members: changed };
 }
 
@@ -1358,6 +1377,17 @@ function syncSignupForm_(formSheet, signupSheet) {
     const backgrounds = range.getBackgrounds();
     const doneBg = String(CONFIG.bg.done).toLowerCase();
     const roles = ['name', 'ooc', 'discord', 'email', 'dob', 'phone', 'join'];
+    // Free rows are computed ONCE. Calling signupFirstFreeRow_ inside the loop re-read the whole review tab per
+    // added submission (O(n²) on a backfill). Same rule it applies: identity-free rows first, then append past the end.
+    const freeRows = [];
+    let nextAppend = Math.max(signupSheet.getLastRow() + 1, sSC.dataStart);
+    if (signupSheet.getLastRow() >= sSC.dataStart) {
+      const blk = signupSheet.getRange(sSC.dataStart, 1, signupSheet.getLastRow() - sSC.dataStart + 1, sSC.width).getDisplayValues();
+      for (let r = 0; r < blk.length; r++) {
+        const occupied = (sSC.name && String(blk[r][sSC.name - 1] || '').trim()) || (sSC.discord && String(blk[r][sSC.discord - 1] || '').trim());
+        if (!occupied) freeRows.push(sSC.dataStart + r);
+      }
+    }
     for (let i = 0; i < values.length; i++) {
       const frow = values[i];
       // Skip rows with no applicant identity — an empty row read past the real submissions (formatting/validation can
@@ -1370,7 +1400,7 @@ function syncSignupForm_(formSheet, signupSheet) {
       const rowVals = new Array(sSC.width).fill('');
       roles.forEach((role) => { if (fSC[role] && sSC[role]) rowVals[sSC[role] - 1] = frow[fSC[role] - 1]; });
       rowVals[sSC.status - 1] = SIGNUP_STATUSES_[0];         // new submission → Pending
-      const at = signupFirstFreeRow_(signupSheet, sSC);
+      const at = freeRows.length ? freeRows.shift() : nextAppend++;
       if (at > signupSheet.getMaxRows()) signupSheet.insertRowsAfter(signupSheet.getMaxRows(), at - signupSheet.getMaxRows());
       writeValuesSafe_(signupSheet, at, 1, [rowVals], null); // merge-safe row write
       signupSheet.getRange(at, sSC.discord).setNumberFormat('@'); // keep the Unique ID exact
@@ -1568,10 +1598,17 @@ function approveSignupFromSheet_(signups, row, col, newVal, oldVal) {
   if (!/^APPROV/.test(norm_(String(newVal || '')))) return;   // only a change TO Approve/Approved triggers
   if (/^APPROV/.test(norm_(String(oldVal || '')))) return;    // already approved → don't re-fire
   const ui = SpreadsheetApp.getUi();
-  const toPending = () => { try { signups.getRange(row, SC.status).setValue(SIGNUP_STATUSES_[0]); } catch (ig) {} };
+  let idSeen = ''; // set once the row is read — lets the reset follow the applicant if the tab re-sorted meanwhile
+  const toPending = () => {
+    try {
+      let rr = row; try { rr = signupResolveRow_(signups, row, idSeen); } catch (e2) { rr = row; }
+      signups.getRange(rr, SC.status).setValue(SIGNUP_STATUSES_[0]);
+    } catch (ig) {}
+  };
   try {
     const g = (c) => c ? String(signups.getRange(row, c).getDisplayValue()).trim() : '';
     const name = g(SC.name), id = g(SC.discord);
+    idSeen = id;
     if (!name && !id) { toPending(); return; } // blank/scaffolding row
     const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
     if (!roster) { ui.alert('🧾 Approve Signup', `Roster tab "${CONFIG.sheets.roster}" not found.`, ui.ButtonSet.OK); toPending(); return; }
@@ -1592,7 +1629,8 @@ function approveSignupFromSheet_(signups, row, col, newVal, oldVal) {
     if (!slot) slot = slots.find((s) => norm_(s.rank) === norm_(answer));                          // exact rank
     if (!slot && norm_(answer)) slot = slots.find((s) => norm_(s.rank).indexOf(norm_(answer)) !== -1); // rank contains
     if (!slot) { ui.alert('🧾 Approve Signup', `Couldn't match "${answer}" to an open slot — nothing changed.`, ui.ButtonSet.OK); toPending(); return; }
-    const result = approveSignup_(signups, row, roster, slot.row); // assigns + copies PII + stamps Processed
+    const rowNow = signupResolveRow_(signups, row, id); // the prompt can sit open for minutes while a form sync re-sorts the tab
+    const result = approveSignup_(signups, rowNow, roster, slot.row); // assigns + copies PII + stamps Processed
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
     try { if (typeof deferWork_ === 'function') { deferWork_('academy'); deferWork_('groups'); } } catch (ig) {} // rebuild derived tabs on the sweep
     ui.alert('✅ Signup Approved', `${result.name} placed at ${slot.rank}${slot.unit ? ' (' + slot.unit + ')' : ''}.\nPrivate details copied to the roster. Signup marked Processed.`, ui.ButtonSet.OK);
@@ -1710,14 +1748,18 @@ function publishFreeSpills_(dest) {
   if (rows < 1 || cols < 1) return 0;
   let f;
   try { f = dest.getRange(1, 1, rows, cols).getFormulas(); } catch (e) { return 0; }
+  // Only a CROSS-SHEET ARRAY formula is a spill anchor (the same test publishSelfComputing_ uses to flag the tab).
+  // Anchoring on EVERY formula made a plain =TODAY() clock claim the rest of its block and wipe the operator's
+  // static text beside/below it on every publish.
+  const isSpillAnchor = (fx) => (/'[^']+'!|[A-Za-z0-9_]+![A-Z$]/.test(fx)) && /ARRAYFORMULA|ARRAY_CONSTRAIN|FILTER\s*\(|QUERY\s*\(|SORTN?\s*\(|IMPORTRANGE|SEQUENCE\s*\(/i.test(fx);
   const anchors = [];
-  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (String(f[r][c] == null ? '' : f[r][c]).trim() !== '') anchors.push({ r: r, c: c });
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (isSpillAnchor(String(f[r][c] == null ? '' : f[r][c]))) anchors.push({ r: r, c: c });
   if (!anchors.length) return 0;
 
   const drop = []; // 0-based cells that are residue: inside an anchor's block, not a formula themselves
   anchors.forEach((a) => {
-    let end = rows - 1;
-    anchors.forEach((b) => { if (b.c === a.c && b.r > a.r && b.r - 1 < end) end = b.r - 1; });
+    let end = rows - 1; // the block still ends at the next formula of ANY kind in the same column (as before)
+    for (let r = a.r + 1; r <= end; r++) { if (String(f[r][a.c] == null ? '' : f[r][a.c]).trim() !== '') { end = r - 1; break; } }
     for (let r = a.r; r <= end; r++) {
       for (let c = a.c; c < cols; c++) {
         if (r === a.r && c === a.c) continue;                                   // the anchor stays
@@ -1773,7 +1815,7 @@ function publishKeepRanges_() {
   // BUILT-IN: the title blocks that are meant to read differently in the two files. These are applied even when the
   // operator's Config tab already carries a KEEP_RANGES row (a stored row overrides the schema default, so relying on
   // the default alone silently did nothing). Config entries ADD to these rather than replacing them.
-  ['Welcome Page!F6:W7', 'Member Information!D3:H3'].forEach(add);
+  ['Welcome Page!F6:W7', (CONFIG.sheets.roster || 'Member Information') + '!D3:H3'].forEach(add); // roster tab name follows the [SHEETS] rename
   try { (cfg_().kv.PUBLISH.KEEP_RANGES || []).forEach(add); } catch (e) { /* config absent -> built-ins only */ }
   return out;
 }
@@ -1880,13 +1922,19 @@ function publishMirrorTab_(src, dest) {
   if (src.getMaxColumns() === dest.getMaxColumns()) {
     if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
     const vals = step('read src ' + sRows + 'x' + sCols, () => publishReadCells_(src.getRange(1, 1, sRows, sCols)));
+    // NEVER transmit a sensitive column: blank it in the outgoing block BEFORE the write. Writing first and wiping
+    // after left every member's Email/DOB/Phone live on the public file between the two calls — and permanently so
+    // if the execution died in that window.
+    const sens = [];
+    if (sh) {
+      src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => { if (publishSensitiveHeader_(h)) sens.push(i); });
+      sens.forEach((i) => { for (let r = sh; r < vals.length; r++) vals[r][i] = ''; });
+    }
     const keep = publishKeepMask_(dest, 1, 1, sRows, sCols);
     const bad = step('write dest ' + sRows + 'x' + sCols, () => writeValuesSafe_(dest, 1, 1, vals, keep));
     if (bad) logWarn_('publishMirrorTab_', dest.getName() + ': ' + bad + ' cell(s) could not be written (in-cell image or chip).');
-    if (sh && sRows > sh) { // still wipe anything sensitive the copy brought along
-      src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => {
-        if (publishSensitiveHeader_(h)) dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent();
-      });
+    if (sh && sRows > sh) { // and scrub any residue the original manual tab copy brought along (cells the masked write skipped)
+      sens.forEach((i) => dest.getRange(sh + 1, i + 1, sRows - sh, 1).clearContent());
     }
     // Carry NUMBER FORMATS too. Values alone are not enough: a date/time written onto a public row past whatever the
     // tab copy happened to be formatted down to renders as a raw serial (46212) instead of "19 Jul. 2026".
@@ -2004,8 +2052,10 @@ function publishPublicRosterQuiet_(onlyTab) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return; // another publish is already running — it will carry this change
   try {
-    props.deleteProperty(PUBLISH_DIRTY_PROP_); // BEFORE publishing: a concurrent edit re-sets it, so nothing is lost
-    _pubDirtyMemo_ = false;                    // the flag is gone — a later mark in THIS execution must write it again
+    if (!onlyTab) {                              // only a FULL pass may clear the GLOBAL flag. Script writes (patrol
+      props.deleteProperty(PUBLISH_DIRTY_PROP_); // credit, panel actions) rely on the sweep's full publish, and a
+      _pubDirtyMemo_ = false;                    // single-tab publish doesn't carry them — clearing here dropped them.
+    }                                            // Cleared BEFORE publishing so a concurrent edit re-marks itself.
     publishPublicRoster_(onlyTab);
     props.setProperty(PUBLISH_LAST_PROP_, String(Date.now()));
   } catch (e) { log_('publishPublicRosterQuiet_', e); }
@@ -2015,7 +2065,7 @@ function publishPublicRosterQuiet_(onlyTab) {
 /** Installable onEdit + onChange handler: republish the public copy promptly, rate-limited against edit bursts. */
 function publishOnChange(e) {
   try {
-    if (!publicFile_()) return; // no public roster linked → nothing to do
+    if (!String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_) || '').trim()) return; // not linked → nothing to do (a property read, NOT openById — this fires on every keystroke, twice)
     // ANY edit anywhere counts (every public tab is mirrored), but only the EDITED tab is republished — re-mirroring
     // all four tabs on every keystroke is the "rebuild everything" trap and would blow the onEdit budget. Structural
     // changes (onChange, no range) and script writes fall back to the full pass via the sweep.
@@ -2058,7 +2108,7 @@ function publishSweep() {
     // edits costs ONE rebuild rather than one per keystroke.
     try { if (typeof runDeferredWork_ === 'function') runDeferredWork_(); } catch (e) { log_('publishSweep.deferred', e); }
     if (PropertiesService.getDocumentProperties().getProperty(PUBLISH_DIRTY_PROP_) !== '1') return;
-    if (!publicFile_()) return;
+    if (!String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_) || '').trim()) return; // linkage check without openById — the publish itself opens the file
     publishPublicRosterQuiet_();
   } catch (e) { log_('publishSweep', e); }
 }
@@ -2097,8 +2147,14 @@ function publishPublicRoster() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) return false;
   try {
+    const props = PropertiesService.getDocumentProperties();
+    const linked = !!String(props.getProperty(PUBLIC_FILE_PROP_) || '').trim();
+    if (linked) { props.deleteProperty(PUBLISH_DIRTY_PROP_); _pubDirtyMemo_ = false; } // this IS the full pass — clear first so an edit mid-publish re-marks
     const res = publishPublicRoster_();
-    if (res.linked) logInfo_('publishPublicRoster', `published ${res.roster} roster row(s), ${res.tracker} tracker row(s).`);
+    if (res.linked) {
+      props.setProperty(PUBLISH_LAST_PROP_, String(Date.now())); // the sweep + burst guard see this pass, no redundant follow-up
+      logInfo_('publishPublicRoster', `published ${res.rows} row(s) across ${res.tabs.length} tab(s).`);
+    }
     return res;
   } finally { lock.releaseLock(); }
 }
@@ -2219,6 +2275,32 @@ function cpSignupList() {
   return { linked: true, ready: true, signups: signupQueue_(sh, 100), slots: slots, rankIcons: rankIcons };
 }
 
+/**
+ * Resolve the signup row an approval must target. Signup rows SHIFT under an open panel: a form submission's
+ * installable sync re-sorts the review tab (Pending → Approved → Processed), so the row number the client saw can
+ * hold a DIFFERENT applicant by the time the admin clicks. Same TOCTOU defence as cpResolveMemberRow_ (F-002/F-027):
+ *   • ID still at that row → use it  • ID moved → relocate by ID  • ID gone → throw  • no ID (legacy) → row as-is.
+ * Must be called INSIDE the script lock so the resolved row can't shift again before the write.
+ */
+function signupResolveRow_(signups, row, expectedId) {
+  const want = String(expectedId == null ? '' : expectedId).trim();
+  const r = Number(row);
+  if (want === '') return r; // legacy payload — no identity to verify
+  const SC = signupCols_(signups);
+  if (SC.discord) {
+    const last = signups.getLastRow();
+    if (r >= SC.dataStart && r <= last) {
+      const here = String(signups.getRange(r, SC.discord).getDisplayValue()).trim();
+      if (here === want) return r;
+    }
+    if (last >= SC.dataStart) {
+      const ids = signups.getRange(SC.dataStart, SC.discord, last - SC.dataStart + 1, 1).getDisplayValues();
+      for (let i = 0; i < ids.length; i++) { if (String(ids[i][0]).trim() === want) return SC.dataStart + i; }
+    }
+  }
+  throw new Error('That signup has moved or changed since the panel loaded — refresh and try again.');
+}
+
 /** Panel endpoint: approve a signup into a chosen open slot (adds the member, copies PII, stamps Processed). */
 function cpSignupApprove(payload) {
   const file = adminFile_();
@@ -2233,7 +2315,8 @@ function cpSignupApprove(payload) {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw new Error('Another roster operation is running — try again in a moment.');
   try {
-    const res = approveSignup_(sh, row, roster, slotRow);
+    const vr = signupResolveRow_(sh, row, String((payload && payload.id) || '')); // the queue re-sorts under an open panel — verify identity first
+    const res = approveSignup_(sh, vr, roster, slotRow);
     try { sortSignups_(sh); } catch (e) { log_('cpSignupApprove.sort', e); }
     try { cpAudit_('signup-approved', '', res.name, `row ${slotRow}`, res.name); } catch (e) { /* audit is best-effort */ }
     return res;
@@ -2313,7 +2396,11 @@ function cpAddDiscipline(payload) {
   const t = adminTabs_(file);
   let issuedBy = '';
   try { issuedBy = Session.getActiveUser().getEmail() || ''; } catch (e) { /* consumer-Gmail may hide it */ }
-  cpAppendDiscipline_(t.log, Object.assign({}, payload, { issuedBy: issuedBy }));
+  const lock = LockService.getScriptLock(); // two panels appending concurrently compute the same last-row and silently overwrite each other
+  if (!lock.tryLock(10000)) throw new Error('Another roster operation is running — try again in a moment.');
+  try {
+    cpAppendDiscipline_(t.log, Object.assign({}, payload, { issuedBy: issuedBy }));
+  } finally { lock.releaseLock(); }
   return cpAdminInfo(String((payload && payload.discordId) || ''));
 }
 

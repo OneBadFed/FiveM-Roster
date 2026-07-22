@@ -1341,11 +1341,12 @@
   function suApprove(){
     if(SU.slot==null){ toast('Pick an open slot first.','err'); suOpenMenu(true); return; }
     if(SU.cur==null){ toast('Pick an applicant first.','err'); return; }
+    var app=null; for(var ai=0;ai<SU.signups.length;ai++){ if(SU.signups[ai].row===SU.cur){ app=SU.signups[ai]; break; } }
     var btn=$('suSeat'); if(btn){ btn.disabled=true; btn.textContent='Seating…'; }
     api(function(r){
       toast('✅ '+(r.name||'Applicant')+' seated'+(r.piiWritten?(' · '+r.piiWritten+' private field'+(r.piiWritten===1?'':'s')+' copied'):'')+'.','ok');
       SU.slot=null; refresh(); loadSignups(true);
-    }, function(e){ if(btn){ btn.disabled=false; btn.textContent='Approve & seat on roster'; } onError(e); }, 'cpSignupApprove', {row:SU.cur, slotRow:SU.slot});
+    }, function(e){ if(btn){ btn.disabled=false; btn.textContent='Approve & seat on roster'; } onError(e); }, 'cpSignupApprove', {row:SU.cur, slotRow:SU.slot, id:(app&&app.discord)||''});
   }
   function loadSignups(force){
     if(SU.loaded && !force){ renderSignups(); return; }

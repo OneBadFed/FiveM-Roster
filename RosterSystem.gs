@@ -910,16 +910,28 @@ function renderPromotionsOnSheet_(sheet, list) {
   return true;
 }
 
-/** Live wrapper: refill the promotions table on every visible, dashboard-eligible tab. @return {number} tables found. */
-function renderPromotions_() {
-  let list; try { list = JSON.parse(PropertiesService.getDocumentProperties().getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
+/** Live wrapper: refill the promotions table on every tab that carries one. @return {number} tables found.
+ *  PERF (same convention as DASH_TABS_PROP_): the tabs that actually contain a RECENT PROMOTIONS table are remembered
+ *  in a document property, because this runs from promoRecord_ INSIDE the LIMITED onEdit transfer window — and the
+ *  discovery scan reads every visible tab's ENTIRE grid. Pass fullScan=true (the menu Refresh / demo do) to rediscover;
+ *  an unknown state (no property yet) always falls back to the classic full scan. */
+const PROMO_TABS_PROP_ = 'RE_PROMO_TABS';
+function renderPromotions_(fullScan) {
+  const P = PropertiesService.getDocumentProperties();
+  let list; try { list = JSON.parse(P.getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
   if (!Array.isArray(list)) list = [];
-  let found = 0;
-  SpreadsheetApp.getActive().getSheets().forEach((sh) => {
-    if (sh.isSheetHidden() || dashboardSkip_(sh.getName())) return;
-    try { if (renderPromotionsOnSheet_(sh, list)) found++; } catch (e) { logWarn_('renderPromotions_', String((e && e.message) || e)); }
+  let known = null;
+  if (!fullScan) { try { const v = JSON.parse(P.getProperty(PROMO_TABS_PROP_) || 'null'); known = Array.isArray(v) ? v : null; } catch (e) { known = null; } }
+  const ss = SpreadsheetApp.getActive();
+  const sheets = (known == null)
+    ? ss.getSheets().filter((sh) => !sh.isSheetHidden() && !dashboardSkip_(sh.getName()))
+    : known.map((n) => ss.getSheetByName(n)).filter(Boolean);
+  const hits = [];
+  sheets.forEach((sh) => {
+    try { if (renderPromotionsOnSheet_(sh, list)) hits.push(sh.getName()); } catch (e) { logWarn_('renderPromotions_', String((e && e.message) || e)); }
   });
-  return found;
+  if (known == null || hits.length !== known.length) { try { P.setProperty(PROMO_TABS_PROP_, JSON.stringify(hits)); } catch (e) { /* best-effort */ } }
+  return hits.length;
 }
 
 /**
@@ -1036,7 +1048,7 @@ function refreshDashboard() {
     // 4) Repaint the dashboard (#tags), the promotions feed and the patrol leaderboard.
     let cells = 0;
     try { cells = refreshDashboard_(true); } catch (e) { log_('refreshDashboard.dash', e); }
-    try { renderPromotions_(); } catch (e) { log_('refreshDashboard.promos', e); }
+    try { renderPromotions_(true); } catch (e) { log_('refreshDashboard.promos', e); } // full rescan — rediscovers newly-added promo tables
     try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e) { log_('refreshDashboard.groups', e); } // refresh any #group division tabs
     try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('refreshDashboard.academy', e); } // sync the editable Police Academy tab(s)
 
@@ -1157,9 +1169,17 @@ function onEdit(e) {
       const c2 = (e.range && e.range.getLastColumn) ? e.range.getLastColumn() : col;
       if (TRC.discord && col <= TRC.discord && c2 >= TRC.discord) {
         const rLast = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
-        for (let rr = Math.max(row, CONFIG.trackerStartRow); rr <= rLast; rr++) {
-          const idv = String(sheet.getRange(rr, TRC.discord).getDisplayValue()).trim();
-          if (isValidId_(idv)) autoFillTrackerRow_(sheet, rr, TRC, idv);
+        const r0 = Math.max(row, CONFIG.trackerStartRow);
+        if (rLast >= r0) {
+          // Batch the ID reads + ONE roster snapshot for the whole paste. Per-row autofill re-read the entire roster
+          // per pasted ID, which could blow the ~30s LIMITED budget on a bulk import and leave later rows half-initialised.
+          const pasted = sheet.getRange(r0, TRC.discord, rLast - r0 + 1, 1).getDisplayValues();
+          let fIdx = null;
+          try { const rSh = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster); if (rSh) fIdx = patrolRosterIndex_(rSh); } catch (e2) { /* fall back to per-row lookups */ }
+          for (let rr = r0; rr <= rLast; rr++) {
+            const idv = String(pasted[rr - r0][0]).trim();
+            if (isValidId_(idv)) autoFillTrackerRow_(sheet, rr, TRC, idv, fIdx);
+          }
         }
       }
       // A STATUS change — or DELETING a leave — re-groups + compacts the tracker so the survivors slide up to the
@@ -1191,7 +1211,8 @@ function onEdit(e) {
       const rosterSheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
       if (rosterSheet && PC.status) {
         const rLast = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
-        for (let rr = Math.max(row, CONFIG.patrolStartRow); rr <= rLast; rr++) { try { processPatrolLog_(sheet, rr, PC, rosterSheet); } catch (e2) { log_('onEdit.processPatrol', e2); } }
+        const pIdx = patrolRosterIndex_(rosterSheet); // one roster snapshot for the whole edited span (was one per row)
+        for (let rr = Math.max(row, CONFIG.patrolStartRow); rr <= rLast; rr++) { try { processPatrolLog_(sheet, rr, PC, rosterSheet, pIdx); } catch (e2) { log_('onEdit.processPatrol', e2); } }
         try { sortPatrolLog_(sheet); } catch (e2) { log_('onEdit.sortPatrolLog', e2); }
       }
     }
@@ -1938,10 +1959,20 @@ function trackerLeaveType_() {
 
 /** Look up a member's roster details — name, rank, unit/callsign, OOC name, shift — by Unique ID (exact text). The
  * roster is the source of truth for a leave's identity fields. `found` is false when the ID isn't on the roster. */
-function rosterOocShift_(discordId) {
+function rosterOocShift_(discordId, idx) {
   const out = { found: false, name: '', rank: '', unit: '', ooc: '', shift: '' };
   const target = String(discordId || '').trim();
   if (!target) return out;
+  if (idx && idx.n) { // prebuilt patrolRosterIndex_ snapshot: one roster read serves a whole batch of lookups
+    for (let i = 0; i < idx.n; i++) {
+      if (String(idx.ids[i][0]).trim() !== target) continue;
+      const iv = (arr) => (arr && arr.length > i) ? String(arr[i][0] == null ? '' : arr[i][0]).trim() : '';
+      out.found = true;
+      out.name = iv(idx.names); out.rank = iv(idx.ranks); out.unit = iv(idx.units); out.ooc = iv(idx.oocs); out.shift = iv(idx.shifts);
+      break;
+    }
+    return out;
+  }
   try {
     const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
     if (!roster) return out;
@@ -1968,10 +1999,10 @@ function rosterOocShift_(discordId) {
  * formulas — so a leave needs only a Unique ID + start + end. A member NOT on the roster still gets the key/status/
  * formulas (identity fields left blank). Best-effort; never throws into the trigger.
  */
-function autoFillTrackerRow_(tracker, row, TC, id) {
+function autoFillTrackerRow_(tracker, row, TC, id, idx) {
   try {
     if (!isValidId_(id)) return;
-    const mi = rosterOocShift_(id); // full roster record by Unique ID
+    const mi = rosterOocShift_(id, idx); // full roster record by Unique ID (idx = prebuilt snapshot for bulk pastes)
     const put = (c, v) => { if (c && v !== undefined && String(v) !== '') tracker.getRange(row, c).setValue(v); };
     if (mi.found) { put(TC.rank, mi.rank); put(TC.unit, mi.unit); put(TC.ooc, mi.ooc); put(TC.name, mi.name); put(TC.shift, mi.shift); }
     if (TC.discord) tracker.getRange(row, TC.discord).setNumberFormat('@'); // keep the ID exact
@@ -2106,7 +2137,12 @@ function sortTracker_(prepend, trackerSheet) {
         records.push(row);
       }
     }
-    if (prepend) records.unshift(prepend.slice(0, W));
+    if (prepend && prepend.length) {
+      // ONE row (an array of values) or SEVERAL (an array of rows) — the form sync seats a whole batch in one pass
+      // instead of paying a full tracker read+rewrite per leave.
+      const rowsIn = Array.isArray(prepend[0]) ? prepend : [prepend];
+      for (let k = rowsIn.length - 1; k >= 0; k--) records.unshift(rowsIn[k].slice(0, W));
+    }
     if (!records.length) return;
 
     // Status priority from [LEAVE].STATUS_FLOW (Pending < Approved < Denied < Expired); unknown/blank → bottom.
@@ -2194,12 +2230,13 @@ function patrolRosterIndex_(roster) {
   const RC = rosterCols_(roster);
   const last = roster.getLastRow();
   const n = last - CONFIG.rosterStartRow + 1;
-  if (n < 1) return { RC: RC, n: 0, ranks: [], names: [], ids: [], units: [] };
+  if (n < 1) return { RC: RC, n: 0, ranks: [], names: [], ids: [], units: [], oocs: [], shifts: [] };
   const col = (c, disp) => {
     const rg = roster.getRange(CONFIG.rosterStartRow, c, n, 1);
     return disp ? rg.getDisplayValues() : rg.getValues();
   };
-  return { RC: RC, n: n, ranks: col(RC.rank), names: col(RC.name), ids: col(RC.discord, true), units: col(RC.unit, true) };
+  return { RC: RC, n: n, ranks: col(RC.rank), names: col(RC.name), ids: col(RC.discord, true), units: col(RC.unit, true),
+    oocs: RC.ooc ? col(RC.ooc, true) : [], shifts: RC.shift ? col(RC.shift, true) : [] }; // full identity so sweeps/fills never re-read per cell
 }
 
 /** @param {Object=} idx optional prebuilt patrolRosterIndex_ — pass it when looking up in a loop. */
@@ -2447,14 +2484,19 @@ function evaluatePatrolLog_(memberRow, startDT, endDT, hours, now) {
  * Process ONE Patrol Log data row: auto-fill member identity + TOTAL TIME, decide Pending/Flagged (+reason), and
  * reconcile the member's credited hours. Idempotent — safe on every edit and on the nightly refresh. Never throws.
  */
-function processPatrolLog_(sheet, row, PC, roster, idx) {
+function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
   try {
     idx = idx || patrolRosterIndex_(roster); // one roster snapshot serves all three lookups this row makes
-    const disp = (c) => c ? String(sheet.getRange(row, c).getDisplayValue()).trim() : '';
-    const rawv = (c) => c ? sheet.getRange(row, c).getValue() : '';
+    // `rowData` ({vals, disp, mark, sweep}) is the sweep's ONE block read of this row — without it every disp()/rawv()
+    // was its own round trip, making a 250-row nightly refresh thousands of sequential Sheets calls.
+    const disp = rowData ? ((c) => c ? String(rowData.disp[c - 1] == null ? '' : rowData.disp[c - 1]).trim() : '')
+      : ((c) => c ? String(sheet.getRange(row, c).getDisplayValue()).trim() : '');
+    const rawv = rowData ? ((c) => c ? rowData.vals[c - 1] : '')
+      : ((c) => c ? sheet.getRange(row, c).getValue() : '');
+    const priorMark = rowData ? rowData.mark : null;
     const idv = disp(PC.discord);
     const anyInput = !!(idv || rawv(PC.startDate) !== '' || rawv(PC.startTime) !== '' || rawv(PC.endDate) !== '' || rawv(PC.endTime) !== '');
-    if (!anyInput) { reconcilePatrolCredit_(sheet, row, PC, roster, idx.RC, null, idx); return; } // empty/deleted row → reverse any prior credit, stay blank
+    if (!anyInput) { reconcilePatrolCredit_(sheet, row, PC, roster, idx.RC, null, idx, priorMark); return; } // empty/deleted row → reverse any prior credit, stay blank
 
     const startDT = combineDateTime_(rawv(PC.startDate), rawv(PC.startTime));
     const endDT = combineDateTime_(rawv(PC.endDate), rawv(PC.endTime));
@@ -2462,19 +2504,22 @@ function processPatrolLog_(sheet, row, PC, roster, idx) {
     const RCr = idx.RC;
     const memberRow = isValidId_(idv) ? patrolFindRow_(roster, idv, '', idx) : -1;
 
-    if (memberRow !== -1) { // fill identity from the roster (source of truth)
-      const rr = (c) => c ? String(roster.getRange(memberRow, c).getDisplayValue()).trim() : '';
-      const put = (c, v) => { if (c && v !== '') sheet.getRange(row, c).setValue(v); };
-      put(PC.rank, rr(RCr.rank)); put(PC.unit, rr(RCr.unit)); put(PC.ooc, rr(RCr.ooc)); put(PC.name, rr(RCr.name)); put(PC.shift, rr(RCr.shift));
+    if (memberRow !== -1) { // fill identity from the roster snapshot (source of truth) — no per-cell roster reads
+      const k = memberRow - CONFIG.rosterStartRow;
+      const iv = (arr) => (arr && arr.length > k) ? String(arr[k][0] == null ? '' : arr[k][0]).trim() : '';
+      const put = (c, v) => { if (c && v !== '' && (!rowData || disp(c) !== v)) sheet.getRange(row, c).setValue(v); };
+      put(PC.rank, iv(idx.ranks)); put(PC.unit, iv(idx.units)); put(PC.ooc, iv(idx.oocs)); put(PC.name, iv(idx.names)); put(PC.shift, iv(idx.shifts));
     }
-    if (PC.discord) sheet.getRange(row, PC.discord).setNumberFormat('@');
-    if (PC.total && PC.startDate && PC.endDate && PC.startTime && PC.endTime) sheet.getRange(row, PC.total).setFormula(patrolTotalFormula_(PC, row)).setNumberFormat('0.00" hrs"');
-    // Dates and TIMES both need an explicit format: a row typed by hand (or arriving on a new row past whatever the
-    // sheet was formatted down to) would otherwise render a time as a raw serial or a full datetime.
-    if (PC.startDate) sheet.getRange(row, PC.startDate).setNumberFormat(PATROL_DATE_FMT_);
-    if (PC.endDate) sheet.getRange(row, PC.endDate).setNumberFormat(PATROL_DATE_FMT_);
-    if (PC.startTime) sheet.getRange(row, PC.startTime).setNumberFormat(PATROL_TIME_FMT_);
-    if (PC.endTime) sheet.getRange(row, PC.endTime).setNumberFormat(PATROL_TIME_FMT_);
+    if (!(rowData && rowData.sweep)) { // the sweep ends in sortPatrolLog_, which re-applies all of these batched per kept row
+      if (PC.discord) sheet.getRange(row, PC.discord).setNumberFormat('@');
+      if (PC.total && PC.startDate && PC.endDate && PC.startTime && PC.endTime) sheet.getRange(row, PC.total).setFormula(patrolTotalFormula_(PC, row)).setNumberFormat('0.00" hrs"');
+      // Dates and TIMES both need an explicit format: a row typed by hand (or arriving on a new row past whatever the
+      // sheet was formatted down to) would otherwise render a time as a raw serial or a full datetime.
+      if (PC.startDate) sheet.getRange(row, PC.startDate).setNumberFormat(PATROL_DATE_FMT_);
+      if (PC.endDate) sheet.getRange(row, PC.endDate).setNumberFormat(PATROL_DATE_FMT_);
+      if (PC.startTime) sheet.getRange(row, PC.startTime).setNumberFormat(PATROL_TIME_FMT_);
+      if (PC.endTime) sheet.getRange(row, PC.endTime).setNumberFormat(PATROL_TIME_FMT_);
+    }
 
     const hours = (startDT && endDT) ? Math.round(((endDT.getTime() - startDT.getTime()) / 3600000) * 100) / 100 : null;
     const P = CONFIG.patrol;
@@ -2498,7 +2543,7 @@ function processPatrolLog_(sheet, row, PC, roster, idx) {
         setStatus(P.processedStatus); setNote(''); desired = { hours: hours, mid: idv };                // fully valid → auto-mark Processed + credit
       }
     }
-    reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx);
+    reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, priorMark);
   } catch (e) { log_('processPatrolLog_', e); }
 }
 
@@ -2508,12 +2553,14 @@ function processPatrolLog_(sheet, row, PC, roster, idx) {
  * new one so a member's HOURS always equals the sum of their VALID logs — idempotent across edits, flag/unflag, ID
  * changes and deletes. The marker is written BEFORE the roster is touched (a crash under-credits, never double-credits).
  */
-function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx) {
+function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, priorMark) {
   try {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
     if (!PC.mark || !RCr.hours) return;
     const markCell = sheet.getRange(row, PC.mark);
-    const prior = String(markCell.getDisplayValue()).trim();
+    // `priorMark` is the sweep's cached read of this cell (each row is processed exactly once per sweep, and only this
+    // function writes the marker — so the cache can't be stale). null = read live (the onEdit single-row path).
+    const prior = (priorMark == null) ? String(markCell.getDisplayValue()).trim() : String(priorMark).trim();
     let priorHours = 0, priorMid = '';
     if (prior) { const p = prior.split('|'); priorHours = parseFloat(p[0]) || 0; priorMid = (p[1] || '').trim(); }
     const wantHours = desired ? (Math.round(desired.hours * 100) / 100) : 0;
@@ -2607,7 +2654,20 @@ function refreshPatrolLog_() {
     if (!PC.status) return;
     const last = sheet.getLastRow();
     const idx = patrolRosterIndex_(roster); // ONE roster read for the whole sweep, not three per row
-    for (let r = CONFIG.patrolStartRow; r <= last; r++) processPatrolLog_(sheet, r, PC, roster, idx);
+    const start = CONFIG.patrolStartRow;
+    let grid = null;
+    if (last >= start && PC.width) { // ONE block read for the whole log — per-row disp()/rawv() made this sweep O(rows × cols) round trips
+      const rg = sheet.getRange(start, 1, last - start + 1, PC.width);
+      grid = { vals: rg.getValues(), disp: rg.getDisplayValues() };
+    }
+    for (let r = start; r <= last; r++) {
+      const i = r - start;
+      const rowData = grid ? {
+        vals: grid.vals[i], disp: grid.disp[i], sweep: true,
+        mark: PC.mark ? String(grid.disp[i][PC.mark - 1] == null ? '' : grid.disp[i][PC.mark - 1]).trim() : null,
+      } : null;
+      processPatrolLog_(sheet, r, PC, roster, idx, rowData);
+    }
     sortPatrolLog_(sheet);
   } catch (e) { log_('refreshPatrolLog_', e); }
 }
@@ -2661,6 +2721,11 @@ function syncFormToTracker_(form, tracker, opts = {}) {
   const RC = trackerCols_(tracker); // resolve the tracker's columns by header (any layout)
   const tz = ssTz_();
   const doneBg = String(CONFIG.bg.done).toLowerCase(); // lowercase once — a Studio-picked theme colour can be uppercase (getBackgrounds returns lowercase)
+  // ONE roster snapshot serves every rosterOocShift_ lookup below (a backfill was one full roster scan per row),
+  // and accepted rows are collected so sortTracker_ runs ONCE for the whole batch, not once per leave.
+  let rIdx = null;
+  try { const rSh = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster); if (rSh) rIdx = patrolRosterIndex_(rSh); } catch (e) { log_('syncFormToTracker_.idx', e); }
+  const accepted = [];
 
   for (let i = 0; i < values.length; i++) {
     const rowIndex = i + 2;
@@ -2712,22 +2777,31 @@ function syncFormToTracker_(form, tracker, opts = {}) {
 
       // The ROSTER is the source of truth: look the member up by Unique ID and use their name/rank/unit/OOC/shift when
       // found; fall back to the form's fields only for someone not (yet) on the roster. So the form needs only ID + dates.
-      const mi = rosterOocShift_(discord);
+      const mi = rosterOocShift_(discord, rIdx);
       const fName = (mi.found && mi.name) ? mi.name : name;
       const fRank = (mi.found && mi.rank) ? mi.rank : rank;
       const fUnit = (mi.found && mi.unit) ? mi.unit : callsign;
-      // Prepend the new leave at the TOP and re-group by status — a new Pending lands at the top of the list.
-      sortTracker_(buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus }), tracker);
-
-      if (dedupKey) synced[dedupKey] = true;
-      const leaf = { name: fName, rank: fRank, callsign: fUnit, type, startStr, endStr, durationStr, discord };
-      if (sendWebhooks) sendDiscordWebhook(leaf.name, leaf.rank, leaf.callsign, leaf.type, leaf.startStr, leaf.endStr, leaf.durationStr, leaf.discord);
-      appended.push(leaf);
-      form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done);
+      if (dedupKey) synced[dedupKey] = true; // in-loop, so a duplicate submission later in this same scan still dedups
+      accepted.push({
+        rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus }),
+        rowIndex: rowIndex,
+        leaf: { name: fName, rank: fRank, callsign: fUnit, type, startStr, endStr, durationStr, discord },
+      });
     } catch (err) {
       form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error);
       log_('syncFormToTracker_', err); // skip this row, keep processing the rest
     }
+  }
+
+  if (accepted.length) {
+    // Prepend the whole batch at the TOP and re-group by status ONCE — new Pending leaves land at the top of the list.
+    // (Per-leave sortTracker_ calls made a K-row backfill K full tracker reads + rewrites.)
+    sortTracker_(accepted.map((a) => a.rowVals), tracker);
+    accepted.forEach((a) => {
+      if (sendWebhooks) sendDiscordWebhook(a.leaf.name, a.leaf.rank, a.leaf.callsign, a.leaf.type, a.leaf.startStr, a.leaf.endStr, a.leaf.durationStr, a.leaf.discord);
+      appended.push(a.leaf);
+      form.getRange(a.rowIndex, 1, 1, width).setBackground(CONFIG.bg.done);
+    });
   }
   if (appended.length) logInfo_('syncFormToTracker_', `appended ${appended.length} new leave(s).`);
   return appended;
@@ -3133,16 +3207,25 @@ function moveMemberColumns_(sheet, sourceRow, targetRow) {
   CONFIG.columns.trainingCheckboxCols.forEach((c) => { checkbox[c] = true; });
   const lastCol = sheet.getLastColumn();
   let wiped = false;
-  for (let c = 2; c <= lastCol; c++) {
-    if (slot[c]) continue;                         // SLOT stays with the destination position (and on the source)
+  // MEMBER columns are moved in CONTIGUOUS RUNS — one copyTo + one clearContent per run instead of two calls per
+  // column. The transfer runs inside the LIMITED onEdit budget that also hosts the human confirm dialog, so the
+  // per-column churn directly ate the margin. Semantics are unchanged: SLOT stays put, cross-section checkbox
+  // columns are wiped instead of carried, borders are never repainted.
+  let c = 2;
+  while (c <= lastCol) {
+    if (slot[c]) { c++; continue; }                // SLOT stays with the destination position (and on the source)
     if (crossSection && checkbox[c]) {
       sheet.getRange(targetRow, c).clearContent(); // section-specific column (opted in): don't carry it across sections
+      sheet.getRange(sourceRow, c).clearContent(); // the member has left the source row
       wiped = true;
-    } else {
-      // Carry value/formula + number format + validation, but NOT borders — so a move never repaints the roster's band/section lines.
-      sheet.getRange(sourceRow, c).copyTo(sheet.getRange(targetRow, c), SpreadsheetApp.CopyPasteType.PASTE_NO_BORDERS, false);
+      c++; continue;
     }
-    sheet.getRange(sourceRow, c).clearContent();   // the member has left the source row
+    let e = c;
+    while (e + 1 <= lastCol && !slot[e + 1] && !(crossSection && checkbox[e + 1])) e++;
+    // Carry value/formula + number format + validation, but NOT borders — so a move never repaints the roster's band/section lines.
+    sheet.getRange(sourceRow, c, 1, e - c + 1).copyTo(sheet.getRange(targetRow, c, 1, e - c + 1), SpreadsheetApp.CopyPasteType.PASTE_NO_BORDERS, false);
+    sheet.getRange(sourceRow, c, 1, e - c + 1).clearContent(); // the member has left the source row
+    c = e + 1;
   }
   sheet.getRange(targetRow, rosterCols_(sheet).discord).setNumberFormat('@'); // keep the moved ID exact
   return wiped;

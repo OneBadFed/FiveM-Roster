@@ -187,10 +187,20 @@ function captureHoursSnapshot_(weekLabel) {
   const when = weekLabel || weekKey_();
   const members = readMembers_(roster);
   if (!members.length) return 0;
-  // Replace this week's rows (don't duplicate) if the snapshot is re-run within the same week.
+  // Replace this week's rows (don't duplicate) if the snapshot is re-run within the same week. A week's rows were
+  // appended as one contiguous block, so remove them in RUNS — one deleteRows per block instead of one deleteRow
+  // per member (a same-week re-run on a big roster paid hundreds of sequential calls inside the reset's lock).
   if (sh.getLastRow() >= 2) {
     const weeks = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getDisplayValues();
-    for (let r = weeks.length - 1; r >= 0; r--) { if (String(weeks[r][0]).trim() === String(when).trim()) sh.deleteRow(r + 2); }
+    const wk = String(when).trim();
+    let r = weeks.length - 1;
+    while (r >= 0) {
+      if (String(weeks[r][0]).trim() !== wk) { r--; continue; }
+      let top = r;
+      while (top - 1 >= 0 && String(weeks[top - 1][0]).trim() === wk) top--;
+      sh.deleteRows(top + 2, r - top + 1);
+      r = top - 1;
+    }
   }
   const rows = members.map((m) => [when, m.id, m.name, m.rank, parseHours_(m.hours), m.activity]);
   const startRow = sh.getLastRow() + 1;
@@ -1650,7 +1660,7 @@ function seedDemoPromotions_(memberRows, people) {
     return entry;
   });
   PropertiesService.getDocumentProperties().setProperty(PROMO_STORE_PROP_, JSON.stringify(list));
-  renderPromotions_();
+  renderPromotions_(true); // full rescan — the demo may have just created/filled a promo table on a fresh workbook
   return list.length;
 }
 

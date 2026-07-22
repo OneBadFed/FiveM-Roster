@@ -255,8 +255,16 @@ function cpPruneSnapshots_(sh) {
   if (order.length <= TRUST.keepSnapshots) return;
   const remove = {};
   order.slice(0, order.length - TRUST.keepSnapshots).forEach((id) => { remove[id] = true; });
-  for (let r = last; r >= 2; r--) {
-    if (remove[String(sh.getRange(r, 1).getDisplayValue()).trim()]) sh.deleteRow(r);
+  // Decide from the ids already batch-read above (per-cell re-reads cost one call per history row), and delete
+  // CONTIGUOUS RUNS bottom-up — a snapshot's rows are appended as one block, so pruning one is a single deleteRows
+  // call instead of one deleteRow per member.
+  let r = last;
+  while (r >= 2) {
+    if (!remove[String(ids[r - 2][0]).trim()]) { r--; continue; }
+    let top = r;
+    while (top - 1 >= 2 && remove[String(ids[top - 3][0]).trim()]) top--;
+    sh.deleteRows(top, r - top + 1);
+    r = top - 1;
   }
 }
 
@@ -333,9 +341,12 @@ function cpApplyRestore_(roster, snapRows) {
   // snapshot can't drop a member's data onto a different member's row.
   const last = roster.getLastRow();
   const idToRow = {};
+  let rankCache = null; // ranks batch-read once — a restore never writes the RANK column, so the cache can't go stale
   if (last >= CONFIG.rosterStartRow) {
-    const ids = roster.getRange(CONFIG.rosterStartRow, RC.discord, last - CONFIG.rosterStartRow + 1, 1).getDisplayValues();
+    const n = last - CONFIG.rosterStartRow + 1;
+    const ids = roster.getRange(CONFIG.rosterStartRow, RC.discord, n, 1).getDisplayValues();
     for (let k = 0; k < ids.length; k++) { const id = String(ids[k][0]).trim(); if (id && !(id in idToRow)) idToRow[id] = CONFIG.rosterStartRow + k; }
+    rankCache = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getDisplayValues();
   }
   let restored = 0;
   for (let i = 0; i < snapRows.length; i++) {
@@ -349,7 +360,9 @@ function cpApplyRestore_(roster, snapRows) {
       if (rowId !== '' && rowId !== snapId) { log_('cpApplyRestore_', `snapshot row ${storedRow} now holds a different member — skipped to avoid overwrite`); continue; }
       row = storedRow;
     }
-    const rank = String(roster.getRange(row, RC.rank).getDisplayValue()).trim();
+    const rank = (rankCache && row >= CONFIG.rosterStartRow && (row - CONFIG.rosterStartRow) < rankCache.length)
+      ? String(rankCache[row - CONFIG.rosterStartRow][0]).trim()
+      : String(roster.getRange(row, RC.rank).getDisplayValue()).trim();
     if (!isMemberSlot_(rank) || rank === '' || rank === 'Rank') continue;
     roster.getRange(row, RC.name).setValue(snapRows[i][3]);
     const idCell = roster.getRange(row, RC.discord); idCell.setNumberFormat('@'); idCell.setValue(snapRows[i][4]);
