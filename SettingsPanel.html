@@ -1273,6 +1273,18 @@
     name:'J. Bennett',rank:'Sergeant',callsign:'S-07',type:'LOA',start:'21 Jul 2026',end:'4 Aug 2026',length:'14 days',
     hours:'6.5',total:'18.75',count:'2',rows:'• Row 14 — no matching member\n• Row 17 — bad or missing time',
     code:'E-102',message:'Config has 1 error.',hint:'Open ⚙️ Config and fix the red cell.','function':'cfg_'};
+  // The BUILT-IN embed for each event — shown in the preview (with sample data) until an override is saved, so every
+  // notification has a visible example. Overriding any field in the builder replaces this.
+  var DC_DEFAULTS={
+    audit:{color:'#4f8ee8',title:'📝 Roster edited',desc:'{editor} changed **{sheet}** · `{cell}`',fields:[{n:'Member',v:'{member}',inline:true},{n:'Action',v:'{action}',inline:true},{n:'Change',v:'`{old}` → `{new}`',inline:false}],footer:'Audit log'},
+    loaSubmitted:{color:'#236995',title:'📥 New {type} Submission',content:'{user}',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'🎙️ Callsign',v:'{callsign}',inline:true},{n:'▶️ Start',v:'{start}',inline:true},{n:'⏹️ End',v:'{end}',inline:true},{n:'⏳ Length',v:'{length}',inline:true}]},
+    loaApproved:{color:'#2ea043',title:'✅ {type} Approved',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'▶️ Start',v:'{start}',inline:true},{n:'⏹️ End',v:'{end}',inline:true}]},
+    loaStarted:{color:'#c9a227',title:'▶️ {type} Started',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true}]},
+    loaExpired:{color:'#8a929e',title:'⏹️ {type} Ended',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true}]},
+    patrolLogged:{color:'#43b585',title:'🚔 {name} logged {hours}h of patrol',fields:[{n:'⏱️ This log',v:'{hours} hrs',inline:true},{n:'📊 New total',v:'{total} hrs',inline:true}]},
+    patrolFlagged:{color:'#d99257',title:'⚠️ {count} patrol log(s) flagged',desc:'{rows}'},
+    error:{color:'#e0574f',title:'🚨 Engine error · {code}',fields:[{n:'Message',v:'{message}',inline:false},{n:'Fix',v:'{hint}',inline:false},{n:'Where',v:'`{function}`',inline:true}]}
+  };
   var DC_SWATCH=['#00458E','#8a1f1f','#c2691c','#c9a227','#e64bb0','#2ea043','#a68a00','#b02a2a','#7c5cff','#4f8ee8'];
   var DCEV={}, LASTEMB=null;
   function embGet_(ev){ var rows=TBL.EMBEDS||[]; for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ try{ var o=JSON.parse(rows[i][1]||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } } } return null; }
@@ -1325,7 +1337,7 @@
     h+=sec('Embed images', '<label class="dclb">Image URL</label>'+f('image','https://…')+'<label class="dclb">Thumbnail URL</label>'+f('thumb','https://…'));
     h+=sec('Embed fields', '<div id="dcFields">'+fieldCards+'</div><button type="button" class="gtadd" data-dcaddf="1" style="margin-top:8px">+ Add field ('+((t.fields||[]).length)+'/25)</button>');
     h+=sec('Embed footer', '<label class="dclb">Footer text</label>'+f('footer','Footer text')+'<label class="dclb">Footer icon URL</label>'+f('footerIcon','https://…'));
-    h+=sec('Preview', '<div id="dcPrev">'+dcMock_(t)+'</div>');
+    h+=sec('Preview', '<div id="dcPrev">'+dcMock_(saved||DC_DEFAULTS[m.cur]||t)+'</div>'); // no override → show the built-in example
     host.innerHTML=h;
   }
   function dcSyncFromForm_(){
@@ -1344,7 +1356,7 @@
     });
     if(fl.length) t.fields=fl;
     if(Object.keys(t).length) embSet_(m.cur,t); else embReset_(m.cur);
-    var pv=$('dcPrev'); if(pv) pv.innerHTML=dcMock_(t);
+    var pv=$('dcPrev'); if(pv) pv.innerHTML=dcMock_(Object.keys(t).length?t:(DC_DEFAULTS[m.cur]||t)); // emptied form → back to the built-in example
   }
   function insertAt_(el,txt){
     var s=(el.selectionStart!=null)?el.selectionStart:el.value.length, en=(el.selectionEnd!=null)?el.selectionEnd:s;
