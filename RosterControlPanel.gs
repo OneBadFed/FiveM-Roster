@@ -1264,7 +1264,7 @@ const SIGNUP_STATUSES_ = Object.freeze(['Pending', 'Approved', 'Processed']);
  * `dataStart` tell callers where the real data begins.
  */
 function signupCols_(sheet) {
-  const out = { timestamp: 0, name: 0, ooc: 0, discord: 0, email: 0, dob: 0, phone: 0, status: 0, notes: 0, width: 0, headerRow: 1, dataStart: 2 };
+  const out = { timestamp: 0, name: 0, ooc: 0, discord: 0, email: 0, dob: 0, phone: 0, join: 0, status: 0, notes: 0, width: 0, headerRow: 1, dataStart: 2 };
   try {
     const lastCol = Math.max(sheet.getLastColumn(), 1);
     const lastRow = Math.max(sheet.getLastRow(), 1);
@@ -1284,6 +1284,7 @@ function signupCols_(sheet) {
     out.email = exact('EMAIL') || all('EMAIL');
     out.dob = exact('DATE OF BIRTH') || all('BIRTH') || all('DOB');
     out.phone = exact('PHONE') || all('PHONE');
+    out.join = exact('DEPARTMENT JOIN DATE') || all('JOIN', 'DATE'); // needs BOTH tokens so a "Why do you want to join?" question can't hijack it
     out.status = exact('STATUS') || all('STATUS');
     out.notes = exact('NOTES') || all('NOTES');
     out.width = lastCol;
@@ -1295,7 +1296,8 @@ function signupCols_(sheet) {
   return out;
 }
 
-/** First empty data row on a review tab (nothing in NAME / UNIQUE ID / STATUS), or the row past the end. */
+/** First data row with no applicant IDENTITY (NAME + UNIQUE ID both empty), or the row past the end. NB: a stray STATUS
+ *  value (a leftover dropdown pick / template) does NOT count as occupied — only real name/ID data does. */
 function signupFirstFreeRow_(sheet, SC) {
   const last = sheet.getLastRow();
   if (last < SC.dataStart) return SC.dataStart;
@@ -1303,7 +1305,7 @@ function signupFirstFreeRow_(sheet, SC) {
   const block = sheet.getRange(SC.dataStart, 1, n, SC.width).getDisplayValues();
   for (let i = 0; i < n; i++) {
     const row = block[i];
-    const has = (SC.name && String(row[SC.name - 1] || '').trim()) || (SC.discord && String(row[SC.discord - 1] || '').trim()) || (SC.status && String(row[SC.status - 1] || '').trim());
+    const has = (SC.name && String(row[SC.name - 1] || '').trim()) || (SC.discord && String(row[SC.discord - 1] || '').trim());
     if (!has) return SC.dataStart + i;
   }
   return last + 1;
@@ -1326,11 +1328,16 @@ function syncSignupForm_(formSheet, signupSheet) {
     const values = range.getValues();
     const backgrounds = range.getBackgrounds();
     const doneBg = String(CONFIG.bg.done).toLowerCase();
-    const roles = ['name', 'ooc', 'discord', 'email', 'dob', 'phone'];
+    const roles = ['name', 'ooc', 'discord', 'email', 'dob', 'phone', 'join'];
     for (let i = 0; i < values.length; i++) {
+      const frow = values[i];
+      // Skip rows with no applicant identity — an empty row read past the real submissions (formatting/validation can
+      // push getLastRow down) must NEVER become a blank Pending row on the review tab.
+      const fid = fSC.discord ? String(frow[fSC.discord - 1] || '').trim() : '';
+      const fname = fSC.name ? String(frow[fSC.name - 1] || '').trim() : '';
+      if (!fid && !fname) continue;
       const bg = String(backgrounds[i][0] || '').toLowerCase();
       if (bg === doneBg || bg === '#00ff00') continue;       // already synced
-      const frow = values[i];
       const rowVals = new Array(sSC.width).fill('');
       roles.forEach((role) => { if (fSC[role] && sSC[role]) rowVals[sSC[role] - 1] = frow[fSC[role] - 1]; });
       rowVals[sSC.status - 1] = SIGNUP_STATUSES_[0];         // new submission → Pending
@@ -1370,7 +1377,11 @@ function manualSyncSignups() {
     if (!ss.getSheetByName(CONFIG.sheets.signupForm)) { ui.alert('🧾 Sync Signup Form', `The form response tab "${CONFIG.sheets.signupForm}" was not found.`, ui.ButtonSet.OK); return; }
     if (!ss.getSheetByName(CONFIG.sheets.signups)) { ui.alert('🧾 Sync Signup Form', `The review tab "${CONFIG.sheets.signups}" was not found.`, ui.ButtonSet.OK); return; }
     const added = syncSignupForm();
-    ui.alert('🧾 Sync Signup Form', added ? `✅ Added ${added} new signup${added === 1 ? '' : 's'} to "${CONFIG.sheets.signups}" (Pending).` : 'No new signups to add — everything on the form is already synced.', ui.ButtonSet.OK);
+    // Always re-group/compact the review tab — tidies away any leftover blank "Pending" scaffolding rows even when
+    // there was nothing new to add.
+    let cleaned = 0;
+    try { const rev = ss.getSheetByName(CONFIG.sheets.signups); if (rev) cleaned = sortSignups_(rev); } catch (e) { log_('manualSyncSignups.sort', e); }
+    ui.alert('🧾 Sync Signup Form', added ? `✅ Added ${added} new signup${added === 1 ? '' : 's'} to "${CONFIG.sheets.signups}" (Pending).` : (cleaned ? `No new signups — tidied the review tab (${cleaned} row${cleaned === 1 ? '' : 's'} kept).` : 'No new signups to add — everything on the form is already synced.'), ui.ButtonSet.OK);
   });
 }
 
@@ -1411,8 +1422,8 @@ function sortSignups_(sheet) {
     for (let i = 0; i < n; i++) {
       const r = vals[i].slice(0, W);
       if (ids) r[SC.discord - 1] = String(ids[i][0]).trim();
-      const blank = r.every((v) => String(v == null ? '' : v).trim() === '');
-      if (blank) continue;
+      const identity = (SC.name && String(r[SC.name - 1] || '').trim()) || (SC.discord && String(r[SC.discord - 1] || '').trim());
+      if (!identity) continue; // no NAME / UNIQUE ID → a blank scaffolding or stray STATUS-only row → drop it (compacted away)
       if (String(r[SC.status - 1] || '').trim() === '') r[SC.status - 1] = SIGNUP_STATUSES_[0]; // new submission → Pending
       rows.push(r);
     }

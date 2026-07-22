@@ -147,6 +147,7 @@ function devAddRandomSignup() {
     discord: (typeof demoId_ === 'function') ? demoId_(i) : ('7700000000000008' + (10 + (i % 90))),
     email: (typeof demoEmail_ === 'function') ? demoEmail_(nm) : (String(nm).toLowerCase().replace(/[^a-z0-9]+/g, '.') + '@lspd.example'),
     dob: (typeof demoDob_ === 'function') ? demoDob_(i) : new Date(1996, 3, 12),
+    join: (typeof todayInSheetTz_ === 'function') ? todayInSheetTz_() : new Date(), // department join / signup date
   };
   const put = (arr, c, v) => { if (c) arr[c - 1] = v; };
 
@@ -156,11 +157,12 @@ function devAddRandomSignup() {
     const width = Math.max(form.getLastColumn(), 1);
     const rowV = new Array(width).fill('');
     put(rowV, FSC.timestamp, new Date()); put(rowV, FSC.name, app.name); put(rowV, FSC.ooc, app.ooc);
-    put(rowV, FSC.discord, app.discord); put(rowV, FSC.email, app.email); put(rowV, FSC.dob, app.dob);
+    put(rowV, FSC.discord, app.discord); put(rowV, FSC.email, app.email); put(rowV, FSC.dob, app.dob); put(rowV, FSC.join, app.join);
     const at = form.getLastRow() + 1;
     if (at > form.getMaxRows()) form.insertRowsAfter(form.getMaxRows(), 1);
     form.getRange(at, 1, 1, width).setValues([rowV]);
     if (FSC.discord) form.getRange(at, FSC.discord).setNumberFormat('@');
+    SpreadsheetApp.flush(); // settle the appended row before the sync reads the form
     const added = (typeof syncSignupForm === 'function') ? syncSignupForm() : 0;
     SpreadsheetApp.flush();
     ui.alert('🧾 Add Random Signup', `Simulated a form submission from ${app.name} (${app.discord}) on "${CONFIG.sheets.signupForm}", then synced ${added} row into "${CONFIG.sheets.signups}" as Pending.\n\nReview it in 🎛️ Control Panel ▸ Signups, or 🧾 Review Roster Signups.`, ui.ButtonSet.OK);
@@ -168,7 +170,7 @@ function devAddRandomSignup() {
     const SC = signupCols_(review);
     if (!SC.status || !SC.discord) { ui.alert('🧾 Add Random Signup', `The "${CONFIG.sheets.signups}" tab needs a header row with at least NAME, UNIQUE ID and STATUS columns.`, ui.ButtonSet.OK); return; }
     const rowV = new Array(SC.width).fill('');
-    put(rowV, SC.name, app.name); put(rowV, SC.ooc, app.ooc); put(rowV, SC.discord, app.discord); put(rowV, SC.email, app.email); put(rowV, SC.dob, app.dob);
+    put(rowV, SC.name, app.name); put(rowV, SC.ooc, app.ooc); put(rowV, SC.discord, app.discord); put(rowV, SC.email, app.email); put(rowV, SC.dob, app.dob); put(rowV, SC.join, app.join);
     rowV[SC.status - 1] = SIGNUP_STATUSES_[0];
     const at = signupFirstFreeRow_(review, SC);
     if (at > review.getMaxRows()) review.insertRowsAfter(review.getMaxRows(), at - review.getMaxRows());
