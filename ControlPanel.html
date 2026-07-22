@@ -583,6 +583,11 @@
   .crow-v{display:inline-flex;align-items:center;gap:7px;font-weight:650;text-align:right;}
   .crow-v .dot{width:8px;height:8px;}
   .conn .hint{margin-top:var(--s2);}
+  .whchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:var(--s3);}
+  .whchip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:650;color:var(--txt-2);background:var(--e2);border-radius:999px;padding:6px 13px 6px 11px;cursor:pointer;box-shadow:var(--hi);user-select:none;transition:background var(--t),color var(--t);}
+  .whchip:hover{background:var(--e3);color:var(--txt);}
+  .whchip:has(input:checked){color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 12px -6px var(--accent);}
+  .whchip input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;margin:0;}
   .toolbtn{display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;background:var(--glass),var(--e1);border:none;
            color:var(--txt);border-radius:14px;padding:var(--s3) var(--s4);font-size:13.5px;font-weight:650;cursor:pointer;
            margin-bottom:var(--s2);box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),background var(--t),box-shadow var(--t);}
@@ -738,19 +743,19 @@
           <div class="crow" id="whTestRow" hidden><span class="crow-k">Last test</span><span class="crow-v" id="whTestV"></span></div>
           <!-- SECURITY INVARIANT: #whUrl is WRITE-ONLY. Never populate it with the stored URL — the secret lives in
                the admin spreadsheet and must never round-trip back into the page. The save handler clears it after use. -->
-          <div style="display:flex;gap:var(--s2);align-items:stretch;flex-wrap:wrap;margin-top:var(--s3)">
-            <select class="fselect" id="whChan" aria-label="Webhook channel" style="flex:0 0 auto">
-              <option value="AUDIT">Audit log</option>
-              <option value="LOA">LOAs</option>
-              <option value="PATROL">Patrol logs</option>
-              <option value="ERRORS">Errors</option>
-            </select>
+          <div class="whchips">
+            <label class="whchip"><input type="checkbox" class="whch" value="AUDIT">Audit log</label>
+            <label class="whchip"><input type="checkbox" class="whch" value="LOA">LOAs</label>
+            <label class="whchip"><input type="checkbox" class="whch" value="PATROL">Patrol logs</label>
+            <label class="whchip"><input type="checkbox" class="whch" value="ERRORS">Errors</label>
+          </div>
+          <div style="display:flex;gap:var(--s2);align-items:stretch;flex-wrap:wrap;margin-top:var(--s2)">
             <input type="password" class="field mono" id="whUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" style="flex:1;min-width:160px">
             <button class="linkbtn" id="whSave">Save</button>
             <button class="linkbtn" id="whTest">Send test</button>
             <button class="linkbtn" id="whPurge" style="color:var(--red-f)" title="Remove every webhook — all channels go silent">Remove all</button>
           </div>
-          <p class="hint">Each channel has its own webhook. URLs live in the <b>admin roster</b> — only accounts with access to that file can view, change or post through them. Save with the field empty to clear a channel; <b>Remove all</b> is the abuse kill switch.</p>
+          <p class="hint">Tick one or more channels, paste a webhook URL, and <b>Save</b> — the <b>same webhook can serve several notifications</b>. URLs live in the <b>admin roster</b>; only accounts with access can view, change or post through them. Save with the field empty to clear the ticked channels; <b>Remove all</b> is the kill switch.</p>
         </div>
         <div class="conn" style="--a:var(--accent)">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><b>Admin roster</b></div>
@@ -1562,18 +1567,25 @@
       var e=$('wh'+c); if(e) e.innerHTML='<span class="dot '+(map[c]?'on':'off')+'"></span>'+(map[c]?'Configured':'Not set');
     });
   }
+  function whChecked(){ return Array.prototype.slice.call(document.querySelectorAll('.whch:checked')).map(function(c){ return c.value; }); }
   $('whSave').addEventListener('click',function(){
-    var ch=$('whChan').value;
+    var chans=whChecked();
+    if(!chans.length){ toast('Tick at least one channel first.','err'); return; }
     api(function(r){
-      toast((WH_LABELS[r.channel]||r.channel)+' webhook '+(r.set?'saved.':'cleared.'),"ok"); $("whUrl").value="";
+      var n=(r.applied||[]).length;
+      toast('Webhook '+(r.set?'saved to':'cleared from')+' '+n+' channel'+(n===1?'':'s')+'.',"ok"); $("whUrl").value="";
       whStatus(r.channels||{});
-    }, onError, "cpSetWebhook", $("whUrl").value.trim(), ch);
+    }, onError, "cpSetWebhookChannels", $("whUrl").value.trim(), chans);
   });
   $('whTest').addEventListener('click',function(){
-    var btn=this, ch=$('whChan').value; btn.disabled=true;
-    api(function(){ btn.disabled=false; toast("Test sent to the "+(WH_LABELS[ch]||ch)+" channel — check Discord.","ok");
-      var r=$('whTestRow'); if(r){ r.hidden=false; $('whTestV').innerHTML='<span class="dot on"></span>'+(WH_LABELS[ch]||ch)+' · sent this session'; }
-    }, function(e){ btn.disabled=false; onError(e); }, "cpTestWebhook", ch);
+    var btn=this, chans=whChecked();
+    if(!chans.length){ toast('Tick at least one channel first.','err'); return; }
+    btn.disabled=true;
+    api(function(r){ btn.disabled=false;
+      var t=(r.tested||[]).length, m=(r.missing||[]).length;
+      toast('Test sent to '+t+' channel'+(t===1?'':'s')+(m?(' · '+m+' had no webhook'):'')+' — check Discord.',"ok");
+      var row=$('whTestRow'); if(row){ row.hidden=false; $('whTestV').innerHTML='<span class="dot on"></span>'+t+' channel'+(t===1?'':'s')+' · sent this session'; }
+    }, function(e){ btn.disabled=false; onError(e); }, "cpTestWebhookChannels", chans);
   });
   $('whPurge').addEventListener('click',function(){
     if(!window.confirm('Remove ALL Discord webhooks? Every channel goes silent until new URLs are saved.')) return;

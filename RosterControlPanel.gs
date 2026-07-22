@@ -58,8 +58,10 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpTakeSnapshot: () => cpTakeSnapshot(),
   cpRestoreSnapshot: (id) => cpRestoreSnapshot(id),
   cpSetSnapshotAuto: (on) => cpSetSnapshotAuto(on),
-  cpSetWebhook: (url) => cpSetWebhook(url),
-  cpTestWebhook: () => cpTestWebhook(),
+  cpSetWebhook: (url, channel) => cpSetWebhook(url, channel),
+  cpSetWebhookChannels: (url, channels) => cpSetWebhookChannels(url, channels),
+  cpTestWebhook: (channel) => cpTestWebhook(channel),
+  cpTestWebhookChannels: (channels) => cpTestWebhookChannels(channels),
   cpGetConfig: () => cpGetConfig(),
   cpApplyConfig: (p) => cpApplyConfig(p),
   cpOpenSettings: () => { openSettingsPanel(); return true; },
@@ -133,6 +135,22 @@ function cpSetWebhook(url, channel) {
   return { set: u !== '', channel: ch, channels: cpWebhookStatus_() };
 }
 
+/** Only the recognized channel names from a list (deduped), so an invalid one can't silently fall back to LOA. */
+function webhookChannelList_(channels) {
+  const raw = Array.isArray(channels) ? channels : (channels == null || channels === '' ? [] : [channels]);
+  const list = raw.map((c) => norm_(c)).filter((c) => WEBHOOK_CHANNELS_.indexOf(c) !== -1);
+  return list.filter((c, i) => list.indexOf(c) === i);
+}
+
+/** Panel: apply ONE webhook URL to SEVERAL channels at once (empty url clears them). Lets one webhook serve many notifications. */
+function cpSetWebhookChannels(url, channels) {
+  const chans = webhookChannelList_(channels);
+  if (!chans.length) throw new Error('Pick at least one channel to save the webhook to.');
+  let res = null;
+  chans.forEach((c) => { res = cpSetWebhook(url, c); }); // cpSetWebhook validates the URL + stores each channel row
+  return { set: String(url || '').trim() !== '', applied: chans, channels: (res && res.channels) || cpWebhookStatus_() };
+}
+
 /** Ensure the admin file's Webhooks tab exists with its header row. Idempotent. */
 function ensureWebhookTab_(file) {
   let sh = file.getSheetByName(WEBHOOK_TAB_);
@@ -179,6 +197,16 @@ function cpTestWebhook(channel) {
     throw new Error(`Discord did not accept the test (HTTP ${res.code}${res.error ? ` — ${res.error}` : ''}). Re-check the webhook URL.`);
   }
   return { ok: true, channel: ch, code: res.code };
+}
+
+/** Panel: send a test to each listed channel that has a webhook. @return {ok, tested:[], missing:[]}. */
+function cpTestWebhookChannels(channels) {
+  const chans = webhookChannelList_(channels);
+  if (!chans.length) throw new Error('Pick at least one channel to test.');
+  const tested = [], missing = [];
+  chans.forEach((c) => { try { cpTestWebhook(c); tested.push(c); } catch (e) { missing.push(c); } }); // cpTestWebhook throws when a channel has no URL
+  if (!tested.length) throw new Error('None of the selected channels have a webhook yet — save one first.');
+  return { ok: true, tested: tested, missing: missing };
 }
 
 /* ----------------------------------------------------------------------------
