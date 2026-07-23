@@ -2496,16 +2496,31 @@ function syncPatrolHours() {
  * The caller then runs refreshPatrolLog_: autofill, evaluation, marker-reconciled crediting and the sort all
  * happen through the log's own hardened path. @return {{added:number, skipped:Array<{row:number,reason:string}>}}
  */
-function syncPatrolFormToLog_(formSheet, logSheet) {
+function syncPatrolFormToLog_(formSheet, logSheet, roster) {
   const out = { added: 0, skipped: [] };
   const cols = patrolCols_(formSheet);
   const markCol = patrolMarkerCol_(formSheet);
   const PC = patrolLogCols_(logSheet);
   const last = formSheet.getLastRow();
   if (last < 2) return out;
-  if (cols.start === -1 || cols.end === -1) { out.skipped.push({ row: 0, reason: 'the form has no start/end columns ([PATROL].COL_START / COL_END)' }); return out; }
   if (!PC.discord || !PC.startDate || !PC.startTime || !PC.endDate || !PC.endTime) { out.skipped.push({ row: 0, reason: 'the Patrol Log is missing its ID / start-end date+time columns' }); return out; }
   const width = formSheet.getLastColumn();
+  // The FORM's time columns, matched by header FOR EACH FIELD: forms usually split Start/End into DATE + TIME
+  // question pairs — resolving only a single "Start" grabbed whichever column matched first and scrambled the
+  // transfer (a time-only value in START DATE renders as 30 Dec 1899). Single datetime columns stay the fallback.
+  const fh = formSheet.getRange(1, 1, 1, width).getDisplayValues()[0].map((h) => norm_(h));
+  const fFind = (...toks) => { for (let c = 0; c < fh.length; c++) { if (fh[c] && toks.every((t) => fh[c].indexOf(t) !== -1)) return c + 1; } return 0; };
+  const F = {
+    sDate: fFind('START', 'DATE'), sTime: fFind('START', 'TIME'),
+    eDate: fFind('END', 'DATE'), eTime: fFind('END', 'TIME'),
+    name: 0,
+  };
+  for (let c = 0; c < fh.length; c++) { if (fh[c].indexOf('NAME') !== -1 && fh[c].indexOf('OOC') === -1) { F.name = c + 1; break; } }
+  if (!(F.sDate && F.sTime && F.eDate && F.eTime) && (cols.start === -1 || cols.end === -1)) {
+    out.skipped.push({ row: 0, reason: 'the form has no start/end columns (need Start/End Date + Time pairs, or single datetime columns)' });
+    return out;
+  }
+  const idx = roster ? patrolRosterIndex_(roster) : null; // one snapshot serves every bad-ID resolution below
   const n = last - 1;
   const grid = formSheet.getRange(2, 1, n, width).getValues();
   const bgs = formSheet.getRange(2, 1, n, 1).getBackgrounds();
@@ -2524,32 +2539,56 @@ function syncPatrolFormToLog_(formSheet, logSheet) {
   const dOnly = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const tOnly = (d) => new Date(2020, 0, 1, d.getHours(), d.getMinutes(), d.getSeconds()); // shared fixed base → TOTAL's date parts cancel
   for (let i = 0; i < n; i++) {
-    const marker = String(grid[i][markCol - 1] == null ? '' : grid[i][markCol - 1]).trim();
-    const bg = String(bgs[i][0] || '').toLowerCase();
-    if (marker !== '' || bg === done) continue; // already transferred — or already credited by the direct path
     const rowIndex = 2 + i;
-    const cell = (c) => (c > 0 && c <= width) ? grid[i][c - 1] : '';
-    const s = cell(cols.start), e = cell(cols.end);
-    const sd = (s instanceof Date) ? s : new Date(s);
-    const ed = (e instanceof Date) ? e : new Date(e);
-    if (isNaN(sd.getTime()) || isNaN(ed.getTime())) {
+    try {
+      const marker = String(grid[i][markCol - 1] == null ? '' : grid[i][markCol - 1]).trim();
+      const bg = String(bgs[i][0] || '').toLowerCase();
+      if (marker !== '' || bg === done) continue; // already transferred — or already credited by the direct path
+      const cell = (c) => (c > 0 && c <= width) ? grid[i][c - 1] : '';
+      // Date+time PER FIELD: split pairs combine (combineDateTime_ handles Date dates + time-only/serial times);
+      // single datetime columns pass through whole.
+      const sd = (F.sDate && F.sTime) ? combineDateTime_(cell(F.sDate), cell(F.sTime))
+        : (function (v) { const d = (v instanceof Date) ? v : new Date(v); return isNaN(d.getTime()) ? null : d; })(cell(cols.start));
+      const ed = (F.eDate && F.eTime) ? combineDateTime_(cell(F.eDate), cell(F.eTime))
+        : (function (v) { const d = (v instanceof Date) ? v : new Date(v); return isNaN(d.getTime()) ? null : d; })(cell(cols.end));
+      if (!sd || !ed) {
+        try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); } catch (e2) { /* best-effort */ }
+        out.skipped.push({ row: rowIndex, reason: 'unparseable start/end date+time — fix the row and re-run' });
+        continue;
+      }
+      // Identity: a valid ID passes straight through. An INVALID one is resolved up front by the corroborated
+      // name + callsign match; if even that fails, the row still lands with NAME/UNIT filled and the ID left
+      // blank — the log's own failsafe gets another chance on refresh, and an unresolved row is FLAGGED there
+      // with the reason instead of crashing the sync against the ID column's validation rule.
+      let id = String(cell(cols.discord) == null ? '' : cell(cols.discord)).trim();
+      const csRaw = String(cell(cols.callsign) == null ? '' : cell(cols.callsign)).trim(); // often "2519 | L. Forger"
+      const unit = csRaw.indexOf('|') !== -1 ? csRaw.split('|')[0].trim() : csRaw;
+      const csName = csRaw.indexOf('|') !== -1 ? csRaw.split('|').slice(1).join('|').trim() : '';
+      const nm = String(F.name ? cell(F.name) : '').trim() || csName;
+      if (id && !isValidId_(id)) {
+        const rec = rosterMatchByFields_(idx, { name: nm, rank: '', unit: unit });
+        if (rec) { logInfo_('syncPatrolFormToLog_', `form row ${rowIndex}: "${id}" is not a valid Unique ID — matched by name+callsign to roster row ${rec.row}.`); id = rec.id; }
+        else id = ''; // never write an invalid ID into the log's REJECT-validated cell
+      }
+      // Durable marker + flush BEFORE the transfer: once stamped, this submission can never be ingested twice.
+      formSheet.getRange(rowIndex, markCol).setValue('✓ ' + Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm') + ' → ' + logSheet.getName());
+      SpreadsheetApp.flush();
+      const at = free.length ? free.shift() : append++;
+      if (at > logSheet.getMaxRows()) logSheet.insertRowsAfter(logSheet.getMaxRows(), at - logSheet.getMaxRows());
+      logSheet.getRange(at, PC.discord).setNumberFormat('@').setValue(id);
+      if (PC.name && nm) logSheet.getRange(at, PC.name).setValue(nm);     // identity breadcrumbs: the log's failsafe
+      if (PC.unit && unit) logSheet.getRange(at, PC.unit).setValue(unit); // resolves name+unit rows on refresh
+      logSheet.getRange(at, PC.startDate).setValue(dOnly(sd));
+      logSheet.getRange(at, PC.startTime).setValue(tOnly(sd));
+      logSheet.getRange(at, PC.endDate).setValue(dOnly(ed));
+      logSheet.getRange(at, PC.endTime).setValue(tOnly(ed));
+      try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done); } catch (e2) { /* best-effort */ }
+      out.added++;
+    } catch (err) { // one bad row must never kill the sync (e.g. an unexpected validation reject)
+      log_('syncPatrolFormToLog_', err);
       try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); } catch (e2) { /* best-effort */ }
-      out.skipped.push({ row: rowIndex, reason: 'unparseable start/end — fix the row and re-run' });
-      continue;
+      out.skipped.push({ row: rowIndex, reason: 'unexpected error — row marked red; see SYS Log' });
     }
-    const id = String(cell(cols.discord) == null ? '' : cell(cols.discord)).trim();
-    // Durable marker + flush BEFORE the transfer: once stamped, this submission can never be ingested twice.
-    formSheet.getRange(rowIndex, markCol).setValue('✓ ' + Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm') + ' → ' + logSheet.getName());
-    SpreadsheetApp.flush();
-    const at = free.length ? free.shift() : append++;
-    if (at > logSheet.getMaxRows()) logSheet.insertRowsAfter(logSheet.getMaxRows(), at - logSheet.getMaxRows());
-    logSheet.getRange(at, PC.discord).setNumberFormat('@').setValue(id); // blank/bad IDs still land — the log flags them with the reason
-    logSheet.getRange(at, PC.startDate).setValue(dOnly(sd));
-    logSheet.getRange(at, PC.startTime).setValue(tOnly(sd));
-    logSheet.getRange(at, PC.endDate).setValue(dOnly(ed));
-    logSheet.getRange(at, PC.endTime).setValue(tOnly(ed));
-    try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done); } catch (e2) { /* best-effort */ }
-    out.added++;
   }
   return out;
 }
@@ -2577,7 +2616,7 @@ function manualSyncPatrol() {
     const lock = LockService.getScriptLock();
     if (!lock.tryLock(30000)) { ui.alert('Sync skipped — another roster operation is running.'); return; }
     let res;
-    try { res = syncPatrolFormToLog_(form, log); } finally { lock.releaseLock(); }
+    try { res = syncPatrolFormToLog_(form, log, ss.getSheetByName(CONFIG.sheets.roster)); } finally { lock.releaseLock(); }
     try { refreshPatrolLog_(); } catch (e) { log_('manualSyncPatrol.refresh', e); } // autofill + credit + flag + sort, the log's own path
     const skipNote = res.skipped.length ? ('\n\n⚠️ ' + res.skipped.slice(0, 5).map((k) => (k.row ? `Row ${k.row}: ` : '') + k.reason).join('\n')) : '';
     ui.alert('🚔 Sync Patrol Forms', res.added
