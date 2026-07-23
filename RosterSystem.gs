@@ -2987,8 +2987,10 @@ function leaveFormCols_(formSheet) {
     out.rank = find('RANK', ['RANK']);
     out.reason = find('REASON', ['REASON', 'DETAILS']); // optional — "Reason for leave" free text lands in the tracker's NOTES
     out.name = find('NAME', ['NAME']); // LAST — must not steal a "Discord Name"-style column from a specific role
-    if (out.timestamp && out.discord && out.start && out.end && out.type && out.name) return out;
-    logWarn_('leaveFormCols_', `"${formSheet.getName()}" row-1 headers didn't fully resolve (need Timestamp, Name, ID, Type/Status, Start, End) — using the classic fixed column order 1–8.`);
+    // TYPE is OPTIONAL: a single-leave-type department's form may not ask at all — the sync then treats every
+    // submission as the tracker's own type. Everything else the sync needs must resolve, or fixed order applies.
+    if (out.timestamp && out.discord && out.start && out.end && out.name) return out;
+    logWarn_('leaveFormCols_', `"${formSheet.getName()}" row-1 headers didn't fully resolve (need Timestamp, Name, ID, Start, End) — using the classic fixed column order 1–8.`);
   } catch (e) { log_('leaveFormCols_', e); }
   return fixed;
 }
@@ -3053,9 +3055,12 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       // status. ANY: a department's own vocabulary (Emergency leave, Vacation, …) all syncs onto the one tracker,
       // with the submitted type preserved in NOTES below so nothing is lost.
       const trkType = trackerLeaveType_();
-      const typeMatches = norm_(String(type).trim()) === norm_(trkType);
+      // No TYPE column on the form (or a blank answer) → the submission simply IS the tracker's type; only an
+      // explicit different answer is subject to the policy check.
+      const typeEff = String(type == null ? '' : type).trim() || trkType;
+      const typeMatches = norm_(typeEff) === norm_(trkType);
       if (!typeMatches && norm_(CONFIG.formTypePolicy || 'MATCH') !== 'ANY') {
-        logWarn_('syncFormToTracker_', `form row ${rowIndex}: leave type "${type}" is not "${trkType}" (LOA-only tracker); marking error and skipping. Set [LEAVE].FORM_TYPE_POLICY = ANY to accept custom types.`);
+        logWarn_('syncFormToTracker_', `form row ${rowIndex}: leave type "${typeEff}" is not "${trkType}" (LOA-only tracker); marking error and skipping. Set [LEAVE].FORM_TYPE_POLICY = ANY to accept custom types.`);
         form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error);
         continue;
       }
@@ -3092,12 +3097,12 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       // tracker's own, so an "Emergency leave — Grandmother is sick" survives onto the LOA-only tracker.
       const reason = String((FC.reason ? at(FC.reason) : '') || '').trim();
       const noteBits = [];
-      if (!typeMatches && String(type || '').trim()) noteBits.push(String(type).trim());
+      if (!typeMatches) noteBits.push(typeEff);
       if (reason) noteBits.push(reason);
       accepted.push({
         rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus, notes: clamp_(noteBits.join(' — '), 500) }),
         rowIndex: rowIndex,
-        leaf: { name: fName, rank: fRank, callsign: fUnit, type, startStr, endStr, durationStr, discord },
+        leaf: { name: fName, rank: fRank, callsign: fUnit, type: typeEff, startStr, endStr, durationStr, discord },
       });
     } catch (err) {
       form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error);
