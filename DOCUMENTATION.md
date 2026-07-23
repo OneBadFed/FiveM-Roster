@@ -1,6 +1,6 @@
 # Roster Engine — System Documentation
 
-> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 36 whitelisted endpoints
+> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 37 whitelisted endpoints
 > **Updated:** 2026-07-22 (the 1.0 full release)
 >
 > A white-label, schema-driven personnel-management engine for Google Sheets, built in Google Apps Script.
@@ -191,7 +191,7 @@ actionable.
 design system, deep-linkable (`openControlPanel('signups')` lands on a tab directly).
 
 **Security architecture (D5):** the client calls exactly one server function — `dispatch(name, args)` — which
-validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **36 endpoints**; the shim's
+validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **37 endpoints**; the shim's
 `RE_ENDPOINTS` list mirrors it one-for-one (adding an endpoint = one line in each). Writes are **identity-keyed**: the
 client sends each row's Unique ID so a shifted row can't hit the wrong member (`cpResolveMemberRow_` for
 members, `signupResolveRow_` for signups).
@@ -202,8 +202,10 @@ Add member (rank-grouped slot dropdown + live preview) · **Signups** (§6) · D
 Tools (one-click actions, webhook setup) · Columns (SLOT/MEMBER toggles) · System (health checks, snapshots,
 audit timeline).
 
-**Rank icons:** uploaded in Settings, compressed client-side, stored chunked in Document Properties, lazy-loaded
-after first paint.
+**Rank icons & colours:** uploaded/picked in Settings, stored in Document Properties (icons chunked `REICON:`,
+colours one small value each `RKCOLOR:`), lazy-loaded after first paint. A member card's accent resolves:
+explicit rank colour → the roster rank-cell's background → neutral, so colouring the sheet's rank cells still
+works where no explicit colour is set.
 
 **Testing pattern:** every mutating endpoint has an injectable `_`-core taking sheet objects, driven by DevQA
 against sandbox tabs; the live wrapper adds lock/audit/notify.

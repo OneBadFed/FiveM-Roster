@@ -492,6 +492,8 @@
   .rkbtn:hover{border-color:var(--accent);background:var(--accent-soft,rgba(63,134,230,.14));}
   .rkbtn.rkup{position:relative;display:inline-flex;align-items:center;}
   .rkbtn.rkdel{color:var(--txt-3);}
+  .rkbtn.rkcol{display:inline-flex;align-items:center;gap:7px;}
+  .rkbtn.rkcol input[type=color]{width:22px;height:18px;padding:0;border:1px solid var(--hair,rgba(255,255,255,.18));border-radius:5px;background:none;cursor:pointer;}
   .rkbtn.rkdel:hover{border-color:var(--red,#e0574f);color:var(--red,#e0574f);background:transparent;}
 </style>
 </head>
@@ -1483,7 +1485,7 @@
     renderRankLabels(); updateBar();
   }
   function rankIconsShell(){
-    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Upload a small image (badge / insignia) for any rank — everyone with that rank shows it in the Control Panel instead of their initials. Images are resized automatically; a square PNG with transparency looks best. Changes save immediately.</div>'
+    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Upload a small image (badge / insignia) for any rank — everyone with that rank shows it in the Control Panel instead of their initials. Images are resized automatically; a square PNG with transparency looks best. <b>Colour</b> sets that rank\'s profile-card accent (border, avatar glow) for every member holding it; without one, the card falls back to the rank cell\'s colour on your roster. Changes save immediately.</div>'
       +'<div id="rankiconsHost"><div class="rkloading">Loading ranks…</div></div>';
   }
   function loadRankIcons(){
@@ -1498,15 +1500,24 @@
     host.innerHTML='<div class="rkgrid">'+ranks.map(function(r){
       var av=r.icon?('<img src="'+esc(r.icon)+'" alt="">'):('<span class="rkmono">'+esc(rkInitials(r.rank))+'</span>');
       var count=(r.members===1?'1 member':((r.members||0)+' members'));
+      var meta=count+(r.icon?' · icon set':'')+(r.color?' · colour set':'');
       return '<div class="rkcard" data-rank="'+esc(r.rank)+'">'
-        +'<div class="rkav'+(r.icon?' has':'')+'">'+av+'</div>'
-        +'<div class="rkmeta"><b>'+esc(r.rank)+'</b><span>'+count+(r.icon?' · icon set':'')+'</span></div>'
+        +'<div class="rkav'+(r.icon?' has':'')+'"'+(r.color?' style="box-shadow:0 0 0 2px '+esc(r.color)+' inset"':'')+'>'+av+'</div>'
+        +'<div class="rkmeta"><b>'+esc(r.rank)+'</b><span>'+meta+'</span></div>'
         +'<div class="rkbtns"><label class="rkbtn rkup">'+(r.icon?'Replace':'Upload')
           +'<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-rankfile="'+esc(r.rank)+'" hidden></label>'
           +(r.icon?'<button type="button" class="rkbtn rkdel" data-rankdel="'+esc(r.rank)+'">Remove</button>':'')
+          +'<label class="rkbtn rkcol" title="Profile-card colour for everyone holding this rank">'
+            +'<input type="color" data-rankcol="'+esc(r.rank)+'" value="'+esc(r.color||'#43434d')+'">Colour</label>'
+          +(r.color?'<button type="button" class="rkbtn rkdel" data-rankcoldel="'+esc(r.rank)+'">Reset</button>':'')
         +'</div></div>';
     }).join('')+'</div>';
   }
+  function handleRankColor(input){
+    var rank=input.getAttribute('data-rankcol'), color=String(input.value||'').trim();
+    api(function(){ toast('Colour set for '+rank+'.','ok'); rankIconsChanged(); }, onError, 'cpSetRankColor', rank, color);
+  }
+  function handleRankColorReset(rank){ api(function(){ toast('Colour reset for '+rank+'.','ok'); rankIconsChanged(); }, onError, 'cpSetRankColor', rank, ''); }
   function handleRankUpload(input){
     var rank=input.getAttribute('data-rankfile'), file=input.files&&input.files[0];
     input.value=''; // let the same file be re-picked later
@@ -1573,10 +1584,14 @@
   /* ── events ── */
   $('content').addEventListener('change',function(e){ var f=e.target; if(!f) return;
     if(f.matches&&f.matches('input[data-rankfile]')){ handleRankUpload(f); return; }
+    if(f.matches&&f.matches('input[data-rankcol]')){ handleRankColor(f); return; }
     if(f.closest&&f.closest('#dcBuild')&&(f.hasAttribute('data-embtoggle')||f.hasAttribute('data-embinl'))) dcSyncFromForm_(); });
   $('content').addEventListener('focusin',function(e){ var f=e.target; if(f&&f.closest&&f.closest('#dcBuild')&&f.dataset&&(f.dataset.emb!==undefined||f.dataset.embf!==undefined)) LASTEMB=f; }); // placeholder chips insert here
   $('content').addEventListener('error',function(e){ var t=e.target; if(t&&t.tagName==='IMG'&&/\bdc-(thumb|img|eaic|ficon)\b/.test(t.className||'')) t.style.display='none'; },true); // hide broken embed-preview images (capture phase — error doesn't bubble)
-  $('content').addEventListener('click',function(e){ var d=e.target.closest&&e.target.closest('[data-rankdel]'); if(d) handleRankDelete(d.getAttribute('data-rankdel')); });
+  $('content').addEventListener('click',function(e){
+    var d=e.target.closest&&e.target.closest('[data-rankdel]'); if(d){ handleRankDelete(d.getAttribute('data-rankdel')); return; }
+    var cd=e.target.closest&&e.target.closest('[data-rankcoldel]'); if(cd) handleRankColorReset(cd.getAttribute('data-rankcoldel'));
+  });
   $('nav').addEventListener('click',function(e){ var b=e.target.closest('[data-sec]'); if(!b) return; CUR=b.dataset.sec; renderNav(); renderSection(); });
   var qT; $('q').addEventListener('input',function(){ Q=this.value; clearTimeout(qT); qT=setTimeout(function(){ renderNav(); renderSection(); },170); });
   document.addEventListener('keydown',function(e){

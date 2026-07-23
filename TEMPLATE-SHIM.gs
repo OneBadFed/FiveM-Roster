@@ -40,7 +40,7 @@ const RE_ENDPOINTS = Object.freeze([
   'cpFixTriggers', 'cpTakeSnapshot', 'cpRestoreSnapshot', 'cpSetSnapshotAuto',
   'cpSetWebhook', 'cpSetWebhookChannels', 'cpTestWebhook', 'cpTestWebhookChannels',
   'cpGetConfig', 'cpApplyConfig', 'cpOpenSettings',
-  'cpRankIcons', 'cpSetRankIcon', 'cpDeleteRankIcon',
+  'cpRankIcons', 'cpSetRankIcon', 'cpDeleteRankIcon', 'cpSetRankColor',
   'cpSetDividerStyle', 'cpDeleteDividerStyle',
   'cpAdminSetup', 'cpAdminInfo', 'cpAddDiscipline', 'cpSignupList', 'cpSignupApprove',
 ]);

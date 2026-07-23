@@ -68,6 +68,7 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpRankIcons: () => cpRankIcons(),
   cpSetRankIcon: (rank, dataUri) => cpSetRankIcon(rank, dataUri),
   cpDeleteRankIcon: (rank) => cpDeleteRankIcon(rank),
+  cpSetRankColor: (rank, color) => cpSetRankColor(rank, color),
   cpSetDividerStyle: (label, style) => cpSetDividerStyle(label, style),
   cpDeleteDividerStyle: (label) => cpDeleteDividerStyle(label),
   cpAdminSetup: (p) => cpAdminSetup(p),
@@ -551,6 +552,35 @@ function deleteRankIconStore_(rank) {
   Object.keys(all).forEach((k) => { if (k.indexOf(pfx) === 0) props.deleteProperty(k); });
 }
 
+/* Per-rank PROFILE-CARD COLOUR — same document-property store as the icons (one small value per rank, no
+ * chunking needed). The panel resolves a member's accent: explicit rank colour → the roster rank-cell's
+ * background → neutral. So an operator can either colour their sheet's rank cells or set colours here. */
+const RANK_COLOR_PREFIX_ = 'RKCOLOR:'; // key: RKCOLOR:<encoded rank> → '#rrggbb'
+
+/** { rank: '#rrggbb' } for every stored profile-card colour. */
+function rankColorsMap_() {
+  const all = rankIconProps_().getProperties();
+  const map = {};
+  Object.keys(all).forEach((k) => {
+    if (k.indexOf(RANK_COLOR_PREFIX_) !== 0) return;
+    let rank; try { rank = decodeURIComponent(k.slice(RANK_COLOR_PREFIX_.length)); } catch (e) { return; }
+    if (rank) map[rank] = String(all[k]);
+  });
+  return map;
+}
+
+/** Panel endpoint: set — or clear, with an empty colour — the profile-card accent for a rank. */
+function cpSetRankColor(rank, color) {
+  rank = String(rank == null ? '' : rank).trim();
+  if (!rank) throw new Error('A rank is required.');
+  color = String(color == null ? '' : color).trim();
+  const key = RANK_COLOR_PREFIX_ + encodeURIComponent(rank);
+  if (!color) { rankIconProps_().deleteProperty(key); return { ok: true, rank: rank, color: '' }; }
+  if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color)) throw new Error('The colour must be a hex value like #3f86e6.');
+  rankIconProps_().setProperty(key, color.toLowerCase());
+  return { ok: true, rank: rank, color: color.toLowerCase() };
+}
+
 /** One-time: move any v1.3.0 sheet-stored icons into document properties, then drop the slow base64-in-cells tab. Idempotent (no-op once the tab is gone). */
 function migrateRankIconSheet_() {
   const ss = SpreadsheetApp.getActive();
@@ -609,8 +639,10 @@ function cpRankIcons() {
     }
   }
   const icons = rankIconsMap_();
+  const colors = rankColorsMap_();
   Object.keys(icons).forEach((r) => { if (!(r in counts)) { counts[r] = 0; order.push(r); } }); // keep icons for ranks no longer on the roster
-  return { ranks: order.map((r) => ({ rank: r, members: counts[r], icon: icons[r] || '' })) };
+  Object.keys(colors).forEach((r) => { if (!(r in counts)) { counts[r] = 0; order.push(r); } });
+  return { ranks: order.map((r) => ({ rank: r, members: counts[r], icon: icons[r] || '', color: colors[r] || '' })) };
 }
 
 /** Panel endpoint: store/replace a rank's icon. `dataUri` is a small data:image/…;base64 string (already downscaled in the browser). */
