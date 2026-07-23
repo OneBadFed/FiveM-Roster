@@ -1378,6 +1378,10 @@ function logInfo_(scope, msg) { console.info(`[${scope}] ${msg}`); slog_('INFO',
  * @param {function():*} fn
  */
 function runAction_(label, fn) {
+  // INTERACTIVE-FIRST: every menu action is a human waiting — stamp the publisher's backoff so no NEW publish
+  // pass starts underneath it (same priority cpWithLock_ and transfers get). The stamp expires on its own; any
+  // pending publish rides the sweep right after. Long actions re-stamp implicitly if they call locked helpers.
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
   try {
     const result = fn();
     // Audit-log every menu/scheduled command that ran. Skip the UI-open ('Open Control Panel') as noise;
