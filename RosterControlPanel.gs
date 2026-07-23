@@ -2080,15 +2080,20 @@ function publishMarkDirty_() {
 }
 
 /** Publish under the lock, clearing the dirty flag FIRST so an edit landing mid-publish re-marks itself. */
-function publishPublicRosterQuiet_(onlyTab) {
+function publishPublicRosterQuiet_(onlyTab, mayClear) {
   const props = PropertiesService.getDocumentProperties();
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return; // another publish is already running — it will carry this change
   try {
-    if (!onlyTab) {                              // only a FULL pass may clear the GLOBAL flag. Script writes (patrol
-      props.deleteProperty(PUBLISH_DIRTY_PROP_); // credit, panel actions) rely on the sweep's full publish, and a
-      _pubDirtyMemo_ = false;                    // single-tab publish doesn't carry them — clearing here dropped them.
-    }                                            // Cleared BEFORE publishing so a concurrent edit re-marks itself.
+    // The GLOBAL flag: a FULL pass always clears it. A PARTIAL (single-tab) pass may clear it ONLY when its
+    // caller saw the flag clean before marking its own edit (mayClear) — then this pass covers everything
+    // pending. If script-write changes were already queued (patrol credit, panel actions), the flag stays so
+    // the sweep's full pass carries them — but an ordinary edit no longer leaves a full publish behind it
+    // (that made the sweep republish EVERY tab every minute and hog the lock against the menu publish).
+    if (!onlyTab || mayClear) {
+      props.deleteProperty(PUBLISH_DIRTY_PROP_); // BEFORE publishing, so a concurrent edit re-marks itself
+      _pubDirtyMemo_ = false;
+    }
     publishPublicRoster_(onlyTab);
     props.setProperty(PUBLISH_LAST_PROP_, String(Date.now()));
   } catch (e) { log_('publishPublicRosterQuiet_', e); }
@@ -2105,6 +2110,7 @@ function publishOnChange(e) {
     let only = '';
     try { only = (e && e.range) ? e.range.getSheet().getName() : ''; } catch (ig) { only = ''; }
     const props = PropertiesService.getDocumentProperties();
+    const wasDirty = props.getProperty(PUBLISH_DIRTY_PROP_) === '1'; // script writes already pending? then a partial pass must NOT clear the flag
     props.setProperty(PUBLISH_DIRTY_PROP_, '1');
     _pubDirtyMemo_ = true;
     // No range = an onChange firing (a paste/edit, a row/column insert-delete, or a format change). A full synchronous
@@ -2130,7 +2136,7 @@ function publishOnChange(e) {
     }
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
     if (Date.now() - last < PUBLISH_MIN_GAP_MS_) { scheduleCatchup_(); return; } // too soon → a trailing catch-up publishes the tail in ~8s (not the 1-minute sweep)
-    publishPublicRosterQuiet_(only || undefined);
+    publishPublicRosterQuiet_(only || undefined, !wasDirty); // nothing else was pending → this partial pass covers it all and may clear the flag
   } catch (err) { log_('publishOnChange', err); }
 }
 
