@@ -2154,9 +2154,10 @@ function trackerCols_(tracker) {
       out.status = find((h) => h.indexOf('STATUS') !== -1);
       out.approvedBy = find((h) => h.indexOf('APPROV') !== -1);
       out.notes = find((h) => h.indexOf('NOTE') !== -1);
+      out.reason = find((h) => h.indexOf('REASON') !== -1); // optional — a form's "reason" answer lands here when the tab has one (else NOTES)
     }
   } catch (e) { log_('trackerCols_', e); }
-  out.width = Math.max(out.key, out.rank, out.unit, out.ooc, out.name, out.discord, out.shift, out.start, out.end, out.length, out.untilStart, out.timeLeft, out.returnDate, out.status, out.approvedBy, out.notes, 16);
+  out.width = Math.max(out.key, out.rank, out.unit, out.ooc, out.name, out.discord, out.shift, out.start, out.end, out.length, out.untilStart, out.timeLeft, out.returnDate, out.status, out.approvedBy, out.notes, out.reason || 0, 16);
   return out;
 }
 
@@ -2167,7 +2168,7 @@ function buildTrackerRow_(RC, W, f) {
   put(RC.key, f.key); put(RC.rank, f.rank); put(RC.unit, f.unit); put(RC.ooc, f.ooc);
   put(RC.name, f.name); put(RC.discord, f.discord); put(RC.shift, f.shift);
   put(RC.start, f.start); put(RC.end, f.end); put(RC.status, f.status);
-  put(RC.approvedBy, f.approvedBy); put(RC.notes, f.notes);
+  put(RC.approvedBy, f.approvedBy); put(RC.notes, f.notes); put(RC.reason, f.reason);
   return row;
 }
 
@@ -2235,6 +2236,10 @@ function sortTracker_(prepend, trackerSheet) {
     // Date formats + regenerated computed columns (batched setFormulas — only the columns that actually exist).
     if (RC.start) tracker.getRange(start, RC.start, sorted.length, 1).setNumberFormat('d mmm. yyyy');
     if (RC.end) tracker.getRange(start, RC.end, sorted.length, 1).setNumberFormat('d mmm. yyyy');
+    // Long-text columns stay readable: wrapped + centred (the engine wrote this text, so it may style it).
+    [RC.reason, RC.notes].forEach((c) => {
+      if (c) tracker.getRange(start, c, sorted.length, 1).setWrap(true).setHorizontalAlignment('center').setVerticalAlignment('middle');
+    });
     if (RC.start && RC.end) {
       const lenF = [], untF = [], lftF = [], retF = [];
       for (let k = 0; k < sorted.length; k++) { const f = leaveFormulaStrings_(RC, start + k); lenF.push([f.len]); untF.push([f.until]); lftF.push([f.left]); retF.push([f.ret]); }
@@ -3093,14 +3098,14 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const fRank = (mi.found && mi.rank) ? mi.rank : rank;
       const fUnit = (mi.found && mi.unit) ? mi.unit : callsign;
       if (dedupKey) synced[dedupKey] = true; // in-loop, so a duplicate submission later in this same scan still dedups
-      // NOTES: the free-text reason (when the form has one) — prefixed with the submitted type when it isn't the
-      // tracker's own, so an "Emergency leave — Grandmother is sick" survives onto the LOA-only tracker.
+      // The form's free-text reason goes to the tracker's own REASON column when the layout has one, else into
+      // NOTES. A submitted type that isn't the tracker's own is always preserved in NOTES ("Emergency leave").
       const reason = String((FC.reason ? at(FC.reason) : '') || '').trim();
       const noteBits = [];
       if (!typeMatches) noteBits.push(typeEff);
-      if (reason) noteBits.push(reason);
+      if (reason && !RC.reason) noteBits.push(reason);
       accepted.push({
-        rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus, notes: clamp_(noteBits.join(' — '), 500) }),
+        rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus, notes: clamp_(noteBits.join(' — '), 500), reason: RC.reason ? clamp_(reason, 500) : '' }),
         rowIndex: rowIndex,
         leaf: { name: fName, rank: fRank, callsign: fUnit, type: typeEff, startStr, endStr, durationStr, discord },
       });
