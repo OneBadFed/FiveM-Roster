@@ -834,8 +834,18 @@ function buildAcademySheets_() {
     if (sh.getSheetId() === roster.getSheetId()) return;
     if (!isAcademyTab_(sh)) return;
     const mk = academyMarker_(sh);
-    const wanted = ((mk && mk.ranks.length) ? mk.ranks : (baseTraining.length ? baseTraining : ACADEMY_DEFAULT_RANKS)).map(groupNorm_);
-    const isTrainee = (rank) => { const r = groupNorm_(rank); return wanted.some((w) => w && r.indexOf(w) === 0); };
+    const explicit = (mk && mk.ranks.length) ? mk.ranks : baseTraining; // operator-designated ranks, when any
+    const wanted = (explicit.length ? explicit : ACADEMY_DEFAULT_RANKS).map(groupNorm_);
+    // DEFAULTS-ONLY fallback: nobody designated training ranks anywhere, so don't demand the shipped names
+    // verbatim — a rank merely CONTAINING a training keyword (TRAINING_KEYWORDS: TRAINING/CADET…) or PROBATION
+    // counts. A department whose ranks are plain "Cadet" / "Probationary Officer" works out of the box; any
+    // explicit designation (marker, [RANKS] TRAINING, the Training label) switches back to exact intent.
+    const kwFallback = explicit.length ? [] : (CONFIG.trainingDividers || []).map(groupNorm_).concat(['PROBATION']).filter(Boolean);
+    const isTrainee = (rank) => {
+      const r = groupNorm_(rank);
+      if (wanted.some((w) => w && r.indexOf(w) === 0)) return true;
+      return kwFallback.some((k) => r.indexOf(k) !== -1);
+    };
     const H = academyHeaderRow_(sh);
     if (!H.row) { skipped.push({ name: sh.getName(), why: 'no header row with a NAME column found' }); return; }
     const AC = academyCols_(H.headers);
