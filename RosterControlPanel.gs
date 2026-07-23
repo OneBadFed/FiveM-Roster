@@ -391,7 +391,7 @@ function openControlPanel(initialTab) {
     try { boot = JSON.stringify(cpBootstrap()).replace(/</g, '\\u003c'); } catch (e) { log_('openControlPanel.boot', e); }
     const t = HtmlService.createTemplateFromFile('ControlPanel');
     t.bootJson = boot;
-    t.initialTab = (typeof initialTab === 'string' && /^[a-z]+$/.test(initialTab)) ? initialTab : ''; // deep-link to a tab (e.g. from 🧾 Review Roster Signups)
+    t.initialTab = (typeof initialTab === 'string' && /^[a-z]+$/.test(initialTab)) ? initialTab : ''; // deep-link straight to a tab (e.g. 'signups')
     const html = t.evaluate()
       .setWidth(1180)   // matches the Settings Studio shell (sidebar + content)
       .setHeight(760)
@@ -2207,12 +2207,8 @@ function setupPublicRoster() {
   });
 }
 
-/** Menu: the signup review dialog — pick a signup, pick an open slot, approve. Reads/writes only through the ACL-gated admin file. */
-function openSignupsDialog() {
-  openControlPanel('signups'); // the signup review now lives IN the Control Panel (Signups tab), not a separate popup
-}
-
-/** Menu: create the Roster Signup form and point its responses INSIDE the protected admin file. */
+/** Create the Roster Signup form and point its responses INSIDE the protected admin file.
+ *  (No menu entry any more — run from the script editor if ever needed; the signup REVIEW lives in Control Panel ▸ Signups.) */
 function createSignupForm() {
   runAction_('Create Roster Signup Form', () => {
     const ui = SpreadsheetApp.getUi();
@@ -2306,7 +2302,7 @@ function cpSignupApprove(payload) {
   const file = adminFile_();
   if (!file) throw new Error('No admin file is linked yet.');
   const sh = file.getSheetByName(CONFIG.sheets.signups);
-  if (!sh) throw new Error(`"${CONFIG.sheets.signups}" was not found in the admin file — run 🧾 Create Roster Signup Form first.`);
+  if (!sh) throw new Error(`"${CONFIG.sheets.signups}" was not found in the admin file — create/link your signups review tab first (⚙️ Engine Settings ▸ Sheets & layout).`);
   const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
   if (!roster) throw new Error(`The roster tab "${CONFIG.sheets.roster}" was not found.`);
   const row = Number((payload && payload.row) || 0), slotRow = Number((payload && payload.slotRow) || 0);

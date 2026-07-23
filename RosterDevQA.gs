@@ -170,7 +170,7 @@ function devAddRandomSignup() {
     SpreadsheetApp.flush(); // settle the appended row before the sync reads the form
     const added = (typeof syncSignupForm === 'function') ? syncSignupForm() : 0;
     SpreadsheetApp.flush();
-    ui.alert('🧾 Add Random Signup', `Simulated a form submission from ${app.name} (${app.discord}) on "${CONFIG.sheets.signupForm}", then synced ${added} row into "${CONFIG.sheets.signups}" as Pending.\n\nReview it in 🎛️ Control Panel ▸ Signups, or 🧾 Review Roster Signups.`, ui.ButtonSet.OK);
+    ui.alert('🧾 Add Random Signup', `Simulated a form submission from ${app.name} (${app.discord}) on "${CONFIG.sheets.signupForm}", then synced ${added} row into "${CONFIG.sheets.signups}" as Pending.\n\nReview it in 🎛️ Control Panel ▸ Signups.`, ui.ButtonSet.OK);
   } else { // no form linked yet → drop the applicant straight onto the review tab so the demo still works
     const SC = signupCols_(review);
     if (!SC.status || !SC.discord) { ui.alert('🧾 Add Random Signup', `The "${CONFIG.sheets.signups}" tab needs a header row with at least NAME, UNIQUE ID and STATUS columns.`, ui.ButtonSet.OK); return; }
@@ -2596,6 +2596,7 @@ function devPublishTests_() {
   (() => {
     const src = devFreshSheet_('PubSrc');
     src.getRange(5, 1, 1, 6).setValues([['RANK', 'UNIT NUMBER', 'NAME', 'UNIQUE ID', 'HOURS', 'EMAIL']]);
+    src.getRange(6, 4, 2, 1).setNumberFormat('@'); // IDs are text on the real roster ('@') — keep them exact here too
     src.getRange(6, 1, 2, 6).setValues([
       ['Sergeant', 'S-1', 'Pub One', devId_(60), 12, 'a@b.test'],
       ['Trooper', 'S-2', 'Pub Two', devId_(61), 4, 'c@d.test'],
@@ -2604,27 +2605,30 @@ function devPublishTests_() {
     const dest = devFreshSheet_('PubDest');
     if (dest.getMaxColumns() > 6) dest.deleteColumns(7, dest.getMaxColumns() - 6); // narrower GRID → header-matching
     dest.getRange(5, 1, 1, 6).setValues([['NAME', 'RANK', 'UNIQUE ID', 'HOURS', 'EMAIL', 'UNIT NUMBER']]);
+    dest.getRange(6, 3, 2, 1).setNumberFormat('@'); // a real public copy inherits '@' on the ID column from the tab copy
     const n = publishMirrorTab_(src, dest);
     devEq_(R, 'mirror: both rows copied', n, 2);
     devEq_(R, 'mirror: NAME matched by header despite reorder', g(dest, 6, 1), 'Pub One');
     devEq_(R, 'mirror: RANK matched by header', g(dest, 6, 2), 'Sergeant');
     devEq_(R, 'mirror: HOURS matched by header', g(dest, 6, 4), '12');
     devEq_(R, 'mirror: UNIT NUMBER matched by header', g(dest, 7, 6), 'S-2');
-    devEq_(R, 'SENSITIVE: Unique ID never written', g(dest, 6, 3), '');
+    devEq_(R, 'design: Unique ID IS published, exactly (user choice — IDs are not PII here)', g(dest, 6, 3), devId_(60));
     devEq_(R, 'SENSITIVE: email never written', g(dest, 6, 5), '');
   })();
 
-  // Stale sensitive values a copy brought along are WIPED, not left sitting there.
+  // Stale SENSITIVE values a copy brought along are WIPED — but the Unique ID is not sensitive (user choice) and stays.
   (() => {
     const src = devFreshSheet_('PubSrc2');
     src.getRange(5, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'EMAIL']]);
+    src.getRange(6, 2).setNumberFormat('@');
     src.getRange(6, 1, 1, 3).setValues([['Scrub', devId_(62), 'live@dept.test']]);
     const dest = devFreshSheet_('PubDest2');
     if (dest.getMaxColumns() > 3) dest.deleteColumns(4, dest.getMaxColumns() - 3); // narrower GRID → header-matching
     dest.getRange(5, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'EMAIL']]);
+    dest.getRange(6, 2).setNumberFormat('@');
     dest.getRange(6, 1, 1, 3).setValues([['Scrub', devId_(62), 'stale@dept.test']]); // came across in the copy
     publishMirrorTab_(src, dest);
-    devEq_(R, 'scrub: copied Unique ID wiped', g(dest, 6, 2), '');
+    devEq_(R, 'scrub: Unique ID kept (IDs publish by design)', g(dest, 6, 2), devId_(62));
     devEq_(R, 'scrub: copied email wiped', g(dest, 6, 3), '');
     devEq_(R, 'scrub: public data still updated', g(dest, 6, 1), 'Scrub');
   })();
@@ -2668,11 +2672,12 @@ function devPublishTests_() {
       .forEach((t) => devCheck_(R, 'publishable tab: ' + t, publishTabBlocked_(t) === false));
   })();
 
-  // Sensitive-header detection, including the short names that must match EXACTLY.
+  // Sensitive-header detection. NEVER_PUBLISH defaults to EMAIL/DOB/PHONE/ADDRESS only — Unique/Discord/Community
+  // IDs PUBLISH by explicit user choice (members find themselves by ID on the public roster). 'DOB' must match exactly.
   (() => {
-    ['UNIQUE ID', 'Discord ID', 'Community ID', 'Email', 'Date of Birth', 'Phone', 'Home Address', 'CID', 'DOB']
+    ['Email', 'Date of Birth', 'Phone', 'Home Address', 'DOB']
       .forEach((h) => devCheck_(R, 'sensitive: ' + h, publishSensitiveHeader_(h) === true));
-    ['NAME', 'OOC NAME', 'RANK', 'UNIT NUMBER', 'SHIFT', 'HOURS', 'STATUS', 'Accidents', 'Decided']
+    ['UNIQUE ID', 'Discord ID', 'Community ID', 'CID', 'NAME', 'OOC NAME', 'RANK', 'UNIT NUMBER', 'SHIFT', 'HOURS', 'STATUS', 'Accidents', 'Decided']
       .forEach((h) => devCheck_(R, 'not sensitive: ' + h, publishSensitiveHeader_(h) === false));
   })();
 
@@ -2696,17 +2701,20 @@ function devPublishTests_() {
     devEq_(R, 'dashboard: section title copied', g(dest, 2, 2), 'LEADERSHIP');
   })();
 
-  // Wholesale mirroring still scrubs sensitive columns.
+  // Wholesale mirroring: sensitive columns are blanked BEFORE the write; the Unique ID column is not sensitive and mirrors.
   (() => {
     const src = devFreshSheet_('PubDash2');
-    src.getRange(1, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'HOURS']]);
-    src.getRange(2, 1, 1, 3).setValues([['Whole', devId_(67), 5]]);
+    src.getRange(1, 1, 1, 4).setValues([['NAME', 'UNIQUE ID', 'HOURS', 'EMAIL']]);
+    src.getRange(2, 2).setNumberFormat('@');
+    src.getRange(2, 1, 1, 4).setValues([['Whole', devId_(67), 5, 'w@d.test']]);
     const dest = devFreshSheet_('PubDash2D');
-    dest.getRange(1, 1, 1, 3).setValues([['NAME', 'UNIQUE ID', 'HOURS']]);
+    dest.getRange(1, 1, 1, 4).setValues([['NAME', 'UNIQUE ID', 'HOURS', 'EMAIL']]);
+    dest.getRange(2, 2).setNumberFormat('@');
     publishMirrorTab_(src, dest);
     devEq_(R, 'wholesale: name mirrored', g(dest, 2, 1), 'Whole');
     devEq_(R, 'wholesale: hours mirrored', g(dest, 2, 3), '5');
-    devEq_(R, 'wholesale: Unique ID still scrubbed', g(dest, 2, 2), '');
+    devEq_(R, 'wholesale: Unique ID mirrored exactly (user choice)', g(dest, 2, 2), devId_(67));
+    devEq_(R, 'wholesale: EMAIL never written (blanked pre-write)', g(dest, 2, 4), '');
   })();
 
   // PRESERVED CELLS: the public copy's own formulas and any configured keep-range are never overwritten.
@@ -2729,7 +2737,8 @@ function devPublishTests_() {
 
   // A configured KEEP_RANGE protects static text that is meant to differ between the two files.
   (() => {
-    devWithConfig_({ PUBLISH: { kind: 'kv', kv: { KEEP_RANGES: 'PubTitleDest!A2:B2' } } }, () => {
+    // NB: the range's tab name must match the DESTINATION sheet's real name — which is the sandbox-prefixed one here.
+    devWithConfig_({ PUBLISH: { kind: 'kv', kv: { KEEP_RANGES: SANDBOX_PREFIX + 'PubTitleDest!A2:B2' } } }, () => {
       const src = devFreshSheet_('PubTitleSrc');
       src.getRange(1, 1, 1, 2).setValues([['TITLE', 'SUB']]);
       src.getRange(2, 1, 1, 2).setValues([['INTERNAL ROSTER', 'internal sub']]);
