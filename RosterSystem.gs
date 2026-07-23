@@ -390,7 +390,7 @@ function installTriggers() {
 
 /**
  * Phase 2 (brief Part C): programmatically create the leave Google Form from [FORM_MAP] + [LEAVE], link its
- * destination to this spreadsheet, and capture the REAL response-tab name into [SHEETS].FORM_RESPONSES —
+ * destination to this spreadsheet, and capture the REAL response-tab name into [SHEETS].LEAVE_FORM_RESPONSES —
  * eliminating the copy-and-relink-by-hand step (and the tab-name-mismatch bug class) at the source.
  * The Discord-ID question carries the ^\d{17,19}$ validation so a bad ID can't even be submitted.
  * @return {{tab:string, url:string, editUrl:string}}
@@ -441,7 +441,7 @@ function createLeaveForm_(ss) {
 
     // The premium move: write the ACTUAL created tab name into config so nothing ever has to match by hand.
     const configSheet = findConfigSheet_(s);
-    if (configSheet && tab) { setKvValue_(configSheet, 'SHEETS', 'FORM_RESPONSES', tab); cfgInvalidate_(); }
+    if (configSheet && tab) { setKvValue_(configSheet, 'SHEETS', 'LEAVE_FORM_RESPONSES', tab); cfgInvalidate_(); }
     logInfo_('createLeaveForm_', `form created; responses land on "${tab}".`);
     return { tab, url: form.getPublishedUrl(), editUrl: form.getEditUrl() };
   } catch (e) {
@@ -1411,7 +1411,7 @@ function getSheetOrWarn_(ss, name) {
     let role = 'sheet';
     try {
       const sh = CONFIG.sheets;
-      role = (name === sh.roster) ? 'ROSTER' : (name === sh.tracker) ? 'TRACKER' : (name === sh.form) ? 'FORM_RESPONSES' : 'sheet';
+      role = (name === sh.roster) ? 'ROSTER' : (name === sh.tracker) ? 'TRACKER' : (name === sh.form) ? 'LEAVE_FORM_RESPONSES' : 'sheet';
     } catch (e) { /* config broken — keep generic role */ }
     raise_('E-201', { name, role, closest: closestSheetName_(name) });
   }
@@ -2233,7 +2233,7 @@ function manualSyncLOA() {
  * PATROL LOG → HOURS
  * An operator-linked Google Form logs patrol sessions; each new submission
  * credits its patrol time to the matching member's HOURS. OFF until
- * [SHEETS].PATROL_RESPONSES names the form's response tab. Runs from the same
+ * [SHEETS].PATROL_FORM_RESPONSES names the form's response tab. Runs from the same
  * onFormSubmit trigger as the leave sync (each self-guards by its own tab).
  * ====================================================================== */
 

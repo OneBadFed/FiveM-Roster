@@ -61,6 +61,10 @@ per-execution memo, the column cache, **and** the document cache — changes pro
 **Schema & migrations:** `SYSTEM.SCHEMA_VERSION` (currently **2**; this is a migration counter, independent of
 the release version). `migrateConfig_` seeds additively — First-Run Setup upgrades an older sheet without
 deleting anything; `validateConfig_({})` yields zero ERRORs and defaults reproduce shipped behavior exactly.
+**Key renames use `aka` aliases:** a spec key with `aka` (e.g. `LEAVE_FORM_RESPONSES` aka `FORM_RESPONSES`,
+`PATROL_FORM_RESPONSES` aka `PATROL_RESPONSES`) accepts the legacy row's value at validate time (explicit
+new-name row wins), and re-seeding migrates the old row's value into the new-name row and retires the old one —
+so renaming a key never breaks an existing sheet.
 
 **Blocks (inventory):** SYSTEM · SHEETS (tab names for every role incl. `PATROL_LOG`, `SIGNUPS`,
 `SIGNUP_FORM_RESPONSES`; roles must resolve to distinct tabs) · ROSTER_LAYOUT (header/data rows, divider mode,
@@ -157,7 +161,7 @@ double-credits. **Never seed patrol rows without a matching marker.**
 The nightly `refreshPatrolLog_` sweep re-processes every row (maturing once-future logs) off **one block read**
 of the whole log — cached row data and markers thread through processing, and per-row format churn is skipped
 because the closing `sortPatrolLog_` re-applies formats and formulas batched. A legacy form-based intake
-(`[SHEETS].PATROL_RESPONSES` + `[PATROL]` column keywords) still syncs submissions into the same crediting path.
+(`[SHEETS].PATROL_FORM_RESPONSES` + `[PATROL]` column keywords) still syncs submissions into the same crediting path.
 
 ---
 

@@ -274,7 +274,7 @@ const BLOCK_SPECS_ = Object.freeze({
   SHEETS: { type: 'kv', keys: {
     ROSTER: { t: 'string', d: 'Member Information', req: true, help: 'The roster tab name.' },
     TRACKER: { t: 'string', d: 'LOA/ROA Tracker', req: true, help: 'The leave-tracker tab name.' },
-    FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: true, help: 'The LEAVE (LOA/ROA) Google Form\'s responses tab. Each submission is validated and added to the TRACKER as Pending.' },
+    LEAVE_FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: true, aka: 'FORM_RESPONSES', help: 'The LEAVE (LOA/ROA) Google Form\'s responses tab. Each submission is validated and added to the TRACKER as Pending.' },
     // v1.0 — the system/log tab names are now editable too (every role must resolve to a DISTINCT tab).
     // NOTE: "SYS Log" (engine diagnostics) is intentionally NOT here — slog_/theme_ must resolve it without cfg_() (re-entrancy).
     AUDIT: { t: 'string', d: 'Edit Log', req: false, help: 'The who/what/when audit-log tab. Blank = "Edit Log".' },
@@ -282,7 +282,7 @@ const BLOCK_SPECS_ = Object.freeze({
     COVERAGE: { t: 'string', d: 'Leave Coverage', req: false, help: 'Leave-coverage view tab. Blank = "Leave Coverage".' },
     INTEGRITY: { t: 'string', d: 'Integrity Log', req: false, help: 'Integrity-scan log tab. Blank = "Integrity Log".' },
     SNAPSHOTS: { t: 'string', d: '_Snapshots', req: false, help: 'Hidden snapshot/restore tab. Blank = "_Snapshots".' },
-    PATROL_RESPONSES: { t: 'string', d: '', req: false, help: 'Patrol-log Google Form responses tab name. BLANK = patrol-hours sync OFF. Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
+    PATROL_FORM_RESPONSES: { t: 'string', d: '', req: false, aka: 'PATROL_RESPONSES', help: 'The PATROL Google Form\'s responses tab. BLANK = patrol-form sync OFF (the manual Patrol Log tab still works). Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
     PATROL_LOG: { t: 'string', d: 'Patrol Log', req: false, help: 'Manual Patrol Log tracker tab (like the LOA Tracker). Enter Unique ID + start/end date + start/end time; the engine auto-fills member info, computes TOTAL TIME, credits the hours to the roster, and sorts Pending → Flagged → Processed. BLANK = OFF. Activates only if a tab with this name exists.' },
     SIGNUPS: { t: 'string', d: 'Roster Signups', req: false, help: 'Roster Signup REVIEW tab (like the LOA Tracker): the engine adds field-matched form submissions here (from SIGNUP_FORM_RESPONSES) for admins to review — STATUS + NOTES are admin-owned. Lay it out with a header row (NAME / OOC NAME / UNIQUE ID / DOB / EMAIL / STATUS / NOTES…) anywhere in the top rows. Approving adds the member to a slot and writes their private details to the Internal Roster.' },
     SIGNUP_FORM_RESPONSES: { t: 'string', d: '', req: false, help: 'The Google Form\'s OWN responses tab for roster signups (Forms own row 1, so it is separate from the themed Signups tab). BLANK = signup sync OFF. Point this at the tab your signup form writes to; each submission is matched by header name and added to the SIGNUPS review tab. Name the form questions to match: Name, OOC Name, Unique ID, DOB (or Date of Birth), Email.' },
@@ -390,7 +390,7 @@ const BLOCK_SPECS_ = Object.freeze({
     NEVER_PUBLISH: { t: 'list', d: 'EMAIL, DATE OF BIRTH, DOB, PHONE, ADDRESS', req: false, help: 'Column headers whose data is NEVER copied to the public roster, and is wiped there if a tab copy brought it along. Matched case/space-insensitively as a substring, except CID and DOB which must match exactly. Remove an entry to publish that column (e.g. drop "UNIQUE ID" if members should see IDs).' },
     KEEP_RANGES: { t: 'list', d: 'Welcome Page!F6:W7, Member Information!D3:H3', req: false, help: 'Comma-separated Tab!Range entries the publish never writes to, e.g. "Welcome Page!F6:W7, Welcome Page!A1". Use * as the tab name to apply a range to every tab.' },
   } },
-  PATROL: { type: 'kv', help: 'Patrol-log form → member hours. Each new submission on the [SHEETS].PATROL_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_RESPONSES is set.', keys: {
+  PATROL: { type: 'kv', help: 'Patrol-log form → member hours. Each new submission on the [SHEETS].PATROL_FORM_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_FORM_RESPONSES is set.', keys: {
     MODE: { t: 'enum', d: 'START_END', req: false, enum: ['START_END', 'DURATION'], help: 'START_END = compute hours from a start + end time. DURATION = read a single "hours patrolled" number.' },
     MAX_HOURS: { t: 'int', d: 16, req: false, min: 1, max: 24, help: 'Reject a single patrol log longer than this many hours (guards typos / bad times).' },
     OVERNIGHT: { t: 'bool', d: true, req: false, help: 'START_END only: if the end time is before the start, treat it as crossing midnight (+24h) instead of an error.' },
@@ -603,6 +603,20 @@ function checkLadder_(ladder, label, problems) {
  * @return {{config:Object, problems:Array}}
  */
 function validateConfig_(raw) {
+  // KEY ALIASES: a schema key with `aka` was RENAMED at some point (e.g. FORM_RESPONSES → LEAVE_FORM_RESPONSES).
+  // A sheet seeded before the rename still carries the old row — honour its value under the new name (an explicit
+  // new-name row wins) and drop the old name so it can't double-report. Seeding migrates the row itself.
+  Object.keys(BLOCK_SPECS_).forEach((name) => {
+    const spec = BLOCK_SPECS_[name];
+    if (spec.type !== 'kv' || !raw || !raw[name] || !raw[name].kv) return;
+    const kv = raw[name].kv;
+    Object.keys(spec.keys).forEach((key) => {
+      const aka = spec.keys[key].aka;
+      if (!aka || !Object.prototype.hasOwnProperty.call(kv, aka)) return;
+      if (!Object.prototype.hasOwnProperty.call(kv, key)) kv[key] = kv[aka];
+      delete kv[aka];
+    });
+  });
   const problems = [];
   const c = { kv: {}, tables: {} };
 
@@ -726,10 +740,10 @@ function validateConfig_(raw) {
   // [SHEETS] — every tab role must resolve to a DISTINCT tab (a collision silently aliases two roles onto one sheet → data loss).
   (function () {
     const roles = {
-      '[SHEETS].ROSTER': c.kv.SHEETS.ROSTER, '[SHEETS].TRACKER': c.kv.SHEETS.TRACKER, '[SHEETS].FORM_RESPONSES': c.kv.SHEETS.FORM_RESPONSES,
+      '[SHEETS].ROSTER': c.kv.SHEETS.ROSTER, '[SHEETS].TRACKER': c.kv.SHEETS.TRACKER, '[SHEETS].LEAVE_FORM_RESPONSES': c.kv.SHEETS.LEAVE_FORM_RESPONSES,
       '[SHEETS].AUDIT': c.kv.SHEETS.AUDIT || 'Edit Log', '[SHEETS].HOURS_HISTORY': c.kv.SHEETS.HOURS_HISTORY || '_Hours History',
       '[SHEETS].COVERAGE': c.kv.SHEETS.COVERAGE || 'Leave Coverage', '[SHEETS].INTEGRITY': c.kv.SHEETS.INTEGRITY || 'Integrity Log',
-      '[SHEETS].SNAPSHOTS': c.kv.SHEETS.SNAPSHOTS || '_Snapshots', '[SHEETS].PATROL_RESPONSES': c.kv.SHEETS.PATROL_RESPONSES, // '' is skipped below
+      '[SHEETS].SNAPSHOTS': c.kv.SHEETS.SNAPSHOTS || '_Snapshots', '[SHEETS].PATROL_FORM_RESPONSES': c.kv.SHEETS.PATROL_FORM_RESPONSES, // '' is skipped below
       '[SHEETS].PATROL_LOG': c.kv.SHEETS.PATROL_LOG, '[SHEETS].SIGNUPS': c.kv.SHEETS.SIGNUPS || 'Roster Signups', // the manual patrol log + signup feeds each need their OWN tab too ('' skipped)
       '[SHEETS].SIGNUP_FORM_RESPONSES': c.kv.SHEETS.SIGNUP_FORM_RESPONSES, // the signup form's response tab must be distinct from its review tab ('' skipped)
     };
@@ -956,7 +970,7 @@ function materialize_(c, fromTab) {
       processedStatus: P.PROCESSED_STATUS || 'Processed',
     },
     sheets: {
-      roster: kv.SHEETS.ROSTER, tracker: kv.SHEETS.TRACKER, form: kv.SHEETS.FORM_RESPONSES, patrol: kv.SHEETS.PATROL_RESPONSES || '',
+      roster: kv.SHEETS.ROSTER, tracker: kv.SHEETS.TRACKER, form: kv.SHEETS.LEAVE_FORM_RESPONSES, patrol: kv.SHEETS.PATROL_FORM_RESPONSES || '',
       patrolLog: kv.SHEETS.PATROL_LOG || '',   // manual Patrol Log tracker tab (blank = OFF; only activates if the tab exists)
       signups: kv.SHEETS.SIGNUPS || 'Roster Signups', // signup REVIEW/destination tab (engine fills it from the form)
       signupForm: kv.SHEETS.SIGNUP_FORM_RESPONSES || '', // the signup Google Form's own responses tab (blank = signup sync OFF)
@@ -1136,14 +1150,17 @@ function seedConfigTab_(ss) {
     banners.push(grid.length);
     if (spec.type === 'kv') {
       const have = (existing[name] && existing[name].kv) || {};
+      const consumedAka = {}; // legacy names of RENAMED keys — their value is carried into the new row, the old row is retired
       Object.keys(spec.keys).forEach((key) => {
         const k = spec.keys[key];
+        if (k.aka) consumedAka[k.aka] = true;
         let val;
         if (Object.prototype.hasOwnProperty.call(have, key)) val = have[key];
+        else if (k.aka && Object.prototype.hasOwnProperty.call(have, k.aka)) val = have[k.aka]; // renamed key: the old row's value migrates
         else { val = (k.t === 'bool') ? (k.d ? 'TRUE' : 'FALSE') : String(k.d); added++; }
         grid.push(pad([key, val, k.help || '']));
       });
-      Object.keys(have).forEach((key) => { if (!spec.keys[key]) grid.push(pad([key, have[key], '(unknown key — preserved)'])); });
+      Object.keys(have).forEach((key) => { if (!spec.keys[key] && !consumedAka[key]) grid.push(pad([key, have[key], '(unknown key — preserved)'])); });
     } else {
       grid.push(pad(spec.cols));
       subheads.push(grid.length);
@@ -1246,7 +1263,7 @@ function importColumnsFromHiddenTab_(ss) {
  * Set ONE kv value inside a block on the given Config sheet (injectable). Finds the [BLOCK] marker, walks its
  * kv rows (col A = key) until the blank separator or the next marker, and updates col B — or inserts the key
  * at the end of the block if missing. Used by migrations and the wizard (e.g. writing the real form-response
- * tab name into [SHEETS].FORM_RESPONSES). @return {boolean} true if written.
+ * tab name into [SHEETS].LEAVE_FORM_RESPONSES). @return {boolean} true if written.
  */
 function setKvValue_(configSheet, blockName, key, value) {
   const lastRow = configSheet.getLastRow();
