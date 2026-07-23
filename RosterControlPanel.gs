@@ -831,7 +831,9 @@ function cpParseYMD_(s) {
 /** Runs fn while holding the script lock so two concurrent panel writes can't race (TOCTOU → dup IDs / double-seat). */
 function cpWithLock_(fn) {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) throw new Error('Another roster change is in progress — try again in a moment.');
+  // 30s, not 10s: the near-live publisher can hold this same lock for the length of a multi-tab publish, and a
+  // panel save that merely COLLIDED with one should ride it out ("Saving…" a little longer), not hard-fail.
+  if (!lock.tryLock(30000)) throw new Error('Another roster operation is holding the lock (usually the background publisher) — wait a few seconds and try again.');
   try { return fn(); } finally { lock.releaseLock(); }
 }
 
