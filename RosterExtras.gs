@@ -728,7 +728,7 @@ function isAcademyTab_(sh) { return /academy/i.test(sh.getName()) || !!academyMa
  * training keyword (TRAINING_KEYWORDS: TRAINING, CADET). This is what the Engine Settings → Ranks panel writes when
  * you tag a rank "Training", so tagging there ALSO designates it as a Police Academy training rank. @return {string[]}
  */
-function academyTrainingRanksFromLabels_() {
+function academyTrainingRanksFromLabels_(liveRanks) {
   const out = [];
   try {
     const groups = (CONFIG.dashboard && CONFIG.dashboard.groups) ? CONFIG.dashboard.groups : {};
@@ -738,7 +738,14 @@ function academyTrainingRanksFromLabels_() {
     Object.keys(groups).forEach((g) => {
       const gn = norm_(g);
       if (!kw.some((k) => k && gn.indexOf(k) !== -1)) return;                       // group name isn't a training label
-      (groups[g] || []).forEach((cat) => { if (cat && !tagSet[norm_(cat)]) out.push(String(cat).trim()); }); // keep rank entries, skip section-tag labels
+      (groups[g] || []).forEach((cat) => {
+        if (!cat) return;
+        // Skip section-tag sub-labels — UNLESS a real roster rank bears that exact name. "Cadet" is BOTH a
+        // shipped tag label AND a common rank name; tagging the Cadet rank "Training" must count as a rank.
+        const isTag = !!tagSet[norm_(cat)];
+        const isLiveRank = !!(liveRanks && liveRanks[groupNorm_(cat)]);
+        if (!isTag || isLiveRank) out.push(String(cat).trim());
+      });
     });
   } catch (e) { if (typeof log_ === 'function') log_('academyTrainingRanksFromLabels_', e); }
   return out;
@@ -826,8 +833,11 @@ function buildAcademySheets_() {
   if (RC.headerRow > 1) roster.getRange(RC.headerRow - 1, 1, 1, roster.getLastColumn()).getDisplayValues()[0].forEach((b) => { const nb = norm_(b); if (nb) rosterBannerSet[nb] = true; });
   // Training ranks (shared across academy tabs): the "Training" dashboard label (Engine Settings → Ranks) + any
   // [RANKS] TRAINING flags. Either way of designating a training rank works; a per-tab #academy marker overrides both.
+  // Live roster ranks — lets a Training-label entry that collides with a section-tag name still count as a rank.
+  const liveRanks = {};
+  rd.forEach((row) => { const rk = groupNorm_(String(row[RC.rank - 1] || '').trim()); if (rk) liveRanks[rk] = true; });
   const baseTraining = ((CONFIG.rankList && CONFIG.rankList.trainingRanks) ? CONFIG.rankList.trainingRanks : [])
-    .concat(academyTrainingRanksFromLabels_());
+    .concat(academyTrainingRanksFromLabels_(liveRanks));
   const built = [];
   const skipped = [];
   ss.getSheets().forEach((sh) => {
