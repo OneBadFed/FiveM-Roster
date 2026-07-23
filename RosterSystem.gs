@@ -1653,12 +1653,28 @@ function lastActivityCol_(sheet) {
     const lastCol = sheet.getLastColumn();
     if (lastCol < 1 || sheet.getLastRow() < ROSTER_HEADER_ROW) return -1;
     const hdr = sheet.getRange(ROSTER_HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0];
-    for (let c = 0; c < hdr.length; c++) { if (/LAST\s*ACTIVITY/.test(String(hdr[c]).toUpperCase())) return c + 1; }
+    for (let c = 0; c < hdr.length; c++) {
+      const h = String(hdr[c]).toUpperCase();
+      if (/LAST\s*ACTIVITY/.test(h) && !/DATE/.test(h)) return c + 1; // "LAST ACTIVITY DATE" is its own column (below)
+    }
   } catch (e) { log_('lastActivityCol_', e); }
   return -1;
 }
 
-/** Injectable core: mirror each VALID member's current ACTIVITY into LAST ACTIVITY (exact copy). @return {number} captured, or -1 if no LAST ACTIVITY column. */
+/** Optional companion column: "LAST ACTIVITY DATE" — when present, each capture stamps the capture date per member. */
+function lastActivityDateCol_(sheet) {
+  try {
+    const lastCol = sheet.getLastColumn();
+    const hdr = sheet.getRange(ROSTER_HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0];
+    for (let c = 0; c < hdr.length; c++) { if (/LAST\s*ACTIVITY\s*DATE/.test(String(hdr[c]).toUpperCase())) return c + 1; }
+  } catch (e) { log_('lastActivityDateCol_', e); }
+  return -1;
+}
+
+/** Injectable core: mirror each VALID member's current ACTIVITY into LAST ACTIVITY (exact copy), stamp the
+ *  capture time on the header (a NOTE — date + the cadence-aware period label, so the column always says WHEN
+ *  it was taken), and — when the operator added a "LAST ACTIVITY DATE" column — write the capture date per
+ *  member. @return {number} captured, or -1 if no LAST ACTIVITY column. */
 function captureLastActivityCore_(roster) {
   const laCol = lastActivityCol_(roster);
   if (laCol === -1) return -1;
@@ -1669,13 +1685,23 @@ function captureLastActivityCore_(roster) {
   const names = roster.getRange(CONFIG.rosterStartRow, RC.name, n, 1).getValues();
   const acts = roster.getRange(CONFIG.rosterStartRow, RC.activity, n, 1).getValues();
   const out = roster.getRange(CONFIG.rosterStartRow, laCol, n, 1).getValues(); // preserve divider/empty-slot rows
+  const dCol = lastActivityDateCol_(roster);
+  const dOut = (dCol !== -1) ? roster.getRange(CONFIG.rosterStartRow, dCol, n, 1).getValues() : null;
+  const today = todayInSheetTz_();
   let count = 0;
   for (let i = 0; i < n; i++) {
     if (!isValidMemberValues_(ranks[i][0], names[i][0])) continue;
     out[i][0] = acts[i][0];
+    if (dOut) dOut[i][0] = today;
     count++;
   }
   roster.getRange(CONFIG.rosterStartRow, laCol, n, 1).setValues(out);
+  if (dOut) roster.getRange(CONFIG.rosterStartRow, dCol, n, 1).setValues(dOut).setNumberFormat('d mmm. yyyy');
+  try { // the header note answers "captured WHEN, closing WHICH period" — hover the column head to see it
+    let when = '📸 Captured ' + Utilities.formatDate(today, ssTz_(), 'd MMM yyyy');
+    try { if (typeof periodLabel_ === 'function') when += ' · closing the "' + periodLabel_() + '" period'; } catch (e2) { /* Extras absent → date alone */ }
+    roster.getRange(RC.headerRow || ROSTER_HEADER_ROW, laCol).setNote(when);
+  } catch (e) { log_('captureLastActivityCore_.note', e); }
   return count;
 }
 

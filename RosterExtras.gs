@@ -277,6 +277,10 @@ function doWeeklyReset_() {
     const before = readMembers_(roster);
     let shifted = 0; // roll the visible period columns (MAY HOURS → JUN HOURS → …) BEFORE hours are zeroed
     try { shifted = shiftArchiveColumns_(roster, periodLabel_()); } catch (e) { log_('doWeeklyReset_.archive', e); }
+    // LAST ACTIVITY must snapshot each member's status AS THE PERIOD CLOSED — i.e. BEFORE the recompute below
+    // re-tiers everyone off zeroed hours. (This was the whole point of the column and was never wired in here.)
+    let lastAct = -1;
+    try { if (typeof captureLastActivityCore_ === 'function') lastAct = captureLastActivityCore_(roster); } catch (e) { log_('doWeeklyReset_.lastActivity', e); }
     recomputeStatuses_(roster, true);     // core function: zero + recompute
     const after = readMembers_(roster);
     const prev = {};
@@ -302,7 +306,7 @@ function doWeeklyReset_() {
       postSummary_('🗑️ Weekly Reset', `Hours zeroed and statuses recomputed. **${dropped.length}** member(s) dropped to ${lowestTier}.`, 15105570);
     }
     try { PropertiesService.getScriptProperties().setProperty(LAST_RESET_PROP, String(Date.now())); } catch (e) { /* best-effort cadence marker */ } // v1.0: advance the cadence clock (manual + scheduled both count)
-    return { captured: captured, shifted: shifted, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
+    return { captured: captured, shifted: shifted, lastActivity: lastAct, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
   } finally {
     lock.releaseLock();
   }
@@ -321,7 +325,8 @@ function weeklyResetWithHistory() {
     if (!res) { ui.alert('Capture skipped — another reset is already running.'); return; }
     const dn = res.droppedNames.filter(Boolean);
     const sample = dn.length ? ` (${dn.slice(0, 8).join(', ')}${dn.length > 8 ? `, +${dn.length - 8}` : ''})` : '';
-    ui.alert(`✅ Activity captured & reset.\n\n• ${res.shifted ? `${res.shifted} period column${res.shifted === 1 ? '' : 's'} rolled forward` : 'No visible period columns (history-only)'}\n• ${res.captured} member-hours saved to history\n• ${res.total} member(s) recomputed\n• ${dn.length} dropped to ${res.lowestTier}${sample}\n• ${Math.round(res.totalHours * 10) / 10} hrs logged this period`);
+    const laLine = res.lastActivity === -1 ? 'No LAST ACTIVITY column (add one to snapshot closing statuses)' : `LAST ACTIVITY snapshotted for ${res.lastActivity} member(s)`;
+    ui.alert(`✅ Activity captured & reset.\n\n• ${res.shifted ? `${res.shifted} period column${res.shifted === 1 ? '' : 's'} rolled forward` : 'No visible period columns (history-only)'}\n• ${res.captured} member-hours saved to history\n• ${laLine}\n• ${res.total} member(s) recomputed\n• ${dn.length} dropped to ${res.lowestTier}${sample}\n• ${Math.round(res.totalHours * 10) / 10} hrs logged this period`);
   });
 }
 

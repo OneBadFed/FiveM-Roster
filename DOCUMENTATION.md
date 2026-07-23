@@ -111,6 +111,13 @@ share the core: pasting an existing ID into a new row (`checkForMemberMove`, con
 boxes and `#members`-style tags. A Document Property (`RE_DASH_TABS`) remembers which tabs render dashboard
 content so edit-driven refreshes touch only those; menu/nightly runs do full rescans.
 
+**LAST ACTIVITY.** The optional LAST ACTIVITY column snapshots each member's status **as the period closed**:
+📸 Capture & Reset mirrors ACTIVITY → LAST ACTIVITY *before* zeroing hours and recomputing tiers (so it shows
+what everyone earned last period, not the post-reset drop). Every capture stamps a NOTE on the column header —
+capture date + the cadence-aware period label ("Captured 1 Aug 2026 · closing the JUL HOURS period"). Add a
+**LAST ACTIVITY DATE** column and each capture also writes the date per member (the engine fills it only when
+the operator adds it — layout ownership as usual).
+
 **§3a · Promotions feed.** `promoRecord_` stores recent promotions (Document Property `RE_PROMOS`);
 `renderPromotions_` fills every "RECENT PROMOTIONS" table. The table-bearing tabs are remembered in
 `RE_PROMO_TABS` (same convention as the dashboard memo) so the per-transfer render doesn't full-scan every tab;
