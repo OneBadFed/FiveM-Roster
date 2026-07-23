@@ -129,7 +129,10 @@ deferred-work queue + 1-minute sweep as backstop.
    (`leaveFormCols_`: `[FORM_MAP]` keywords + built-in synonyms, UNIQUE/COMMUNITY ID count as the ID column;
    the classic fixed order 1–8 applies with a WARN when the required roles don't all resolve) — so a reordered
    or operator-made leave form still files fields correctly. Per-row validation (ID, known type, parseable
-   dates), `KEY|id|timestamp` dedup keys (idempotent even if row colours are lost). The roster is the source of truth
+   dates), `KEY|id|timestamp` dedup keys (idempotent even if row colours are lost). **ID failsafe
+   (`rosterMatchByFields_`):** a blank/malformed ID falls back to a corroborated roster match — NAME plus every
+   other provided field (rank, callsign) must agree on exactly ONE member, whose ID is then used; ambiguity or
+   a valid-but-unknown ID still errors (a typo is fixed, never guessed around). The roster is the source of truth
    for identity fields (one roster snapshot serves the whole batch). Accepted rows are seated with **one**
    tracker sort for the whole batch, landing new Pending leaves at the top. Errored rows go red and retry.
    Manual: 📥 Sync Leave Forms to Tracker.
@@ -150,7 +153,9 @@ appends exactly like the form path.
 
 Sessions live on the **Patrol Log tab** (`[SHEETS].PATROL_LOG`): identity + start/end date + time columns,
 header-resolved. Each row is processed by `processPatrolLog_`: identity auto-fills from the roster, the
-ISNUMBER-guarded TOTAL TIME formula computes hours, `evaluatePatrolLog_` classifies problems — **blocking**
+ISNUMBER-guarded TOTAL TIME formula computes hours — and a row with a blank/malformed ID gets the same
+corroborated name+rank/unit failsafe as the leave sync (the resolved ID is written onto the row so crediting
+stays ID-keyed; a valid-but-unknown ID still Flags). `evaluatePatrolLog_` classifies problems — **blocking**
 (unknown ID, non-positive or >24h span → Flagged, data must be fixed) vs **advisory** (over the configured max,
 future-dated → Flagged until an admin marks it Processed, which credits with an override note). Valid rows
 auto-mark Processed and credit.

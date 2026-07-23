@@ -2302,6 +2302,32 @@ function patrolFindRow_(roster, discord, callsign, idx) {
   return -1;
 }
 
+/**
+ * FAILSAFE member resolution for a row with NO usable Unique ID: a corroborated multi-field match against the
+ * roster snapshot. The NAME must match AND every other provided field (RANK, UNIT/callsign) must match too —
+ * with at least one of them present — and exactly ONE member may satisfy all of it (ambiguity = no match; the
+ * engine never guesses between two people). Members without a valid Unique ID can't be returned — crediting
+ * and dedup both key on the ID. Deliberately NOT used when a VALID id simply isn't on the roster: a typo'd yet
+ * real-looking ID must surface as an error to fix, not be guessed around. @return {{row:number,id:string}|null}
+ */
+function rosterMatchByFields_(idx, fields) {
+  if (!idx || !idx.n) return null;
+  const name = norm_(fields && fields.name), rank = norm_(fields && fields.rank), unit = norm_(fields && fields.unit);
+  if (!name || (!rank && !unit)) return null; // name + at least one corroborating field, or no deal
+  let hit = null, count = 0;
+  for (let i = 0; i < idx.n; i++) {
+    if (!isValidMemberValues_(idx.ranks[i][0], idx.names[i][0])) continue;
+    if (norm_(idx.names[i][0]) !== name) continue;
+    if (rank && norm_(idx.ranks[i][0]) !== rank) continue;
+    if (unit && norm_(idx.units[i][0]) !== unit) continue;
+    const id = String(idx.ids[i][0]).trim();
+    if (!isValidId_(id)) continue;
+    hit = { row: CONFIG.rosterStartRow + i, id: id }; count++;
+    if (count > 1) return null; // ambiguous — stop immediately
+  }
+  return count === 1 ? hit : null;
+}
+
 /** Compute a patrol's hours from raw cell values per [PATROL].MODE. @return {number|null} hours (>0, <= MAX_HOURS), or null if invalid. */
 function patrolDuration_(startVal, endVal, durVal) {
   const P = CONFIG.patrol;
@@ -2537,15 +2563,25 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
     const rawv = rowData ? ((c) => c ? rowData.vals[c - 1] : '')
       : ((c) => c ? sheet.getRange(row, c).getValue() : '');
     const priorMark = rowData ? rowData.mark : null;
-    const idv = disp(PC.discord);
+    let idv = disp(PC.discord);
     const anyInput = !!(idv || rawv(PC.startDate) !== '' || rawv(PC.startTime) !== '' || rawv(PC.endDate) !== '' || rawv(PC.endTime) !== '');
     if (!anyInput) { reconcilePatrolCredit_(sheet, row, PC, roster, idx.RC, null, idx, priorMark); return; } // empty/deleted row → reverse any prior credit, stay blank
 
     const startDT = combineDateTime_(rawv(PC.startDate), rawv(PC.startTime));
     const endDT = combineDateTime_(rawv(PC.endDate), rawv(PC.endTime));
-    const complete = !!(idv && startDT && endDT);
     const RCr = idx.RC;
-    const memberRow = isValidId_(idv) ? patrolFindRow_(roster, idv, '', idx) : -1;
+    let memberRow = isValidId_(idv) ? patrolFindRow_(roster, idv, '', idx) : -1;
+    // FAILSAFE: no usable ID on the row → corroborated name + rank/unit match (all provided fields must agree,
+    // exactly one member). The resolved ID is written onto the row so crediting/markers stay ID-keyed. A VALID
+    // id that simply isn't on the roster still Flags — a typo must be fixed, never guessed around.
+    if (memberRow === -1 && !isValidId_(idv)) {
+      const rec = rosterMatchByFields_(idx, { name: disp(PC.name), rank: disp(PC.rank), unit: disp(PC.unit) });
+      if (rec) {
+        memberRow = rec.row; idv = rec.id;
+        if (PC.discord) sheet.getRange(row, PC.discord).setNumberFormat('@').setValue(rec.id);
+      }
+    }
+    const complete = !!(idv && startDT && endDT);
 
     if (memberRow !== -1) { // fill identity from the roster snapshot (source of truth) — no per-cell roster reads
       const k = memberRow - CONFIG.rosterStartRow;
@@ -2824,7 +2860,7 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const at = (c) => (c && c <= row.length) ? row[c - 1] : ''; // 0 = the role didn't resolve → blank, never a wrong column
       const timestamp = at(FC.timestamp);
       const name = at(FC.name);
-      const discord = String(at(FC.discord)).trim();
+      let discord = String(at(FC.discord)).trim();
       const callsign = at(FC.callsign);
       const rank = at(FC.rank);
       const type = at(FC.type);
@@ -2832,7 +2868,15 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const endRaw = at(FC.end);
 
       if (!startRaw || !endRaw) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
-      if (!isValidId_(discord)) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
+      if (!isValidId_(discord)) {
+        // FAILSAFE: a blank or malformed ID no longer kills the submission outright — try a corroborated
+        // name + rank/callsign match against the roster (ALL provided fields must agree, exactly ONE member).
+        // A valid-but-unknown ID still errors below via the roster lookup path — that's a typo to fix, not guess.
+        const rec = rosterMatchByFields_(rIdx, { name: name, rank: rank, unit: callsign });
+        if (!rec) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
+        logInfo_('syncFormToTracker_', `form row ${rowIndex}: no usable Unique ID — matched by name+rank/callsign to roster row ${rec.row}; using that member's ID.`);
+        discord = rec.id;
+      }
       // LOA-only tracker: reject any non-LOA submission (e.g. an ROA form row) — the tracker has no TYPE column, so a
       // different type would sync "done" (green) yet activate/expire as the wrong status.
       const trkType = trackerLeaveType_();
