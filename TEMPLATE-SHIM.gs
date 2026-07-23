@@ -38,7 +38,7 @@ const RE_ENDPOINTS = Object.freeze([
   'cpRunAction', 'cpJumpTo', 'cpSystemInfo',
   'cpColumnsInfo', 'cpSetColumnClass', 'cpDividersInfo',
   'cpFixTriggers', 'cpTakeSnapshot', 'cpRestoreSnapshot', 'cpSetSnapshotAuto',
-  'cpSetWebhook', 'cpTestWebhook',
+  'cpSetWebhook', 'cpSetWebhookChannels', 'cpTestWebhook', 'cpTestWebhookChannels',
   'cpGetConfig', 'cpApplyConfig', 'cpOpenSettings',
   'cpRankIcons', 'cpSetRankIcon', 'cpDeleteRankIcon',
   'cpSetDividerStyle', 'cpDeleteDividerStyle',

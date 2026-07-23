@@ -28,7 +28,7 @@
  */
 
 /**
- * CONFIGURATION — Phase 1 (Roster Engine v2): the classic CONFIG object is now a
+ * CONFIGURATION — Phase 1 (Roster Engine): the classic CONFIG object is now a
  * BRIDGE into the schema-driven config layer (RosterConfig.gs). Every existing
  * `CONFIG.<x>` read resolves through cfg_().legacy:
  *   • no ⚙️ Config tab  → built-in defaults (BLOCK_SPECS_ seeds) — behavior is
@@ -379,7 +379,7 @@ function installTriggers() {
         pubLine = '\n• Public roster: live on edit + row delete (1-min catch-up)';
       }
     } catch (e) { log_('installTriggers.publish', e); }
-    // v2.5.0 — ONE installer: also (re)install the Extras triggers when that companion file is present (integrity scan,
+    // v1.0 — ONE installer: also (re)install the Extras triggers when that companion file is present (integrity scan,
     // coverage rebuild, cadence-aware hours reset). Guarded so a bound project WITHOUT RosterExtras.gs still installs core.
     let extrasLine = '';
     try { if (typeof installExtrasTriggers_ === 'function') { const rd = installExtrasTriggers_(); extrasLine = `\n• Integrity scan (7am), coverage rebuild (6am)\n• Hours reset — ${rd}`; } } catch (e) { log_('installTriggers.extras', e); }
@@ -462,7 +462,7 @@ function setupWizard() {
     const ss = SpreadsheetApp.getActive();
     const steps = [];
 
-    // 0. ⚙️ Config tab (Roster Engine v2, Phase 1) — seed missing blocks/keys with the shipped defaults
+    // 0. ⚙️ Config tab (Roster Engine, Phase 1) — seed missing blocks/keys with the shipped defaults
     //    (idempotent + additive: existing values are never overwritten), fold the legacy "_Columns"
     //    classifications into [COLUMNS], and validate the whole tab.
     try {
@@ -937,7 +937,7 @@ function renderPromotions_(fullScan) {
  * @return {number} total cells written across all tabs.
  */
 /**
- * v2.5.0 PERF — remember which tabs actually contain dashboard boxes/#tags (a JSON name-list in Document Properties)
+ * v1.0 PERF — remember which tabs actually contain dashboard boxes/#tags (a JSON name-list in Document Properties)
  * so the every-edit refresh renders ONLY those tabs instead of full-sheet-scanning every visible tab. Discovery stays
  * automatic: the onEdit single-sheet path adds a tab the moment a box/#tag first renders there, and the menu Refresh
  * always does a full rescan. An unknown state (no property yet) falls back to the classic full scan.
@@ -1194,7 +1194,7 @@ function onEdit(e) {
       }
       if (statusTouched && e.value === CONFIG.approvedStatus && e.oldValue !== CONFIG.approvedStatus) { // only the transition INTO approved re-applies (a re-confirm must not revert a manual roster override)
         checkImmediateLOAStart(sheet, row);
-        notifyLeaveApproved_(sheet, row); // v2.5.0 optional embed (toggle off by default)
+        notifyLeaveApproved_(sheet, row); // v1.0 optional embed (toggle off by default)
       }
       if (statusTouched || deletedRow) {
         try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group by status + compact away any gap left by the delete
@@ -1226,7 +1226,7 @@ function onEdit(e) {
     } else if (!dashboardSkip_(name)) {
       let touchesTag = /^#\s*[A-Za-z]/.test(String(e.value || ''));
       if (!touchesTag) { try { touchesTag = String(e.range.getNote() || '').indexOf('roster-stat:') === 0; } catch (ig) {} }
-      // v2.5.0 PERF discovery: an edit on a tab the remembered set doesn't know yet also renders that one sheet, so a
+      // v1.0 PERF discovery: an edit on a tab the remembered set doesn't know yet also renders that one sheet, so a
       // new banner (typed KPI label) or a PASTED #tag block is adopted the moment it's created — same as the old
       // every-edit full scan, but at single-tab cost, and only until the tab joins the set.
       if (!touchesTag) { try { const known = dashTabsGet_(); touchesTag = !known || known.indexOf(name) === -1; } catch (ig) {} }
@@ -1252,7 +1252,7 @@ function onFormSubmit(e) {
   } catch (err) {
     log_('onFormSubmit', err);
   }
-  // v2.5.0 — the same spreadsheet onFormSubmit fires for BOTH forms; the patrol sync only scans its own tab (no-op when
+  // v1.0 — the same spreadsheet onFormSubmit fires for BOTH forms; the patrol sync only scans its own tab (no-op when
   // that form wasn't the one submitted, or when the feature is off), so running it here needs no per-form routing.
   try { syncPatrolHours(); } catch (err) { log_('onFormSubmit.patrol', err); }
   // Roster Signups: a submission lands on the FORM's own response tab (SIGNUP_FORM_RESPONSES); the sync field-matches it
@@ -1420,7 +1420,7 @@ function dash_(v) {
 }
 
 /* ======================================================================
- * v2.5.0 — CONFIGURABLE LOGIC HELPERS (unit format, date formats, embed
+ * v1.0 — CONFIGURABLE LOGIC HELPERS (unit format, date formats, embed
  * colours, retention). All fault-tolerant: a broken/absent config or a bad
  * user pattern falls back to the shipped default, never throws.
  * ====================================================================== */
@@ -2188,7 +2188,7 @@ function manualSyncLOA() {
 }
 
 /* ======================================================================
- * PATROL LOG → HOURS (v2.5.0)
+ * PATROL LOG → HOURS
  * An operator-linked Google Form logs patrol sessions; each new submission
  * credits its patrol time to the matching member's HOURS. OFF until
  * [SHEETS].PATROL_RESPONSES names the form's response tab. Runs from the same
@@ -2874,7 +2874,7 @@ function setWebhookUrl() {
 function sendDiscordWebhook(name, rank, callsign, type, start, end, duration, discordId) {
   const typeStr = String(type == null ? '' : type).trim() || 'Leave';
   const isReturn = CONFIG.returnStatus && norm_(typeStr) === norm_(CONFIG.returnStatus); // ROA-style returning leave → warmer color
-  const E = CONFIG.embed; // v2.5.0: configurable title/colour
+  const E = CONFIG.embed; // v1.0: configurable title/colour
   const fallback = {
     title: String(E.submitTitle).replace(/\{type\}/g, typeStr),
     color: isReturn ? hexToInt_(E.returnColor, 15105570) : hexToInt_(E.submitColor, 3447003),
@@ -2892,7 +2892,7 @@ function sendDiscordWebhook(name, rank, callsign, type, start, end, duration, di
 }
 
 function sendExpirationWebhook(name, rank, discordId, type) {
-  const E = CONFIG.embed; // v2.5.0: configurable title/colour
+  const E = CONFIG.embed; // v1.0: configurable title/colour
   const fallback = {
     title: String(E.expireTitle).replace(/\{type\}/g, type),
     description: clamp_(`This member's **${type}** has ended. Their status has been updated on the roster.`, 4000),
@@ -2936,7 +2936,7 @@ function embedChromeFrom_(E, systemName) {
   return out;
 }
 /**
- * v2.5.0: optional embed-body chrome merged into every leave-notification embed. All parts are off by default
+ * v1.0: optional embed-body chrome merged into every leave-notification embed. All parts are off by default
  * (blank config), so existing embeds are unchanged; the footer is always present. Image/icon URLs must be http(s).
  */
 function embedChrome_() { return embedChromeFrom_(CONFIG.embed, CONFIG.systemName); }
@@ -2947,7 +2947,7 @@ function fill_(template, vars) {
 }
 
 /**
- * v2.5.0 event notifications: post ONE event embed to the webhook only when its toggle is on. The embed gets a
+ * v1.0 event notifications: post ONE event embed to the webhook only when its toggle is on. The embed gets a
  * timestamp + the shared [DISCORD] chrome (author/thumbnail/image/footer); `content` optionally pings a member.
  * Never throws — a notification must never break the action that triggered it.
  */
@@ -3111,7 +3111,7 @@ function isValidMemberRow(sheet, row) {
 /**
  * Single source of truth for "is this rank-column value a SECTION DIVIDER?" Default (DIVIDER_MODE = ALLCAPS_RANK):
  * a divider is an all-caps label longer than 3 chars (e.g. "CADETS", "COMMAND STAFF") — a section header, not a
- * real rank. v2.5.0 (DIVIDER_MODE = EXPLICIT_LIST): the [RANKS] list wins — a listed DIVIDER is a divider, a listed
+ * real rank. v1.0 (DIVIDER_MODE = EXPLICIT_LIST): the [RANKS] list wins — a listed DIVIDER is a divider, a listed
  * RANK is a member slot (even if it's ALL-CAPS), and anything unlisted falls back to the heuristic. Used by
  * isValidMemberValues_, isMemberSlot_, isTrainingRow_, and the panel's Dividers list, so every place that
  * distinguishes a divider from a member agrees by definition. Must NEVER throw (a broken config → heuristic).

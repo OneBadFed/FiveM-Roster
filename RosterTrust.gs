@@ -14,10 +14,10 @@
  */
 
 const TRUST = Object.freeze({
-  // v2.5.0 — tab names resolve LIVE from [SHEETS] on ⚙️ Config (getters → zero call-site churn; blank = shipped default).
+  // v1.0 — tab names resolve LIVE from [SHEETS] on ⚙️ Config (getters → zero call-site churn; blank = shipped default).
   get snapshotSheet() { return cfgSheetName_('snapshots', '_Snapshots'); },
   get auditSheet() { return cfgSheetName_('audit', 'Edit Log'); },   // matches RosterExtras EXTRAS.auditSheet
-  get keepSnapshots() { try { return cfg_().kv.LIMITS.SNAPSHOT_KEEP || 20; } catch (e) { return 20; } }, // v2.5.0: configurable
+  get keepSnapshots() { try { return cfg_().kv.LIMITS.SNAPSHOT_KEEP || 20; } catch (e) { return 20; } }, // v1.0: configurable
 });
 
 /** One call powering the System tab. */
@@ -230,7 +230,7 @@ function cpTakeSnapshot() {
       sh.getRange(1, 1, 1, 9).setValues([['SnapshotId', 'When', 'Row', 'Name', 'Discord', 'Status', 'Hours', 'Rank', 'Extra']]).setFontWeight('bold');
     }
     const id = String(new Date().getTime());
-    const when = fmtTs_(new Date()); // v2.5.0: configurable timestamp format
+    const when = fmtTs_(new Date()); // v1.0: configurable timestamp format
     const rows = cpSnapshotRows_(roster, id, when);
     if (!rows.length) throw new Error('No members to snapshot.');
     const start = sh.getLastRow() + 1;
@@ -574,7 +574,7 @@ function auditEdit(e) {
     const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
     const who = auditWho_(email); // member NAME when the email is on their roster row, else the email
     log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV, '', '']);
-    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v2.5.0: config cap)
+    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v1.0: config cap)
     auditNotify_(who, sheetName, e.range.getA1Notation(), oldV, newV, 'edit', ''); // AUDIT channel mirror (webhook presence = opt-in)
   } catch (err) {
     log_('auditEdit', err);
@@ -599,7 +599,7 @@ function auditEvent_(type, oldText, newText, cellA1, member) {
     try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* not available */ }
     const who = auditWho_(email); // member NAME when the email is on their roster row, else the email
     log.appendRow([new Date(), who, CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || '', member || '']);
-    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // v2.5.0: config cap
+    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // v1.0: config cap
     auditNotify_(who, CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || 'action', member || ''); // AUDIT channel mirror
   } catch (err) {
     log_('auditEvent_', err);

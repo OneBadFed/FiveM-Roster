@@ -1,202 +1,363 @@
-# Roster Engine v2 — System Documentation
+# Roster Engine — System Documentation
 
-> **Version:** Engine **v2.5.0** · Config schema **v2** · Control Panel **v1.4.0** · 33 whitelisted endpoints
-> **Updated:** 2026-07-16 · Release record: `CHANGELOG.md` · Feature pitch: `ROSTER-ENGINE-FEATURES.md` · Staff manual: `STAFF-GUIDE.md` *(companion docs live outside this folder; staff-guide prose is June-era — this file is current)*
+> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 36 whitelisted endpoints
+> **Updated:** 2026-07-22 (the 1.0 full release)
 >
 > A white-label, schema-driven personnel-management engine for Google Sheets, built in Google Apps Script.
-> Everything below describes the code in this folder; the live project is these files synced into the Apps Script editor (`clasp push`, or paste). The folder is a git repo — commit before every sync.
+> Everything below describes the code in this folder; the live project is these files synced into the Apps Script
+> editor via `clasp push -f`. The folder is a git repo — commit before every sync.
 
 ---
 
 ## 1 · Architecture
+
+**The bound workbook IS the internal roster.** It holds everything private: the member roster (including the
+private EMAIL / DATE OF BIRTH / PHONE columns), the LOA Tracker, the Patrol Log, Roster Signups, the Disciplinary
+Log, Webhooks, ⚙️ Config, and the system logs. Google file sharing is the access control — only staff are ever
+invited to this file. Members read a **separate public spreadsheet** that receives a ONE-WAY publish (§9); nothing
+ever flows back. There is no separate "admin file" — `adminFile_()` resolves to the active spreadsheet.
 
 **File set (9 files, one system):**
 
 | File | Role |
 |---|---|
 | `RosterConfig.gs` | Config layer: ⚙️ Config tab schema (`BLOCK_SPECS_`), parse → validate → materialize (`cfg_()`), error registry + coded errors, SYS Log ring buffer, theme, migrations, cross-execution config cache, `perf_` timing |
-| `RosterSystem.gs` | The engine: CONFIG bridge, header-resolved columns, status engine, transfers, leave lifecycle, patrol-hours sync, event notifications, dashboard + #tags, menus, First-Run wizard, data validation |
-| `RosterControlPanel.gs` | Control Panel server: the D5 `dispatch()` whitelist gateway and every `cp*` endpoint; rank-icon + divider-style storage; the Admin Roster |
-| `RosterTrust.gs` | Snapshots/restore, the always-on Edit Log audit system, health & schema checks |
-| `RosterExtras.gs` | Integrity scan, leave coverage board, hours history + cadence-aware weekly reset, demo seeder |
-| `RosterDevQA.gs` | The QA suite — 19 sections, sandbox-only, run-all or per-section from the 🧪 menu |
-| `ControlPanel.html` | Control Panel UI (single HtmlService dialog, Studio design system) |
-| `SettingsPanel.html` | Settings Studio UI (full-screen config editor) |
-| `TEMPLATE-SHIM.gs` | **Library mode only** — the public template's entire bound script: endpoint whitelist mirror + trigger forwarders. Never paste alongside the engine |
+| `RosterSystem.gs` | The engine: CONFIG bridge, header-resolved columns, status engine, transfers, leave lifecycle, Patrol Log crediting, dashboard + #tags, promotions feed, derived-tab rebuilds, menus, First-Run wizard |
+| `RosterControlPanel.gs` | Control Panel server: the D5 `dispatch()` whitelist gateway and every `cp*` endpoint; signup sync + approval; the public-roster publish pipeline; webhooks; rank-icon + divider-style storage |
+| `RosterTrust.gs` | Snapshots/restore, the always-on Edit Log audit (with editor-name resolution), health & schema checks |
+| `RosterExtras.gs` | Integrity scan, leave coverage board, hours history + cadence-aware reset, helper-column tools, full-lifecycle demo seeder |
+| `RosterDevQA.gs` | The QA suite — 23 sections, sandbox-only, run in three parts (or all / per-section) from the 🧪 menu |
+| `ControlPanel.html` | Control Panel UI (single HtmlService dialog, Studio design system, deep-linkable tabs) |
+| `SettingsPanel.html` | Settings Studio UI (full-screen config editor incl. the per-channel Discord embed builder) |
+| `TEMPLATE-SHIM.gs` | **Library mode only** — endpoint whitelist mirror + trigger forwarders. Held out of `clasp push` by `.claspignore`; never paste alongside the engine |
 
-**Two deployment modes.** *Bound:* the 8 engine files (all but `TEMPLATE-SHIM.gs`) in a sheet's own Apps Script project. *Library:* the same 8 files in a standalone project deployed as a versioned library (identifier must be `RE`); each community template carries only `TEMPLATE-SHIM.gs`. See `ROSTER-ENGINE-V2-RUNBOOK.md`.
+**One global scope.** All `.gs` files share a single namespace — file boundaries are organisational. A syntax
+error anywhere breaks everything; every change runs through the Node syntax check (`new Function(src)` per file,
+scriptlet-stubbed `node --check` for the HTML script blocks) before commit.
 
-**One global scope.** All `.gs` files share a single namespace — file boundaries are organisational. A syntax error anywhere breaks everything (the DevQA suite and the Node syntax check exist for this).
-
-**Design decisions (D1–D5, settled):** library + thin shim (D1); full white-label, sheet-as-untrusted-input with one hardcoded anchor — the ⚙️ Config tab + marker rescue (D2); template → copy → First-Run wizard (D3); diagnostics-first with coded errors (D4); **every** panel server call through one whitelisted `dispatch(name, args)` gateway (D5).
+**Design decisions (D1–D5, settled):** library + thin shim (D1); full white-label, sheet-as-untrusted-input with
+one hardcoded anchor — the ⚙️ Config tab + marker rescue (D2); template → copy → First-Run wizard (D3);
+diagnostics-first with coded errors (D4); **every** panel server call through one whitelisted
+`dispatch(name, args)` gateway (D5).
 
 ---
 
 ## 2 · The Config Layer
 
-The **⚙️ Config tab** is the single source of truth (it survives "Make a copy"; Script Properties don't). INI-style blocks; `BLOCK_SPECS_` defines every block/key with type, default, validation, and help — one spec drives seeding, parsing, validation, and the Settings Studio.
+The **⚙️ Config tab** is the single source of truth (it survives "Make a copy"; Script Properties don't).
+INI-style blocks; `BLOCK_SPECS_` defines every block/key with type, default, validation, and help — one spec
+drives seeding, parsing, validation, and the Settings Studio.
 
-**Flow:** `parseBlocks_(sheet)` (display-value strings) → `validateConfig_(raw)` (collects ALL problems; any ERROR → `E-102`, nothing half-applied) → `materialize_(config)` (typed views incl. `.legacy`) → memoized in `CFG_`.
+**Flow:** `parseBlocks_(sheet)` (display-value strings) → `validateConfig_(raw)` (collects ALL problems; any
+ERROR → `E-102`, nothing half-applied) → `materialize_(config)` (typed views incl. `.legacy`) → memoized in `CFG_`.
 
-**The CONFIG bridge:** `Object.defineProperty(globalThis,'CONFIG',{get:()=>cfg_().legacy})` — ~450 classic `CONFIG.*` reads flow through the config layer with zero call-site churn.
+**The CONFIG bridge:** `Object.defineProperty(globalThis,'CONFIG',{get:()=>cfg_().legacy})` — the classic
+`CONFIG.*` reads all flow through the config layer with zero call-site churn.
 
-**Cross-execution cache (v2.5.0 perf):** `cfg_()` first tries `CacheService.getDocumentCache()` (`RE_CFG_RAW_v1`, TTL 300s, raw parsed strings only). Every config write path funnels through `cfgInvalidate_()`, which clears the per-execution memo, the column cache, **and** the document cache — so changes propagate to all users instantly; the TTL only bounds genuinely unreachable paths.
+**Cross-execution cache:** `cfg_()` first tries `CacheService.getDocumentCache()` (`RE_CFG_RAW_v1`, TTL 300s,
+raw parsed strings only). Every config write path funnels through `cfgInvalidate_()`, which clears the
+per-execution memo, the column cache, **and** the document cache — changes propagate to all users instantly.
 
-**Schema & migrations:** `SYSTEM.SCHEMA_VERSION` (currently **2**). `migrateConfig_` seeds additively — First-Run Setup upgrades an older sheet without deleting anything. All v2.5.0 additions are additive: `validateConfig_({})` yields zero ERRORs and defaults reproduce prior behavior exactly.
+**Schema & migrations:** `SYSTEM.SCHEMA_VERSION` (currently **2**; this is a migration counter, independent of
+the release version). `migrateConfig_` seeds additively — First-Run Setup upgrades an older sheet without
+deleting anything; `validateConfig_({})` yields zero ERRORs and defaults reproduce shipped behavior exactly.
 
-### Config blocks (key inventory)
-
-- **SYSTEM** — `SYSTEM_NAME`, `DEV_MODE`, `MAINTENANCE_MODE`, `SCHEMA_VERSION` (engine-managed, hidden in Settings).
-- **SHEETS** — tab names for every role: `ROSTER`, `TRACKER`, `FORM_RESPONSES`, `AUDIT`, `HOURS_HISTORY`, `COVERAGE`, `INTEGRITY`, `SNAPSHOTS`, `PATROL_RESPONSES` ('' = patrol off). Roles must resolve to distinct tabs (collision → ERROR). `SYS Log` is deliberately not configurable (re-entrancy: `slog_`/`theme_` must never call `cfg_()`).
-- **ROSTER_LAYOUT** — `HEADER_ROW` (5), `DATA_START_ROW` (7), `TRACKER_START_ROW` (6), `DIVIDER_MODE` (`ALLCAPS_RANK` | `EXPLICIT_LIST`), `TRAINING_KEYWORDS`, `UNIT_FORMAT` (callsign template, e.g. `S-{00}`), `LAST_ACTIVITY_STYLE` (`MATCH` | `NEUTRAL`).
-- **COLUMNS** *(table)* — Role/Match/Class/Required rows classifying every roster column **SLOT** (stays with the position) or **MEMBER** (follows the person). Managed via the panel's Columns tab; `syncColumnConfig` discovers new columns.
-- **SECTIONS / SECTION_TAGS** *(tables)* — per-section cert-slot opt-ins (ships empty) and divider tag labels/keywords/tones.
-- **STATUSES / STATUS_OVERRIDES / STATUS_RULES** *(tables)* — the global tier ladder (each status = TIER with MinHours, LEAVE, or PROTECTED); per-rank/section ladder overrides (seed: `Auxiliary Trooper → Active:5, Inactive:0`); optional stateless transition rules (`Source · op · hours · Target`) evaluated to a fixed point — pure function of (status, hours), so re-runs never drift.
-- **RANKS** *(table)* — explicit rank/divider list used when `DIVIDER_MODE=EXPLICIT_LIST`; unlisted labels fall back to the all-caps heuristic.
-- **LEAVE** — `LEAVE_TYPES` (LOA, ROA), `RETURN_TYPE`, `STATUS_FLOW`, `APPROVED_STATUS`, `EXPIRED_STATUS`, `RETURN_STATUS`, `AUTO_EXPIRE`, `EXPIRE_NEVER_APPROVED`, `MAX_DAYS_WARN`.
-- **FORM_MAP** *(table)* — leave-form question keywords (the engine *creates* this form, so `CONFIG.form` uses fixed columns 1–8).
-- **DISCORD** — `MENTION_MEMBERS`, `PING_ROLES`, submit/return/expire titles & colours, and the embed chrome: `EMBED_AUTHOR(_ICON)`, `EMBED_THUMBNAIL`, `EMBED_IMAGE`, `EMBED_FOOTER(_ICON)` — all optional, http(s)-only.
-- **NOTIFICATIONS** — six opt-in event embeds, each `TOGGLE` + `_TITLE` (tokens `{name}/{from}/{to}/{type}/{hours}/{total}`) + `_COLOR`: `MEMBER_ADDED`, `TRANSFER`, `LEAVE_APPROVED`, `LEAVE_STARTED`, `WEEKLY_DIGEST`, `PATROL_LOGGED`. All OFF by default.
-- **PATROL** — `MODE` (`START_END` | `DURATION`), `MAX_HOURS`, `OVERNIGHT`, `RECOMPUTE`, and header keywords `COL_DISCORD/COL_CALLSIGN/COL_START/COL_END/COL_DURATION` (the operator links their *own* form, so columns resolve by header).
-- **FORMATS** — `DATE_DISPLAY`, `TIMESTAMP_DISPLAY` (fault-tolerant; bad patterns fall back).
-- **SCHEDULE** — `NIGHTLY_HOUR`, `WEEKLY_HOURS_RESET` (day or OFF), `WEEKLY_RESET_HOUR`, `RESET_CADENCE` (`WEEKLY/BIWEEKLY/MONTHLY/MANUAL`), `RESET_DOM`, `TIMEZONE`.
-- **LOGGING** — `LOG_LEVEL`, `LOG_MAX_ROWS`, `EMAIL_ON_ERROR`, `DIAG_INCLUDE_NAMES`, `PERF_TIMING` (log per-action durations; entries log at INFO).
-- **LIMITS** — `SNAPSHOT_KEEP`, `LOG_ROW_CAP`, `VALIDATION_BUFFER`.
-- **THEME** — 12 colours driving every engine-painted surface (see `roster-sheet-theme`: canvas `#1c1c1c`, banner `#1f2933`, accent `#3f86e6`, PASS/FAIL/INFO semantics…).
-- **DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS** — enable flag, search depth, headcount group buckets, and KPI label→stat mappings.
+**Blocks (inventory):** SYSTEM · SHEETS (tab names for every role incl. `PATROL_LOG`, `SIGNUPS`,
+`SIGNUP_FORM_RESPONSES`; roles must resolve to distinct tabs) · ROSTER_LAYOUT (header/data rows, divider mode,
+`UNIT_FORMAT` callsign template, last-activity style) · COLUMNS *(table — SLOT vs MEMBER classes)* ·
+SECTIONS / SECTION_TAGS *(tables)* · STATUSES / STATUS_OVERRIDES / STATUS_RULES *(tables — tier ladder,
+per-rank overrides, fixed-point transition rules)* · RANKS *(table)* · LEAVE · FORM_MAP *(table)* · DISCORD ·
+NOTIFICATIONS (opt-in event embeds) · EMBEDS *(table — per-event embed overrides from the Settings builder)* ·
+PATROL (mode, max hours, statuses, form column keywords) · PUBLISH (`NEVER_PUBLISH`, `KEEP_RANGES`) · FORMATS ·
+SCHEDULE · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
 
 ---
 
 ## 3 · The Roster Engine
 
-**Header-resolved columns.** `rosterCols_(sheet)` matches row-5 headers by keyword (RANK, NAME, DISCORD, ACTIVITY, HOURS, JOIN, PROMOT, `^UNIT\b`/CALLSIGN); `CONFIG.roster` positions are only the fallback. Columns can be reordered freely if labels stay. Cached per sheet id; invalidated with config.
+**Header-resolved columns.** `rosterCols_(sheet)` matches headers by keyword (RANK, NAME, UNIQUE ID/DISCORD,
+ACTIVITY, HOURS, JOIN, PROMOT, UNIT/CALLSIGN, OOC, SHIFT); configured positions are only the fallback. Columns
+can be reordered freely if labels stay. Cached per sheet id; invalidated with config. The tracker, Patrol Log,
+and Signups tabs each have their own header-resolved maps (`trackerCols_`, `patrolLogCols_`, `signupCols_` —
+the latter auto-detects the header row, so a themed tab with a banner works).
 
-**Dividers & sections.** `isDividerValue_` = ALL-CAPS >3 chars (default) or the explicit `[RANKS]` list. Everything divider-vs-member routes through one primitive, so the panel, transfers, stats, and validity checks always agree. `sectionCategory_` maps divider labels → typed tags (Executive/Administrative/Supervisor/Cadet/Training/Patrol/Auxiliary/Command) for the panel's role-colour system.
+**Layout ownership.** The operator lays out the sheets; the engine FILLS values and formulas — it never inserts
+or deletes rows/columns on user sheets and never repaints their formatting. (The Police Academy and #group
+division tabs are engine-built exceptions.)
 
-**Status engine.** `computeStatusCore_(rank, hours, engine)`: per-rank override ladder if one matches, else the global tier ladder, then `[STATUS_RULES]` applied to a fixed point. `resolveStatus_` protects LEAVE/PROTECTED statuses from being overwritten. Single-cell hour edits recompute that row via `onEdit`; **Update All Statuses** batch-recomputes and reports every change. `recomputeStatuses_(sheet, zeroHours)` returns `{total, changed[], protectedSkipped}`.
+**Unique IDs.** Discord IDs (17–19 digits) or Community IDs (1–8 digits) — switchable from the menu (🆔 Unique
+ID Type). IDs are **text**: `'@'`-formatted before every write, `copyTo` on moves, never coerced to Number.
 
-**Callsigns.** `formatUnit_(n)` renders `[ROSTER_LAYOUT].UNIT_FORMAT` (`{00}`-style token = zero-pad width, grows past pad). `updateUnitNumbers_` renumbers every member slot, skipping dividers.
+**Status engine.** `computeStatusCore_(rank, hours, engine)`: per-rank override ladder if one matches, else the
+global tier ladder, then `[STATUS_RULES]` applied to a fixed point. `resolveStatus_` protects LEAVE/PROTECTED
+statuses. Hour edits recompute via `onEdit`; batch recompute reports every change.
 
-**Transfers.** `moveMemberColumns_(sheet, src, dst)` — the single shared core: MEMBER columns follow the person (`copyTo` = value+format, precision-safe for IDs), SLOT columns stay, cross-section moves clear opted-in section columns only. Used by both the sheet-edit path (`checkForMemberMove`, triggered by typing an existing Discord ID into another row) and the panel's `cpMoveMember` (open-slot picker, `expectedId`-guarded, audited as `move`, fires the transfer notification).
+**Transfers.** `moveMemberColumns_` — MEMBER columns follow the person, SLOT columns stay, cross-section moves
+clear opted-in section columns; columns move in contiguous runs (one `copyTo` + one clear per run) because the
+sheet-edit path runs inside the ~30-second LIMITED onEdit budget that also hosts the confirm dialog. Both paths
+share the core: pasting an existing ID into a new row (`checkForMemberMove`, confirm-gated) and the panel's
+`cpMoveMember` (identity-guarded). A move-up records a promotion (§3a).
 
-**LAST ACTIVITY.** Optional column (header-matched). 📸 Capture snapshots current → last for every member. Colour style: `MATCH` mirrors the ACTIVITY conditional formats onto the column; `NEUTRAL` splits the CF rules around the column and paints row-base colours (menu items apply instantly; the choice persists in config).
+**Dashboard & #tags.** `refreshDashboard_` computes stats once and writes plain values into label-matched KPI
+boxes and `#members`-style tags. A Document Property (`RE_DASH_TABS`) remembers which tabs render dashboard
+content so edit-driven refreshes touch only those; menu/nightly runs do full rescans.
 
-**Dashboard & #tags.** `refreshDashboard_` computes stats once from the roster, then writes **plain values** into KPI boxes found by *label text* (merged-range aware; below/right per `DASHBOARD_CELLS`) and converts/updates `#members`-style tags (state kept in cell notes `roster-stat:`). **Perf (v2.5.0):** a Document Property (`RE_DASH_TABS`) remembers which tabs actually render dashboard content; edit-driven refreshes touch only those. Discovery stays automatic (an edit on an unknown tab renders that one tab), the menu/wizard/nightly job do full rescans, and the fast path never prunes (a throw or transient zero can't drop a live tab).
+**§3a · Promotions feed.** `promoRecord_` stores recent promotions (Document Property `RE_PROMOS`);
+`renderPromotions_` fills every "RECENT PROMOTIONS" table. The table-bearing tabs are remembered in
+`RE_PROMO_TABS` (same convention as the dashboard memo) so the per-transfer render doesn't full-scan every tab;
+🔄 Refresh & Update All rediscovers.
+
+**Derived tabs.** The Police Academy and #group division tabs rebuild from the roster: immediately on member
+edits via `syncDerivedNow_` (simple-trigger safe, debounced 4s so bursts collapse to one rebuild), with the
+deferred-work queue + 1-minute sweep as backstop.
 
 ---
 
 ## 4 · Leave Lifecycle (LOA/ROA)
 
-1. **Intake** — the wizard-generated Google Form (questions from `[FORM_MAP]`, Discord-ID regex enforced on the form itself) writes to the response tab.
-2. **Sync** — `onFormSubmit` → `syncFormToTracker()`: per-row validation (ID regex, known type, parseable dates), append to the tracker with a `KEY|id|timestamp` dedup key (idempotent even if row colours are lost), countdown formulas, themed done/error row tints. Errored rows stay red and retry after fixes. Manual: 🔗 Sync Leave Forms (reports the count).
-3. **Approval** — tracker Status → `APPROVED_STATUS`. The `onEdit` transition applies an already-active leave immediately (`checkImmediateLOAStart`) and fires the leave-approved notification.
-4. **Daily job** — `processDailyLOAs` (nightly + menu Force-Run, script-locked): starts due leaves (roster status → leave type; leave-started notifications) and expires ended ones (status recomputed from hours; expiry embed). Manual runs show a scanned/started/expired summary.
-5. **Coverage** — `buildCoverage` (6am + menu) rebuilds the "who's out now" tab.
+1. **Intake** — the wizard-generated Google Form (questions from `[FORM_MAP]`) writes to the response tab.
+2. **Sync** — `onFormSubmit` → `syncFormToTracker()`: per-row validation (ID, known type, parseable dates),
+   `KEY|id|timestamp` dedup keys (idempotent even if row colours are lost). The roster is the source of truth
+   for identity fields (one roster snapshot serves the whole batch). Accepted rows are seated with **one**
+   tracker sort for the whole batch, landing new Pending leaves at the top. Errored rows go red and retry.
+   Manual: 📥 Sync Leave Forms to Tracker.
+3. **Approval** — tracker STATUS → approved. The `onEdit` transition applies an already-active leave
+   immediately and fires the leave-approved notification.
+4. **Daily job** — `processDailyLOAs` (nightly, script-locked): starts due leaves, expires ended ones
+   (status recomputed from hours), posts the configured embeds.
+5. **Coverage** — the "who's out now" board rebuilds on schedule and from the menu.
 
-Panel equivalent: `cpScheduleLeave` appends exactly like the form path (same dedup key + formulas).
-
----
-
-## 5 · Patrol Hours
-
-Operator links their **own** patrol form: set `[SHEETS].PATROL_RESPONSES` to its response tab (blank = feature off). Columns resolve by header keyword (`patrolCols_`). Each unprocessed row: `patrolDuration_` computes hours (`START_END` = end−start, overnight +24h if enabled, reject ≤0 or >`MAX_HOURS`; `DURATION` = `parseHours_`), `patrolFindRow_` matches the member (**a provided Discord ID must be valid AND on the roster — no callsign guessing on bad IDs; callsign fallback only when the ID field is empty AND exactly one member matches**), then the credit: hours added, status optionally recomputed, audited as `patrol`.
-
-**Idempotency is durable:** a `_Credited` stamp column is written + flushed *before* the roster is touched — a crash, timeout, or cleared row background can never double-count a log. Error rows go red and retry. Runs from the same `onFormSubmit` (each sync self-guards by its own tab — no per-form routing) and from 🚔 Sync Patrol Hours (reports credits, totals, and flagged rows).
-
----
-
-## 6 · The Control Panel
-
-`ControlPanel.html` + `RosterControlPanel.gs`, opened via 📋 Roster ▸ 🎛️. Modeless 1180×760 dialog, Studio design system.
-
-**Security architecture (D5):** the client calls exactly one server function — `dispatch(name, args)` — which validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). The shim mirrors the list (`RE_ENDPOINTS`), and a DevQA pin asserts **exactly 33** in both. Adding an endpoint = 3 lock-step edits. Writes are **identity-keyed**: the client sends each row's Discord ID (`expectedId`) so a shifted row can't hit the wrong member.
-
-**The 33 endpoints:** `cpPing, cpBootstrap, cpRefresh, cpGetProfile, cpSetStatus, cpSetStatusBulk, cpScheduleLeave, cpAssignMember, cpMoveMember, cpRunAction, cpJumpTo, cpSystemInfo, cpColumnsInfo, cpSetColumnClass, cpDividersInfo, cpFixTriggers, cpTakeSnapshot, cpRestoreSnapshot, cpSetSnapshotAuto, cpSetWebhook, cpTestWebhook, cpGetConfig, cpApplyConfig, cpOpenSettings, cpRankIcons, cpSetRankIcon, cpDeleteRankIcon, cpSetDividerStyle, cpDeleteDividerStyle, cpAdminSetup, cpAdminInfo, cpAdminSave, cpAddDiscipline`.
-
-**Tabs:** Members (search/filter/sort, bulk status, expandable profile cards: stats, status segmented control, **Move/transfer** open-slot picker, schedule leave, **Admin · private** section, activity checks, hours sparkline, leave history) · Add member (rank-grouped slot dropdown + live preview) · Dividers (per-section counts, expandable member lists, per-divider pill/tone/icon editor — `DIVSTYLE:` Document Properties) · Tools (one-click actions, webhook setup — write-only fields, admin-roster setup) · Columns (SLOT/MEMBER toggles with live samples) · System (health checks, snapshots, the audit timeline with 15s auto-refresh).
-
-**Rank icons:** uploaded in Settings, auto-compressed client-side (fit-inside square; PNG→WebP-with-alpha→JPEG ladder), stored chunked in **Document Properties** (`REICON:` — never sheet cells, never script properties which the library shares across templates). Lazy-loaded after first paint for a fast open.
-
-**Testing pattern:** every mutating endpoint has an injectable `_`-core taking sheet objects, driven by DevQA against sandbox tabs; the live wrapper adds lock/audit/notify.
+Entering a Unique ID on a tracker row auto-fills the member's identity from the roster (bulk pastes are batched:
+one ID read + one roster snapshot for the whole span). The tracker re-groups by `[LEAVE].STATUS_FLOW` with a
+stable, value-only rewrite — formatting, dropdowns, and banding never move. The panel's `cpScheduleLeave`
+appends exactly like the form path.
 
 ---
 
-## 7 · The Settings Studio
+## 5 · Patrol Hours (the Patrol Log tab)
 
-`SettingsPanel.html`, full-screen. Edits **every** config block: kv keys render by type (dropdowns, toggles, colour pickers, chip editors, ladder step-builders), tables get a generic editor, live search, per-section dirty state. **Validate-before-write:** the prospective config runs the full validator; any ERROR refuses the entire change set. Live previews: a faithful full-message Discord embed (XSS-safe `dcRender` markdown renderer — escape-sequence placeholders, never raw control bytes) and a theme mini-sheet.
+Sessions live on the **Patrol Log tab** (`[SHEETS].PATROL_LOG`): identity + start/end date + time columns,
+header-resolved. Each row is processed by `processPatrolLog_`: identity auto-fills from the roster, the
+ISNUMBER-guarded TOTAL TIME formula computes hours, `evaluatePatrolLog_` classifies problems — **blocking**
+(unknown ID, non-positive or >24h span → Flagged, data must be fixed) vs **advisory** (over the configured max,
+future-dated → Flagged until an admin marks it Processed, which credits with an override note). Valid rows
+auto-mark Processed and credit.
 
----
+**Crediting is reconciliation, not addition.** A hidden col-A marker `"hours|id"` records exactly what was last
+credited; `reconcilePatrolCredit_` reverses the prior credit and applies the new one, so a member's HOURS always
+equals the sum of their valid logs — idempotent across edits, flag/unflag, ID changes, and deletes. The marker
+is written and flushed **before** the roster is touched: a crash under-credits (self-heals next pass), never
+double-credits. **Never seed patrol rows without a matching marker.**
 
-## 8 · The Admin Roster (private member data)
-
-A **separate, admin-only spreadsheet** — required because *anyone who can view a Google Sheet can read every tab in it* (hidden tabs and protected ranges are not privacy). Linked by file ID in Document Properties (`ADMIN_ROSTER_ID`), keyed by Discord ID.
-
-**Security model:** panel dialogs execute *as the person using them*, so every admin read/write goes through `SpreadsheetApp.openById()` under **that user's Google permissions** — the file's share list is the access control, enforceable even against direct `dispatch` calls. Hard rules: admin data never touches the main spreadsheet (no cells, no Edit Log, no logs); the **link is gated** (`assertMayRelink_`: once set, only someone who can open the current admin file, or the sheet owner, may change it — every change is logged and stamped "linked by X on date" on the Tools tab); all writes are `'@'`-formatted first (pasted `=…` can never execute as a formula).
-
-**Scalable fields:** the admin file's **header row is the schema.** `Member Details` fixes only cols 1–2 (Discord ID, Name); every column added after them (≤30) auto-renders as an editable private field on profile cards — field *names* stay out of the public sheet. Duplicate labels are deduped (first column wins; siblings untouched), saves only touch provided fields (empty = clear, omitted = preserve), unknown labels are reported (never silently dropped), fields named like "…Notes" render as textareas, whole-label `Email` fields get address validation. `Disciplinary Log` is append-only: Date · ID · Name · Action · Reason · Issued By · Status (issuer captured automatically; card shows newest 50).
-
----
-
-## 9 · Discord Integration
-
-- **Webhooks:** MAIN (notifications) + optional ERRORS (coded errors, CacheService-throttled 1/code/5min). URLs live **only** in Script Properties, set via write-only panel fields, never echoed back.
-- **Embeds:** native-emoji field labels (`👤 Name`, `🛡️ Rank`, `🎙️ Callsign`, `▶️ Start Date`…), configurable titles/colours, shared chrome via `embedChromeFrom_`/`footerFrom_` (author/thumbnail/image/footer; http(s)-only via `embedUrl_`). `notify_(on, embed, content)` never throws and posts after locks release; `fill_(template, vars)` does `{token}` substitution; `mention_` pings only valid IDs.
-- **Events:** leave submission/expiry (always, classic) + the six `[NOTIFICATIONS]` opt-ins (§2).
+The nightly `refreshPatrolLog_` sweep re-processes every row (maturing once-future logs) off **one block read**
+of the whole log — cached row data and markers thread through processing, and per-row format churn is skipped
+because the closing `sortPatrolLog_` re-applies formats and formulas batched. A legacy form-based intake
+(`[SHEETS].PATROL_RESPONSES` + `[PATROL]` column keywords) still syncs submissions into the same crediting path.
 
 ---
 
-## 10 · Trust & Safety
+## 6 · Roster Signups
 
-- **Audit (always-on):** installable `auditEdit` trigger logs who/what/when to the Edit Log; panel actions and menu commands log semantically via `auditEvent_(type,…)` (types: add/status/bulk/leave/move/patrol/action/snapshot/restore). Member moves are detected in `auditEdit` itself. Known limit: consumer-Gmail installable triggers may report "unknown" editor for *other* accounts' raw sheet edits.
-- **Snapshots:** `_Snapshots` tab, keeps last `SNAPSHOT_KEEP`; captures extra MEMBER columns as JSON; restore is two-click with an ID-precision guard. Optional weekly auto-snapshot (Sun ~22:00).
-- **Integrity scan:** daily 7am + menu — duplicate/malformed IDs, status-vs-hours mismatches, orphaned leaves; logs to Integrity Log, posts a Discord summary, and the manual run shows the actual issue list.
-- **Health check:** `cpHealthCheck_` — config validity first, then structure/triggers/webhook; drives the panel health pill and one-click fixes.
-- **Coded errors:** `REGISTRY_` in RosterConfig.gs defines 12 codes (config: E-101/102/103/104/110 · structure: E-201/202/205 · plus E-301/501/506/601); every error carries a hint and a docs anchor (`DOCS_URL` + `/errors#e-xxx` once the docs site is deployed). `runAction_` wraps every menu command with coded-modal handling and success audit.
+A Google Form writes to its **own** plain tab (`[SHEETS].SIGNUP_FORM_RESPONSES`). `syncSignupForm_`
+field-matches each submission by role (name / OOC / Unique ID / email / DOB / phone / join date) into the themed
+**review tab** (`[SHEETS].SIGNUPS`), stamps STATUS **Pending**, marks synced form rows done so re-scans never
+double-add, and re-groups Pending → Approved → Processed. STATUS + NOTES are admin-owned columns. Free rows are
+found by *identity* (a stray STATUS value never counts as occupied), and a backfill computes them once for the
+whole batch. Runs on `onFormSubmit` and 🧾 Sync Signup Form to Review.
+
+**Approval, two ways:**
+- **Control Panel ▸ Signups** (the primary path): applicant chips, a read-only detail card, and a rank-grouped
+  open-slot picker → `cpSignupApprove`. The approval is **identity-verified** — the panel sends the applicant's
+  Unique ID and the server re-resolves the row under the lock (`signupResolveRow_`), because a form submission's
+  re-sort can shift rows under an open panel.
+- **Sheet-driven:** setting a review row's STATUS to Approved fires the simple-trigger flow — a plain
+  `ui.prompt` slot picker (AuthMode.LIMITED can never open an HTML dialog; permanent platform restriction),
+  the same identity re-check after the prompt, and a reset to Pending on cancel or failure.
+
+`approveSignup_` seats the member in the chosen open slot, copies their private details (email/DOB/phone) onto
+their roster row, carries the join date, and stamps the signup **Processed** — last, so a failure leaves it
+actionable.
+
+---
+
+## 7 · The Control Panel
+
+`ControlPanel.html` + `RosterControlPanel.gs`, opened via 👥 Roster ▸ 🎛️. Modeless 1180×760 dialog, Studio
+design system, deep-linkable (`openControlPanel('signups')` lands on a tab directly).
+
+**Security architecture (D5):** the client calls exactly one server function — `dispatch(name, args)` — which
+validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **36 endpoints**; the shim's
+`RE_ENDPOINTS` list mirrors it one-for-one (adding an endpoint = one line in each). Writes are **identity-keyed**: the
+client sends each row's Unique ID so a shifted row can't hit the wrong member (`cpResolveMemberRow_` for
+members, `signupResolveRow_` for signups).
+
+**Tabs:** Members (search/filter/sort, bulk status — one batched read + one RangeList write per selection,
+expandable profile cards with move/transfer, leave scheduling, private-details link, discipline history) ·
+Add member (rank-grouped slot dropdown + live preview) · **Signups** (§6) · Dividers (per-section styling) ·
+Tools (one-click actions, webhook setup) · Columns (SLOT/MEMBER toggles) · System (health checks, snapshots,
+audit timeline).
+
+**Rank icons:** uploaded in Settings, compressed client-side, stored chunked in Document Properties, lazy-loaded
+after first paint.
+
+**Testing pattern:** every mutating endpoint has an injectable `_`-core taking sheet objects, driven by DevQA
+against sandbox tabs; the live wrapper adds lock/audit/notify.
+
+---
+
+## 8 · The Settings Studio
+
+`SettingsPanel.html`, full-screen. Edits **every** config block: typed kv controls, generic table editors, live
+search, per-section dirty dots. **Validate-before-write:** the prospective config runs the full validator; any
+ERROR refuses the entire change set.
+
+**Discord sections (per channel):** Audit log · LOAs · Patrol logs · Errors. Each owns its webhook (write-only
+field) and its slice of the **embed builder** — per-event templates stored as JSON rows in `[EMBEDS]`, edited
+against a Discord-accurate live preview with built-in defaults shown until overridden. The sidebar dirty dot is
+computed from **that channel's event rows only** (the `[EMBEDS]` table is shared, so a whole-table compare would
+light all four).
+
+---
+
+## 9 · The Public Roster (one-way publish)
+
+Members read a separate spreadsheet that mirrors selected tabs from this workbook. Nothing flows back.
+
+- **The public file's own tab list is the allow-list** — copy a tab across to publish it, delete it to stop.
+  Blocked name patterns (Config, Webhooks, Disciplin…, Signup…, logs, snapshots, history) are never mirrored.
+- **Mode is chosen by grid width** (`getMaxColumns()` — content-independent): same width → wholesale positional
+  mirror (required for dashboards with fixed-cell boxes); narrower → header-matched columns only.
+- **Sensitive columns never leave the server.** `[PUBLISH].NEVER_PUBLISH` (default EMAIL / DOB / PHONE /
+  ADDRESS) is blanked in the outgoing block **before** the write in both modes — the **Unique ID column
+  publishes** by design (members find themselves by ID). Residue a manual tab copy brought along is scrubbed.
+- **Formulas are carried across** (`publishReadCells_`), number formats too. Destination formulas and
+  `[PUBLISH].KEEP_RANGES` are never overwritten (built-ins protect the Welcome Page + roster title blocks even
+  when a stored Config row overrides the schema default). Self-computing tabs (cross-sheet ARRAY formulas) are
+  left alone and their blocked spill residue is freed — only genuine spill anchors claim their block.
+- **All block writes are merge-safe** (`writeValuesSafe_` — plain `setValues` across merged cells throws).
+- **Liveness:** the installable `publishOnChange` (onEdit + onChange) publishes the edited tab within seconds
+  (3s burst guard, ~8s trailing catch-up trigger); script writes mark a dirty flag carried by the 1-minute
+  sweep. A partial (single-tab) publish never clears the global dirty flag — only a full pass does. The
+  publisher deliberately steps aside for member transfers (Unique-ID-column edits defer; EDIT/OTHER/FORMAT
+  onChange firings skip) so a publish and a roster mutation never race for the script lock. Linkage checks read
+  the stored property — never an `openById` round-trip per keystroke.
+
+---
+
+## 10 · Discord Integration
+
+- **Webhooks per channel** (AUDIT / LOA / PATROL / ERRORS), stored in this workbook's Webhooks tab — Google
+  sharing gates them. One webhook URL can serve **many** channels (`cpSetWebhookChannels`); per-channel test
+  posts. URLs are **write-only secrets**: set from the panel/Settings, never echoed back to any page, never
+  logged or audited.
+- **Embeds:** built-in defaults per event, overridable per-field in the Settings embed builder (`[EMBEDS]`),
+  shared chrome (author/thumbnail/image/footer, http(s)-only), `{token}` substitution, native-emoji field
+  labels. `notify_` never throws and posts after locks release.
+- **Events:** leave lifecycle, patrol credits + flag summaries, audit entries, coded errors (throttled
+  1/code/5min), plus the `[NOTIFICATIONS]` opt-ins (member added, transfer, weekly digest…).
+
+---
+
+## 11 · Trust & Safety
+
+- **Audit (always-on):** the installable `auditEdit` trigger logs who/what/when to the Edit Log; panel and menu
+  actions log semantically via `auditEvent_`. **Editor identity resolves to a member name:** `auditWho_(email)`
+  matches the editing account's email against the roster's private EMAIL column — a match shows the member's
+  NAME everywhere (Edit Log, Discord audit embeds, webhook set-by stamps, discipline "Issued by"); no match
+  keeps the raw email. Memoized to one roster read per execution.
+- **Snapshots:** hidden `_Snapshots` tab, keeps the last `SNAPSHOT_KEEP`; restore is identity-mapped (a row
+  shift since the snapshot can't drop data on the wrong member) with an ID-precision guard; pruning deletes
+  contiguous runs. Optional weekly auto-snapshot.
+- **Discipline:** the Disciplinary Log is append-only under the script lock (concurrent panels can't overwrite
+  each other), `'@'`-formatted before every write.
+- **Integrity scan:** duplicate/malformed IDs, status-vs-hours mismatches, orphaned leaves — logged + posted.
+- **Health check:** config validity first, then structure/triggers/webhooks; drives the panel health pill.
+- **Coded errors:** `REGISTRY_` defines every code with a hint; `runAction_` wraps menu commands with coded-modal
+  handling and success audit.
 
 **Hard invariants (never violate):**
-1. Discord IDs are 17–19 digit **text** — `setNumberFormat('@')` *before* writing; `copyTo` for moves; never coerce to Number.
-2. Webhooks/secrets only in Script Properties. Panel-scoped storage in **Document** Properties.
-3. Any user-text write into a cell gets `'@'` first (a string starting `=` becomes a live formula otherwise).
-4. Accumulating writes (hours) need a durable dedup key written before the mutation.
-5. Notifications/side-effects never throw into their triggering action; webhooks post after locks release.
-6. Admin data never touches the main file.
-7. DevQA touches sandbox tabs only.
+1. Unique IDs are **text** — `'@'` before writing, `copyTo` on moves, never Number.
+2. Webhook URLs are write-only secrets — never echoed to a page, never logged.
+3. Any user-text cell write gets `'@'` first (formula injection).
+4. Accumulating writes (hours) reconcile against a durable marker written **before** the mutation.
+5. Notifications never throw into their triggering action; webhooks post after locks release.
+6. Simple `onEdit` runs in AuthMode.LIMITED: no other-file opens, no UrlFetch, no trigger creation, no HTML
+   dialogs (`ui.alert`/`ui.prompt` only) — and its ~30s budget spans any human dialog.
+7. Publishing and roster mutations never contend for the same script lock.
+8. The engine fills user sheets — it never restructures or reformats their layout.
+9. DevQA touches 🧪-prefixed sandbox tabs only.
 
 ---
 
-## 11 · Menus & Triggers
+## 12 · Menus & Triggers
 
-**📋 Roster:** Open Control Panel · Engine Settings │ Add Member Rows… · Fix All Unit Numbers │ Update All Statuses · Refresh Dashboard · Reset Weekly Hours (saves history first) · 📸 Last Activity ▸ (Capture / Colours→Neutral / Colours→Match) │ Sync Leave Forms · 🚔 Sync Patrol Hours · Style Form Responses · Force Run Daily Schedule Check │ Check Duplicate Discord IDs · Sync Column Config │ First-Run Setup · **Install Triggers** (installs core *and* extras triggers in one click).
-**🛠️ Extras:** Rebuild Leave Coverage · Run Integrity Scan · Weekly Reset (saves history) │ Load Demo Roster (preview).
-**🧪 Dev / QA:** Run ALL Tests · Run one section (1–19).
+**👥 Roster:** 🎛️ Open Control Panel · ⚙️ Engine Settings │ 🔄 Refresh & Update All · 📥 Sync Leave Forms to
+Tracker · 🧾 Sync Signup Form to Review · 📸 Capture & Reset Activity · 🔍 Run Integrity Scan · 🌐 Publish
+Public Roster │ ➕ Add Member Rows… · 🎙️ Fix All Callsign Numbers · 🗂️ Build / Refresh Group Sheets · 🎓 Build /
+Refresh Police Academy │ 🌐 Set Up Public Roster · 🆔 Unique ID Type ▸ (Discord / Community) · 🧩 Sync Column
+Config · 🚀 First-Run Setup · 🔌 Install Triggers.
+
+**🧪 Dev / QA:** 🎬 Load Demo Roster · 🎲/🚔/🧾 Add Random LOA / Patrol Log / Signup │ ▶️ Run Tests Part 1
+(1–8) / Part 2 (9–16) / Part 3 (17–23) · ⏱️ Run ALL Tests · 🔬 Run one section (1–23) · 🧹 Delete Sandbox /
+Results Tabs.
+
 Every action reports what it actually did (counts, names, changes).
 
-**Triggers:** simple — `onOpen` (menus), `onEdit` (status recompute, transfer detect, approval hook, config invalidation, dashboard refresh). Installable (via Install Triggers / wizard) — `onFormSubmit`, `processDailyLOAs` (nightly, `NIGHTLY_HOUR`), `auditEdit`, `scanIntegrity` (7am), `buildCoverage` (6am), `weeklyResetScheduled` (cadence-gated by `resetDue_` + `LAST_RESET` marker), optional `weeklySnapshotScheduled`. In library mode the shim forwards all of these.
+**Triggers:** simple — `onOpen` (menus), `onEdit` (status recompute, transfer detect, tracker/patrol/signup row
+handling, approval hooks, derived-tab rebuilds, dashboard refresh). Installable (🔌 Install Triggers) —
+`onFormSubmit` (leave + patrol + signup syncs), `processDailyLOAs` (nightly), `auditEdit`, `publishOnChange`
+(onEdit **and** onChange), `publishSweep` (1-minute), integrity/coverage/reset schedules, optional weekly
+snapshot. In library mode the shim forwards all of these.
 
 ---
 
-## 12 · Performance Architecture (v2.5.0)
+## 13 · Performance Architecture
 
-- **Config cache** (§2) — panel actions/triggers skip the config-tab read on cache hits.
-- **Dashboard tab memory** (§3) — edit-driven refreshes render only remembered tabs; full rescans on menu/wizard/nightly; never prunes on failure.
-- **Lazy rank icons** — `cpBootstrap` ships `rankIcons:{}`; the panel fetches `cpRankIcons` after first paint (shape: `{ranks:[{rank,icon,members}]}`).
-- **`[LOGGING].PERF_TIMING`** — opt-in per-action duration logging via `perf_` wrapping `dispatch` (reads the flag from the already-loaded config memo only — never forces a config load).
-- General discipline: batch full-width reads/writes; per-cell loops only where formats matter (transfers) or durability demands it (patrol stamps).
+- **Config cache** (§2) — panel actions and triggers skip the config-tab read on cache hits.
+- **Tab memories** — `RE_DASH_TABS` (dashboard) and `RE_PROMO_TABS` (promotions) bound per-edit rendering to
+  the tabs that actually need it; menu refreshes rediscover.
+- **Batched sweeps** — the Patrol Log refresh reads the whole log once and threads cached rows + markers
+  through processing; the leave-form sync seats a whole batch with one tracker sort; bulk status = one
+  RangeList write; snapshot pruning and history dedup delete contiguous runs.
+- **LIMITED-budget discipline** — everything on the simple-onEdit path (transfers, tracker/patrol pastes)
+  batches its reads and hoists one roster snapshot for the span; cheap critical writes run before heavy
+  rebuilds, UrlFetch last.
+- **Lazy rank icons**, **derived-tab debounce** (4s), **`[LOGGING].PERF_TIMING`** opt-in per-action timings.
+- General discipline: batch full-width reads/writes; per-cell writes only where merge-safety or durability
+  demands them (`writeValuesSafe_` anchors, the patrol credit marker).
 
 ---
 
-## 13 · The QA System
+## 14 · The QA System
 
-`RosterDevQA.gs`: ~850+ assertions in **19 sections** (unit/pure, status engine, leave lifecycle, form sync, maintenance, Discord guards, ID precision, adversarial, panel & audit, extras, trust, config engine, dispatch & migrations, white-label, settings apply, v2.5 features, …). Everything runs against 🧪-prefixed **sandbox tabs** (reused via `clear()` for speed; `DEV_THEME_SANDBOX=false`) — never live data. A live-config **preflight** flags customized configs up front; tests asserting engine defaults wrap in `devWithConfig_({})` so a customized sheet can't red them. Results render to a themed "🧪 Test Results" tab. The whitelist parity test doubles as the shim contract.
+`RosterDevQA.gs`: **23 sections** (unit/pure, status engine, leave lifecycle, form sync, maintenance, Discord
+guards, ID precision, adversarial, panel & audit, extras, trust, config engine, dispatch & migrations,
+white-label, identity-keyed writes, config robustness, dashboard render, settings apply, config extensions,
+new-layout columns, Patrol Log, Roster Signups, public publish). Everything runs against 🧪-prefixed **sandbox
+tabs** (reused via `clear()` for speed) — never live data.
 
-**Local static validation** (no Apps Script needed): Node `new Function(src)` syntax check + a zero-control-byte scan per file; the panel `<script>` blocks check the same way.
+**Run it in three parts** (▶️ Part 1 / 2 / 3) — the full 23-section run can exceed Apps Script's ~6-minute
+execution cap; the split points live in one array (`DEV_PART_ENDS_`). Each part repeats the live-config
+preflight; results render to the "🧪 Test Results" tab (last run wins, header labeled with the part).
+
+Sandbox limits to remember: plain grids — no merges, no formatting, no timezone quirks. Passing tests prove
+logic, not layout behavior; the live smoke test (one signup, one leave, one patrol log, one transfer, one
+publish) is part of every release.
+
+**Local static validation** (no Apps Script needed): Node `new Function(src)` syntax check + zero-control-byte
+scan per file; HTML script blocks are extracted, GAS scriptlets stubbed, and `node --check`ed the same way.
 
 ---
 
-## 14 · Maintenance
+## 15 · Maintenance
 
-**Release recipe:** bump `ENGINE_VERSION` → write `CHANGELOG.md` → commit → `clasp push` → deploy a library version → bump the template's pinned version → sync the web changelog (`web/lib/roster-engine.ts`). *(The `_files/*.txt` paste bundles are retired — git history + clasp replace them.)*
+**Release recipe:** bump `ENGINE_VERSION` (+ `CP_VERSION`) → syntax-check every file → commit → `clasp push -f`
+→ run all three QA parts → live smoke test. After schema-affecting changes: run 🚀 First-Run Setup once
+(idempotent).
 
-**Sync rules:** `clasp push` syncs every engine file (`.claspignore` keeps `TEMPLATE-SHIM.gs` out — it ships only inside community templates); manual fallback = re-paste all engine `.gs` files + changed HTML. Library users re-paste `TEMPLATE-SHIM.gs` into the template whenever the endpoint list changes. After schema-affecting changes: run 🚀 First-Run Setup once (idempotent), then 🧪 Run ALL Tests.
+**Sync rules:** `clasp push -f` syncs every engine file (`.claspignore` keeps `TEMPLATE-SHIM.gs` out — it ships
+only inside community templates). Library users re-paste `TEMPLATE-SHIM.gs` whenever the endpoint list changes.
 
-**Docs set:** this file (current, 2026-07-16) · `STAFF-GUIDE.md` (user manual — June-era prose) · `ROSTER-ENGINE-FEATURES.md` (presentation) · `MENU-REFERENCE.md` / `ROSTER-CELL-REFERENCE.md` · `ROSTER-ENGINE-V2-BRIEF.md` (design contract) · `ROSTER-ENGINE-V2-RUNBOOK.md` (publish/deploy) — all companions live outside this folder. Keep-current rule: when code changes, update the matching section here.
+**Keep-current rule:** when code changes, update the matching section here in the same commit. Companion docs
+(staff guide, feature pitch, menu reference) live outside this folder and predate 1.0 — this file is the
+authoritative system reference.

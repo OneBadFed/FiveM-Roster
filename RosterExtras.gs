@@ -26,7 +26,7 @@
  */
 
 /**
- * Extras settings. v2.5.0 — the tab names now resolve LIVE from [SHEETS] on ⚙️ Config (getters, so every existing
+ * Extras settings. v1.0 — the tab names now resolve LIVE from [SHEETS] on ⚙️ Config (getters, so every existing
  * `EXTRAS.historySheet` read stays dynamic with zero call-site churn). Blank/absent config → the shipped default.
  */
 const EXTRAS = Object.freeze({
@@ -61,7 +61,7 @@ function installExtrasTriggers_() {
   const weekDays = { SUN: ScriptApp.WeekDay.SUNDAY, MON: ScriptApp.WeekDay.MONDAY, TUE: ScriptApp.WeekDay.TUESDAY, WED: ScriptApp.WeekDay.WEDNESDAY, THU: ScriptApp.WeekDay.THURSDAY, FRI: ScriptApp.WeekDay.FRIDAY, SAT: ScriptApp.WeekDay.SATURDAY };
   ScriptApp.newTrigger('scanIntegrity').timeBased().atHour(7).everyDays(1).create();
   ScriptApp.newTrigger('buildCoverage').timeBased().atHour(6).everyDays(1).create();
-  // v2.5.0 — cadence-aware reset trigger. MANUAL (or WEEKLY_HOURS_RESET=OFF) installs no trigger. MONTHLY fires on
+  // v1.0 — cadence-aware reset trigger. MANUAL (or WEEKLY_HOURS_RESET=OFF) installs no trigger. MONTHLY fires on
   // RESET_DOM. WEEKLY/BIWEEKLY fire weekly on the chosen weekday; the handler (resetDue_) gates BIWEEKLY to ~14 days
   // apart via the LAST_RESET marker, so Apps Script's lack of a native bi-weekly trigger doesn't matter.
   let resetDesc = 'OFF (no auto-reset)';
@@ -207,7 +207,7 @@ function captureHoursSnapshot_(weekLabel) {
   sh.getRange(startRow, 2, rows.length, 1).setNumberFormat('@'); // keep IDs exact
   sh.getRange(startRow, 1, rows.length, 6).setValues(rows);
   // F-024: cap growth like the sibling Integrity/Edit logs — trim the oldest rows so the sheet can't grow unbounded.
-  const CAP = logRowCap_(); // v2.5.0: configurable
+  const CAP = logRowCap_(); // v1.0: configurable
   const last = sh.getLastRow();
   if (last > CAP + 1) sh.deleteRows(2, last - CAP - 1); // keep the header + newest CAP rows
   logInfo_('captureHoursSnapshot_', `captured ${rows.length} member-hours for week ${when}.`);
@@ -286,7 +286,7 @@ function doWeeklyReset_() {
     const totalHours = before.reduce((s, m) => s + parseHours_(m.hours), 0); // hoisted: used by the digest AND the return summary
     const activeCount = after.filter((m) => m.activity !== lowestTier).length;
     logInfo_('doWeeklyReset_', `reset complete; ${dropped.length} dropped to ${lowestTier}.`);
-    if (CONFIG.notify && CONFIG.notify.weeklyDigest) { // v2.5.0 richer opt-in digest supersedes the basic reset notice
+    if (CONFIG.notify && CONFIG.notify.weeklyDigest) { // v1.0 richer opt-in digest supersedes the basic reset notice
       notifyCh_('AUDIT', true, {
         title: fill_(CONFIG.notify.digestTitle, {}),
         color: hexToInt_(CONFIG.notify.digestColor, 5793266),
@@ -301,7 +301,7 @@ function doWeeklyReset_() {
     } else {
       postSummary_('🗑️ Weekly Reset', `Hours zeroed and statuses recomputed. **${dropped.length}** member(s) dropped to ${lowestTier}.`, 15105570);
     }
-    try { PropertiesService.getScriptProperties().setProperty(LAST_RESET_PROP, String(Date.now())); } catch (e) { /* best-effort cadence marker */ } // v2.5.0: advance the cadence clock (manual + scheduled both count)
+    try { PropertiesService.getScriptProperties().setProperty(LAST_RESET_PROP, String(Date.now())); } catch (e) { /* best-effort cadence marker */ } // v1.0: advance the cadence clock (manual + scheduled both count)
     return { captured: captured, shifted: shifted, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
   } finally {
     lock.releaseLock();
@@ -332,7 +332,7 @@ function weeklyResetScheduled() {
 }
 
 /**
- * v2.5.0 — is the hours reset due now, given [SCHEDULE].RESET_CADENCE and the LAST_RESET marker? WEEKLY fires every
+ * v1.0 — is the hours reset due now, given [SCHEDULE].RESET_CADENCE and the LAST_RESET marker? WEEKLY fires every
  * scheduled run; BIWEEKLY/MONTHLY fire weekly/monthly but only proceed once enough days have elapsed (jitter-tolerant
  * floors). MANUAL never runs from the trigger. A broken config errs toward running — never silently skip a reset.
  */
@@ -1091,7 +1091,7 @@ function scanIntegrityCore_() {
   const log = ss.getSheetByName(EXTRAS.integritySheet) || ss.insertSheet(EXTRAS.integritySheet);
   if (log.getLastRow() === 0) log.appendRow(['Time', '# Issues', 'Detail']);
   log.appendRow([new Date(), issues.length, issues.join(' | ')]);
-  const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // bound growth (v2.5.0: config cap)
+  const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // bound growth (v1.0: config cap)
   if (issues.length) postSummary_(`🔍 Integrity Scan — ${issues.length} issue(s)`, issues.slice(0, 12).join('\n'), 15548997);
   logInfo_('scanIntegrity', `${issues.length} issue(s) found.`);
   return issues;
@@ -1162,14 +1162,14 @@ function recordEdit(e) {
     const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
     const who = (email && typeof auditWho_ === 'function') ? auditWho_(email) : (email || 'unknown'); // member NAME when the email is on their roster row
     log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV]);
-    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v2.5.0: config cap)
+    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v1.0: config cap)
   } catch (err) {
     log_('recordEdit', err);
   }
 }
 
 /* ======================================================================
- * DEMO / PREVIEW DATA (v2.5.0) — seedDemoRoster()
+ * DEMO / PREVIEW DATA — seedDemoRoster()
  * Fills the MEMBER-INFORMATION columns of the rows you already set up, so a
  * fresh copy looks like a community that is actually running it. The operator
  * lays out their own ranks, section dividers and callsigns; this only writes

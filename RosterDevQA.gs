@@ -64,7 +64,7 @@ function addDevMenu_(prefix) {
       .addItem('16 · Config-tab robustness', p + 'devRunSection16')
       .addItem('17 · Dashboard render safety', p + 'devRunSection17')
       .addItem('18 · Settings apply', p + 'devRunSection18')
-      .addItem('19 · v2.5.0 config extensions', p + 'devRunSection19')
+      .addItem('19 · v1.0 config extensions', p + 'devRunSection19')
       .addItem('20 · New-layout column resolution', p + 'devRunSection20')
       .addItem('21 · Patrol Log tracker', p + 'devRunSection21')
       .addItem('22 · Roster Signups', p + 'devRunSection22')
@@ -276,7 +276,7 @@ const DEV_GROUPS = [
   ['Config-tab robustness (sandbox)', devConfigRobustnessTests_],
   ['Dashboard render safety (sandbox)', devDashboardRenderTests_],
   ['Settings apply (sandbox)', devSettingsApplyTests_],
-  ['v2.5.0 config extensions (sandbox)', devV25Tests_],
+  ['v1.0 config extensions (sandbox)', devV25Tests_],
   ['New-layout column resolution (sandbox)', devNewLayoutTests_],
   ['Patrol Log tracker (sandbox)', devPatrolLogTests_],
   ['Roster Signups (sandbox)', devSignupTests_],
@@ -642,7 +642,7 @@ function devNumberSheet_(sheet) {
   const units = [];
   let counter = 1;
   for (let i = 0; i < n; i++) {
-    if (isMemberSlot_(ranks[i][0])) { units.push([formatUnit_(counter)]); counter++; } // v2.5.0: mirror the real formatUnit_
+    if (isMemberSlot_(ranks[i][0])) { units.push([formatUnit_(counter)]); counter++; } // v1.0: mirror the real formatUnit_
     else units.push(['']);
   }
   sheet.getRange(CONFIG.rosterStartRow, CONFIG.roster.unit, n, 1).setValues(units);
@@ -2197,11 +2197,11 @@ function devSettingsApplyTests_() {
 }
 
 /* ======================================================================
- * SECTION 19 — v2.5.0 EXTENSIONS (sandbox): patrol-log → hours (resolve /
+ * SECTION 19 — v1.0 EXTENSIONS (sandbox): patrol-log → hours (resolve /
  * duration / find / credit+dedup), promotion predicate, LAST ACTIVITY capture.
  * ====================================================================== */
 function devV25Tests_() {
-  const R = devNewResults_('v2.5.0 extensions (sandbox)');
+  const R = devNewResults_('v1.0 extensions (sandbox)');
 
   // patrolCols_ (header-keyword resolution)
   (() => {

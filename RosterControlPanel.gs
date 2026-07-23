@@ -18,7 +18,7 @@
  * ============================================================================
  */
 
-const CP_VERSION = 'v1.4.0';
+const CP_VERSION = 'v1.0.0'; // moves in lock-step with ENGINE_VERSION from the 1.0 release on
 const CP_STATUSES = Object.freeze(['Active', 'Semi-Active', 'Inactive', 'LOA', 'ROA', 'Reserve']); // fallback when config is unavailable
 
 /** Status names from [STATUSES] on ⚙️ Config (defaults identical to CP_STATUSES). */
@@ -28,7 +28,7 @@ function cpStatuses_() {
 }
 
 /* ----------------------------------------------------------------------------
- * D5 — WHITELISTED DISPATCH (Roster Engine v2, Phase 2)
+ * D5 — WHITELISTED DISPATCH (Roster Engine, Phase 2)
  * The panel's google.script.run calls go through ONE endpoint: dispatch(name, args).
  * • Bound mode (this sheet): the dialog reaches this dispatch directly.
  * • Library mode (public template): the ~50-line shim's dispatch re-checks its own
@@ -219,7 +219,7 @@ function cpTestWebhookChannels(channels) {
  * ------------------------------------------------------------------------- */
 
 /**
- * Blocks the Settings Studio exposes. v2.5.0: ALL kv blocks + nearly every table block are editable in the panel
+ * Blocks the Settings Studio exposes. v1.0: ALL kv blocks + nearly every table block are editable in the panel
  * (validate-before-write guards each save). [COLUMNS] is intentionally excluded — it has a richer dedicated editor
  * on the Control Panel's Columns tab (sample values, fill counts, header issues); a second editor here would conflict.
  */
@@ -513,7 +513,7 @@ function cpSnapshot_() {
     }
   }
 
-  return { members, stats, updatedAt: fmtTs_(new Date()) }; // v2.5.0: configurable timestamp format
+  return { members, stats, updatedAt: fmtTs_(new Date()) }; // v1.0: configurable timestamp format
 }
 
 /* ----------------------------------------------------------------------------
@@ -661,7 +661,7 @@ function cpGetProfile(discordId) {
   }
 
   // Weekly hours series from the hidden history tab (schema: A WeekOf, B DiscordID, E Hours).
-  const hist = ss.getSheetByName(CONFIG.sheets.hoursHistory); // v2.5.0: config-driven history tab name
+  const hist = ss.getSheetByName(CONFIG.sheets.hoursHistory); // v1.0: config-driven history tab name
   if (hist) {
     const last = hist.getLastRow();
     if (last >= 2) {
@@ -676,7 +676,7 @@ function cpGetProfile(discordId) {
           ? Utilities.formatDate(a, ssTz_(), 'yyyy-MM-dd')
           : String(a).trim();
         if (week === '') continue;
-        byWeek[week] = { hours: Number(vals[i][4]) || 0, status: String(vals[i][5] || '').trim() }; // a later row for the same week wins; F col = Status (v2.5.0 activity checks)
+        byWeek[week] = { hours: Number(vals[i][4]) || 0, status: String(vals[i][5] || '').trim() }; // a later row for the same week wins; F col = Status (v1.0 activity checks)
       }
       Object.keys(byWeek).sort().slice(-12).forEach((w) => history.push({ week: w, hours: byWeek[w].hours, status: byWeek[w].status }));
     }
@@ -796,7 +796,7 @@ function cpScheduleLeave(p) {
     const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
     if (!tracker) throw new Error(`Tracker tab "${CONFIG.sheets.tracker}" not found.`);
     const res = cpScheduleLeave_(roster, tracker, p, { sendWebhooks: true });
-    cpAudit_('leave', '', `${res.type} ${fmtDisplay_(res.start)}–${fmtDisplay_(res.end)} (${res.status})`, // v2.5.0: configurable date format (matches the webhook + form-path audit)
+    cpAudit_('leave', '', `${res.type} ${fmtDisplay_(res.start)}–${fmtDisplay_(res.end)} (${res.status})`, // v1.0: configurable date format (matches the webhook + form-path audit)
       roster.getRange(res.row, rosterCols_(roster).name).getA1Notation(), res.member.name);
     return { status: res.status, applied: res.applied, member: res.member };
   });
@@ -856,7 +856,7 @@ function cpScheduleLeave_(roster, tracker, p, opts) {
       const diff = Math.round(Math.abs(end - start) / 86400000);
       sendDiscordWebhook(m.name, m.rank, m.callsign, type,
         fmtDisplay_(start), fmtDisplay_(end),
-        `${diff} ${diff === 1 ? 'Day' : 'Days'}`, m.discord); // v2.5.0: configurable date format
+        `${diff} ${diff === 1 ? 'Day' : 'Days'}`, m.discord); // v1.0: configurable date format
     } catch (e) { log_('cpScheduleLeave_', e); }
   }
 
@@ -1222,7 +1222,7 @@ function cpDeleteDividerStyle(label) {
 }
 
 /* ----------------------------------------------------------------------------
- * ADMIN ROSTER (v1.4.0) — a SEPARATE, admin-only spreadsheet for sensitive
+ * ADMIN ROSTER (v1.0) — a SEPARATE, admin-only spreadsheet for sensitive
  * member data (email, DOB, private notes, disciplinary history), linked to the
  * roster by Discord ID.
  *

@@ -31,10 +31,10 @@
 const CONFIG_SHEET_NAME = '⚙️ Config';
 const CONFIG_MARKER = 'RE_CONFIG';   // written to A1 of the Config tab; rescue-scan target if the tab is renamed
 const SYS_LOG_SHEET = 'SYS Log';
-const ENGINE_SCHEMA = 2;             // v2.5.0: added [STATUS_RULES], [RANKS], [SHEETS] system-tab names, [SCHEDULE] cadence
-const ENGINE_VERSION = 'v2.5.0';     // release tag — bump per CHANGELOG.md when cutting a library version
+const ENGINE_SCHEMA = 2;             // v1.0: added [STATUS_RULES], [RANKS], [SHEETS] system-tab names, [SCHEDULE] cadence
+const ENGINE_VERSION = 'v1.0.0';     // release tag — the 1.0 full release
 const ERRORS_WEBHOOK_PROP = 'WEBHOOK_ERRORS'; // optional second Discord channel for engine errors (Phase 3, resolved G2)
-const LAST_RESET_PROP = 'RE_LAST_HOURS_RESET_MS'; // v2.5.0: last hours-reset timestamp (ms) — gates BIWEEKLY/MONTHLY cadence
+const LAST_RESET_PROP = 'RE_LAST_HOURS_RESET_MS'; // v1.0: last hours-reset timestamp (ms) — gates BIWEEKLY/MONTHLY cadence
 // Docs-site base for error-code anchors, e.g. 'https://yourdomain.com/roster-engine/errors'.
 // Empty = no docs links shown. Set once the docs pages are deployed (see ROSTER-ENGINE-V2-RUNBOOK.md).
 const DOCS_URL = '';
@@ -275,14 +275,14 @@ const BLOCK_SPECS_ = Object.freeze({
     ROSTER: { t: 'string', d: 'Member Information', req: true, help: 'The roster tab name.' },
     TRACKER: { t: 'string', d: 'LOA/ROA Tracker', req: true, help: 'The leave-tracker tab name.' },
     FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: true, help: 'The Google Form responses tab name.' },
-    // v2.5.0 — the system/log tab names are now editable too (every role must resolve to a DISTINCT tab).
+    // v1.0 — the system/log tab names are now editable too (every role must resolve to a DISTINCT tab).
     // NOTE: "SYS Log" (engine diagnostics) is intentionally NOT here — slog_/theme_ must resolve it without cfg_() (re-entrancy).
     AUDIT: { t: 'string', d: 'Edit Log', req: false, help: 'The who/what/when audit-log tab. Blank = "Edit Log".' },
     HOURS_HISTORY: { t: 'string', d: '_Hours History', req: false, help: 'Hidden weekly-hours history tab. Blank = "_Hours History".' },
     COVERAGE: { t: 'string', d: 'Leave Coverage', req: false, help: 'Leave-coverage view tab. Blank = "Leave Coverage".' },
     INTEGRITY: { t: 'string', d: 'Integrity Log', req: false, help: 'Integrity-scan log tab. Blank = "Integrity Log".' },
     SNAPSHOTS: { t: 'string', d: '_Snapshots', req: false, help: 'Hidden snapshot/restore tab. Blank = "_Snapshots".' },
-    PATROL_RESPONSES: { t: 'string', d: '', req: false, help: 'Patrol-log Google Form responses tab name (v2.5.0). BLANK = patrol-hours sync OFF. Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
+    PATROL_RESPONSES: { t: 'string', d: '', req: false, help: 'Patrol-log Google Form responses tab name. BLANK = patrol-hours sync OFF. Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
     PATROL_LOG: { t: 'string', d: 'Patrol Log', req: false, help: 'Manual Patrol Log tracker tab (like the LOA Tracker). Enter Unique ID + start/end date + start/end time; the engine auto-fills member info, computes TOTAL TIME, credits the hours to the roster, and sorts Pending → Flagged → Processed. BLANK = OFF. Activates only if a tab with this name exists.' },
     SIGNUPS: { t: 'string', d: 'Roster Signups', req: false, help: 'Roster Signup REVIEW tab (like the LOA Tracker): the engine adds field-matched form submissions here (from SIGNUP_FORM_RESPONSES) for admins to review — STATUS + NOTES are admin-owned. Lay it out with a header row (NAME / OOC NAME / UNIQUE ID / DOB / EMAIL / STATUS / NOTES…) anywhere in the top rows. Approving adds the member to a slot and writes their private details to the Internal Roster.' },
     SIGNUP_FORM_RESPONSES: { t: 'string', d: '', req: false, help: 'The Google Form\'s OWN responses tab for roster signups (Forms own row 1, so it is separate from the themed Signups tab). BLANK = signup sync OFF. Point this at the tab your signup form writes to; each submission is matched by header name and added to the SIGNUPS review tab. Name the form questions to match: Name, OOC Name, Unique ID, DOB (or Date of Birth), Email.' },
@@ -292,10 +292,10 @@ const BLOCK_SPECS_ = Object.freeze({
     DATA_START_ROW: { t: 'int', d: 7, req: true, min: 2, max: 100, help: 'First possible member row (must be > HEADER_ROW).' },
     TRACKER_START_ROW: { t: 'int', d: 8, req: true, min: 2, max: 100, help: 'First data row on the tracker (row 8: banner row 5, label row 6, divider row 7, data from row 8).' },
     PATROL_START_ROW: { t: 'int', d: 8, req: true, min: 2, max: 100, help: 'First data row on the Patrol Log tab (same layout as the tracker: banner, label row 6, divider row 7, data from row 8).' },
-    DIVIDER_MODE: { t: 'enum', d: 'ALLCAPS_RANK', req: true, enum: ['ALLCAPS_RANK', 'EXPLICIT_LIST'], help: 'How ranks/section-dividers are detected. ALLCAPS_RANK = the all-caps heuristic (default). EXPLICIT_LIST = consult the [RANKS] table (v2.5.0), falling back to the heuristic for anything unlisted.' },
+    DIVIDER_MODE: { t: 'enum', d: 'ALLCAPS_RANK', req: true, enum: ['ALLCAPS_RANK', 'EXPLICIT_LIST'], help: 'How ranks/section-dividers are detected. ALLCAPS_RANK = the all-caps heuristic (default). EXPLICIT_LIST = consult the [RANKS] table, falling back to the heuristic for anything unlisted.' },
     TRAINING_KEYWORDS: { t: 'list', d: 'TRAINING, CADET', req: true, help: 'Divider labels containing these words are TRAINING sections.' },
-    UNIT_FORMAT: { t: 'string', d: 'S-{00}', req: true, help: 'Callsign/unit-number template (v2.5.0). The {0…} token is the slot number zero-padded to that many digits — "S-{00}" → S-01, "TRP-{000}" → TRP-001. Text outside the token is literal (prefix/suffix). No token → the number is appended.' },
-    LAST_ACTIVITY_STYLE: { t: 'enum', d: 'MATCH', req: false, enum: ['MATCH', 'NEUTRAL'], help: 'How the LAST ACTIVITY column is coloured (v2.5.0). MATCH = mirror CURRENT ACTIVITY\'s status colours (default). NEUTRAL = a calm grey chip so only CURRENT ACTIVITY is colour-coded. Applied by 📸 Capture Last Activity.' },
+    UNIT_FORMAT: { t: 'string', d: 'S-{00}', req: true, help: 'Callsign/unit-number template. The {0…} token is the slot number zero-padded to that many digits — "S-{00}" → S-01, "TRP-{000}" → TRP-001. Text outside the token is literal (prefix/suffix). No token → the number is appended.' },
+    LAST_ACTIVITY_STYLE: { t: 'enum', d: 'MATCH', req: false, enum: ['MATCH', 'NEUTRAL'], help: 'How the LAST ACTIVITY column is coloured. MATCH = mirror CURRENT ACTIVITY\'s status colours (default). NEUTRAL = a calm grey chip so only CURRENT ACTIVITY is colour-coded. Applied by 📸 Capture Last Activity.' },
     ID_TYPE: { t: 'enum', d: 'DISCORD', req: true, enum: ['DISCORD', 'COMMUNITY', 'CUSTOM'], help: 'THE Unique-ID switch for this department. DISCORD = a 17-19 digit Discord ID (default). COMMUNITY = a short 1-8 digit Community ID / CID. CUSTOM = use the ID_MIN_DIGITS…ID_MAX_DIGITS range below. NOTE: Discord @mention pings only fire for a real 17-19 digit ID, so a COMMUNITY department simply gets no pings.' },
     ID_MIN_DIGITS: { t: 'int', d: 17, req: true, min: 1, max: 30, help: 'Shortest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 17, COMMUNITY forces 1).' },
     ID_MAX_DIGITS: { t: 'int', d: 19, req: true, min: 1, max: 30, help: 'Longest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 19, COMMUNITY forces 8).' },
@@ -330,9 +330,9 @@ const BLOCK_SPECS_ = Object.freeze({
     seed: [['RANK', 'Auxiliary Trooper', 'Active:5, Inactive:0']],
     help: 'Per-rank tier ladders layered over the global tiers. Ladder = "Status:MinHours, …" with exactly one 0. SECTION scope is validated but not applied until Phase 2.' },
   STATUS_RULES: { type: 'table', cols: ['Source', 'Op', 'Hours', 'Target'], seed: [],
-    help: 'Optional STATELESS override matrix layered on the [STATUSES] tiers (v2.5.0). Each rule reroutes a computed status: Source = a status name or * (any); Op = < · <= · > · >= · == (or * for "always"); Hours = the threshold; Target = the resulting status. Rules apply first-match-wins and iterate to a FIXED POINT, so the result depends only on hours (idempotent — never a per-run "strike"). EMPTY (the default) = the tier ladder alone. Protected statuses are never rerouted unless named as a Source.' },
+    help: 'Optional STATELESS override matrix layered on the [STATUSES] tiers. Each rule reroutes a computed status: Source = a status name or * (any); Op = < · <= · > · >= · == (or * for "always"); Hours = the threshold; Target = the resulting status. Rules apply first-match-wins and iterate to a FIXED POINT, so the result depends only on hours (idempotent — never a per-run "strike"). EMPTY (the default) = the tier ladder alone. Protected statuses are never rerouted unless named as a Source.' },
   RANKS: { type: 'table', cols: ['Value', 'Kind'], seed: [],
-    help: 'Explicit rank/divider list (v2.5.0). Value = the exact rank or divider label. Kind = RANK (a member slot), DIVIDER (a section header), or TRAINING (a member rank that ALSO lands on the Police Academy — e.g. Police Cadet, Probationary Officer). RANK/DIVIDER rows are only consulted for divider detection when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST (unlisted labels fall back to the all-caps heuristic, so a partial list is safe). TRAINING rows are read for the Academy regardless of DIVIDER_MODE.' },
+    help: 'Explicit rank/divider list. Value = the exact rank or divider label. Kind = RANK (a member slot), DIVIDER (a section header), or TRAINING (a member rank that ALSO lands on the Police Academy — e.g. Police Cadet, Probationary Officer). RANK/DIVIDER rows are only consulted for divider detection when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST (unlisted labels fall back to the all-caps heuristic, so a partial list is safe). TRAINING rows are read for the Academy regardless of DIVIDER_MODE.' },
   LEAVE: { type: 'kv', keys: {
     LEAVE_TYPES: { t: 'list', d: 'LOA, ROA', req: true, help: 'Each must be a LEAVE-kind status in [STATUSES].' },
     RETURN_TYPE: { t: 'string', d: '', req: false, help: 'Form value meaning "I am back" (closes leave early). EMPTY = disabled — ROA is a leave TYPE here, not a return.' },
@@ -354,19 +354,19 @@ const BLOCK_SPECS_ = Object.freeze({
     PING_ROLES: { t: 'string', d: '', req: false, help: 'Optional role mentions appended to notifications, e.g. <@&123> <@&456>.' },
     EMBED_COLOR: { t: 'color', d: '#236995', req: false, help: 'Reserved general embed accent.' },
     MENTION_MEMBERS: { t: 'bool', d: true, req: true, help: 'Ping <@id> when the Discord ID is valid (currently always on).' },
-    SUBMIT_COLOR: { t: 'color', d: '#3498db', req: true, help: 'Colour bar of a new leave-submission embed (v2.5.0).' },
-    RETURN_COLOR: { t: 'color', d: '#e67e22', req: true, help: 'Colour bar when the submission is the returning-leave type (v2.5.0).' },
-    EXPIRE_COLOR: { t: 'color', d: '#ed4245', req: true, help: 'Colour bar of a leave-expired embed (v2.5.0).' },
-    SUBMIT_TITLE: { t: 'string', d: '📥 New {type} Submission', req: true, help: 'Title of a new leave-submission embed. {type} = the leave type (v2.5.0).' },
-    EXPIRE_TITLE: { t: 'string', d: '⏳ {type} Expired', req: true, help: 'Title of a leave-expired embed. {type} = the leave type (v2.5.0).' },
-    EMBED_AUTHOR: { t: 'string', d: '', req: false, help: 'Small author line shown ABOVE the title (e.g. the department name). Blank = off (v2.5.0).' },
-    EMBED_AUTHOR_ICON: { t: 'string', d: '', req: false, help: 'Author icon image URL (https://…), shown beside the author name. Needs an author (v2.5.0).' },
-    EMBED_THUMBNAIL: { t: 'string', d: '', req: false, help: 'Thumbnail image URL (https://…) shown at the embed\'s top-right. Blank = off (v2.5.0).' },
-    EMBED_IMAGE: { t: 'string', d: '', req: false, help: 'Large image URL (https://…) shown below the fields. Blank = off (v2.5.0).' },
-    EMBED_FOOTER: { t: 'string', d: '', req: false, help: 'Footer text. Blank = the system name (v2.5.0).' },
-    EMBED_FOOTER_ICON: { t: 'string', d: '', req: false, help: 'Footer icon image URL (https://…), shown beside the footer text. Blank = off (v2.5.0).' },
+    SUBMIT_COLOR: { t: 'color', d: '#3498db', req: true, help: 'Colour bar of a new leave-submission embed.' },
+    RETURN_COLOR: { t: 'color', d: '#e67e22', req: true, help: 'Colour bar when the submission is the returning-leave type.' },
+    EXPIRE_COLOR: { t: 'color', d: '#ed4245', req: true, help: 'Colour bar of a leave-expired embed.' },
+    SUBMIT_TITLE: { t: 'string', d: '📥 New {type} Submission', req: true, help: 'Title of a new leave-submission embed. {type} = the leave type.' },
+    EXPIRE_TITLE: { t: 'string', d: '⏳ {type} Expired', req: true, help: 'Title of a leave-expired embed. {type} = the leave type.' },
+    EMBED_AUTHOR: { t: 'string', d: '', req: false, help: 'Small author line shown ABOVE the title (e.g. the department name). Blank = off.' },
+    EMBED_AUTHOR_ICON: { t: 'string', d: '', req: false, help: 'Author icon image URL (https://…), shown beside the author name. Needs an author.' },
+    EMBED_THUMBNAIL: { t: 'string', d: '', req: false, help: 'Thumbnail image URL (https://…) shown at the embed\'s top-right. Blank = off.' },
+    EMBED_IMAGE: { t: 'string', d: '', req: false, help: 'Large image URL (https://…) shown below the fields. Blank = off.' },
+    EMBED_FOOTER: { t: 'string', d: '', req: false, help: 'Footer text. Blank = the system name.' },
+    EMBED_FOOTER_ICON: { t: 'string', d: '', req: false, help: 'Footer icon image URL (https://…), shown beside the footer text. Blank = off.' },
   } },
-  NOTIFICATIONS: { type: 'kv', help: 'Optional Discord embeds for roster events (v2.5.0). All OFF by default; each posts to the same webhook and reuses the [DISCORD] embed author/thumbnail/image/footer.', keys: {
+  NOTIFICATIONS: { type: 'kv', help: 'Optional Discord embeds for roster events. All OFF by default; each posts to the same webhook and reuses the [DISCORD] embed author/thumbnail/image/footer.', keys: {
     MEMBER_ADDED: { t: 'bool', d: false, req: false, help: 'Post an embed when a member is seated into a slot.' },
     MEMBER_ADDED_TITLE: { t: 'string', d: '➕ {name} joined the roster', req: false, help: 'Title for the member-added embed. {name} = the member name.' },
     MEMBER_ADDED_COLOR: { t: 'color', d: '#57b85a', req: false, help: 'Colour bar of the member-added embed.' },
@@ -390,7 +390,7 @@ const BLOCK_SPECS_ = Object.freeze({
     NEVER_PUBLISH: { t: 'list', d: 'EMAIL, DATE OF BIRTH, DOB, PHONE, ADDRESS', req: false, help: 'Column headers whose data is NEVER copied to the public roster, and is wiped there if a tab copy brought it along. Matched case/space-insensitively as a substring, except CID and DOB which must match exactly. Remove an entry to publish that column (e.g. drop "UNIQUE ID" if members should see IDs).' },
     KEEP_RANGES: { t: 'list', d: 'Welcome Page!F6:W7, Member Information!D3:H3', req: false, help: 'Comma-separated Tab!Range entries the publish never writes to, e.g. "Welcome Page!F6:W7, Welcome Page!A1". Use * as the tab name to apply a range to every tab.' },
   } },
-  PATROL: { type: 'kv', help: 'Patrol-log form → member hours (v2.5.0). Each new submission on the [SHEETS].PATROL_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_RESPONSES is set.', keys: {
+  PATROL: { type: 'kv', help: 'Patrol-log form → member hours. Each new submission on the [SHEETS].PATROL_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_RESPONSES is set.', keys: {
     MODE: { t: 'enum', d: 'START_END', req: false, enum: ['START_END', 'DURATION'], help: 'START_END = compute hours from a start + end time. DURATION = read a single "hours patrolled" number.' },
     MAX_HOURS: { t: 'int', d: 16, req: false, min: 1, max: 24, help: 'Reject a single patrol log longer than this many hours (guards typos / bad times).' },
     OVERNIGHT: { t: 'bool', d: true, req: false, help: 'START_END only: if the end time is before the start, treat it as crossing midnight (+24h) instead of an error.' },
@@ -405,28 +405,28 @@ const BLOCK_SPECS_ = Object.freeze({
     COL_DURATION: { t: 'string', d: 'Hours', req: false, help: 'DURATION mode: header keyword for the hours-patrolled column.' },
   } },
   FORMATS: { type: 'kv', keys: {
-    DATE_DISPLAY: { t: 'string', d: 'd MMM. yyyy', req: true, help: 'Date format for leave dates shown in Discord embeds, the coverage view and the panel (v2.5.0). Java date patterns (d=day, MMM=Jan, yyyy=2026); a bad pattern falls back to the default.' },
-    TIMESTAMP_DISPLAY: { t: 'string', d: 'd MMM yyyy, h:mm a', req: true, help: 'Date+time format for "last updated" / snapshot timestamps (v2.5.0). Java date patterns; a bad pattern falls back to the default.' },
+    DATE_DISPLAY: { t: 'string', d: 'd MMM. yyyy', req: true, help: 'Date format for leave dates shown in Discord embeds, the coverage view and the panel. Java date patterns (d=day, MMM=Jan, yyyy=2026); a bad pattern falls back to the default.' },
+    TIMESTAMP_DISPLAY: { t: 'string', d: 'd MMM yyyy, h:mm a', req: true, help: 'Date+time format for "last updated" / snapshot timestamps. Java date patterns; a bad pattern falls back to the default.' },
   } },
   SCHEDULE: { type: 'kv', keys: {
     NIGHTLY_HOUR: { t: 'int', d: 0, req: true, min: 0, max: 23, help: 'Hour for the daily schedule check trigger (0 = midnight, the live default).' },
     TIMEZONE: { t: 'enum', d: 'SPREADSHEET', req: true, enum: ['SPREADSHEET'], help: 'Phase 1 supports the spreadsheet timezone.' },
-    RESET_CADENCE: { t: 'enum', d: 'WEEKLY', req: true, enum: ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'MANUAL'], help: 'How often the hours reset runs (v2.5.0). WEEKLY = the classic behavior. BIWEEKLY = every 14 days. MONTHLY = on RESET_DOM. MANUAL = no auto-reset trigger.' },
+    RESET_CADENCE: { t: 'enum', d: 'WEEKLY', req: true, enum: ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'MANUAL'], help: 'How often the hours reset runs. WEEKLY = the classic behavior. BIWEEKLY = every 14 days. MONTHLY = on RESET_DOM. MANUAL = no auto-reset trigger.' },
     WEEKLY_HOURS_RESET: { t: 'enum', d: 'SUN', req: true, enum: ['OFF', 'SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], help: 'Weekday for WEEKLY/BIWEEKLY reset (captures history BEFORE zeroing — resolved G1). OFF disables the reset regardless of cadence.' },
     WEEKLY_RESET_HOUR: { t: 'int', d: 23, req: true, min: 0, max: 23, help: 'Hour of day for the reset trigger.' },
-    RESET_DOM: { t: 'int', d: 1, req: true, min: 1, max: 28, help: 'Day of month the reset runs under MONTHLY cadence (1–28, v2.5.0).' },
+    RESET_DOM: { t: 'int', d: 1, req: true, min: 1, max: 28, help: 'Day of month the reset runs under MONTHLY cadence (1–28, v1.0).' },
   } },
   LOGGING: { type: 'kv', keys: {
     LOG_LEVEL: { t: 'enum', d: 'INFO', req: true, enum: ['ERROR', 'WARN', 'INFO', 'DEBUG'], help: 'Minimum severity written to the SYS Log.' },
     LOG_MAX_ROWS: { t: 'int', d: 500, req: true, min: 50, max: 10000, help: 'SYS Log ring-buffer cap.' },
     EMAIL_ON_ERROR: { t: 'bool', d: false, req: true, help: 'Phase 2 wiring (uses the ADMIN_EMAIL Script Property).' },
     DIAG_INCLUDE_NAMES: { t: 'bool', d: true, req: true, help: 'FALSE redacts member names from diagnostic reports (Phase 2).' },
-    PERF_TIMING: { t: 'bool', d: false, req: false, help: 'Log each panel action / trigger duration to the SYS Log (v2.5.0). Entries log at INFO — set LOG_LEVEL to INFO while measuring. Turn on briefly to find slow spots, then off.' },
+    PERF_TIMING: { t: 'bool', d: false, req: false, help: 'Log each panel action / trigger duration to the SYS Log. Entries log at INFO — set LOG_LEVEL to INFO while measuring. Turn on briefly to find slow spots, then off.' },
   } },
   LIMITS: { type: 'kv', keys: {
-    SNAPSHOT_KEEP: { t: 'int', d: 20, req: true, min: 1, max: 200, help: 'How many in-sheet snapshots to keep before the oldest are pruned (v2.5.0).' },
-    LOG_ROW_CAP: { t: 'int', d: 5000, req: true, min: 200, max: 50000, help: 'Row cap for the Edit Log, Integrity Log and hours-history tabs before the oldest rows are trimmed (v2.5.0).' },
-    VALIDATION_BUFFER: { t: 'int', d: 50, req: true, min: 0, max: 1000, help: 'Extra rows below the live data that entry-time data-validation covers; re-run First-Run Setup after big growth (v2.5.0).' },
+    SNAPSHOT_KEEP: { t: 'int', d: 20, req: true, min: 1, max: 200, help: 'How many in-sheet snapshots to keep before the oldest are pruned.' },
+    LOG_ROW_CAP: { t: 'int', d: 5000, req: true, min: 200, max: 50000, help: 'Row cap for the Edit Log, Integrity Log and hours-history tabs before the oldest rows are trimmed.' },
+    VALIDATION_BUFFER: { t: 'int', d: 50, req: true, min: 0, max: 1000, help: 'Extra rows below the live data that entry-time data-validation covers; re-run First-Run Setup after big growth.' },
   } },
   THEME: { type: 'kv', keys: {
     CANVAS: { t: 'color', d: THEME_DEFAULTS.CANVAS, req: true, help: 'Dark canvas below engine tables.' },
@@ -679,7 +679,7 @@ function validateConfig_(raw) {
     overrides.push({ scope, match: row.Match, ladder });
   });
 
-  // [STATUS_RULES] (v2.5.0) — stateless override matrix layered on the tiers; validated for known statuses + convergence
+  // [STATUS_RULES] — stateless override matrix layered on the tiers; validated for known statuses + convergence
   const statusRules = [];
   const RULE_OPS = ['<', '<=', '>', '>=', '==', '*'];
   c.tables.STATUS_RULES.forEach((row) => {
@@ -713,7 +713,7 @@ function validateConfig_(raw) {
     if (cyclic) problems.push({ sev: 'WARN', code: 'E-103', key: '[STATUS_RULES]', value: 'cyclic transitions', type: 'rules', expected: 'no Source→Target cycles — the engine caps iteration and still converges, but the outcome may surprise you' });
   })();
 
-  // [RANKS] (v2.5.0) — explicit rank/divider list (only applied when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST)
+  // [RANKS] — explicit rank/divider list (only applied when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST)
   c.tables.RANKS.forEach((row) => {
     if (!row.Value && !row.Kind) return;
     const kind = norm_(row.Kind);
@@ -723,7 +723,7 @@ function validateConfig_(raw) {
     problems.push({ sev: 'WARN', code: 'E-103', key: '[RANKS]', value: '(empty)', type: 'ranks', expected: 'DIVIDER_MODE is EXPLICIT_LIST but [RANKS] is empty — the all-caps heuristic is used until you list ranks/dividers' });
   }
 
-  // [SHEETS] (v2.5.0) — every tab role must resolve to a DISTINCT tab (a collision silently aliases two roles onto one sheet → data loss).
+  // [SHEETS] — every tab role must resolve to a DISTINCT tab (a collision silently aliases two roles onto one sheet → data loss).
   (function () {
     const roles = {
       '[SHEETS].ROSTER': c.kv.SHEETS.ROSTER, '[SHEETS].TRACKER': c.kv.SHEETS.TRACKER, '[SHEETS].FORM_RESPONSES': c.kv.SHEETS.FORM_RESPONSES,
@@ -785,7 +785,7 @@ function validateConfig_(raw) {
   c.statuses = statuses;
   c.tiers = tiers;
   c.overrides = overrides;
-  c.statusRules = statusRules; // v2.5.0: stateless override matrix (empty = tier ladder alone)
+  c.statusRules = statusRules; // v1.0: stateless override matrix (empty = tier ladder alone)
   return { config: c, problems };
 }
 
@@ -808,7 +808,7 @@ function cfgInvalidate_() {
 }
 
 /**
- * v2.5.0 PERF — cross-execution config cache. Every panel click / trigger run is a NEW Apps Script execution that
+ * v1.0 PERF — cross-execution config cache. Every panel click / trigger run is a NEW Apps Script execution that
  * would otherwise re-READ the ⚙️ Config tab (the expensive part is the sheet I/O, not validation). We cache the RAW
  * parsed blocks (parseBlocks_ output — pure display-value strings, JSON-safe) in the document cache and re-run
  * validate+materialize on a hit (CPU-only, keeps semantics identical). Invalidation: cfgInvalidate_ (setKvValue_,
@@ -818,7 +818,7 @@ const CFG_CACHE_KEY_ = 'RE_CFG_RAW_v1';
 const CFG_CACHE_TTL_ = 300; // seconds
 
 /**
- * v2.5.0 PERF — measure-first: wrap an entrypoint; when [LOGGING].PERF_TIMING is TRUE, log its duration to the SYS
+ * v1.0 PERF — measure-first: wrap an entrypoint; when [LOGGING].PERF_TIMING is TRUE, log its duration to the SYS
  * Log. Never throws, never alters behavior or return values. The flag is read from the ALREADY-LOADED config memo
  * ONLY (checked AFTER fn ran, which loads config for any config-using endpoint) — the wrapper must never FORCE a
  * config load, or a broken config tab would fire E-102 side effects from endpoints that don't even touch config
@@ -833,7 +833,7 @@ function perf_(label, fn) {
 }
 
 /**
- * Fault-tolerant tab-name resolver (v2.5.0): the configured name for a [SHEETS] role (key = roster/tracker/form/
+ * Fault-tolerant tab-name resolver: the configured name for a [SHEETS] role (key = roster/tracker/form/
  * audit/hoursHistory/coverage/integrity/snapshots), or `fallback` when config is unavailable/blank. Lets the
  * EXTRAS/TRUST tab constants resolve dynamically with zero call-site churn (mirrors the CONFIG bridge).
  */
@@ -875,8 +875,8 @@ function cfg_() {
 /** Build the final typed config object, including the `.legacy` view shaped exactly like the classic CONFIG. */
 function materialize_(c, fromTab) {
   const kv = c.kv;
-  const N = kv.NOTIFICATIONS || {};   // v2.5.0 event-notification toggles (guarded — absent on a pre-v2.5 config)
-  const P = kv.PATROL || {};          // v2.5.0 patrol-log → hours settings (guarded — absent on a pre-v2.5 config)
+  const N = kv.NOTIFICATIONS || {};   // v1.0 event-notification toggles (guarded — absent on a older config)
+  const P = kv.PATROL || {};          // v1.0 patrol-log → hours settings (guarded — absent on a older config)
   const t = kv.THEME;
   const statusNames = c.statuses.map((s) => s.name);
   const protectedStatuses = c.statuses.filter((s) => s.kind === 'LEAVE' || s.kind === 'PROTECTED').map((s) => s.name);
@@ -910,7 +910,7 @@ function materialize_(c, fromTab) {
     label: r.Label, keywords: String(r.Keywords).split(',').map((x) => norm_(x)).filter(Boolean), tone: r.Tone || 'aux',
   }));
 
-  // v2.5.0 — explicit rank/divider list (normalized) consulted when DIVIDER_MODE = EXPLICIT_LIST.
+  // v1.0 — explicit rank/divider list (normalized) consulted when DIVIDER_MODE = EXPLICIT_LIST.
   const rankList = { ranks: [], dividers: [], trainingRanks: [] };
   c.tables.RANKS.forEach((r) => {
     const val = String(r.Value || '').trim();
@@ -925,18 +925,18 @@ function materialize_(c, fromTab) {
     systemName: kv.SYSTEM.SYSTEM_NAME,
     pingRoles: kv.DISCORD.PING_ROLES,
     webhookProp: 'DISCORD_WEBHOOK_URL', // engine constant (brief A6) — secrets live in Script Properties
-    // v2.5.0 — configurable logic (unit-number format, date formats, embed appearance, retention limits).
+    // v1.0 — configurable logic (unit-number format, date formats, embed appearance, retention limits).
     unitFormat: kv.ROSTER_LAYOUT.UNIT_FORMAT || 'S-{00}',
-    lastActivityStyle: kv.ROSTER_LAYOUT.LAST_ACTIVITY_STYLE || 'MATCH', // v2.5.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
+    lastActivityStyle: kv.ROSTER_LAYOUT.LAST_ACTIVITY_STYLE || 'MATCH', // v1.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
     formats: { date: kv.FORMATS.DATE_DISPLAY || 'd MMM. yyyy', timestamp: kv.FORMATS.TIMESTAMP_DISPLAY || 'd MMM yyyy, h:mm a' },
     embed: {
       submitColor: kv.DISCORD.SUBMIT_COLOR || '#3498db', returnColor: kv.DISCORD.RETURN_COLOR || '#e67e22', expireColor: kv.DISCORD.EXPIRE_COLOR || '#ed4245',
       submitTitle: kv.DISCORD.SUBMIT_TITLE || '📥 New {type} Submission', expireTitle: kv.DISCORD.EXPIRE_TITLE || '⏳ {type} Expired',
-      authorName: kv.DISCORD.EMBED_AUTHOR || '', authorIcon: kv.DISCORD.EMBED_AUTHOR_ICON || '', // v2.5.0 embed-body chrome (all blank by default)
+      authorName: kv.DISCORD.EMBED_AUTHOR || '', authorIcon: kv.DISCORD.EMBED_AUTHOR_ICON || '', // v1.0 embed-body chrome (all blank by default)
       thumbnail: kv.DISCORD.EMBED_THUMBNAIL || '', image: kv.DISCORD.EMBED_IMAGE || '',
       footerText: kv.DISCORD.EMBED_FOOTER || '', footerIcon: kv.DISCORD.EMBED_FOOTER_ICON || '',
     },
-    notify: { // v2.5.0 event notifications — all default off
+    notify: { // v1.0 event notifications — all default off
       memberAdded: N.MEMBER_ADDED === true, memberAddedTitle: N.MEMBER_ADDED_TITLE || '➕ {name} joined the roster', memberAddedColor: N.MEMBER_ADDED_COLOR || '#57b85a',
       transfer: N.TRANSFER === true, transferTitle: N.TRANSFER_TITLE || '🔄 {name} — {from} → {to}', transferColor: N.TRANSFER_COLOR || '#5865f2',
       leaveApproved: N.LEAVE_APPROVED === true, approvedTitle: N.LEAVE_APPROVED_TITLE || '✅ {type} Approved', approvedColor: N.LEAVE_APPROVED_COLOR || '#57b85a',
@@ -945,7 +945,7 @@ function materialize_(c, fromTab) {
       patrolLogged: N.PATROL_LOGGED === true, patrolTitle: N.PATROL_LOGGED_TITLE || '🚔 {name} logged {hours}h of patrol', patrolColor: N.PATROL_LOGGED_COLOR || '#4ea7d6',
     },
     limits: { snapshotKeep: kv.LIMITS.SNAPSHOT_KEEP, logRowCap: kv.LIMITS.LOG_ROW_CAP, validationBuffer: kv.LIMITS.VALIDATION_BUFFER },
-    patrol: { // v2.5.0 patrol-log → hours (all default; feature OFF until sheets.patrol is set)
+    patrol: { // v1.0 patrol-log → hours (all default; feature OFF until sheets.patrol is set)
       mode: P.MODE || 'START_END', maxHours: P.MAX_HOURS || 16, overnight: P.OVERNIGHT !== false, recompute: P.RECOMPUTE !== false,
       colDiscord: P.COL_DISCORD || 'Discord', colCallsign: P.COL_CALLSIGN || 'Callsign',
       colStart: P.COL_START || 'Start', colEnd: P.COL_END || 'End', colDuration: P.COL_DURATION || 'Hours',
@@ -960,7 +960,7 @@ function materialize_(c, fromTab) {
       patrolLog: kv.SHEETS.PATROL_LOG || '',   // manual Patrol Log tracker tab (blank = OFF; only activates if the tab exists)
       signups: kv.SHEETS.SIGNUPS || 'Roster Signups', // signup REVIEW/destination tab (engine fills it from the form)
       signupForm: kv.SHEETS.SIGNUP_FORM_RESPONSES || '', // the signup Google Form's own responses tab (blank = signup sync OFF)
-      // v2.5.0 — system/log tab names (blank falls back to the shipped default so pre-v2.5 configs keep working).
+      // v1.0 — system/log tab names (blank falls back to the shipped default so older configs keep working).
       audit: kv.SHEETS.AUDIT || 'Edit Log',
       hoursHistory: kv.SHEETS.HOURS_HISTORY || '_Hours History',
       coverage: kv.SHEETS.COVERAGE || 'Leave Coverage',
@@ -997,8 +997,8 @@ function materialize_(c, fromTab) {
     },
     trainingDividers: kv.ROSTER_LAYOUT.TRAINING_KEYWORDS.map((k) => norm_(k)),
     sectionCategories,
-    dividerMode: kv.ROSTER_LAYOUT.DIVIDER_MODE,                                  // v2.5.0: ALLCAPS_RANK | EXPLICIT_LIST
-    rankList,                                                                    // v2.5.0: {ranks:[NORM], dividers:[NORM]} — for EXPLICIT_LIST mode
+    dividerMode: kv.ROSTER_LAYOUT.DIVIDER_MODE,                                  // v1.0: ALLCAPS_RANK | EXPLICIT_LIST
+    rankList,                                                                    // v1.0: {ranks:[NORM], dividers:[NORM]} — for EXPLICIT_LIST mode
     columns: { configSheet: '_Columns', slotKeywords, trainingCheckboxCols: [] }, // configSheet retained for the one-time import
     dashboard: { searchRows: kv.DASHBOARD.SEARCH_ROWS, groups, cells },
     embedTpl,
@@ -1012,7 +1012,7 @@ function materialize_(c, fromTab) {
     statusNames,
     tiers: c.tiers,
     overrides: c.overrides,
-    rules: (c.statusRules || []).slice(),  // v2.5.0: stateless status-transition matrix
+    rules: (c.statusRules || []).slice(),  // v1.0: stateless status-transition matrix
     leave: kv.LEAVE,
     logging: { level: kv.LOGGING.LOG_LEVEL, maxRows: kv.LOGGING.LOG_MAX_ROWS },
     theme: kv.THEME,
@@ -1044,7 +1044,7 @@ function statusLadderFor_(rank, engine) {
   return e.global;
 }
 
-/** True if an hours value satisfies a [STATUS_RULES] operator against its threshold (v2.5.0). */
+/** True if an hours value satisfies a [STATUS_RULES] operator against its threshold. */
 function statusOpMatch_(op, hrs, threshold) {
   switch (op) {
     case '*': return true;
@@ -1058,7 +1058,7 @@ function statusOpMatch_(op, hrs, threshold) {
 }
 
 /**
- * Apply the STATELESS [STATUS_RULES] override matrix to a tier-computed status (v2.5.0). Rules are evaluated
+ * Apply the STATELESS [STATUS_RULES] override matrix to a tier-computed status. Rules are evaluated
  * first-match-wins and iterated to a FIXED POINT, so the result is a pure function of (status, hours): running it
  * again yields the same status (idempotent — never a per-run "strike"). A cycle can't hang the run: each status is
  * visited at most once (the `seen` guard), so evaluation always terminates. Empty rules → status returned unchanged.
@@ -1096,7 +1096,7 @@ function computeStatusCore_(rank, hours, engine) {
   const ladder = statusLadderFor_(rank, e);
   let status = ladder.length ? ladder[ladder.length - 1].name : 'Inactive';
   for (let i = 0; i < ladder.length; i++) { if (hrs >= ladder[i].min) { status = ladder[i].name; break; } }
-  return applyStatusRules_(status, hrs, e.rules); // v2.5.0: stateless override matrix (no-op when empty)
+  return applyStatusRules_(status, hrs, e.rules); // v1.0: stateless override matrix (no-op when empty)
 }
 
 /* ======================================================================
@@ -1327,7 +1327,7 @@ function setTableRows_(configSheet, blockName, rows) {
  * @return {{created:boolean, added:number, from:number, to:number}}
  */
 const MIGRATIONS_ = Object.freeze({
-  // v2 (schema 1→2, v2.5.0): [SHEETS] system-tab names, [SCHEDULE] cadence keys, [STATUS_RULES] + [RANKS] blocks.
+  // v2 (schema 1→2, v1.0): [SHEETS] system-tab names, [SCHEDULE] cadence keys, [STATUS_RULES] + [RANKS] blocks.
   // All ADDITIVE with back-compat defaults, so the additive seed (seedConfigTab_, run right after this) does the
   // whole migration — there is no user data to move or rename. This step exists to satisfy the "every schema bump
   // has a migration step" invariant and to leave a breadcrumb in the SYS Log.
