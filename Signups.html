@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html>
+<head>
+<base target="_top">
+<style>
+  :root{
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px;
+    --r-md:12px;
+    --bg:#0d1016; --e1:#151922; --e2:#1c212c; --e3:#242b37; --e4:#293446;
+    --hair:rgba(255,255,255,.055); --hair-2:rgba(255,255,255,.09);
+    --glass:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,0) 46%);
+    --hi:inset 0 1px 0 rgba(255,255,255,.07);
+    --sh-1:0 1px 2px rgba(0,0,0,.35);
+    --sh-2:0 2px 6px rgba(0,0,0,.35),0 8px 24px -12px rgba(0,0,0,.6);
+    --sh-3:0 4px 12px rgba(0,0,0,.4),0 18px 48px -16px rgba(0,0,0,.7);
+    --ease:cubic-bezier(.2,.7,.2,1); --t:180ms;
+    --txt:#eef1f6; --txt-2:#a9b1bd; --txt-3:#7f8894;
+    --accent:#4f8ee8; --accent-2:#6aa3f2; --accent-soft:rgba(79,142,232,.16);
+    --green:#5fbd77; --green-f:#9adfad; --amber-f:#ecca85;
+    --mono:'Roboto Mono',monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);font:13px/1.45 Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+  .wrap{padding:var(--s4) var(--s5) var(--s5);}
+  .addhead{display:flex;align-items:flex-start;gap:12px;margin-bottom:var(--s4);}
+  .addhead .htxt{flex:1;min-width:0;}
+  .addtitle{font-size:17px;font-weight:800;letter-spacing:-.01em;margin:0 0 3px;}
+  .addsub{font-size:12px;color:var(--txt-3);margin:0;line-height:1.55;}
+  .count{font-size:11.5px;color:var(--txt-3);font-weight:700;white-space:nowrap;padding-top:3px;}
+
+  .apps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:var(--s4);}
+  .appchip{display:inline-flex;align-items:center;gap:9px;background:var(--e2);border:none;color:var(--txt-2);border-radius:12px;
+    padding:8px 13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t);}
+  .appchip:hover{background:var(--e3);color:var(--txt);transform:translateY(-1px);}
+  .appchip.on{color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 14px -6px var(--accent);}
+  .appchip .ci{width:26px;height:26px;border-radius:8px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#c4dbff;background:linear-gradient(155deg,rgba(79,142,232,.34),rgba(79,142,232,.08));box-shadow:var(--hi);}
+  .appchip .cn{font-size:12.5px;font-weight:700;white-space:nowrap;}
+  .appchip .cs{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--amber-f);}
+
+  .addcols{display:grid;grid-template-columns:minmax(0,1fr) 320px;gap:var(--s4);align-items:start;}
+  @media (max-width:780px){ .addcols{grid-template-columns:1fr;} }
+  .stepcard{background:var(--glass),var(--e1);border-radius:14px;padding:var(--s3) var(--s4) var(--s4);box-shadow:var(--hi),var(--sh-1);margin-bottom:var(--s3);}
+  .step-h{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;}
+  .stepn{width:22px;height:22px;border-radius:7px;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05));color:#c4dbff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;box-shadow:var(--hi);flex:0 0 auto;}
+  .stephint{font-size:11px;color:var(--txt-3);margin:var(--s2) 2px 0;line-height:1.5;}
+  label.lbl{display:block;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;margin:var(--s4) 0 var(--s2);font-weight:700;}
+  .lopt{color:var(--txt-3);font-weight:600;text-transform:none;letter-spacing:0;}
+  .addgrid{display:grid;grid-template-columns:1fr 1fr;gap:0 var(--s3);}
+  @media (max-width:460px){ .addgrid{grid-template-columns:1fr;} }
+  .ro{width:100%;background:var(--e2);color:var(--txt);border-radius:var(--r-md);padding:10px 13px;font-size:13px;box-shadow:var(--hi),var(--sh-1);
+    min-height:39px;display:flex;align-items:center;word-break:break-word;}
+  .ro.mono{font-family:var(--mono);font-size:12.5px;}
+  .ro.empty{color:var(--txt-3);}
+
+  .sdrop{position:relative;}
+  .sdrop-btn{width:100%;display:flex;align-items:center;gap:10px;background:var(--e2);border:none;color:var(--txt);border-radius:var(--r-md);
+    padding:9px 12px;font-size:13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),box-shadow var(--t);text-align:left;}
+  .sdrop-btn:hover{background:var(--e3);}
+  .sdrop.open .sdrop-btn{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
+  .sdrop-cur{flex:1;min-width:0;display:flex;align-items:center;gap:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sdrop-cur span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sdrop-cur.ph{color:var(--txt-3);}
+  .sdrop-chev{width:15px;height:15px;color:var(--txt-3);flex:0 0 auto;transition:transform var(--t) var(--ease);}
+  .sdrop.open .sdrop-chev{transform:rotate(180deg);}
+  .sdrop-menu{position:absolute;left:0;right:0;top:calc(100% + 6px);z-index:40;max-height:300px;overflow-y:auto;
+    background:var(--e2);border:1px solid var(--hair-2);border-radius:var(--r-md);box-shadow:var(--sh-3);padding:6px;}
+  .sdrop-menu[hidden]{display:none;}
+  .sdrop-group + .sdrop-group{margin-top:4px;border-top:1px solid var(--hair);padding-top:4px;}
+  .sdrop-ghead{display:flex;align-items:center;gap:8px;padding:6px 8px 5px;}
+  .sg-rank{flex:1;min-width:0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--txt-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .sg-cnt{font-size:10.5px;color:var(--txt-3);font-weight:700;flex:0 0 auto;}
+  .sdrop-opt{width:100%;display:flex;align-items:center;gap:9px;background:none;border:none;color:var(--txt);padding:8px 10px 8px 32px;border-radius:9px;cursor:pointer;font-size:13px;text-align:left;transition:background var(--t);}
+  .sdrop-opt:hover{background:var(--e3);}
+  .sdrop-opt.sel{background:var(--accent-soft);}
+  .so-call{flex:1;font-family:var(--mono);font-size:12.5px;}
+  .so-rank{font-size:11px;color:var(--txt-3);white-space:nowrap;}
+  .sdrop-empty{padding:18px;text-align:center;color:var(--txt-3);font-size:12.5px;}
+  .rava{width:22px;height:22px;border-radius:7px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;overflow:hidden;background:var(--e3);box-shadow:var(--hi);}
+  .rava img{width:100%;height:100%;object-fit:contain;display:block;}
+  .rava-txt{font-size:9px;font-weight:800;color:var(--txt-2);letter-spacing:.01em;}
+
+  .prevcard{background:var(--glass),var(--e1);border-radius:16px;padding:var(--s4);box-shadow:var(--hi),var(--sh-1);}
+  .pc-lbl{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:var(--s3);font-weight:700;}
+  .prev-empty{border:1px dashed var(--hair-2);border-radius:13px;padding:26px 14px;text-align:center;color:var(--txt-3);}
+  .prev-empty .pei{width:42px;height:42px;border-radius:12px;margin:0 auto var(--s2);display:flex;align-items:center;justify-content:center;background:var(--e2);box-shadow:var(--hi);}
+  .prev-empty .pei svg{width:20px;height:20px;color:var(--txt-3);}
+  .prev-empty b{color:var(--txt-2);display:block;font-size:13px;margin-bottom:3px;}
+  .prev-hero{display:flex;align-items:center;gap:12px;}
+  .prev-hero .mav{width:48px;height:48px;border-radius:14px;font-size:15px;font-weight:800;color:#c4dbff;display:flex;align-items:center;justify-content:center;box-shadow:var(--hi);flex:0 0 auto;background:linear-gradient(155deg,rgba(79,142,232,.34),rgba(79,142,232,.08));}
+  .prev-id{flex:1;min-width:0;}
+  .prev-nm{font-size:16px;font-weight:800;letter-spacing:.01em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .prev-rk{color:var(--accent-2);font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pkv{margin-top:var(--s3);}
+  .pkv-r{display:flex;justify-content:space-between;align-items:baseline;gap:12px;padding:8px 2px;box-shadow:0 1px 0 var(--hair);}
+  .pkv-r:last-child{box-shadow:none;}
+  .pkv-k{color:var(--txt-3);font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;}
+  .pkv-v{font-weight:650;text-align:right;min-width:0;word-break:break-word;font-size:12px;}
+  .pkv-v.mono{font-family:var(--mono);}
+  .nextbox{margin-top:var(--s3);background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.03)),var(--e1);border-radius:14px;padding:12px 14px;font-size:11.5px;color:var(--txt-2);line-height:1.55;box-shadow:var(--hi);}
+  .nextbox b{color:var(--accent-2);display:block;margin-bottom:3px;font-size:12px;}
+
+  .btn{width:100%;background:linear-gradient(155deg,#54c294,#3a9f79);border:none;color:#fff;border-radius:var(--r-md);padding:12px;font-size:13.5px;font-weight:700;cursor:pointer;margin-top:var(--s5);box-shadow:var(--hi),var(--sh-1);transition:filter var(--t),transform var(--t),box-shadow var(--t);}
+  .btn:hover{filter:brightness(1.06);transform:translateY(-1px);box-shadow:var(--hi),0 12px 28px -8px rgba(58,159,121,.9);}
+  .btn:active{transform:scale(.98);} .btn:disabled{opacity:.5;cursor:default;transform:none;filter:none;}
+  .rbtn{font:inherit;display:inline-flex;align-items:center;gap:6px;background:var(--e2);border:none;color:var(--txt-2);border-radius:10px;padding:7px 12px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t);flex:0 0 auto;}
+  .rbtn:hover{background:var(--e3);color:var(--txt);}
+  .rbtn svg{width:13px;height:13px;}
+
+  .msg{padding:34px 18px;text-align:center;color:var(--txt-3);background:var(--glass),var(--e1);border-radius:16px;box-shadow:var(--hi),var(--sh-1);}
+  .msg b{color:var(--txt);display:block;margin-bottom:6px;font-size:14px;font-weight:700;}
+  .toast{position:fixed;left:50%;transform:translateX(-50%) translateY(10px);bottom:18px;background:var(--e2);padding:10px 16px;border-radius:11px;font-size:12.5px;box-shadow:var(--hi),var(--sh-3);opacity:0;transition:opacity .2s,transform .2s;pointer-events:none;max-width:80%;}
+  .toast.on{opacity:1;transform:translateX(-50%) translateY(0);}
+  .toast.ok{color:var(--green-f);} .toast.err{color:#f0a49d;}
+  .sk{height:120px;border-radius:16px;margin-bottom:var(--s3);background:linear-gradient(90deg,var(--e1) 25%,var(--e2) 50%,var(--e1) 75%);background-size:200% 100%;animation:sh 1.25s infinite;}
+  @keyframes sh{0%{background-position:200% 0}100%{background-position:-200% 0}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="addhead">
+    <div class="htxt"><h2 class="addtitle">🧾 Approve a signup</h2>
+      <p class="addsub">Seat a pending applicant into an existing open slot — this never inserts a row or disturbs your layout.</p></div>
+    <span class="count" id="count"></span>
+    <button class="rbtn" id="refresh"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6M1 20v-6h6"/><path d="M3.5 9a9 9 0 0 1 14.9-3.4L23 10M1 14l4.6 4.4A9 9 0 0 0 20.5 15"/></svg>Refresh</button>
+  </div>
+  <div id="body"><div class="sk"></div></div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+  var DATA={signups:[],slots:[],rankIcons:{}}, CUR=null, SLOT=null;
+  function $(id){ return document.getElementById(id); }
+  function esc(s){ return String(s==null?'':s).replace(/[&<>"']/g,function(c){ return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]; }); }
+  function api(ok, fail, name){ var a=Array.prototype.slice.call(arguments,3);
+    google.script.run.withSuccessHandler(ok).withFailureHandler(fail||onErr).dispatch(name, a); }
+  function onErr(e){ toast((e && e.message) ? e.message : 'Something went wrong.', 'err'); }
+  var tt;
+  function toast(m, kind){ var t=$('toast'); t.textContent=m; t.className='toast on '+(kind||''); clearTimeout(tt); tt=setTimeout(function(){ t.className='toast '+(kind||''); }, 4200); }
+  function initials(n){ var p=String(n||'').replace(/[^A-Za-z0-9 .'-]/g,'').split(/[ .]+/).filter(Boolean); if(!p.length) return '—'; return ((p[0][0]||'')+(p.length>1?(p[p.length-1][0]||''):'')).toUpperCase()||'—'; }
+  function rankInitials(r){ var p=String(r||'').replace(/[^A-Za-z0-9 ]/g,'').split(/\s+/).filter(Boolean); if(!p.length) return '—'; return ((p[0][0]||'')+(p.length>1?(p[p.length-1][0]||''):'')).toUpperCase(); }
+  function rankAvatar(rank){ var ic=(DATA.rankIcons&&DATA.rankIcons[rank])||''; return ic?('<span class="rava"><img src="'+esc(ic)+'" alt=""></span>'):('<span class="rava rava-txt">'+esc(rankInitials(rank))+'</span>'); }
+  function appById(row){ for(var i=0;i<DATA.signups.length;i++){ if(String(DATA.signups[i].row)===String(row)) return DATA.signups[i]; } return null; }
+  function slotById(row){ for(var i=0;i<DATA.slots.length;i++){ if(String(DATA.slots[i].row)===String(row)) return DATA.slots[i]; } return null; }
+
+  function slotMenuHtml(){
+    if(!DATA.slots.length) return '<div class="sdrop-empty">No open slots — free one on the roster, then refresh.</div>';
+    var groups={},order=[];
+    DATA.slots.forEach(function(s){ if(!groups[s.rank]){groups[s.rank]=[];order.push(s.rank);} groups[s.rank].push(s); });
+    return order.map(function(r){
+      return '<div class="sdrop-group"><div class="sdrop-ghead">'+rankAvatar(r)+'<span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
+        +groups[r].map(function(s){ return '<button type="button" class="sdrop-opt'+(SLOT===s.row?' sel':'')+'" data-slotrow="'+s.row+'" role="option"><span class="so-call">'+esc(s.unit||('Row '+s.row))+'</span><span class="so-rank">'+esc(r)+'</span></button>'; }).join('')
+        +'</div>';
+    }).join('');
+  }
+  function ro(v, mono){ return v ? '<div class="ro'+(mono?' mono':'')+'">'+esc(v)+'</div>' : '<div class="ro empty">—</div>'; }
+  function kv(k, v, mono){ return v ? '<div class="pkv-r"><span class="pkv-k">'+esc(k)+'</span><span class="pkv-v'+(mono?' mono':'')+'">'+esc(v)+'</span></div>' : ''; }
+
+  function renderPreview(){
+    var host=$('prevBody'); if(!host) return;
+    var a=appById(CUR), s=(SLOT!=null)?slotById(SLOT):null;
+    if(!a || !s){ host.innerHTML='<div class="prev-empty"><div class="pei"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg></div><b>No slot selected</b>Pick an open slot to preview the assignment.</div>'; return; }
+    host.innerHTML='<div class="prev-hero"><span class="mav">'+esc(initials(a.name))+'</span>'
+      +'<div class="prev-id"><div class="prev-nm">'+esc(a.name||'(no name)')+'</div><div class="prev-rk">'+esc(s.rank)+(s.unit?' · '+esc(s.unit):'')+'</div></div></div>'
+      +'<div class="pkv">'+kv('Unique ID',a.discord,true)+kv('Email',a.email)+kv('Date of birth',a.dob)+kv('Join date',a.join)+'</div>';
+  }
+
+  function renderForm(){
+    var a=appById(CUR);
+    var cur = (SLOT!=null && slotById(SLOT)) ? (rankAvatar(slotById(SLOT).rank)+'<span>'+esc(slotById(SLOT).unit||('Row '+SLOT))+' · '+esc(slotById(SLOT).rank)+'</span>') : '';
+    return '<div class="addcols"><div class="addform">'
+      + '<div class="stepcard"><div class="step-h"><span class="stepn">1</span>Assignment</div>'
+      +   '<label class="lbl">Open slot</label>'
+      +   '<div class="sdrop" id="slotDrop"><button type="button" class="sdrop-btn" id="slotBtn" aria-haspopup="listbox" aria-expanded="false">'
+      +     '<span class="sdrop-cur'+(cur?'':' ph')+'" id="slotCur">'+(cur||'Select slot')+'</span>'
+      +     '<svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>'
+      +     '<div class="sdrop-menu" id="slotMenu" role="listbox" hidden>'+slotMenuHtml()+'</div></div>'
+      +   '<p class="stephint">The applicant inherits this slot&rsquo;s rank and callsign.</p></div>'
+      + '<div class="stepcard"><div class="step-h"><span class="stepn">2</span>Applicant details <span class="lopt" style="font-size:11px">· from their signup</span></div>'
+      +   '<div class="addgrid"><div><label class="lbl">Name</label>'+ro(a.name)+'</div>'
+      +     '<div><label class="lbl">Unique ID</label>'+ro(a.discord,true)+'</div>'
+      +     '<div><label class="lbl">OOC name</label>'+ro(a.ooc)+'</div>'
+      +     '<div><label class="lbl">Email</label>'+ro(a.email)+'</div>'
+      +     '<div><label class="lbl">Date of birth</label>'+ro(a.dob)+'</div>'
+      +     '<div><label class="lbl">Phone</label>'+ro(a.phone)+'</div></div></div>'
+      + '<div class="stepcard"><div class="step-h"><span class="stepn">3</span>Employment</div>'
+      +   '<label class="lbl">Department join date <span class="lopt">· from their signup</span></label>'+ro(a.join)+'</div>'
+      + '<button class="btn" id="seatBtn">Approve &amp; seat on roster</button>'
+      + '</div>'
+      + '<div class="addprev">'
+      +   '<div class="prevcard"><div class="pc-lbl">Slot preview</div><div id="prevBody"></div></div>'
+      +   '<div class="nextbox"><b>What happens next</b>'+esc(a.name||'The applicant')+' is seated into the chosen slot and appears on the roster immediately, with their DOB, email and join date copied over. The signup is marked <b style="display:inline">Processed</b>.</div>'
+      + '</div></div>';
+  }
+
+  function render(){
+    var el=$('body');
+    var list=DATA.signups||[];
+    $('count').textContent = list.length ? (list.length+' pending · '+DATA.slots.length+' open slot'+(DATA.slots.length===1?'':'s')) : '';
+    if(!DATA.linked){ el.innerHTML='<div class="msg"><b>No admin file linked</b>Open the Control Panel ▸ Tools and link the protected admin spreadsheet first.</div>'; return; }
+    if(!DATA.ready){ el.innerHTML='<div class="msg"><b>No signup review tab yet</b>Set the review tab under ⚙️ Engine Settings ▸ Sheets &amp; layout ▸ SIGNUPS.</div>'; return; }
+    if(!list.length){ el.innerHTML='<div class="msg"><b>Nothing to review</b>Every signup has been processed.</div>'; return; }
+    if(CUR==null || !appById(CUR)) CUR=list[0].row;
+    var chips='<div class="apps">'+list.map(function(a){
+      return '<button type="button" class="appchip'+(String(a.row)===String(CUR)?' on':'')+'" data-approw="'+a.row+'"><span class="ci">'+esc(initials(a.name))+'</span><span class="cn">'+esc(a.name||'(no name)')+'</span><span class="cs">'+esc(a.status)+'</span></button>';
+    }).join('')+'</div>';
+    el.innerHTML=chips+renderForm();
+    renderPreview();
+  }
+
+  function selectApplicant(row){ CUR=Number(row); SLOT=null; render(); }
+  function openSlotMenu(on){ var d=$('slotDrop'),menu=$('slotMenu'),btn=$('slotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false'); }
+  function setSlot(row){
+    SLOT=(row==null?null:Number(row));
+    var s=(SLOT!=null)?slotById(SLOT):null, cur=$('slotCur');
+    if(cur){ if(s){ cur.className='sdrop-cur'; cur.innerHTML=rankAvatar(s.rank)+'<span>'+esc(s.unit||('Row '+s.row))+' · '+esc(s.rank)+'</span>'; } else { cur.className='sdrop-cur ph'; cur.textContent='Select slot'; } }
+    var menu=$('slotMenu'); if(menu) menu.querySelectorAll('.sdrop-opt').forEach(function(b){ b.classList.toggle('sel', Number(b.dataset.slotrow)===SLOT); });
+    renderPreview();
+  }
+
+  function load(){
+    $('body').innerHTML='<div class="sk"></div>';
+    api(function(d){ DATA=d; render(); }, function(e){ $('body').innerHTML='<div class="msg"><b>Couldn\'t load signups</b>'+esc((e&&e.message)||'')+'</div>'; }, 'cpSignupList');
+  }
+
+  document.addEventListener('click', function(e){
+    if(e.target.closest && e.target.closest('#refresh')){ SLOT=null; load(); return; }
+    var chip=e.target.closest ? e.target.closest('[data-approw]') : null;
+    if(chip){ selectApplicant(chip.dataset.approw); return; }
+    var opt=e.target.closest ? e.target.closest('[data-slotrow]') : null;
+    if(opt){ setSlot(Number(opt.dataset.slotrow)); openSlotMenu(false); return; }
+    if(e.target.closest && e.target.closest('#slotBtn')){ openSlotMenu(); return; }
+    if(e.target.closest && e.target.closest('#slotMenu')){ return; }
+    if(e.target.closest && e.target.closest('#seatBtn')){
+      var btn=e.target.closest('#seatBtn');
+      if(SLOT==null){ toast('Pick an open slot first.','err'); openSlotMenu(true); return; }
+      if(CUR==null){ toast('Pick an applicant first.','err'); return; }
+      btn.disabled=true; btn.textContent='Seating…';
+      api(function(r){
+        toast('✅ '+(r.name||'Applicant')+' seated'+(r.piiWritten?(' · '+r.piiWritten+' private field'+(r.piiWritten===1?'':'s')+' copied'):'')+'.','ok');
+        SLOT=null; load();
+      }, function(err){ btn.disabled=false; btn.textContent='Approve & seat on roster'; onErr(err); }, 'cpSignupApprove', { row: CUR, slotRow: SLOT });
+      return;
+    }
+    if($('slotDrop') && !e.target.closest('#slotDrop')) openSlotMenu(false); // click-away closes the slot menu
+  });
+
+  load();
+</script>
+</body>
+</html>
