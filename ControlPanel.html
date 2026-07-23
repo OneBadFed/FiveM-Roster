@@ -835,7 +835,7 @@
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
   var INIT_TAB = "<?= initialTab ?>"; // deep-link target tab (e.g. 'signups' from 🧾 Review Roster Signups); '' = default
-  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{}};
+  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{}};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
   var SVG={
@@ -893,8 +893,13 @@
   function skel(n){ var o=''; for(var i=0;i<n;i++) o+='<div class="skel-row"></div>'; return o; }
   function mInitials(n){ var p=String(n||'').replace(/[^A-Za-z0-9 .'-]/g,'').split(/[ .]+/).filter(Boolean); if(!p.length) return '—'; var a=(p[0][0]||''); var b=p.length>1?(p[p.length-1][0]||''):''; return (a+b).toUpperCase()||'—'; }
   function pillClass(st){ var k=String(st||'').replace(/[^A-Za-z]/g,''); return ['Active','SemiActive','Inactive','LOA','ROA','Reserve'].indexOf(k)>=0?'p-'+k:'p-none'; }
-  function pill(st){ return '<span class="pill '+pillClass(st)+'"><span class="pdot"></span>'+esc(st||'—')+'</span>'; }
-  function statusDot(st){ var m={Active:'#57b85a',SemiActive:'#e0a52c',Inactive:'#e0574f',LOA:'#4ea7d6',ROA:'#e0a52c',Reserve:'#9d8cf2'}; return m[String(st||'').replace(/[^A-Za-z]/g,'')]||'#8a929e'; }
+  function cfgColor(st){ var c=(STATE.statusColors||{})[String(st||'')]; return (c&&/^#[0-9a-fA-F]{3,8}$/.test(c))?c:''; } // server already validates; re-checked before any inline style
+  function pill(st){
+    var cls=pillClass(st);
+    if(cls==='p-none'){ var c=cfgColor(st); if(c) return '<span class="pill" style="background:'+c+'22;border-color:'+c+'55;color:'+c+'"><span class="pdot" style="background:'+c+'"></span>'+esc(st||'—')+'</span>'; }
+    return '<span class="pill '+cls+'"><span class="pdot"></span>'+esc(st||'—')+'</span>';
+  }
+  function statusDot(st){ var m={Active:'#57b85a',SemiActive:'#e0a52c',Inactive:'#e0574f',LOA:'#4ea7d6',ROA:'#e0a52c',Reserve:'#9d8cf2'}; return m[String(st||'').replace(/[^A-Za-z]/g,'')]||cfgColor(st)||'#8a929e'; }
   function hpill(st){ return '<span class="pill hpill"><span class="pdot" style="background:'+statusDot(st)+'"></span>'+esc(st||'—')+'</span>'; }
   function leaveDot(s){ s=String(s||'').toLowerCase(); if(s.indexOf('approv')>=0)return '#57b85a'; if(s.indexOf('pend')>=0)return '#e0a52c'; if(s.indexOf('expir')>=0)return '#8a929e'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0)return '#e0574f'; return '#8a929e'; }
   function stripe(c){ var h=String(c||'').toLowerCase(); return (!h||h==='#ffffff'||h==='#fff')?'#43434d':h; }
@@ -915,6 +920,8 @@
     STATE.version=b.version||'';
     if(b.statuses) STATE.statuses=b.statuses;
     if(b.leaveTypes&&b.leaveTypes.length) STATE.leaveTypes=b.leaveTypes;
+    if(b.protectedStatuses) STATE.protected=b.protectedStatuses;
+    if(b.statusColors) STATE.statusColors=b.statusColors; // [STATUSES] Color column — custom statuses keep coloured pills
     if(b.addCols){ if($('addOocWrap')) $('addOocWrap').hidden=!b.addCols.ooc; if($('addShiftWrap')) $('addShiftWrap').hidden=!b.addCols.shift; } // show OOC/Shift inputs only when the roster has those columns
     STATE.rankIcons=b.rankIcons||{}; // bootstrap ships {} — icons lazy-load below so the panel paints immediately
     STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
@@ -963,7 +970,7 @@
     var q=$('search').value.trim().toLowerCase(), fs=STATE.filterStatus, fr=STATE.filterRank;
     return STATE.members.filter(function(m){
       if(!m.filled) return false;
-      if(fs!=='all'){ if(fs==='leave'){ if(['LOA','ROA','Reserve'].indexOf(m.status)<0) return false; } else if(m.status!==fs) return false; }
+      if(fs!=='all'){ if(fs==='leave'){ if(STATE.leaveTypes.concat(STATE.protected||[]).indexOf(m.status)<0) return false; } else if(m.status!==fs) return false; }
       if(fr!=='all' && m.rank!==fr) return false;
       if(q && (m.name+' '+m.callsign+' '+m.rank+' '+m.discord).toLowerCase().indexOf(q)<0) return false;
       return true;
@@ -1533,7 +1540,11 @@
   var AARROW='<svg class="ar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
   function aBlank(v){ return v===''||v==null||v==='(blank)'; }
   function aVal(v){ return aBlank(v)?'empty':String(v); }
-  function aIsStatus(v){ return ['Active','SemiActive','Inactive','LOA','ROA','Reserve'].indexOf(String(v).replace(/[^A-Za-z]/g,''))>=0; }
+  function aIsStatus(v){
+    var k=String(v).replace(/[^A-Za-z]/g,'');
+    if(['Active','SemiActive','Inactive','LOA','ROA','Reserve'].indexOf(k)>=0) return true;
+    return STATE.statuses.some(function(s){ return String(s).replace(/[^A-Za-z]/g,'')===k; }); // custom vocabularies count too
+  }
   function aStatusColor(v){ return ({Active:'green',SemiActive:'amber',Inactive:'red',LOA:'blue',ROA:'orange',Reserve:'purple'})[String(v).replace(/[^A-Za-z]/g,'')]||'gray'; }
   function aTrkColor(v){ v=String(v).toLowerCase(); if(v.indexOf('approv')>=0)return 'green'; if(v.indexOf('pend')>=0)return 'amber'; if(v.indexOf('den')>=0||v.indexOf('reject')>=0)return 'red'; return 'gray'; }
   function classifyAudit(a){

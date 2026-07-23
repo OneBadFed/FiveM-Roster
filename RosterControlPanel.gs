@@ -27,6 +27,18 @@ function cpStatuses_() {
   return CP_STATUSES.slice();
 }
 
+/** {status name: '#hex'} from the [STATUSES] Color column — only valid hex values ship (they land in inline styles). */
+function cpStatusColors_() {
+  const out = {};
+  try {
+    (cfg_().statuses || []).forEach((s) => {
+      const c = String(s.color || '').trim();
+      if (s.name && /^#[0-9a-fA-F]{3,8}$/.test(c)) out[s.name] = c;
+    });
+  } catch (e) { /* config broken — pills fall back to the built-in palette */ }
+  return out;
+}
+
 /* ----------------------------------------------------------------------------
  * D5 — WHITELISTED DISPATCH (Roster Engine, Phase 2)
  * The panel's google.script.run calls go through ONE endpoint: dispatch(name, args).
@@ -421,6 +433,8 @@ function cpBootstrap() {
     systemName: CONFIG.systemName,
     webhooks: cpWebhookStatus_(), // per-channel booleans — read via THIS user's admin-file access
     statuses: cpStatuses_(),
+    statusColors: cpStatusColors_(),                                             // {status: '#hex'} from the [STATUSES] Color column — custom statuses keep coloured pills
+    protectedStatuses: (CONFIG.protectedStatuses || []).slice(),                 // PROTECTED kinds (e.g. Reserve) — the "On leave" filter includes them
     leaveTypes: CONFIG.leaveTypes.slice(),                                       // the [LEAVE].LEAVE_TYPES list — drives the schedule-leave dropdown
     addCols: { ooc: !!RCadd.ooc, shift: !!RCadd.shift },                         // which optional columns the Add-member form should offer
 
