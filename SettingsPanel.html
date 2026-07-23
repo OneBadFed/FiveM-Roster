@@ -1445,7 +1445,7 @@
   /* ── ranks & labels (a friendlier editor over [DASHBOARD_GROUPS] rank entries) ── */
   var RANKLIST=null;
   function rankLabelsShell(){
-    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Toggle a label on every rank it covers — a rank may carry several labels, but headcounts put each member under their FIRST label. <b>Icons save immediately; label changes save with the Save button.</b> A square PNG with transparency looks best; images are resized automatically.</div>'
+    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Toggle a label on every rank it covers — a rank may carry several labels, but headcounts put each member under their FIRST label. <b>Icons and Colours save immediately; label changes save with the Save button.</b> A square PNG with transparency looks best; images are resized automatically. <b>Colour</b> tints that rank\'s profile cards in the Control Panel (accent bar, avatar glow) — without one, cards fall back to the rank cell\'s colour on your roster.</div>'
       +'<div id="ranklabelsHost"><div class="rkloading">Loading ranks…</div></div>';
   }
   function loadRanksList(){
@@ -1468,12 +1468,15 @@
       var chips=groups.map(function(g,gi){ var g0=String(g[0]||'').trim(); if(!g0) return '';
         var on=listOf(g[1]).some(function(x){return x.toUpperCase()===String(r.rank).toUpperCase();});
         return '<span class="rlt'+(on?' on':'')+'" data-rltog="1" data-gi="'+gi+'" data-rank="'+esc(r.rank)+'">'+esc(g0)+'</span>'; }).join('');
-      return '<div class="rlrow"><span class="rlav">'+av+'</span><span class="rlnm">'+esc(r.rank)
-        +'<small>'+(r.members===1?'1 member':((r.members||0)+' members'))+(r.icon?' · icon set':'')+'</small></span>'
+      return '<div class="rlrow"><span class="rlav"'+(r.color?' style="box-shadow:0 0 0 2px '+esc(r.color)+', 0 0 12px -2px '+esc(r.color)+'"':'')+'>'+av+'</span><span class="rlnm">'+esc(r.rank)
+        +'<small>'+(r.members===1?'1 member':((r.members||0)+' members'))+(r.icon?' · icon set':'')+(r.color?' · colour set':'')+'</small></span>'
         +'<div class="rlchips">'+chips+'</div>'
         +'<div class="rkbtns"><label class="rkbtn rkup">'+(r.icon?'Replace':'Upload')
           +'<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-rankfile="'+esc(r.rank)+'" hidden></label>'
           +(r.icon?'<button type="button" class="rkbtn rkdel" data-rankdel="'+esc(r.rank)+'">Remove</button>':'')
+          +'<label class="rkbtn rkcol" title="Profile-card colour for everyone holding this rank">'
+            +'<input type="color" data-rankcol="'+esc(r.rank)+'" value="'+esc(r.color||'#43434d')+'">Colour</label>'
+          +(r.color?'<button type="button" class="rkbtn rkdel" data-rankcoldel="'+esc(r.rank)+'" title="Back to the roster cell\'s colour">Reset</button>':'')
         +'</div></div>';
     }).join('');
   }
