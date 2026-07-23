@@ -262,7 +262,9 @@ function cpRosterRanks_(ss) {
 function openSettingsPanel() {
   const html = HtmlService.createHtmlOutputFromFile('SettingsPanel')
     .setWidth(1180).setHeight(760);
-  SpreadsheetApp.getUi().showModalDialog(html, '⚙️ Engine Settings');
+  // MODELESS, like the Control Panel: the dialog is draggable and the sheet stays usable behind it —
+  // change a value, glance at the live tab, save, without closing anything.
+  SpreadsheetApp.getUi().showModelessDialog(html, '⚙️ Engine Settings');
 }
 
 /** Injectable read: everything the Settings UI needs, shaped from BLOCK_SPECS_ + the live sheet values. */

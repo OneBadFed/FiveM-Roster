@@ -541,9 +541,9 @@
   function onError(e){ toast((e&&e.message)?e.message:'Something went wrong.','err'); }
 
   var GROUPS=[
-    {label:'System', ids:['sheets']},
-    {label:'Configuration', ids:['statuses','ranks','leave','theme']},
-    {label:'Dashboard', ids:['dashboard']},
+    {label:'Setup', ids:['sheets']},
+    {label:'Roster', ids:['statuses','ranks','leave']},
+    {label:'Appearance', ids:['theme','dashboard']},
     {label:'Discord', ids:['dcaudit','dcloa','dcpatrol','dcerrors']},
     {label:'Operations', ids:['automation','advanced']},
   ];
@@ -700,10 +700,10 @@
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, where headers and data begin, and which Google Form responses tab feeds each tracker.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.PATROL_LOG','SHEETS.SIGNUPS']},
              {t:'Google Form links — responses tab → tracker', keys:['SHEETS.LEAVE_FORM_RESPONSES','SHEETS.PATROL_FORM_RESPONSES','SHEETS.SIGNUP_FORM_RESPONSES']},
-             {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']},
              {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
              {t:'Patrol logs → hours', keys:['PATROL.MODE','PATROL.MAX_HOURS','PATROL.OVERNIGHT','PATROL.RECOMPUTE','PATROL.COL_DISCORD','PATROL.COL_CALLSIGN','PATROL.COL_START','PATROL.COL_END','PATROL.COL_DURATION']},
-             {t:'Public roster', keys:['PUBLISH.NEVER_PUBLISH','PUBLISH.KEEP_RANGES']}]},
+             {t:'Public roster', keys:['PUBLISH.NEVER_PUBLISH','PUBLISH.KEEP_RANGES']},
+             {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']}]},
     {id:'statuses', a:'var(--amber)', title:'Statuses & tiers', desc:'The activity ladder and every status the engine may write — plus per-rank overrides and stateless status rules.', tables:true},
     {id:'ranks', a:'var(--green)', title:'Ranks', desc:'Every rank found in your roster’s rank column — its badge icon, and the labels that group ranks together. Each label is also a live #tag: a "Supervisors" label makes #supervisors count everyone labeled with it.', custom:'ranklabels'},
     {id:'leave', a:'var(--purple)', title:'Leave engine', desc:'How leaves are requested, approved, activated and ended.',
@@ -1088,7 +1088,7 @@
         var rows=''; c.keys.forEach(function(bk){ rows+=setting(bk); });
         h+='<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+cardIcon(c.t,g.id)+'</span><b>'+esc(c.t)+'</b>'
           +'<small>'+esc(c.keys.map(function(k){return '['+k.split('.')[0]+']';}).filter(function(x,i,a){return a.indexOf(x)===i;}).join(' · '))+'</small></div>'
-          +(c.t==='Patrol logs → hours'?'<div class="callout" id="patrolOffNote" hidden><b>Patrol sync is off</b>Pick a PATROL FORM RESPONSES tab under Data tabs to turn it on.</div>':'')
+          +(c.t==='Patrol logs → hours'?'<div class="callout" id="patrolOffNote" hidden><b>Patrol form sync is off</b>Pick a PATROL FORM RESPONSES tab under Google Form links to turn it on (the manual Patrol Log tab works either way).</div>':'')
           +'<div class="grid2">'+rows+'</div>'
           +(c.preview==='embed'?embedPreview():'')
           +(c.preview==='sheet'?sheetPreview():'')
