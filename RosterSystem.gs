@@ -308,6 +308,7 @@ function buildMenus_(prefix) {
       .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
       .addItem('🧾 Sync Signup Form to Review', p + 'manualSyncSignups')
+      .addItem('🚔 Sync Patrol Forms to Log', p + 'manualSyncPatrol')
       .addItem('📸 Capture & Reset Activity', p + 'weeklyResetWithHistory')
       .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
       .addItem('🌐 Publish Public Roster', p + 'publishPublicRosterNow')
@@ -2479,6 +2480,106 @@ function syncPatrolHours() {
   if (!lock.tryLock(20000)) return false;
   try { return syncPatrolHours_(patrolSheet, roster, { sendWebhooks: true }); }
   finally { lock.releaseLock(); }
+}
+
+/**
+ * Transfer NEW patrol-form submissions onto the Patrol Log tab — the form-fed twin of the signup sync. Columns
+ * resolve by header on both sides ([PATROL].COL_* keywords on the form; patrolLogCols_ on the log). START_END
+ * mode only: each submission's start/end datetimes split into the log's DATE + TIME columns (times share one
+ * fixed date base so the TOTAL formula's date parts cancel). Rows land in the first identity-free slot, and the
+ * durable form marker (same "_Credited" column the direct-credit path uses) is written BEFORE the transfer so a
+ * crash or re-run can never double-ingest — and the two intake paths can never both consume one submission.
+ * The caller then runs refreshPatrolLog_: autofill, evaluation, marker-reconciled crediting and the sort all
+ * happen through the log's own hardened path. @return {{added:number, skipped:Array<{row:number,reason:string}>}}
+ */
+function syncPatrolFormToLog_(formSheet, logSheet) {
+  const out = { added: 0, skipped: [] };
+  const cols = patrolCols_(formSheet);
+  const markCol = patrolMarkerCol_(formSheet);
+  const PC = patrolLogCols_(logSheet);
+  const last = formSheet.getLastRow();
+  if (last < 2) return out;
+  if (cols.start === -1 || cols.end === -1) { out.skipped.push({ row: 0, reason: 'the form has no start/end columns ([PATROL].COL_START / COL_END)' }); return out; }
+  if (!PC.discord || !PC.startDate || !PC.startTime || !PC.endDate || !PC.endTime) { out.skipped.push({ row: 0, reason: 'the Patrol Log is missing its ID / start-end date+time columns' }); return out; }
+  const width = formSheet.getLastColumn();
+  const n = last - 1;
+  const grid = formSheet.getRange(2, 1, n, width).getValues();
+  const bgs = formSheet.getRange(2, 1, n, 1).getBackgrounds();
+  const done = String(CONFIG.bg.done).toLowerCase();
+  // Identity-free log slots first, then append past the end (same free-row rule the log's sort/compaction uses).
+  const start = CONFIG.patrolStartRow;
+  const free = [];
+  let append = Math.max(logSheet.getLastRow() + 1, start);
+  if (logSheet.getLastRow() >= start && PC.width) {
+    const blk = logSheet.getRange(start, 1, logSheet.getLastRow() - start + 1, PC.width).getDisplayValues();
+    for (let r = 0; r < blk.length; r++) {
+      const has = (PC.discord && String(blk[r][PC.discord - 1] || '').trim()) || (PC.name && String(blk[r][PC.name - 1] || '').trim());
+      if (!has) free.push(start + r);
+    }
+  }
+  const dOnly = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
+  const tOnly = (d) => new Date(2020, 0, 1, d.getHours(), d.getMinutes(), d.getSeconds()); // shared fixed base → TOTAL's date parts cancel
+  for (let i = 0; i < n; i++) {
+    const marker = String(grid[i][markCol - 1] == null ? '' : grid[i][markCol - 1]).trim();
+    const bg = String(bgs[i][0] || '').toLowerCase();
+    if (marker !== '' || bg === done) continue; // already transferred — or already credited by the direct path
+    const rowIndex = 2 + i;
+    const cell = (c) => (c > 0 && c <= width) ? grid[i][c - 1] : '';
+    const s = cell(cols.start), e = cell(cols.end);
+    const sd = (s instanceof Date) ? s : new Date(s);
+    const ed = (e instanceof Date) ? e : new Date(e);
+    if (isNaN(sd.getTime()) || isNaN(ed.getTime())) {
+      try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); } catch (e2) { /* best-effort */ }
+      out.skipped.push({ row: rowIndex, reason: 'unparseable start/end — fix the row and re-run' });
+      continue;
+    }
+    const id = String(cell(cols.discord) == null ? '' : cell(cols.discord)).trim();
+    // Durable marker + flush BEFORE the transfer: once stamped, this submission can never be ingested twice.
+    formSheet.getRange(rowIndex, markCol).setValue('✓ ' + Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm') + ' → ' + logSheet.getName());
+    SpreadsheetApp.flush();
+    const at = free.length ? free.shift() : append++;
+    if (at > logSheet.getMaxRows()) logSheet.insertRowsAfter(logSheet.getMaxRows(), at - logSheet.getMaxRows());
+    logSheet.getRange(at, PC.discord).setNumberFormat('@').setValue(id); // blank/bad IDs still land — the log flags them with the reason
+    logSheet.getRange(at, PC.startDate).setValue(dOnly(sd));
+    logSheet.getRange(at, PC.startTime).setValue(tOnly(sd));
+    logSheet.getRange(at, PC.endDate).setValue(dOnly(ed));
+    logSheet.getRange(at, PC.endTime).setValue(tOnly(ed));
+    try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done); } catch (e2) { /* best-effort */ }
+    out.added++;
+  }
+  return out;
+}
+
+/** Menu action: pull patrol-form submissions onto the Patrol Log tab (DURATION-mode forms credit directly — no times to place). */
+function manualSyncPatrol() {
+  runAction_('Sync Patrol Forms', () => {
+    const ui = SpreadsheetApp.getUi();
+    if (!CONFIG.sheets.patrol) {
+      ui.alert('🚔 Sync Patrol Forms', 'Patrol form sync is OFF.\n\nSet [SHEETS].PATROL_FORM_RESPONSES to your patrol form\'s response tab (⚙️ Engine Settings ▸ Sheets & layout ▸ Google Form links), then run this again.', ui.ButtonSet.OK);
+      return;
+    }
+    const ss = SpreadsheetApp.getActive();
+    const form = ss.getSheetByName(CONFIG.sheets.patrol);
+    if (!form) { ui.alert('🚔 Sync Patrol Forms', `The form response tab "${CONFIG.sheets.patrol}" was not found.`, ui.ButtonSet.OK); return; }
+    const log = CONFIG.sheets.patrolLog ? ss.getSheetByName(CONFIG.sheets.patrolLog) : null;
+    if (!log || norm_(CONFIG.patrol.mode) === 'DURATION') {
+      const res = syncPatrolHours(); // classic direct credit — still marker-deduped on the form
+      if (res === false) { ui.alert('Sync skipped — another roster operation is running.'); return; }
+      const why = log ? 'DURATION-mode submissions carry no start/end times to place on the log — hours were credited directly instead.'
+        : `No "${CONFIG.sheets.patrolLog || 'Patrol Log'}" tab — hours were credited directly from the form.`;
+      ui.alert('🚔 Sync Patrol Forms', `${why}\n\n✅ ${res.credited.length} log(s) credited (+${res.hoursAdded} hrs) · ${res.errored} flagged red on the form.`, ui.ButtonSet.OK);
+      return;
+    }
+    const lock = LockService.getScriptLock();
+    if (!lock.tryLock(30000)) { ui.alert('Sync skipped — another roster operation is running.'); return; }
+    let res;
+    try { res = syncPatrolFormToLog_(form, log); } finally { lock.releaseLock(); }
+    try { refreshPatrolLog_(); } catch (e) { log_('manualSyncPatrol.refresh', e); } // autofill + credit + flag + sort, the log's own path
+    const skipNote = res.skipped.length ? ('\n\n⚠️ ' + res.skipped.slice(0, 5).map((k) => (k.row ? `Row ${k.row}: ` : '') + k.reason).join('\n')) : '';
+    ui.alert('🚔 Sync Patrol Forms', res.added
+      ? `✅ Moved ${res.added} patrol log${res.added === 1 ? '' : 's'} onto "${CONFIG.sheets.patrolLog}" — identity, TOTAL TIME, crediting and flagging are handled there.${skipNote}`
+      : `No new patrol submissions to move — everything on the form is already synced.${skipNote}`, ui.ButtonSet.OK);
+  });
 }
 
 /* ======================================================================

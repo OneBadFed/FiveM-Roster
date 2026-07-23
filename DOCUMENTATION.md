@@ -318,7 +318,9 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
 ## 12 · Menus & Triggers
 
 **👥 Roster:** 🎛️ Open Control Panel · ⚙️ Engine Settings │ 🔄 Refresh & Update All · 📥 Sync Leave Forms to
-Tracker · 🧾 Sync Signup Form to Review · 📸 Capture & Reset Activity · 🔍 Run Integrity Scan · 🌐 Publish
+Tracker · 🧾 Sync Signup Form to Review · 🚔 Sync Patrol Forms to Log (START_END submissions transfer onto the
+Patrol Log — marker-deduped on the form — and credit through the log's own path; DURATION mode or no log tab →
+the classic direct credit) · 📸 Capture & Reset Activity · 🔍 Run Integrity Scan · 🌐 Publish
 Public Roster │ ➕ Add Member Rows… · 🎙️ Fix All Callsign Numbers · 🗂️ Build / Refresh Group Sheets · 🎓 Build /
 Refresh Police Academy │ 🌐 Set Up Public Roster · 🆔 Unique ID Type ▸ (Discord / Community) · 🧩 Sync Column
 Config · 🚀 First-Run Setup · 🔌 Install Triggers.
