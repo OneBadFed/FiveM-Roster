@@ -39,7 +39,11 @@ function addDevMenu_(prefix) {
     .addItem('🚔 Add Random Patrol Log (test)', p + 'devAddRandomPatrol')
     .addItem('🧾 Add Random Signup (test)', p + 'devAddRandomSignup')
     .addSeparator()
-    .addItem('▶️ Run ALL Tests', p + 'devRunAllTests')
+    // The full 23-section run can exceed Apps Script's ~6-minute execution cap and die mid-suite — run the two
+    // parts back-to-back instead (each fits comfortably). Run ALL stays for accounts/configs where it fits.
+    .addItem('▶️ Run Tests — Part 1 (sections 1–12)', p + 'devRunAllTestsPart1')
+    .addItem('▶️ Run Tests — Part 2 (sections 13–23)', p + 'devRunAllTestsPart2')
+    .addItem('⏱️ Run ALL Tests (may hit the 6-min cap)', p + 'devRunAllTests')
     .addSubMenu(ui.createMenu('🔬 Run one section')
       .addItem('1 · Unit / pure functions', p + 'devRunSection1')
       .addItem('2 · Status engine', p + 'devRunSection2')
@@ -279,15 +283,22 @@ const DEV_GROUPS = [
 ];
 
 /* ======================================================================
- * ENTRY POINT — runs every group, guarantees teardown, reports
+ * ENTRY POINTS — Run-ALL and the Part 1 / Part 2 split.
+ * A full 23-section run can exceed Apps Script's ~6-minute execution cap
+ * (especially on a consumer account), which kills the run mid-suite — so the
+ * menu offers the suite in two halves. Each half repeats the config preflight
+ * and uses the same teardown + report path; the split point is one constant.
  * ====================================================================== */
-function devRunAllTests() {
+const DEV_PART_SPLIT_ = 12; // Part 1 = sections 1..12, Part 2 = 13..end
+
+/** Runs DEV_GROUPS[from..to] (1-based, inclusive) with preflight, guaranteed teardown, and a labeled report. */
+function devRunRange_(from, to, partLabel) {
   const collectors = [];
   // PREFLIGHT (F-028) — runs before every section so a customized live config is flagged up front, not as mystery reds.
   try { collectors.push(devConfigPreflight_()); }
   catch (e) { const R = devNewResults_('Config preflight — CRASHED'); devCheck_(R, 'preflight ran without throwing', false, String((e && e.stack) || e)); collectors.push(R); }
   try {
-    DEV_GROUPS.forEach(([label, fn]) => {
+    DEV_GROUPS.slice(from - 1, to).forEach(([label, fn]) => {
       try {
         collectors.push(fn());
       } catch (e) {
@@ -299,9 +310,13 @@ function devRunAllTests() {
   } finally {
     devHideSandbox_(); // teardown ALWAYS — hide (not delete) so a repeated run reuses the tabs (no create/delete churn)
   }
-  const totals = devWriteResults_(collectors);
-  devPopup_(totals);
+  const totals = devWriteResults_(collectors, partLabel ? `Roster — Dev / QA Results — ${partLabel}` : '');
+  devPopup_(totals, partLabel);
 }
+
+function devRunAllTests() { devRunRange_(1, DEV_GROUPS.length, ''); }
+function devRunAllTestsPart1() { devRunRange_(1, DEV_PART_SPLIT_, `Part 1 (sections 1–${DEV_PART_SPLIT_})`); }
+function devRunAllTestsPart2() { devRunRange_(DEV_PART_SPLIT_ + 1, DEV_GROUPS.length, `Part 2 (sections ${DEV_PART_SPLIT_ + 1}–${DEV_GROUPS.length})`); }
 
 /* ======================================================================
  * RUN ONE SECTION — same teardown/report as Run-ALL, for a single group.
@@ -387,7 +402,7 @@ function devSafeText_(v) {
 }
 
 /** Writes all collectors to the themed results tab. Returns {pass, fail}. */
-function devWriteResults_(collectors) {
+function devWriteResults_(collectors, title) {
   const ss = SpreadsheetApp.getActive();
   const old = ss.getSheetByName(RESULTS_TAB);
   if (old) ss.deleteSheet(old);
@@ -398,7 +413,7 @@ function devWriteResults_(collectors) {
   collectors.forEach((c) => { totalPass += c.pass; totalFail += c.fail; });
 
   const out = [];
-  out.push(['Roster — Dev / QA Results', '', '']);
+  out.push([title || 'Roster — Dev / QA Results', '', '']);
   out.push(['Run', Utilities.formatDate(new Date(), ss.getSpreadsheetTimeZone(), 'yyyy-MM-dd HH:mm:ss'), '']);
   out.push([totalFail === 0 ? '✅ ALL PASSED' : `❌ ${totalFail} FAILED`, `${totalPass} passed / ${totalFail} failed`, '']);
   out.push(['', '', '']);
@@ -448,10 +463,12 @@ function devWriteResults_(collectors) {
   return { pass: totalPass, fail: totalFail };
 }
 
-function devPopup_(totals) {
+function devPopup_(totals, label) {
+  const scope = label ? `${label}: ` : '';
+  const next = (label && label.indexOf('Part 1') === 0) ? '\n\nNow run ▶️ Run Tests — Part 2 for the rest of the suite.' : '';
   const msg = totals.fail === 0
-    ? `✅ All tests passed (${totals.pass} assertions).\n\nSee the "${RESULTS_TAB}" tab.`
-    : `❌ ${totals.fail} of ${totals.pass + totals.fail} assertions FAILED.\n\nOpen "${RESULTS_TAB}" — failing rows are red.`;
+    ? `✅ ${scope}all tests passed (${totals.pass} assertions).\n\nSee the "${RESULTS_TAB}" tab.${next}`
+    : `❌ ${scope}${totals.fail} of ${totals.pass + totals.fail} assertions FAILED.\n\nOpen "${RESULTS_TAB}" — failing rows are red.${next}`;
   SpreadsheetApp.getUi().alert(msg);
 }
 
