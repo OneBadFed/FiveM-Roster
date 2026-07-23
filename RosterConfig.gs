@@ -274,7 +274,7 @@ const BLOCK_SPECS_ = Object.freeze({
   SHEETS: { type: 'kv', keys: {
     ROSTER: { t: 'string', d: 'Member Information', req: true, help: 'The roster tab name.' },
     TRACKER: { t: 'string', d: 'LOA/ROA Tracker', req: true, help: 'The leave-tracker tab name.' },
-    FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: true, help: 'The Google Form responses tab name.' },
+    FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: true, help: 'The LEAVE (LOA/ROA) Google Form\'s responses tab. Each submission is validated and added to the TRACKER as Pending.' },
     // v1.0 — the system/log tab names are now editable too (every role must resolve to a DISTINCT tab).
     // NOTE: "SYS Log" (engine diagnostics) is intentionally NOT here — slog_/theme_ must resolve it without cfg_() (re-entrancy).
     AUDIT: { t: 'string', d: 'Edit Log', req: false, help: 'The who/what/when audit-log tab. Blank = "Edit Log".' },
