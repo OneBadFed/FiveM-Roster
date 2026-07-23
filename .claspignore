@@ -12,3 +12,5 @@ docs/**
 .gitignore
 .claspignore
 .clasp.json
+# Local Node tooling (config harness etc.) — never an Apps Script file
+tools/**

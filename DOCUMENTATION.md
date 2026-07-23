@@ -360,6 +360,10 @@ publish) is part of every release.
 
 **Local static validation** (no Apps Script needed): Node `new Function(src)` syntax check + zero-control-byte
 scan per file; HTML script blocks are extracted, GAS scriptlets stubbed, and `node --check`ed the same way.
+**`tools/cfgcheck.js` goes further — it EXECUTES the config pipeline** (`node tools/cfgcheck.js RosterConfig.gs`):
+GAS services stubbed, then real assertions over `validateConfig_`/`materialize_` — empty-config = zero ERRORs,
+legacy bridge values, `aka` alias precedence, list/enum/int coercion, schema self-consistency. Run it after any
+config-layer change. (`tools/**` is clasp-ignored — it must never reach the Apps Script project.)
 
 ---
 

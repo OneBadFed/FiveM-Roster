@@ -224,7 +224,7 @@ function cpTestWebhookChannels(channels) {
  * (validate-before-write guards each save). [COLUMNS] is intentionally excluded — it has a richer dedicated editor
  * on the Control Panel's Columns tab (sample values, fill counts, header issues); a second editor here would conflict.
  */
-const CP_SETTINGS_KV_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'LEAVE', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME', 'DASHBOARD']);
+const CP_SETTINGS_KV_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'LEAVE', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME', 'DASHBOARD']);
 const CP_SETTINGS_TABLES_ = Object.freeze(['STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'RANKS', 'SECTION_TAGS', 'DASHBOARD_GROUPS', 'DASHBOARD_CELLS', 'FORM_MAP', 'SECTIONS', 'EMBEDS']);
 const CP_SETTINGS_HIDDEN_ = Object.freeze({ 'SYSTEM.SCHEMA_VERSION': true }); // engine-managed — never editable from the UI
 
@@ -268,12 +268,16 @@ function cpGetConfig_(ss) {
       if (CP_SETTINGS_HIDDEN_[`${name}.${key}`]) return;
       const k = spec.keys[key];
       const def = (k.t === 'bool') ? (k.d ? 'TRUE' : 'FALSE') : String(k.d);
-      const fromSheet = Object.prototype.hasOwnProperty.call(have, key);
+      // A RENAMED key (spec `aka`): an un-migrated sheet still carries the old-name row — show ITS value as the
+      // effective one (that's what validation resolves to), not the default. An explicit new-name row wins.
+      const direct = Object.prototype.hasOwnProperty.call(have, key);
+      const viaAka = !direct && k.aka && Object.prototype.hasOwnProperty.call(have, k.aka);
+      const fromSheet = direct || !!viaAka;
       keys.push({
         key, t: k.t, def, req: !!k.req, help: k.help || '',
         min: (k.min != null ? k.min : null), max: (k.max != null ? k.max : null),
         options: k.enum ? k.enum.slice() : null,
-        value: fromSheet ? String(have[key]) : def,
+        value: direct ? String(have[key]) : (viaAka ? String(have[k.aka]) : def),
         fromSheet,
       });
     });
