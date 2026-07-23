@@ -592,6 +592,31 @@ function installDataValidation_() {
   const dateRule = (msg) => SpreadsheetApp.newDataValidation().requireDate().setAllowInvalid(true).setHelpText(msg).build();
   const listRule = (vals, msg) => SpreadsheetApp.newDataValidation().requireValueInList(vals, true).setAllowInvalid(true).setHelpText(msg).build();
 
+  // HEAL BEFORE APPLYING: deleting or inserting a column strands our old rules on whatever column slid into that
+  // position — remove an "OOC NAME" column and the ID's REJECT rule can land on NAME, blocking every name typed.
+  // Any rule wearing one of OUR help texts (never the operator's own rules) on a column it no longer belongs to is
+  // cleared here, so a re-run of 🚀 First-Run Setup always repairs a re-shaped layout.
+  const scrubStale = (sheet, startRow, n, expectedByText) => {
+    try {
+      const lastCol = sheet.getLastColumn();
+      if (!lastCol || n < 1) return;
+      const rg = sheet.getRange(startRow, 1, n, lastCol);
+      const dvs = rg.getDataValidations();
+      let changed = false;
+      for (let r = 0; r < dvs.length; r++) {
+        for (let c = 0; c < dvs[r].length; c++) {
+          const dv = dvs[r][c]; if (!dv) continue;
+          let ht = ''; try { ht = String(dv.getHelpText() || ''); } catch (e) { continue; }
+          if (!ht) continue;
+          for (const key in expectedByText) {
+            if (ht.indexOf(key) === 0 && expectedByText[key] !== c + 1) { dvs[r][c] = null; changed = true; break; }
+          }
+        }
+      }
+      if (changed) rg.setDataValidations(dvs);
+    } catch (e) { log_('installDataValidation_.scrub', e); }
+  };
+
   // Apply a STATUS dropdown, but PRESERVE an existing one that already offers the same set of values. Apps Script
   // cannot read or set the per-value dropdown CHIP COLOURS, so blindly re-applying the rule wipes a user's custom
   // status colours — so we only (re)build the dropdown when it's missing or its value set actually changed.
@@ -614,6 +639,11 @@ function installDataValidation_() {
     // F-042: validate only the live data range + a 50-row buffer (re-run setup after big growth), not all ~994 rows.
     const n = Math.min(roster.getMaxRows(), Math.max(roster.getLastRow(), CONFIG.rosterStartRow - 1) + CONFIG.limits.validationBuffer) - CONFIG.rosterStartRow + 1;
     if (n > 0) {
+      scrubStale(roster, CONFIG.rosterStartRow, n, {
+        'Unique ID must be a ': RC.discord,
+        'Enter a valid join date': RC.join,
+        'Enter a valid promotion date': RC.promo,
+      });
       const idCol = roster.getRange(CONFIG.rosterStartRow, RC.discord, n, 1);
       idCol.setDataValidation(idRuleFor(idCol)); counts.roster++;
       roster.getRange(CONFIG.rosterStartRow, RC.join, n, 1).setDataValidation(dateRule('Enter a valid join date, or leave blank.')); counts.roster++;
@@ -627,6 +657,12 @@ function installDataValidation_() {
     const T = trackerCols_(tracker), start = CONFIG.trackerStartRow;
     const n = Math.min(tracker.getMaxRows(), Math.max(tracker.getLastRow(), start - 1) + CONFIG.limits.validationBuffer) - start + 1; // F-042: live range + buffer (config), not all rows
     if (n > 0) {
+      scrubStale(tracker, start, n, {
+        'Unique ID must be a ': T.discord,
+        'Enter a valid start date.': T.start,
+        'Enter a valid end date.': T.end,
+        'Choose a leave status.': T.status,
+      });
       if (T.discord) { const idCol = tracker.getRange(start, T.discord, n, 1); idCol.setDataValidation(idRuleFor(idCol)); counts.tracker++; }
       if (T.start) { tracker.getRange(start, T.start, n, 1).setDataValidation(dateRule('Enter a valid start date.')); counts.tracker++; }
       if (T.end) { tracker.getRange(start, T.end, n, 1).setDataValidation(dateRule('Enter a valid end date.')); counts.tracker++; }
@@ -643,6 +679,12 @@ function installDataValidation_() {
     const PC = patrolLogCols_(patrolLog), pstart = CONFIG.patrolStartRow;
     const n = Math.min(patrolLog.getMaxRows(), Math.max(patrolLog.getLastRow(), pstart - 1) + CONFIG.limits.validationBuffer) - pstart + 1;
     if (n > 0) {
+      scrubStale(patrolLog, pstart, n, {
+        'Unique ID must be a ': PC.discord,
+        'Enter the patrol start date.': PC.startDate,
+        'Enter the patrol end date.': PC.endDate,
+        'Patrol status: ': PC.status,
+      });
       if (PC.discord) { const idCol = patrolLog.getRange(pstart, PC.discord, n, 1); idCol.setNumberFormat('@').setDataValidation(idRuleFor(idCol)); counts.patrolLog++; }
       if (PC.startDate) { patrolLog.getRange(pstart, PC.startDate, n, 1).setDataValidation(dateRule('Enter the patrol start date.')); counts.patrolLog++; }
       if (PC.endDate) { patrolLog.getRange(pstart, PC.endDate, n, 1).setDataValidation(dateRule('Enter the patrol end date.')); counts.patrolLog++; }

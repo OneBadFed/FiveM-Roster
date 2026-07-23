@@ -120,6 +120,10 @@ restructure, or reformat your sheets.
      this copy.
    - *Renamed a tab and things stopped?* → point the engine at the new name in ⚙️ Engine Settings ▸ Sheets &
      layout.
+   - *Deleted or added roster columns and now typing gets rejected* (e.g. a name refused with a "Unique ID"
+     message)? → deleting a column slides the old entry-validation rules onto a neighboring column. Run
+     **🚀 First-Run Setup** once — it scrubs the stranded rules and re-applies them to the right columns.
+     (Columns like OOC NAME are optional; removing them is fine.)
    - *A member isn't getting patrol credit?* → their Unique ID on the log doesn't match the roster (the row
      will be Flagged with the reason).
 4. **Every edit is audited** — Control Panel ▸ System shows who changed what, when. Editors whose email is on

@@ -77,7 +77,12 @@ SCHEDULE · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS / DASHBOA
 
 **Header-resolved columns.** `rosterCols_(sheet)` matches headers by keyword (RANK, NAME, UNIQUE ID/DISCORD,
 ACTIVITY, HOURS, JOIN, PROMOT, UNIT/CALLSIGN, OOC, SHIFT); configured positions are only the fallback. Columns
-can be reordered freely if labels stay. Cached per sheet id; invalidated with config. The tracker, Patrol Log,
+can be reordered freely if labels stay — and optional columns (OOC NAME, SHIFT…) can be deleted outright.
+Cached per sheet id; invalidated with config. **Entry-time data validation self-heals:** deleting/inserting a
+column strands the old rules on whichever column slid into that position, so `installDataValidation_` first
+scrubs any engine-owned rule (identified by its help text — operator rules are never touched) from columns it no
+longer belongs to, then re-applies at the current header-resolved positions. Re-run 🚀 First-Run Setup after
+layout surgery. The tracker, Patrol Log,
 and Signups tabs each have their own header-resolved maps (`trackerCols_`, `patrolLogCols_`, `signupCols_` —
 the latter auto-detects the header row, so a themed tab with a banner works).
 
