@@ -39,10 +39,11 @@ function addDevMenu_(prefix) {
     .addItem('🚔 Add Random Patrol Log (test)', p + 'devAddRandomPatrol')
     .addItem('🧾 Add Random Signup (test)', p + 'devAddRandomSignup')
     .addSeparator()
-    // The full 23-section run can exceed Apps Script's ~6-minute execution cap and die mid-suite — run the two
+    // The full 23-section run can exceed Apps Script's ~6-minute execution cap and die mid-suite — run the three
     // parts back-to-back instead (each fits comfortably). Run ALL stays for accounts/configs where it fits.
-    .addItem('▶️ Run Tests — Part 1 (sections 1–12)', p + 'devRunAllTestsPart1')
-    .addItem('▶️ Run Tests — Part 2 (sections 13–23)', p + 'devRunAllTestsPart2')
+    .addItem('▶️ Run Tests — Part 1 (sections 1–8)', p + 'devRunAllTestsPart1')
+    .addItem('▶️ Run Tests — Part 2 (sections 9–16)', p + 'devRunAllTestsPart2')
+    .addItem('▶️ Run Tests — Part 3 (sections 17–23)', p + 'devRunAllTestsPart3')
     .addItem('⏱️ Run ALL Tests (may hit the 6-min cap)', p + 'devRunAllTests')
     .addSubMenu(ui.createMenu('🔬 Run one section')
       .addItem('1 · Unit / pure functions', p + 'devRunSection1')
@@ -289,7 +290,7 @@ const DEV_GROUPS = [
  * menu offers the suite in two halves. Each half repeats the config preflight
  * and uses the same teardown + report path; the split point is one constant.
  * ====================================================================== */
-const DEV_PART_SPLIT_ = 12; // Part 1 = sections 1..12, Part 2 = 13..end
+const DEV_PART_ENDS_ = [8, 16]; // Part 1 = sections 1..8, Part 2 = 9..16, Part 3 = 17..end — adjust here if a part still hits the cap
 
 /** Runs DEV_GROUPS[from..to] (1-based, inclusive) with preflight, guaranteed teardown, and a labeled report. */
 function devRunRange_(from, to, partLabel) {
@@ -315,8 +316,9 @@ function devRunRange_(from, to, partLabel) {
 }
 
 function devRunAllTests() { devRunRange_(1, DEV_GROUPS.length, ''); }
-function devRunAllTestsPart1() { devRunRange_(1, DEV_PART_SPLIT_, `Part 1 (sections 1–${DEV_PART_SPLIT_})`); }
-function devRunAllTestsPart2() { devRunRange_(DEV_PART_SPLIT_ + 1, DEV_GROUPS.length, `Part 2 (sections ${DEV_PART_SPLIT_ + 1}–${DEV_GROUPS.length})`); }
+function devRunAllTestsPart1() { devRunRange_(1, DEV_PART_ENDS_[0], `Part 1 (sections 1–${DEV_PART_ENDS_[0]})`); }
+function devRunAllTestsPart2() { devRunRange_(DEV_PART_ENDS_[0] + 1, DEV_PART_ENDS_[1], `Part 2 (sections ${DEV_PART_ENDS_[0] + 1}–${DEV_PART_ENDS_[1]})`); }
+function devRunAllTestsPart3() { devRunRange_(DEV_PART_ENDS_[1] + 1, DEV_GROUPS.length, `Part 3 (sections ${DEV_PART_ENDS_[1] + 1}–${DEV_GROUPS.length})`); }
 
 /* ======================================================================
  * RUN ONE SECTION — same teardown/report as Run-ALL, for a single group.
@@ -465,7 +467,8 @@ function devWriteResults_(collectors, title) {
 
 function devPopup_(totals, label) {
   const scope = label ? `${label}: ` : '';
-  const next = (label && label.indexOf('Part 1') === 0) ? '\n\nNow run ▶️ Run Tests — Part 2 for the rest of the suite.' : '';
+  const m = label ? String(label).match(/^Part (\d+)/) : null; // "Part N" with parts still after it → point at Part N+1
+  const next = (m && Number(m[1]) <= DEV_PART_ENDS_.length) ? `\n\nNow run ▶️ Run Tests — Part ${Number(m[1]) + 1} for the next chunk of the suite.` : '';
   const msg = totals.fail === 0
     ? `✅ ${scope}all tests passed (${totals.pass} assertions).\n\nSee the "${RESULTS_TAB}" tab.${next}`
     : `❌ ${scope}${totals.fail} of ${totals.pass + totals.fail} assertions FAILED.\n\nOpen "${RESULTS_TAB}" — failing rows are red.${next}`;
