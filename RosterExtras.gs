@@ -602,7 +602,9 @@ function buildGroupSheets_() {
     // A tab counts as a group tab if it has an explicit marker OR its name reads like a group.
     if (!marker && !groupNoun.test(nm)) return;
     const grp = marker ? { column: marker.column, values: marker.values } : inferGroup_(nm);
-    const gCol = grp.column ? colFor(grp.column) : findGroupColumn_(roster, start, grp.values[0]);
+    // Named column first; if that header no longer exists (e.g. SHIFT renamed to ASSIGNMENT), fall back to the
+    // value scan — the tab keeps working across a rename instead of silently emptying.
+    const gCol = (grp.column ? colFor(grp.column) : 0) || findGroupColumn_(roster, start, grp.values[0]);
     // Find where the member rows begin on THIS tab (right below its own RANK/NAME header row) — never assume a position.
     const hdr = groupHeaderRow_(sh);
     if (!hdr.row) { skipped.push({ name: nm, why: 'no RANK/NAME header row found — lay out the columns first' }); return; }

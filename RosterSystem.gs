@@ -106,7 +106,7 @@ function rosterCols_(sheet) {
         activity: (h) => h.indexOf('ACTIVITY') !== -1 || h.indexOf('STATUS') !== -1, // "STATUS" is the new label for the activity tier
         hours: (h) => h.indexOf('HOURS') !== -1,
         ooc: (h) => h.indexOf('OOC') !== -1,
-        shift: (h) => h.indexOf('SHIFT') !== -1,
+        shift: (h) => h.indexOf('SHIFT') !== -1 || h.indexOf('ASSIGNMENT') !== -1, // departments that renamed SHIFT → ASSIGNMENT keep the role
         mayHours: (h) => h.indexOf('MAY') !== -1 && h.indexOf('HOUR') !== -1,
         junHours: (h) => h.indexOf('JUN') !== -1 && h.indexOf('HOUR') !== -1,
         timeInRank: (h) => h.indexOf('TIME') !== -1 && h.indexOf('RANK') !== -1,
@@ -2139,7 +2139,7 @@ function trackerCols_(tracker) {
       out.ooc = find((h) => h.indexOf('OOC') !== -1);
       out.name = find((h) => h === 'NAME' || (h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1));
       out.discord = find((h) => h.indexOf('UNIQUE') !== -1 || h.indexOf('DISCORD') !== -1 || h.indexOf('CID') !== -1 || h.indexOf('COMMUNITY ID') !== -1);
-      out.shift = find((h) => h.indexOf('SHIFT') !== -1 || h.indexOf('DIVISION') !== -1 || h.indexOf('DISTRICT') !== -1);
+      out.shift = find((h) => h.indexOf('SHIFT') !== -1 || h.indexOf('DIVISION') !== -1 || h.indexOf('DISTRICT') !== -1 || h.indexOf('ASSIGNMENT') !== -1);
       out.start = find((h) => h.indexOf('START') !== -1);
       out.end = find((h) => h.indexOf('END') !== -1);
       out.length = find((h) => h.indexOf('LENGTH') !== -1 || h === 'LEN');
@@ -2526,7 +2526,7 @@ function patrolLogCols_(sheet) {
     out.ooc = all('OOC');
     for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } // NAME that isn't "OOC NAME"
     out.discord = all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
-    out.shift = all('SHIFT') || all('DIVISION') || all('DISTRICT');
+    out.shift = all('SHIFT') || all('DIVISION') || all('DISTRICT') || all('ASSIGNMENT');
     out.startDate = all('START', 'DATE'); out.endDate = all('END', 'DATE');
     out.startTime = all('START', 'TIME'); out.endTime = all('END', 'TIME');
     out.total = all('TOTAL'); out.status = all('STATUS');
