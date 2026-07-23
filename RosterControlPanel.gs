@@ -123,6 +123,7 @@ function cpSetWebhook(url, channel) {
     for (let i = 0; i < chs.length; i++) { if (norm_(chs[i][0]) === ch) { row = i + 2; break; } }
   }
   let me = ''; try { me = Session.getActiveUser().getEmail() || ''; } catch (e) { /* consumer-account quirk */ }
+  if (me && typeof auditWho_ === 'function') me = auditWho_(me); // member NAME when the email is on their roster row
   if (u === '') {
     if (row) sh.getRange(row, 2, 1, 3).setNumberFormat('@').setValues([['', me, fmtTs_(new Date())]]);
   } else {
@@ -2392,6 +2393,7 @@ function cpAddDiscipline(payload) {
   const t = adminTabs_(file);
   let issuedBy = '';
   try { issuedBy = Session.getActiveUser().getEmail() || ''; } catch (e) { /* consumer-Gmail may hide it */ }
+  if (issuedBy && typeof auditWho_ === 'function') issuedBy = auditWho_(issuedBy); // member NAME when the email is on their roster row
   const lock = LockService.getScriptLock(); // two panels appending concurrently compute the same last-row and silently overwrite each other
   if (!lock.tryLock(10000)) throw new Error('Another roster operation is running — try again in a moment.');
   try {

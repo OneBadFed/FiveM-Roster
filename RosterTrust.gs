@@ -505,6 +505,39 @@ function cpAuditTail(n) {
 }
 
 /**
+ * The audit identity for an editor: when the editing account's email is listed on a member's roster row (the
+ * roster's private EMAIL column), every audit reference shows that member's NAME; otherwise it stays the raw
+ * email. One roster read per execution — the email→name map is memoized because auditEdit fires on every edit.
+ */
+let _auditWhoMemo_ = null;
+function auditWho_(email) {
+  const em = String(email || '').trim();
+  if (!em) return 'unknown';
+  try {
+    if (_auditWhoMemo_ === null) {
+      _auditWhoMemo_ = {};
+      const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+      if (roster && typeof rosterPiiCols_ === 'function') {
+        const P = rosterPiiCols_(roster);
+        const RC = rosterCols_(roster);
+        const start = CONFIG.rosterStartRow, last = roster.getLastRow();
+        if (P.email && RC.name && last >= start) {
+          const n = last - start + 1;
+          const emails = roster.getRange(start, P.email, n, 1).getDisplayValues();
+          const names = roster.getRange(start, RC.name, n, 1).getDisplayValues();
+          for (let i = 0; i < n; i++) {
+            const k = String(emails[i][0]).trim().toLowerCase();
+            const nm = String(names[i][0]).trim();
+            if (k && nm && !(k in _auditWhoMemo_)) _auditWhoMemo_[k] = nm; // first row wins on a duplicated email
+          }
+        }
+      }
+    }
+    return _auditWhoMemo_[em.toLowerCase()] || em;
+  } catch (e2) { return em; }
+}
+
+/**
  * Installable onEdit handler: logs who/what/when to the Edit Log tab. Self-contained
  * (does not need RosterExtras). Point an installable onEdit trigger here — or just
  * flip the "Audit log" toggle in the panel, which manages the trigger for you.
@@ -539,9 +572,10 @@ function auditEdit(e) {
     const multi = e.range.getNumRows() * e.range.getNumColumns() > 1;
     const oldV = multi ? '(multi-cell)' : (e.oldValue === undefined ? '' : e.oldValue);
     const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
-    log.appendRow([new Date(), email || 'unknown', sheetName, e.range.getA1Notation(), oldV, newV, '', '']);
+    const who = auditWho_(email); // member NAME when the email is on their roster row, else the email
+    log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV, '', '']);
     const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v2.5.0: config cap)
-    auditNotify_(email || 'unknown', sheetName, e.range.getA1Notation(), oldV, newV, 'edit', ''); // AUDIT channel mirror (webhook presence = opt-in)
+    auditNotify_(who, sheetName, e.range.getA1Notation(), oldV, newV, 'edit', ''); // AUDIT channel mirror (webhook presence = opt-in)
   } catch (err) {
     log_('auditEdit', err);
   }
@@ -563,9 +597,10 @@ function auditEvent_(type, oldText, newText, cellA1, member) {
     }
     let email = '';
     try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* not available */ }
-    log.appendRow([new Date(), email || 'unknown', CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || '', member || '']);
+    const who = auditWho_(email); // member NAME when the email is on their roster row, else the email
+    log.appendRow([new Date(), who, CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || '', member || '']);
     const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // v2.5.0: config cap
-    auditNotify_(email || 'unknown', CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || 'action', member || ''); // AUDIT channel mirror
+    auditNotify_(who, CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || 'action', member || ''); // AUDIT channel mirror
   } catch (err) {
     log_('auditEvent_', err);
   }

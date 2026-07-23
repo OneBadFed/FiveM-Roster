@@ -751,7 +751,7 @@
     if(g.tables && (tblChanged('STATUSES')||tblChanged('STATUS_OVERRIDES')||tblChanged('STATUS_RULES'))) return true;
     if(g.table && tblChanged(g.table)) return true;
     if(g.custom==='ranklabels' && tblChanged('DASHBOARD_GROUPS')) return true;
-    if(g.custom==='discord' && tblChanged('EMBEDS')) return true;
+    if(g.custom==='discord') return embChanged_(g.channel); // ONLY this channel's [EMBEDS] rows — one edit must not light all four Discord dots
     if(g.tablesMulti && g.tablesMulti.some(function(n){return tblChanged(n);})) return true;
     if(g.cards){ for(var bk in KV){ if(sectionOf(bk)===id && kvChanged(bk)) return true; } }
     return false;
@@ -1288,6 +1288,19 @@
   var DC_SWATCH=['#00458E','#8a1f1f','#c2691c','#c9a227','#e64bb0','#2ea043','#a68a00','#b02a2a','#7c5cff','#4f8ee8'];
   var DCEV={}, LASTEMB=null;
   function embGet_(ev){ var rows=TBL.EMBEDS||[]; for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ try{ var o=JSON.parse(rows[i][1]||'{}'); return (o&&typeof o==='object')?o:{}; }catch(e){ return {}; } } } return null; }
+  /* The [EMBEDS] table is SHARED by all four Discord sections, so a whole-table compare lit every section's dirty
+     dot on any one edit. Compare only THIS channel's event rows, keyed by event id (order-independent — embSet_
+     appends, so row order can interleave between channels). */
+  function embRowsFor_(channel, rows){
+    var ids={}; (DC_EVENTS[channel]||[]).forEach(function(e){ ids[e.id]=1; });
+    var out={};
+    (rows||[]).forEach(function(r){ var k=String(r[0]).trim(); if(ids[k]) out[k]=String(r[1]==null?'':r[1]); });
+    return JSON.stringify(out);
+  }
+  function embChanged_(channel){
+    var base=[]; try{ base=JSON.parse(TBLBASE.EMBEDS||'[]'); }catch(e){ base=[]; }
+    return embRowsFor_(channel, TBL.EMBEDS) !== embRowsFor_(channel, base);
+  }
   function embSet_(ev,obj){ TBL.EMBEDS=TBL.EMBEDS||[]; var rows=TBL.EMBEDS, j=JSON.stringify(obj);
     for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ rows[i][1]=j; updateBar(); return; } }
     rows.push([ev,j]); updateBar(); }

@@ -1160,7 +1160,8 @@ function recordEdit(e) {
     const multi = e.range.getNumRows() * e.range.getNumColumns() > 1;
     const oldV = multi ? '(multi-cell — not captured)' : (e.oldValue === undefined ? '' : e.oldValue);
     const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
-    log.appendRow([new Date(), email || 'unknown', sheetName, e.range.getA1Notation(), oldV, newV]);
+    const who = (email && typeof auditWho_ === 'function') ? auditWho_(email) : (email || 'unknown'); // member NAME when the email is on their roster row
+    log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV]);
     const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v2.5.0: config cap)
   } catch (err) {
     log_('recordEdit', err);
