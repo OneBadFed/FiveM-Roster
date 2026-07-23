@@ -3098,14 +3098,29 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const fRank = (mi.found && mi.rank) ? mi.rank : rank;
       const fUnit = (mi.found && mi.unit) ? mi.unit : callsign;
       if (dedupKey) synced[dedupKey] = true; // in-loop, so a duplicate submission later in this same scan still dedups
+      // FLAG what doesn't add up — the row still syncs (nothing is lost), but lands as [LEAVE].FLAGGED_STATUS
+      // with the reason spelled out in NOTES instead of a quietly wrong Pending: an ID that isn't on the roster,
+      // reversed dates, a leave that already ended, or one longer than MAX_DAYS_WARN. Mirrors the Patrol Log.
+      const flags = [];
+      if (!mi.found) flags.push('Unique ID not on the roster');
+      if (endDate.getTime() < startDate.getTime()) flags.push('end is before start');
+      else {
+        const t0 = todayInSheetTz_();
+        if (endDate.getTime() < new Date(t0.getFullYear(), t0.getMonth(), t0.getDate()).getTime()) flags.push('leave is entirely in the past');
+        let maxDays = 0; try { maxDays = Number(cfg_().leave.MAX_DAYS_WARN) || 0; } catch (e2) { /* config broken → no length check */ }
+        if (maxDays && (endDate.getTime() - startDate.getTime()) / 86400000 > maxDays) flags.push(`longer than ${maxDays} days`);
+      }
+      let flaggedStatus = ''; try { flaggedStatus = String(cfg_().leave.FLAGGED_STATUS || '').trim(); } catch (e2) { /* off */ }
+      const rowStatus = (flags.length && flaggedStatus) ? flaggedStatus : CONFIG.pendingStatus;
       // The form's free-text reason goes to the tracker's own REASON column when the layout has one, else into
-      // NOTES. A submitted type that isn't the tracker's own is always preserved in NOTES ("Emergency leave").
+      // NOTES. Flags + a submitted type that isn't the tracker's own are always preserved in NOTES.
       const reason = String((FC.reason ? at(FC.reason) : '') || '').trim();
       const noteBits = [];
+      if (flags.length) noteBits.push('⚠️ ' + flags.join(' · '));
       if (!typeMatches) noteBits.push(typeEff);
       if (reason && !RC.reason) noteBits.push(reason);
       accepted.push({
-        rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus, notes: clamp_(noteBits.join(' — '), 500), reason: RC.reason ? clamp_(reason, 500) : '' }),
+        rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: rowStatus, notes: clamp_(noteBits.join(' — '), 500), reason: RC.reason ? clamp_(reason, 500) : '' }),
         rowIndex: rowIndex,
         leaf: { name: fName, rank: fRank, callsign: fUnit, type: typeEff, startStr, endStr, durationStr, discord },
       });
