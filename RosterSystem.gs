@@ -2959,7 +2959,7 @@ function syncFormToTracker() {
  * The engine-created form resolves identically both ways, so standard installs are unchanged.
  */
 function leaveFormCols_(formSheet) {
-  const fixed = { timestamp: CONFIG.form.timestamp, name: CONFIG.form.name, discord: CONFIG.form.discord, callsign: CONFIG.form.callsign, rank: CONFIG.form.rank, type: CONFIG.form.type, start: CONFIG.form.start, end: CONFIG.form.end, byHeader: false };
+  const fixed = { timestamp: CONFIG.form.timestamp, name: CONFIG.form.name, discord: CONFIG.form.discord, callsign: CONFIG.form.callsign, rank: CONFIG.form.rank, type: CONFIG.form.type, start: CONFIG.form.start, end: CONFIG.form.end, reason: 0, byHeader: false };
   try {
     const lastCol = formSheet.getLastColumn();
     if (lastCol < 3 || formSheet.getLastRow() < 1) return fixed;
@@ -2985,6 +2985,7 @@ function leaveFormCols_(formSheet) {
     out.type = find('TYPE', ['STATUS', 'TYPE']);
     out.callsign = find('CALLSIGN', ['CALLSIGN', 'UNIT']);
     out.rank = find('RANK', ['RANK']);
+    out.reason = find('REASON', ['REASON', 'DETAILS']); // optional — "Reason for leave" free text lands in the tracker's NOTES
     out.name = find('NAME', ['NAME']); // LAST — must not steal a "Discord Name"-style column from a specific role
     if (out.timestamp && out.discord && out.start && out.end && out.type && out.name) return out;
     logWarn_('leaveFormCols_', `"${formSheet.getName()}" row-1 headers didn't fully resolve (need Timestamp, Name, ID, Type/Status, Start, End) — using the classic fixed column order 1–8.`);
@@ -3047,11 +3048,14 @@ function syncFormToTracker_(form, tracker, opts = {}) {
         logInfo_('syncFormToTracker_', `form row ${rowIndex}: no usable Unique ID — matched by name+rank/callsign to roster row ${rec.row}; using that member's ID.`);
         discord = rec.id;
       }
-      // LOA-only tracker: reject any non-LOA submission (e.g. an ROA form row) — the tracker has no TYPE column, so a
-      // different type would sync "done" (green) yet activate/expire as the wrong status.
+      // Type policy ([LEAVE].FORM_TYPE_POLICY). MATCH (default): reject any non-tracker-type submission (e.g. an
+      // ROA row on an LOA-only tracker) — a different type would sync "done" yet activate/expire as the wrong
+      // status. ANY: a department's own vocabulary (Emergency leave, Vacation, …) all syncs onto the one tracker,
+      // with the submitted type preserved in NOTES below so nothing is lost.
       const trkType = trackerLeaveType_();
-      if (norm_(String(type).trim()) !== norm_(trkType)) {
-        logWarn_('syncFormToTracker_', `form row ${rowIndex}: leave type "${type}" is not "${trkType}" (LOA-only tracker); marking error and skipping.`);
+      const typeMatches = norm_(String(type).trim()) === norm_(trkType);
+      if (!typeMatches && norm_(CONFIG.formTypePolicy || 'MATCH') !== 'ANY') {
+        logWarn_('syncFormToTracker_', `form row ${rowIndex}: leave type "${type}" is not "${trkType}" (LOA-only tracker); marking error and skipping. Set [LEAVE].FORM_TYPE_POLICY = ANY to accept custom types.`);
         form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error);
         continue;
       }
@@ -3084,8 +3088,14 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const fRank = (mi.found && mi.rank) ? mi.rank : rank;
       const fUnit = (mi.found && mi.unit) ? mi.unit : callsign;
       if (dedupKey) synced[dedupKey] = true; // in-loop, so a duplicate submission later in this same scan still dedups
+      // NOTES: the free-text reason (when the form has one) — prefixed with the submitted type when it isn't the
+      // tracker's own, so an "Emergency leave — Grandmother is sick" survives onto the LOA-only tracker.
+      const reason = String((FC.reason ? at(FC.reason) : '') || '').trim();
+      const noteBits = [];
+      if (!typeMatches && String(type || '').trim()) noteBits.push(String(type).trim());
+      if (reason) noteBits.push(reason);
       accepted.push({
-        rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus }),
+        rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: CONFIG.pendingStatus, notes: clamp_(noteBits.join(' — '), 500) }),
         rowIndex: rowIndex,
         leaf: { name: fName, rank: fRank, callsign: fUnit, type, startStr, endStr, durationStr, discord },
       });

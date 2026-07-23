@@ -343,6 +343,7 @@ const BLOCK_SPECS_ = Object.freeze({
     AUTO_EXPIRE: { t: 'bool', d: true, req: true, help: 'Nightly job expires Approved leaves past END.' },
     EXPIRE_NEVER_APPROVED: { t: 'bool', d: false, req: true, help: 'FALSE = Pending leaves are never auto-expired.' },
     MAX_DAYS_WARN: { t: 'int', d: 30, req: false, min: 1, max: 365, help: 'Longer requests get a WARN in the sync summary (Phase 2 wiring).' },
+    FORM_TYPE_POLICY: { t: 'enum', d: 'MATCH', req: false, enum: ['MATCH', 'ANY'], help: 'What the leave sync does with a form "type" answer that is not the tracker\'s leave type. MATCH (default) = reject the row (red, retryable) — protects a form whose choices should be LOA/ROA. ANY = accept every submission onto the tracker; the submitted type is recorded in NOTES so nothing is lost. Use ANY when your form offers its own vocabulary (Emergency leave, Vacation, …) and one tracker handles them all.' },
   } },
   FORM_MAP: { type: 'table', cols: ['Role', 'Header'],
     seed: [
@@ -995,6 +996,7 @@ function materialize_(c, fromTab) {
     protectedStatuses,
     // ---- Config-driven status vocabulary (single source of truth; hot paths must read these, not literals) ----
     leaveTypes: kv.LEAVE.LEAVE_TYPES.slice(),                                    // e.g. ['LOA','ROA'] — members on leave
+    formTypePolicy: kv.LEAVE.FORM_TYPE_POLICY || 'MATCH',                        // MATCH = reject unknown form types; ANY = accept + record in NOTES
     statusFlow: kv.LEAVE.STATUS_FLOW.slice(),                                    // tracker dropdown values
     pendingStatus: kv.LEAVE.STATUS_FLOW[0] || 'Pending',                         // default tracker status on sync
     approvedStatus: kv.LEAVE.APPROVED_STATUS || 'Approved',                      // the state the nightly job acts on
