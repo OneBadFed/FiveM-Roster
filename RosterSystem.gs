@@ -1239,6 +1239,22 @@ function onEdit(e) {
         checkImmediateLOAStart(sheet, row);
         notifyLeaveApproved_(sheet, row); // v1.0 optional embed (toggle off by default)
       }
+      // UPDATED BY / APPROVED BY: stamp WHO changed the status (email → roster name via auditWho_) on each edited
+      // data row that still holds a leave — BEFORE the sort below, so the stamp travels with the row. LIMITED-safe
+      // (Session + same-sheet writes). Consumer accounts can hide a non-owner editor's email → skip, never "unknown".
+      if (statusTouched && TRC.approvedBy) {
+        try {
+          let em = ''; try { em = Session.getActiveUser().getEmail() || ''; } catch (ig) { /* hidden on consumer accounts */ }
+          const who = em ? ((typeof auditWho_ === 'function') ? auditWho_(em) : em) : '';
+          if (who) {
+            const rL2 = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
+            for (let rr = Math.max(row, CONFIG.trackerStartRow); rr <= rL2; rr++) {
+              if (TRC.status && String(sheet.getRange(rr, TRC.status).getDisplayValue()).trim() === '') continue; // cleared rows aren't stamped
+              sheet.getRange(rr, TRC.approvedBy).setValue(who);
+            }
+          }
+        } catch (e2) { log_('onEdit.updatedBy', e2); }
+      }
       if (statusTouched || deletedRow) {
         try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group by status + compact away any gap left by the delete
       }
@@ -2152,7 +2168,7 @@ function trackerCols_(tracker) {
       out.timeLeft = find((h) => h.indexOf('TIME LEFT') !== -1 || (h.indexOf('LEFT') !== -1 && h.indexOf('UNTIL') === -1));
       out.returnDate = find((h) => h.indexOf('RETURN') !== -1);
       out.status = find((h) => h.indexOf('STATUS') !== -1);
-      out.approvedBy = find((h) => h.indexOf('APPROV') !== -1);
+      out.approvedBy = find((h) => h.indexOf('APPROV') !== -1 || (h.indexOf('UPDAT') !== -1 && h.indexOf('BY') !== -1)); // "APPROVED BY" or an "UPDATED BY" rename
       out.notes = find((h) => h.indexOf('NOTE') !== -1);
       out.reason = find((h) => h.indexOf('REASON') !== -1); // optional — a form's "reason" answer lands here when the tab has one (else NOTES)
     }
