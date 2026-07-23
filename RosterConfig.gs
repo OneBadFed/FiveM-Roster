@@ -349,7 +349,7 @@ const BLOCK_SPECS_ = Object.freeze({
       ['TIMESTAMP', 'Timestamp'], ['NAME', 'Name'], ['DISCORD_ID', 'Discord'], ['CALLSIGN', 'Callsign'],
       ['RANK', 'Rank'], ['TYPE', 'Status'], ['START', 'Start'], ['END', 'End'],
     ],
-    help: 'Role → form-question keyword (header CONTAINS it, case/space-proof). Phase 1: used only when ALL 8 resolve on row 1; otherwise the engine falls back to the classic fixed column order with a WARN.' },
+    help: 'Role → leave-form question keyword (header CONTAINS it, case/space-proof). The sync resolves the responses tab\'s columns BY these headers (plus built-in synonyms — UNIQUE/COMMUNITY ID count as the ID), so a reordered or self-made form still files fields correctly. If Timestamp/Name/ID/Type/Start/End don\'t all resolve on row 1, the classic fixed column order 1-8 applies with a WARN.' },
   DISCORD: { type: 'kv', keys: {
     PING_ROLES: { t: 'string', d: '', req: false, help: 'Optional role mentions appended to notifications, e.g. <@&123> <@&456>.' },
     EMBED_COLOR: { t: 'color', d: '#236995', req: false, help: 'Reserved general embed accent.' },

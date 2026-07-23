@@ -1319,7 +1319,8 @@ function onFormSubmit(e) {
 function styleFormResponses_(sheet) {
   if (!sheet) return;
   const maxRows = sheet.getMaxRows();
-  const lastCol = Math.max(sheet.getLastColumn(), CONFIG.form.end);
+  const FC = leaveFormCols_(sheet); // header-resolved (same map the sync uses), fixed order as fallback
+  const lastCol = Math.max(sheet.getLastColumn(), FC.end || CONFIG.form.end);
   const lastRow = Math.max(sheet.getLastRow(), 1);
 
   // Base text: light Roboto across the grid (row backgrounds belong to the header / status tints / canvas below).
@@ -1334,7 +1335,7 @@ function styleFormResponses_(sheet) {
   sheet.setRowHeight(1, 42);
 
   // Discord IDs in monospace so the 17-19 digit strings line up.
-  sheet.getRange(1, CONFIG.form.discord, maxRows, 1).setFontFamily('Roboto Mono');
+  if (FC.discord) sheet.getRange(1, FC.discord, maxRows, 1).setFontFamily('Roboto Mono');
 
   // Empty canvas below the data → dark fill so the whole sheet reads as one console.
   if (maxRows > lastRow) {
@@ -2248,6 +2249,10 @@ function patrolCols_(sheet) {
     const P = CONFIG.patrol;
     out.discord = find(P.colDiscord); out.callsign = find(P.colCallsign);
     out.start = find(P.colStart); out.end = find(P.colEnd); out.duration = find(P.colDuration);
+    // The ID column is the one field crediting can't do without — when the configured keyword misses (e.g. the
+    // form says "Unique ID" but [PATROL].COL_DISCORD still says "Discord"), try the standard ID synonyms before
+    // giving up (a miss silently downgrades every submission to the strict callsign-only match).
+    if (out.discord === -1) { ['UNIQUE ID', 'COMMUNITY ID', 'DISCORD', 'MEMBER ID'].some((kw) => (out.discord = find(kw)) !== -1); }
   } catch (e) { log_('patrolCols_', e); }
   return out;
 }
@@ -2739,6 +2744,49 @@ function syncFormToTracker() {
 }
 
 /**
+ * Resolve the LEAVE form's response columns BY HEADER (row 1) so a reordered or operator-linked form still
+ * syncs correctly. Keywords: the [FORM_MAP] Header per role first (the operator may have renamed questions),
+ * then built-in synonyms (UNIQUE ID / COMMUNITY ID count as the ID column). Columns are claimed EXCLUSIVELY in
+ * priority order, so a generic keyword (NAME, resolved last) can never steal a more specific column. Header
+ * mode engages only when EVERY field the sync needs (timestamp, name, id, type, start, end) resolves —
+ * otherwise the classic fixed columns 1–8 apply with one WARN; never a half-header/half-positional mix.
+ * The engine-created form resolves identically both ways, so standard installs are unchanged.
+ */
+function leaveFormCols_(formSheet) {
+  const fixed = { timestamp: CONFIG.form.timestamp, name: CONFIG.form.name, discord: CONFIG.form.discord, callsign: CONFIG.form.callsign, rank: CONFIG.form.rank, type: CONFIG.form.type, start: CONFIG.form.start, end: CONFIG.form.end, byHeader: false };
+  try {
+    const lastCol = formSheet.getLastColumn();
+    if (lastCol < 3 || formSheet.getLastRow() < 1) return fixed;
+    const hdr = formSheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
+    let mapKw = {};
+    try { (cfg_().tables.FORM_MAP || []).forEach((r) => { const role = norm_(r.Role); const kw = String(r.Header || '').trim(); if (role && kw) mapKw[role] = kw; }); } catch (e) { /* map unavailable → built-in synonyms only */ }
+    const claimed = {};
+    const find = (role, extras) => {
+      const kws = [mapKw[role]].concat(extras).filter(Boolean).map((k) => norm_(k)).filter(Boolean);
+      for (let i = 0; i < kws.length; i++) {
+        for (let c = 0; c < hdr.length; c++) {
+          if (claimed[c + 1] || !hdr[c]) continue;
+          if (hdr[c].indexOf(kws[i]) !== -1) { claimed[c + 1] = true; return c + 1; }
+        }
+      }
+      return 0;
+    };
+    const out = { byHeader: true };
+    out.timestamp = find('TIMESTAMP', ['TIMESTAMP']);
+    out.discord = find('DISCORD_ID', ['DISCORD', 'UNIQUE ID', 'COMMUNITY ID', 'MEMBER ID']);
+    out.start = find('START', ['START']);
+    out.end = find('END', ['END']);
+    out.type = find('TYPE', ['STATUS', 'TYPE']);
+    out.callsign = find('CALLSIGN', ['CALLSIGN', 'UNIT']);
+    out.rank = find('RANK', ['RANK']);
+    out.name = find('NAME', ['NAME']); // LAST — must not steal a "Discord Name"-style column from a specific role
+    if (out.timestamp && out.discord && out.start && out.end && out.type && out.name) return out;
+    logWarn_('leaveFormCols_', `"${formSheet.getName()}" row-1 headers didn't fully resolve (need Timestamp, Name, ID, Type/Status, Start, End) — using the classic fixed column order 1–8.`);
+  } catch (e) { log_('leaveFormCols_', e); }
+  return fixed;
+}
+
+/**
  * Injectable sync core. Idempotent: a per-submission key (col A) prevents
  * duplicates even if the row color is lost. Stores REAL Date objects in
  * START/END so the INT() countdown formulas never depend on re-parsing a string.
@@ -2756,6 +2804,7 @@ function syncFormToTracker_(form, tracker, opts = {}) {
   const values = range.getValues();
   const backgrounds = range.getBackgrounds();
   const synced = buildSyncedKeySet_(tracker);
+  const FC = leaveFormCols_(form); // form columns BY HEADER ([FORM_MAP] keywords + synonyms); classic fixed order as fallback
   const RC = trackerCols_(tracker); // resolve the tracker's columns by header (any layout)
   const tz = ssTz_();
   const doneBg = String(CONFIG.bg.done).toLowerCase(); // lowercase once — a Studio-picked theme colour can be uppercase (getBackgrounds returns lowercase)
@@ -2772,14 +2821,15 @@ function syncFormToTracker_(form, tracker, opts = {}) {
 
     try {
       const row = values[i];
-      const timestamp = row[CONFIG.form.timestamp - 1];
-      const name = row[CONFIG.form.name - 1];
-      const discord = String(row[CONFIG.form.discord - 1]).trim();
-      const callsign = row[CONFIG.form.callsign - 1];
-      const rank = row[CONFIG.form.rank - 1];
-      const type = row[CONFIG.form.type - 1];
-      const startRaw = row[CONFIG.form.start - 1];
-      const endRaw = row[CONFIG.form.end - 1];
+      const at = (c) => (c && c <= row.length) ? row[c - 1] : ''; // 0 = the role didn't resolve → blank, never a wrong column
+      const timestamp = at(FC.timestamp);
+      const name = at(FC.name);
+      const discord = String(at(FC.discord)).trim();
+      const callsign = at(FC.callsign);
+      const rank = at(FC.rank);
+      const type = at(FC.type);
+      const startRaw = at(FC.start);
+      const endRaw = at(FC.end);
 
       if (!startRaw || !endRaw) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }
       if (!isValidId_(discord)) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); continue; }

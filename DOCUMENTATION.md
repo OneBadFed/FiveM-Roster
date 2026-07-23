@@ -125,8 +125,11 @@ deferred-work queue + 1-minute sweep as backstop.
 ## 4 · Leave Lifecycle (LOA/ROA)
 
 1. **Intake** — the wizard-generated Google Form (questions from `[FORM_MAP]`) writes to the response tab.
-2. **Sync** — `onFormSubmit` → `syncFormToTracker()`: per-row validation (ID, known type, parseable dates),
-   `KEY|id|timestamp` dedup keys (idempotent even if row colours are lost). The roster is the source of truth
+2. **Sync** — `onFormSubmit` → `syncFormToTracker()`: response columns are resolved **by header**
+   (`leaveFormCols_`: `[FORM_MAP]` keywords + built-in synonyms, UNIQUE/COMMUNITY ID count as the ID column;
+   the classic fixed order 1–8 applies with a WARN when the required roles don't all resolve) — so a reordered
+   or operator-made leave form still files fields correctly. Per-row validation (ID, known type, parseable
+   dates), `KEY|id|timestamp` dedup keys (idempotent even if row colours are lost). The roster is the source of truth
    for identity fields (one roster snapshot serves the whole batch). Accepted rows are seated with **one**
    tracker sort for the whole batch, landing new Pending leaves at the top. Errored rows go red and retry.
    Manual: 📥 Sync Leave Forms to Tracker.
