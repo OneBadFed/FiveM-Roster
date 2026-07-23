@@ -3519,6 +3519,11 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
     ? `\n\n⚠️ Row ${targetRow} already holds ${targetName} — continuing OVERWRITES ${targetName}'s row.`
     : '';
 
+  // INTERACTIVE-FIRST: stamp the publisher's backoff BEFORE the confirm dialog, so no NEW publish pass starts
+  // while the human reads it — the transfer's short tryLock below then wins instead of losing to a fresh pass.
+  // (LIMITED-safe: one document-property write.)
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
+
   if (!confirmMove(`Move ${memberName} from ${sourceRank} to ${targetRank}?${occupiedWarning}`)) {
     targetRange.clearContent();
     notify('❌ Action cancelled.');

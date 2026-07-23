@@ -831,8 +831,11 @@ function cpParseYMD_(s) {
 /** Runs fn while holding the script lock so two concurrent panel writes can't race (TOCTOU → dup IDs / double-seat). */
 function cpWithLock_(fn) {
   const lock = LockService.getScriptLock();
-  // 30s, not 10s: the near-live publisher can hold this same lock for the length of a multi-tab publish, and a
-  // panel save that merely COLLIDED with one should ride it out ("Saving…" a little longer), not hard-fail.
+  // INTERACTIVE-FIRST: stamp the publisher's backoff BEFORE waiting, so no NEW publish pass starts while this
+  // write queues — the in-flight pass finishes inside our 30s wait and the lock falls to us. Not cleared on
+  // release (admin sessions come in bursts); it simply expires, and the sweep then carries any pending publish.
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
+  // 30s, not 10s: a colliding save should ride out the publisher's current pass ("Saving…" a little longer), not hard-fail.
   if (!lock.tryLock(30000)) throw new Error('Another roster operation is holding the lock (usually the background publisher) — wait a few seconds and try again.');
   try { return fn(); } finally { lock.releaseLock(); }
 }
@@ -2087,6 +2090,8 @@ const PUBLISH_DIRTY_PROP_ = 'PUBLIC_DIRTY';
 const PUBLISH_LAST_PROP_ = 'PUBLIC_LAST_PUBLISH';
 const PUBLISH_CATCHUP_PROP_ = 'PUBLIC_CATCHUP_AT';
 const PUBLISH_CATCHUP_MS_ = 8000; // trailing publish ~8s after a burst's last deferred edit — so the tail shows in seconds, not on the 1-minute sweep
+const PUBLISH_BACKOFF_PROP_ = 'PUBLISH_BACKOFF_UNTIL'; // interactive-first: a pending panel write / transfer stamps now+45s here and NEW publish passes stand down until it expires
+const PUBLISH_BACKOFF_MS_ = 45000;
 
 /** Flag the public copy as stale WITHOUT publishing. Script writes (panel actions, the schedulers, patrol crediting)
  *  never fire onEdit, so they mark it here and the 1-minute sweep carries them. Cheap: one property write.
@@ -2104,6 +2109,10 @@ function publishMarkDirty_() {
 /** Publish under the lock, clearing the dirty flag FIRST so an edit landing mid-publish re-marks itself. */
 function publishPublicRosterQuiet_(onlyTab, mayClear) {
   const props = PropertiesService.getDocumentProperties();
+  // INTERACTIVE-FIRST: a panel write or member transfer waiting on the shared lock has stamped a backoff — don't
+  // START a new publish pass against it (a full pass can outlast any reasonable interactive wait). The dirty flag
+  // stays set, so the sweep carries the publish the moment the interactive burst is over.
+  try { if (Date.now() < Number(props.getProperty(PUBLISH_BACKOFF_PROP_) || 0)) return; } catch (e) { /* best-effort */ }
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(5000)) return; // another publish is already running — it will carry this change
   try {
