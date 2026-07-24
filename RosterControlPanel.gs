@@ -1954,9 +1954,17 @@ function publishForceMask_(dest, top, left, rows, cols) {
 function publishKeepMask_(dest, top, left, rows, cols, force) {
   const mask = [];
   for (let r = 0; r < rows; r++) mask.push(new Array(cols).fill(false));
+  let img = null; // in-cell IMAGE / smart-chip cells: the API can't setValues over them, so they must always be kept —
+                  // these are exactly what produced the "N cell(s) could not be written (in-cell image or chip)" warning
+                  // on every publish (the badge/logo + stat-card icons). Kept here, the write skips them silently.
   try {
-    const f = dest.getRange(top, left, rows, cols).getFormulas();
-    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (String(f[r][c] || '').trim() !== '') mask[r][c] = true;
+    const rg0 = dest.getRange(top, left, rows, cols);
+    const f = rg0.getFormulas(), vv = rg0.getValues();
+    for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+      if (String(f[r][c] || '').trim() !== '') mask[r][c] = true;                                    // a live formula (own clock/counter)
+      const x = vv[r][c];
+      if (x && typeof x === 'object' && !(x instanceof Date)) { (img = img || []).push(r * cols + c); mask[r][c] = true; } // CellImage/chip object (never a primitive/Date)
+    }
   } catch (e) { /* best-effort */ }
   const all = publishKeepRanges_();
   (all[norm_(dest.getName())] || []).concat(all['*'] || []).forEach((a1) => {
@@ -1972,6 +1980,7 @@ function publishKeepMask_(dest, top, left, rows, cols, force) {
   // formula. (Caller may pass a pre-computed mask; otherwise resolve it here so a per-column match-mode call is covered.)
   const fm = force || publishForceMask_(dest, top, left, rows, cols);
   if (fm) for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (fm[r][c]) mask[r][c] = false;
+  if (img) img.forEach((k) => { mask[(k / cols) | 0][k % cols] = true; }); // an in-cell image can NEVER be written — it wins even over a force range
   return mask;
 }
 
