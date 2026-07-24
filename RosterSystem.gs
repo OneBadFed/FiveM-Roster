@@ -517,8 +517,9 @@ function setupWizard() {
           : '❌ Leave form link FAILED — the response tab was not detected, so submissions will NOT sync. Re-run First-Run Setup; if it persists, open the form and check its response destination.');
       }
       if (form) { styleFormResponses_(form); steps.push('✅ Form Response sheet themed.'); }
-      // The patrol form's response tab gets the same console theme when it's linked.
+      // The patrol + signup form response tabs get the same console theme when they're linked.
       try { const pf = CONFIG.sheets.patrol ? ss.getSheetByName(CONFIG.sheets.patrol) : null; if (pf) { styleFormResponses_(pf); steps.push('✅ Patrol form response sheet themed.'); } } catch (e2) { /* best-effort */ }
+      try { const sf = CONFIG.sheets.signupForm ? ss.getSheetByName(CONFIG.sheets.signupForm) : null; if (sf) { styleFormResponses_(sf); steps.push('✅ Signup form response sheet themed.'); } } catch (e2) { /* best-effort */ }
     } catch (e) { steps.push(`⚠️ Leave form: ${e.message}`); }
 
     // 4. Column classification — scan roster headers into the [COLUMNS] block.
@@ -1338,10 +1339,10 @@ function onFormSubmit(e) {
   // only scans its own tab and no-ops when the feature is off, so (like the patrol sync) it needs no per-form routing.
   try { if (typeof syncSignupForm === 'function') syncSignupForm(); } catch (err) { log_('onFormSubmit.signups', err); }
   // Re-apply the dark theme so every new submission looks polished + on-brand (runs even if the sync above threw).
-  // BOTH form response tabs — the LOA form and the patrol form — get the same treatment (the one that was just
-  // submitted actually changed; re-styling the other is a cheap idempotent no-op).
+  // ALL THREE form response tabs — leave, patrol, and signup — get the same treatment (the one that was just
+  // submitted actually changed; re-styling the others is a cheap idempotent no-op).
   const ss2 = SpreadsheetApp.getActive();
-  [CONFIG.sheets.form, CONFIG.sheets.patrol].forEach((nm) => {
+  [CONFIG.sheets.form, CONFIG.sheets.patrol, CONFIG.sheets.signupForm].forEach((nm) => {
     if (!nm) return;
     try { const sh = ss2.getSheetByName(nm); if (sh) styleFormResponses_(sh); } catch (err) { log_('onFormSubmit.style', err); }
   });
