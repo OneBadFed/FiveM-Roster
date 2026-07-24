@@ -687,7 +687,7 @@
   var SECTIONS=[
     {id:'dcaudit', a:'var(--accent)', title:'Discord · Audit log', channel:'AUDIT', custom:'discord',
       desc:'Every roster edit — raw cell changes and panel actions — posts to this channel while its webhook is set.',
-      events:['Sheet edits (who, where, old → new)','Panel actions — status changes, moves, seats, snapshots','Transfer & member-added embeds, weekly digest, integrity summaries']},
+      events:['Sheet edits (who, where, old → new)','Panel actions — status changes, moves, seats, snapshots','New roster signups (opt-in embed per submission)','Transfer & member-added embeds, weekly digest, integrity summaries']},
     {id:'dcloa', a:'var(--purple)', title:'Discord · LOAs', channel:'LOA', custom:'discord',
       desc:'The leave lifecycle on Discord — submissions, approvals, starts and expiries.',
       events:['Leave submitted (form or panel)','Leave approved','Leave started','Leave expired']},
@@ -1266,7 +1266,8 @@
 
   /* ── embed builder: per-event templates stored as JSON rows in [EMBEDS], with a Discord-accurate live preview ── */
   var DC_EVENTS={
-    AUDIT:[{id:'audit',label:'Audit entry',ph:['user','editor','sheet','cell','member','old','new','action']}],
+    AUDIT:[{id:'audit',label:'Audit entry',ph:['user','editor','sheet','cell','member','old','new','action']},
+           {id:'signupSubmitted',label:'Signup submitted',ph:['name','id']}],
     LOA:[{id:'loaSubmitted',label:'Submitted',ph:['user','name','rank','callsign','type','start','end','length']},
          {id:'loaApproved',label:'Approved',ph:['user','name','rank','type','start','end']},
          {id:'loaStarted',label:'Started',ph:['user','name','rank','type']},
@@ -1280,19 +1281,35 @@
   var DC_RESET_KEYS={
     LOA:['DISCORD.SUBMIT_TITLE','DISCORD.EXPIRE_TITLE','NOTIFICATIONS.LEAVE_APPROVED_TITLE','NOTIFICATIONS.LEAVE_STARTED_TITLE'],
     PATROL:['NOTIFICATIONS.PATROL_LOGGED_TITLE'],
-    AUDIT:['NOTIFICATIONS.TRANSFER_TITLE','NOTIFICATIONS.MEMBER_ADDED_TITLE','NOTIFICATIONS.WEEKLY_DIGEST_TITLE'],
+    AUDIT:['NOTIFICATIONS.TRANSFER_TITLE','NOTIFICATIONS.MEMBER_ADDED_TITLE','NOTIFICATIONS.WEEKLY_DIGEST_TITLE','NOTIFICATIONS.SIGNUP_SUBMITTED_TITLE'],
+    ERRORS:[]
+  };
+  // Per-channel opt-in event toggles ([NOTIFICATIONS] bools) — rendered as a row in each Discord section so they're
+  // switchable from the panel instead of the raw Config sheet.
+  var DC_NOTIFY_TOGGLES={
+    AUDIT:[['NOTIFICATIONS.SIGNUP_SUBMITTED','New roster signups'],['NOTIFICATIONS.MEMBER_ADDED','Member added'],['NOTIFICATIONS.TRANSFER','Transfers'],['NOTIFICATIONS.WEEKLY_DIGEST','Weekly digest']],
+    LOA:[['NOTIFICATIONS.LEAVE_APPROVED','Leave approved'],['NOTIFICATIONS.LEAVE_STARTED','Leave started']],
+    PATROL:[['NOTIFICATIONS.PATROL_LOGGED','Hours credited']],
     ERRORS:[]
   };
   var DC_SAMPLE={user:'<@1234567890123456789>',editor:'admin@example.com',sheet:'Member Information',cell:'F14',member:'J. Bennett',old:'Active','new':'LOA',action:'Status change',
     name:'J. Bennett',rank:'Sergeant',callsign:'S-07',type:'LOA',start:'21 Jul 2026',end:'4 Aug 2026',length:'14 Days',
     hours:'6.5',total:'18.75',count:'2',rows:'`❌` Row 14 — no matching member\n`❌` Row 17 — bad or missing time',
+    id:'384206282342662148',
     code:'E-102',message:'Config has 1 error.',hint:'Open ⚙️ Config and fix the red cell.','function':'cfg_'};
+  // Per-EVENT sample overrides (win over the shared values above): a patrol's {start}/{end} carry DATE + TIME — the
+  // engine sends the log's start/end date and time combined — while a leave's are whole days. Keeps every preview
+  // showing exactly what a real post looks like.
+  var DC_SAMPLE_EV={
+    patrolLogged:{start:'21 Jul 2026 10:00 AM',end:'21 Jul 2026 4:30 PM'},
+    patrolFlagged:{start:'21 Jul 2026 10:00 AM',end:'21 Jul 2026 4:30 PM'}};
   // The BUILT-IN embed for each event — shown in the preview (with sample data) until an override is saved, so every
   // notification has a visible example. Overriding any field in the builder replaces this.
   // House style: the big title lives IN the description as a "# " markdown heading (native embed titles don't render
   // the `emoji` code-box look), every field label leads with a boxed `emoji`, lifecycle embeds carry a sentence.
   var DC_DEFAULTS={
     audit:{color:'#4f8ee8',desc:'# `📝` Roster Edited\n{editor} changed **{sheet}** · `{cell}`',fields:[{n:'`👮` Member',v:'{member}',inline:true},{n:'`⚖️` Action',v:'{action}',inline:true},{n:'`🔁` Change',v:'`{old}` → `{new}`',inline:false}],footer:'Audit log'},
+    signupSubmitted:{color:'#e0a52c',desc:'# `🧾` New Roster Signup — {name}\nA new signup is awaiting review — seat or deny it under Control Panel ▸ Signups.',fields:[{n:'`👮` Name',v:'{name}',inline:true},{n:'`🆔` Unique ID',v:'{id}',inline:true}]},
     loaSubmitted:{color:'#3498db',desc:'# `📥` New {type} Submission',content:'{user}',fields:[{n:'`👮` Name',v:'{name}',inline:true},{n:'`🛡️` Rank',v:'{rank}',inline:true},{n:'`🎙️` Callsign',v:'{callsign}',inline:true},{n:'`▶️` Start Date',v:'{start}',inline:true},{n:'`⏹️` End Date',v:'{end}',inline:true},{n:'`⌛` Length',v:'{length}',inline:true}]},
     loaApproved:{color:'#57b85a',desc:'# `✅` {type} Approved\nThis member\'s **{type}** has been approved. It will apply to the roster on its start date.',fields:[{n:'`👮` Name',v:'{name}',inline:true},{n:'`🛡️` Rank',v:'{rank}',inline:true},{n:'`▶️` Start Date',v:'{start}',inline:true},{n:'`⏹️` End Date',v:'{end}',inline:true}]},
     loaStarted:{color:'#4ea7d6',desc:'# `▶️` {type} Started\nThis member\'s **{type}** has started. Their status has been updated on the roster.',fields:[{n:'`👮` Name',v:'{name}',inline:true},{n:'`🛡️` Rank',v:'{rank}',inline:true}]},
@@ -1380,7 +1397,7 @@
     h+=sec('Embed images', '<label class="dclb">Image URL</label>'+f('image','https://…')+'<label class="dclb">Thumbnail URL</label>'+f('thumb','https://…'));
     h+=sec('Embed fields', '<div id="dcFields">'+fieldCards+'</div><button type="button" class="gtadd" data-dcaddf="1" style="margin-top:8px">+ Add field ('+((t.fields||[]).length)+'/25)</button>');
     h+=sec('Embed footer', '<label class="dclb">Footer text</label>'+f('footer','Footer text')+'<label class="dclb">Footer icon URL</label>'+f('footerIcon','https://…'));
-    h+=sec('Preview', '<div id="dcPrev">'+dcMock_(saved||DC_DEFAULTS[m.cur]||t)+'</div>'); // no override → show the built-in example
+    h+=sec('Preview', '<div id="dcPrev">'+dcMock_(saved||DC_DEFAULTS[m.cur]||t, m.cur)+'</div>'); // no override → show the built-in example
     host.innerHTML=h;
   }
   function dcSyncFromForm_(){
@@ -1401,7 +1418,7 @@
     // Save an override only when the form actually DIFFERS from the built-in default — the form is pre-filled with the
     // default, so an untouched (or reverted) tab must stay "built-in in use" and never light this channel's dirty dot.
     if(!Object.keys(t).length||embIsDefault_(m.cur,t)) embReset_(m.cur); else embSet_(m.cur,t);
-    var pv=$('dcPrev'); if(pv) pv.innerHTML=dcMock_(Object.keys(t).length?t:(DC_DEFAULTS[m.cur]||t)); // emptied form → back to the built-in example
+    var pv=$('dcPrev'); if(pv) pv.innerHTML=dcMock_(Object.keys(t).length?t:(DC_DEFAULTS[m.cur]||t), m.cur); // emptied form → back to the built-in example
   }
   function insertAt_(el,txt){
     var s=(el.selectionStart!=null)?el.selectionStart:el.value.length, en=(el.selectionEnd!=null)?el.selectionEnd:s;
@@ -1415,9 +1432,10 @@
     var n=new Date(), hh=n.getHours(), mm=n.getMinutes(), ap=hh<12?'AM':'PM', h12=(hh%12)||12;
     return 'Today at '+h12+':'+(mm<10?'0':'')+mm+' '+ap;
   }
-  function dcMock_(t){
+  function dcMock_(t,ev){
     t=t||{};
-    var sub=function(s){ return String(s==null?'':s).replace(/\{(\w+)\}/g,function(mm,k){ return DC_SAMPLE[k]!=null?String(DC_SAMPLE[k]):mm; }); };
+    var evs=(ev&&DC_SAMPLE_EV[ev])||null; // event-specific sample values win (e.g. patrol start/end carry a time)
+    var sub=function(s){ return String(s==null?'':s).replace(/\{(\w+)\}/g,function(mm,k){ if(evs&&evs[k]!=null) return String(evs[k]); return DC_SAMPLE[k]!=null?String(DC_SAMPLE[k]):mm; }); };
     var md=function(s){ return dcRender(sub(s)); };
     var col=/^#[0-9a-fA-F]{6}$/.test(String(t.color||'').trim())?String(t.color).trim():'#5865F2';
     var botName=(KV['SYSTEM.SYSTEM_NAME']&&KV['SYSTEM.SYSTEM_NAME'].value)||'Roster System';
@@ -1468,6 +1486,11 @@
       +'</div>';
     if(!DATA.adminLinked) h+='<div class="callout" style="margin:10px 0 0">Webhooks are stored in the <b>admin roster</b> — link one first (Control Panel ▸ Tools ▸ Admin roster).</div>';
     h+='<div class="sdesc" style="margin-top:8px;max-width:74ch">Write-only — stored in the admin spreadsheet, never shown again. <b>Remove all</b> wipes every channel (the abuse kill switch); only accounts with admin-file access can change this.</div>';
+    var togs=(DC_NOTIFY_TOGGLES[g.channel]||[]).filter(function(p){ return KV[p[0]]; });
+    if(togs.length){
+      h+='<div style="margin-top:14px"><label class="dclb">Opt-in event embeds <span class="pv-note">(off = that event posts nothing; saved with Save)</span></label>'
+        +togs.map(function(p){ return '<div class="dctog-row"><span>'+esc(p[1])+'</span>'+control(p[0])+'</div>'; }).join('')+'</div>';
+    }
     host.innerHTML=h;
     renderDcBuilder();
   }

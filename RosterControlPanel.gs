@@ -1429,6 +1429,7 @@ function signupFirstFreeRow_(sheet, SC) {
  */
 function syncSignupForm_(formSheet, signupSheet) {
   let added = 0;
+  const newcomers = []; // {name, id} per NEW signup this pass — feeds the opt-in Discord embed below
   try {
     const formLast = formSheet.getLastRow();
     if (formLast < 2) return 0;
@@ -1468,9 +1469,27 @@ function syncSignupForm_(formSheet, signupSheet) {
       writeValuesSafe_(signupSheet, at, 1, [rowVals], null); // merge-safe row write
       signupSheet.getRange(at, sSC.discord).setNumberFormat('@'); // keep the Unique ID exact
       formSheet.getRange(i + 2, 1, 1, width).setBackground(CONFIG.bg.done); // mark this form row synced
+      newcomers.push({ name: fname, id: fid });
       added++;
     }
     if (added) { try { sortSignups_(signupSheet); } catch (e) { log_('syncSignupForm_.sort', e); } }
+    // Opt-in Discord embed per NEW signup (AUDIT channel, [NOTIFICATIONS].SIGNUP_SUBMITTED) — after all writes, so a
+    // webhook hiccup can never block the sync. Name + Unique ID only: an applicant's DOB/email/phone NEVER reach Discord.
+    if (newcomers.length && CONFIG.notify && CONFIG.notify.signupSubmitted && typeof notifyEvent_ === 'function') {
+      newcomers.forEach((s) => {
+        try {
+          notifyEvent_('AUDIT', true, 'signupSubmitted', { name: s.name, id: s.id }, {
+            description: clamp_(`# ${fill_(CONFIG.notify.signupSubmittedTitle, { name: s.name, id: s.id })}\nA new signup is awaiting review — seat or deny it under Control Panel ▸ Signups.`, 4000),
+            color: hexToInt_(CONFIG.notify.signupSubmittedColor, 14721324),
+            fields: [
+              { name: '`👮` Name', value: clamp_(dash_(s.name), 1000), inline: true },
+              { name: '`🆔` Unique ID', value: clamp_(dash_(s.id), 1000), inline: true },
+            ],
+          }, '');
+          Utilities.sleep(200); // stay under Discord's webhook rate limit on a backfill batch
+        } catch (e) { log_('syncSignupForm_.notify', e); }
+      });
+    }
   } catch (e) { log_('syncSignupForm_', e); }
   return added;
 }
