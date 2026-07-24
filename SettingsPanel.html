@@ -608,7 +608,7 @@
     return ICONS.ftext;
   }
   // Friendlier display labels/help for keys whose config names read wrong in the UI (display only — keys unchanged).
-  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.LEAVE_FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_FORM_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'SIGNUP REVIEW TAB','SHEETS.SIGNUP_FORM_RESPONSES':'SIGNUP FORM RESPONSES',
+  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.LEAVE_FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_FORM_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'SIGNUP REVIEW TAB','SHEETS.SIGNUP_FORM_RESPONSES':'SIGNUP FORM RESPONSES','SHEETS.WELCOME':'WELCOME PAGE TAB','PUBLISH.FORCE_RANGES':'FORCE-MIRROR RANGES',
     'PATROL.COL_DISCORD':'DISCORD COLUMN','PATROL.COL_CALLSIGN':'CALLSIGN COLUMN','PATROL.COL_START':'START TIME COLUMN','PATROL.COL_END':'END TIME COLUMN','PATROL.COL_DURATION':'HOURS COLUMN',
     'LEAVE.STATUS_FLOW':'TRACKER STATUSES','LEAVE.APPROVED_STATUS':'COUNTS AS APPROVED','LEAVE.EXPIRED_STATUS':'MARK ENDED AS',
     'LEAVE.AUTO_EXPIRE':'AUTO-END LEAVES','LEAVE.EXPIRE_NEVER_APPROVED':'EXPIRE UNAPPROVED TOO',
@@ -702,7 +702,7 @@
              {t:'Google Form links — responses tab → tracker', keys:['SHEETS.LEAVE_FORM_RESPONSES','SHEETS.PATROL_FORM_RESPONSES','SHEETS.SIGNUP_FORM_RESPONSES']},
              {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
              {t:'Patrol logs → hours', keys:['PATROL.MODE','PATROL.MAX_HOURS','PATROL.OVERNIGHT','PATROL.RECOMPUTE','PATROL.COL_DISCORD','PATROL.COL_CALLSIGN','PATROL.COL_START','PATROL.COL_END','PATROL.COL_DURATION']},
-             {t:'Public roster', keys:['PUBLISH.NEVER_PUBLISH','PUBLISH.KEEP_RANGES']},
+             {t:'Public roster', keys:['SHEETS.WELCOME','PUBLISH.NEVER_PUBLISH','PUBLISH.KEEP_RANGES','PUBLISH.FORCE_RANGES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']}]},
     {id:'statuses', a:'var(--amber)', title:'Statuses & tiers', desc:'The activity ladder and every status the engine may write — plus per-rank overrides and stateless status rules.', tables:true},
     {id:'ranks', a:'var(--green)', title:'Ranks', desc:'Every rank found in your roster’s rank column — its badge icon, and the labels that group ranks together. Each label is also a live #tag: a "Supervisors" label makes #supervisors count everyone labeled with it.', custom:'ranklabels'},
@@ -862,6 +862,7 @@
       if(bk==='SHEETS.PATROL_LOG') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— off (no patrol log tab) —');
       if(bk==='SHEETS.SIGNUPS') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Roster Signups) —');
       if(bk==='SHEETS.SIGNUP_FORM_RESPONSES') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— off (no signup form) —');
+      if(bk==='SHEETS.WELCOME') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Welcome Page) —'); // pick your Welcome/dashboard tab so the publish protects + mirrors it
       return '<input class="in" data-bk="'+esc(bk)+'" value="'+esc(v)+'" spellcheck="false" placeholder="'+esc(m.def)+'" autocomplete="off">';
     }
     if(bk==='SCHEDULE.NIGHTLY_HOUR'||bk==='SCHEDULE.WEEKLY_RESET_HOUR') return dd({bk:bk}, HOURS, String(v), false);
