@@ -638,6 +638,9 @@ function buildGroupSheets_() {
     if (!tabBandCol && rankTabCol > 1) tabBandCol = rankTabCol - 1;
     const maxRows = sh.getMaxRows();
     const bands = tabBandRanges_(sh, dataRow, tabBandCol);
+    // Which of THIS tab's fill columns are REAL checkboxes → write/keep them as booleans, never "☑/☐" TEXT (which
+    // violates the checkbox rule and shows the red "invalid" flag). Detected BEFORE clearing, while validations exist.
+    const tabCb = {}; checkboxOffsets_(sh, dataRow, rankTabCol, fillW).forEach((off) => { tabCb[rankTabCol + off] = true; });
     // PRESERVE the operator's own columns: read the current body keyed by ID/NAME BEFORE clearing anything.
     const bodyN = Math.max(0, maxRows - dataRow + 1);
     const existVals = bodyN ? sh.getRange(dataRow, rankTabCol, bodyN, fillW).getValues() : [];
@@ -646,14 +649,20 @@ function buildGroupSheets_() {
     for (let i = 0; i < existVals.length; i++) { const k = String(existKeys[i][0] || '').trim(); if (k && existVals[i].some((c) => String(c || '').trim() !== '')) existByKey[k] = existVals[i].slice(); }
     const blankRow = () => new Array(fillW).fill('');
     const keyOfIdx = (i) => (useId ? String(rd[i][RC.discord - 1] || '') : String(rd[i][RC.name - 1] || '')).trim();
+    const boolish = (v) => (v === true || v === '☑' || String(v).trim().toUpperCase() === 'TRUE'); // ☑/☐ text, "TRUE"/"FALSE", or a real bool → strict bool
     const rowForIdx = (i) => { // preserved custom columns + mirrored roster columns
       const k = keyOfIdx(i);
       const row = (k && existByKey[k]) ? existByKey[k].slice() : blankRow();
       while (row.length < fillW) row.push('');
       for (let tc = rankTabCol; tc < rankTabCol + fillW; tc++) {
         const rc = colMap[tc];
-        if (!rc) continue; // operator-owned column → keep whatever they typed
-        row[tc - rankTabCol] = cbSet[rc] ? (String(rd[i][rc - 1]).trim().toUpperCase() === 'TRUE' ? '☑' : '☐') : String(rd[i][rc - 1] || '');
+        if (rc) { // mirrored roster column
+          if (cbSet[rc]) { const checked = String(rd[i][rc - 1]).trim().toUpperCase() === 'TRUE'; row[tc - rankTabCol] = tabCb[tc] ? checked : (checked ? '☑' : '☐'); } // real checkbox on the tab → bool; else pretty text
+          else row[tc - rankTabCol] = String(rd[i][rc - 1] || '');
+        } else if (tabCb[tc]) {
+          row[tc - rankTabCol] = boolish(row[tc - rankTabCol]); // operator's OWN checkbox column: keep their state, but as a valid bool (no red flag)
+        }
+        // else: operator-owned non-checkbox column → keep whatever they typed
       }
       return row;
     };
