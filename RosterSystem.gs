@@ -621,18 +621,20 @@ function installDataValidation_() {
     } catch (e) { log_('installDataValidation_.scrub', e); }
   };
 
-  // Apply a STATUS dropdown, but PRESERVE an existing one that already offers the same set of values. Apps Script
-  // cannot read or set the per-value dropdown CHIP COLOURS, so blindly re-applying the rule wipes a user's custom
-  // status colours — so we only (re)build the dropdown when it's missing or its value set actually changed.
-  const applyStatusDropdown = (range, wantVals, msg) => {
+  // STATUS dropdown: the operator OWNS it. Apps Script cannot read or set the per-value CHIP COLOURS, so
+  // re-applying the rule wipes any colours they assigned — therefore we NEVER rebuild an existing VALUE_IN_LIST
+  // dropdown, even when the value set differs. The engine only CREATES one when the column has none. If theirs is
+  // missing a status the engine writes, we just WARN (the value still displays fine — the rule allows invalid).
+  const applyStatusDropdown = (range, wantVals, msg, label) => {
     try {
       const dv = range.getCell(1, 1).getDataValidation();
       if (dv && dv.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
-        const have = (dv.getCriteriaValues()[0] || []).map((v) => norm_(v)).sort();
-        const want = wantVals.map((v) => norm_(v)).sort();
-        if (have.length === want.length && have.every((v, i) => v === want[i])) return; // same values → leave it (keeps the colours)
+        const have = {}; (dv.getCriteriaValues()[0] || []).forEach((v) => { have[norm_(v)] = true; });
+        const missing = wantVals.filter((v) => !have[norm_(v)]);
+        if (missing.length) logWarn_('installDataValidation_', `${label || 'STATUS'} dropdown is missing: ${missing.join(', ')}. Add them via Data ▸ Data validation to keep your colours, or delete the dropdown and re-run 🚀 First-Run Setup to rebuild it.`);
+        return; // preserve the operator's dropdown + colours
       }
-    } catch (e) { /* unreadable → fall through and (re)apply a fresh dropdown */ }
+    } catch (e) { /* unreadable → create a fresh dropdown below */ }
     range.setDataValidation(listRule(wantVals, msg));
   };
 
@@ -673,7 +675,7 @@ function installDataValidation_() {
       // STATUS dropdown values come from [LEAVE] on ⚙️ Config (defaults: Pending/Approved/Denied/Expired). LOA-only tracker: no TYPE column.
       let statusFlow = ['Pending', 'Approved', 'Denied', 'Expired'];
       try { const lv = cfg_().leave; if (lv.STATUS_FLOW.length) statusFlow = lv.STATUS_FLOW; } catch (e) { /* config broken — classic list */ }
-      if (T.status) { applyStatusDropdown(tracker.getRange(start, T.status, n, 1), statusFlow, 'Choose a leave status.'); counts.tracker++; }
+      if (T.status) { applyStatusDropdown(tracker.getRange(start, T.status, n, 1), statusFlow, 'Choose a leave status.', 'Leave'); counts.tracker++; }
     }
   }
 
@@ -693,7 +695,7 @@ function installDataValidation_() {
       if (PC.startDate) { patrolLog.getRange(pstart, PC.startDate, n, 1).setDataValidation(dateRule('Enter the patrol start date.')); counts.patrolLog++; }
       if (PC.endDate) { patrolLog.getRange(pstart, PC.endDate, n, 1).setDataValidation(dateRule('Enter the patrol end date.')); counts.patrolLog++; }
       const pflow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Approved', 'Denied', 'Processed'];
-      if (PC.status) { applyStatusDropdown(patrolLog.getRange(pstart, PC.status, n, 1), pflow, 'Patrol status: ' + pflow.join(' · ') + '.'); counts.patrolLog++; }
+      if (PC.status) { applyStatusDropdown(patrolLog.getRange(pstart, PC.status, n, 1), pflow, 'Patrol status: ' + pflow.join(' · ') + '.', 'Patrol'); counts.patrolLog++; }
     }
   }
   return counts;

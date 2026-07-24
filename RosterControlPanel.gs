@@ -1517,8 +1517,14 @@ function ensureSignupTab_(file) {
   try {
     if (SC.status && sh.getMaxRows() >= SC.dataStart) { // dropdown on the STATUS data rows (themed tab: never touch the banner/header)
       const n = sh.getMaxRows() - SC.dataStart + 1;
-      sh.getRange(SC.dataStart, SC.status, n, 1).setDataValidation(
-        SpreadsheetApp.newDataValidation().requireValueInList(SIGNUP_STATUSES_.slice(), true).setAllowInvalid(true).setHelpText('Pending → Approved → Processed').build());
+      const rg = sh.getRange(SC.dataStart, SC.status, n, 1);
+      // PRESERVE an existing dropdown + its chip colours (Apps Script can't read/set them → a rebuild wipes them).
+      // Only create one when the STATUS column has none.
+      let has = false;
+      try { const dv = rg.getCell(1, 1).getDataValidation(); has = !!(dv && dv.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST); } catch (ig) {}
+      if (!has) {
+        rg.setDataValidation(SpreadsheetApp.newDataValidation().requireValueInList(SIGNUP_STATUSES_.slice(), true).setAllowInvalid(true).setHelpText('Pending → Approved → Processed').build());
+      }
       if (SC.discord) sh.getRange(SC.dataStart, SC.discord, n, 1).setNumberFormat('@'); // keep the Unique ID exact
     }
   } catch (e) { log_('ensureSignupTab_.validation', e); }
