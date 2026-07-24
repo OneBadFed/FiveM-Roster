@@ -541,7 +541,7 @@ function tabBandRanges_(sh, dataRow, tabBandCol) {
  * blank. Tabs without rank-group bands get one contiguous FILTER instead. Nothing above the data area, and nothing in
  * column B, is touched. @return {{built:number, sheets:string[], skipped:Array<{name,why}>}}
  */
-function buildGroupSheets_() {
+function buildGroupSheets_(hint) { // hint (optional, from a single-cell member edit) → rebuild only the tab(s) that member is/was in
   const ss = SpreadsheetApp.getActive();
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
   if (!roster) return { built: 0, sheets: [], skipped: [] };
@@ -604,6 +604,17 @@ function buildGroupSheets_() {
     // Named column first; if that header no longer exists (e.g. SHIFT renamed to ASSIGNMENT), fall back to the
     // value scan — the tab keeps working across a rename instead of silently emptying.
     const gCol = (grp.column ? colFor(grp.column) : 0) || findGroupColumn_(roster, start, grp.values[0]);
+    // FAST PATH (targeted rebuild): with a single-cell edit hint, skip a tab the edited member is neither in NOW nor
+    // WAS in — only the old + new value of the edited cell can change their group membership, so every other tab is
+    // untouched by this edit. Skipped before the tab's own reads, so a single move rebuilds ~1-2 tabs, not all of them.
+    // (The 1-minute sweep runs a FULL rebuild as the backstop, so anything this skips still self-heals.)
+    if (gCol && hint && hint.rowVals) {
+      const gvN = grp.values.map((v) => groupNorm_(v)).filter(Boolean);
+      const cur = groupNorm_(gCol <= hint.rowVals.length ? (hint.rowVals[gCol - 1] || '') : '');
+      const isNow = gvN.some((v) => cur.indexOf(v) === 0);
+      const wasBefore = (hint.editedCol === gCol) && gvN.some((v) => groupNorm_(hint.oldVal || '').indexOf(v) === 0);
+      if (!isNow && !wasBefore) return; // this tab is unaffected by the edit
+    }
     // Find where the member rows begin on THIS tab (right below its own RANK/NAME header row) — never assume a position.
     const hdr = groupHeaderRow_(sh);
     if (!hdr.row) { skipped.push({ name: nm, why: 'no RANK/NAME header row found — lay out the columns first' }); return; }
@@ -641,8 +652,10 @@ function buildGroupSheets_() {
     // Which of THIS tab's fill columns are REAL checkboxes → write/keep them as booleans, never "☑/☐" TEXT (which
     // violates the checkbox rule and shows the red "invalid" flag). Detected BEFORE clearing, while validations exist.
     const tabCb = {}; checkboxOffsets_(sh, dataRow, rankTabCol, fillW).forEach((off) => { tabCb[rankTabCol + off] = true; });
-    // PRESERVE the operator's own columns: read the current body keyed by ID/NAME BEFORE clearing anything.
-    const bodyN = Math.max(0, maxRows - dataRow + 1);
+    // PRESERVE the operator's own columns: read the current body keyed by ID/NAME BEFORE clearing anything. Bound the
+    // read to the last row with real content, not all ~1000 grid rows — every member + operator value lives at/above it.
+    const readTo = Math.min(Math.max(sh.getLastRow(), dataRow - 1), maxRows);
+    const bodyN = Math.max(0, readTo - dataRow + 1);
     const existVals = bodyN ? sh.getRange(dataRow, rankTabCol, bodyN, fillW).getValues() : [];
     const existKeys = bodyN ? sh.getRange(dataRow, keyTabCol, bodyN, 1).getDisplayValues() : [];
     const existByKey = {};

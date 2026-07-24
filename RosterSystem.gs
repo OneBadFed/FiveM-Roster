@@ -1168,20 +1168,22 @@ const DERIVED_LAST_PROP_ = 'DERIVED_LAST_SYNC';
 const DERIVED_GAP_MS_ = 4000; // isolated edits rebuild instantly; edits closer together than this batch onto the sweep
 
 /**
- * Reflect a roster edit in the derived tabs (editable Police Academy + group tabs) RIGHT NOW instead of leaving it for
- * the 1-minute sweep — but throttled so a burst of edits still costs one rebuild, not one per keystroke. The caller has
- * already queued the work via deferWork_, so when this is throttled (or fails / times out under the simple-trigger
- * budget) the sweep is the guaranteed backstop and nothing is lost. Runs runDeferredWork_, which clears the queue it
- * satisfies so the next sweep won't redo it.
+ * Reflect a roster edit in the derived tabs RIGHT NOW instead of leaving it for the 1-minute sweep — throttled so a
+ * burst still costs one rebuild. `groupHint` (from a single-cell member edit: the member's current row + what the
+ * edited cell was) lets the group rebuild TARGET only the tab(s) that member is/was in — a single move rebuilds ~1-2
+ * tabs instead of all of them. The deferWork_ queue stays SET, so the sweep's full runDeferredWork_ remains the
+ * guaranteed backstop: a throttle, a timeout, a bulk edit (no hint), or any targeting miss self-heals within a minute.
  */
-function syncDerivedNow_() {
+function syncDerivedNow_(groupHint) {
   try {
     const p = PropertiesService.getDocumentProperties();
     const now = Date.now();
     if (now - Number(p.getProperty(DERIVED_LAST_PROP_) || 0) < DERIVED_GAP_MS_) return; // inside the burst window → the sweep batches it
     p.setProperty(DERIVED_LAST_PROP_, String(now));
   } catch (e) { return; }
-  try { runDeferredWork_(); } catch (e) { log_('syncDerivedNow_', e); }
+  try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(groupHint || null); } catch (e) { log_('syncDerivedNow_.groups', e); } // TARGETED when a hint is given, else full
+  try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('syncDerivedNow_.academy', e); } // one tab — always whole
+  try { if (typeof refreshDashboard_ === 'function') refreshDashboard_(); } catch (e) { log_('syncDerivedNow_.dashboard', e); } // self-optimizing (RE_DASH_TABS)
 }
 
 function onEdit(e) {
@@ -1214,7 +1216,14 @@ function onEdit(e) {
         deferWork_('academy'); // whole-tab rebuilds: queued so the sweep is always a backstop
         deferWork_('groups');
         const spansDiscord = RC.discord && col <= RC.discord && cLast >= RC.discord;
-        if (!spansDiscord) syncDerivedNow_(); // isolated edit → rebuild the derived tabs now, not in ≤60s
+        if (!spansDiscord) {
+          // Isolated edit → rebuild NOW. For a single-CELL member edit, hand the group rebuild a hint (the member's
+          // current row + the edited cell's old value) so it only touches the tab(s) that member is/was in. Multi-cell
+          // edits (paste/clear — e.oldValue is unreliable) pass no hint → a full rebuild; the sweep backstops either way.
+          const single = !!(e.range.getNumRows && e.range.getNumRows() === 1 && e.range.getNumColumns() === 1);
+          const hint = single ? { rowVals: sheet.getRange(row, 1, 1, sheet.getLastColumn()).getDisplayValues()[0], editedCol: col, oldVal: (e.oldValue == null ? '' : String(e.oldValue)) } : null;
+          syncDerivedNow_(hint);
+        }
       }
     }
     if (name === CONFIG.sheets.tracker && row >= CONFIG.trackerStartRow) {
