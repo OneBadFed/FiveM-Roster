@@ -217,6 +217,7 @@
   /* ── signups pane ── */
   .ro{width:100%;background:var(--e2);color:var(--txt);border-radius:var(--r-md);padding:10px 13px;font-size:13px;box-shadow:var(--hi),var(--sh-1);min-height:39px;display:flex;align-items:center;word-break:break-word;}
   .ro.mono{font-family:var(--mono);font-size:12.5px;} .ro.empty{color:var(--txt-3);}
+  .ro.blank{color:var(--txt-3);font-style:italic;font-size:12px;background:transparent;box-shadow:inset 0 0 0 1px var(--hair);} /* optional field the applicant left empty — same 39px rhythm as a filled one */
   .apps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:var(--s4);}
   .appchip{display:inline-flex;align-items:center;gap:9px;background:var(--e2);border:none;color:var(--txt-2);border-radius:12px;padding:8px 13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t);}
   .appchip:hover{background:var(--e3);color:var(--txt);transform:translateY(-1px);}
@@ -1282,7 +1283,7 @@
   var SU={signups:[],slots:[],linked:false,ready:false,loaded:false,cur:null,slot:null};
   function suApp(row){ for(var i=0;i<SU.signups.length;i++){ if(String(SU.signups[i].row)===String(row)) return SU.signups[i]; } return null; }
   function suSlotObj(row){ for(var i=0;i<SU.slots.length;i++){ if(String(SU.slots[i].row)===String(row)) return SU.slots[i]; } return null; }
-  function suRo(v,mono){ return v?'<div class="ro'+(mono?' mono':'')+'">'+esc(v)+'</div>':'<div class="ro empty">—</div>'; }
+  function suRo(v,mono){ return v?'<div class="ro'+(mono?' mono':'')+'">'+esc(v)+'</div>':'<div class="ro blank">Not provided</div>'; } // .blank, NOT .empty — the global empty-STATE class turned these into giant dashed boxes
   function suKv(k,vHtml){ return vHtml?'<div class="pkv-r"><span class="pkv-k">'+k+'</span><span class="pkv-v">'+vHtml+'</span></div>':''; }
   function suEmpty(title,sub){ return '<div class="empty" style="margin-top:var(--s3)"><span class="ei">'+IEMPTY+'</span><div><b>'+title+'</b><br>'+sub+'</div></div>'; }
   function suSlotMenuHtml(){
@@ -1322,7 +1323,7 @@
       +'<div><label class="lbl">Date of birth</label>'+suRo(a.dob)+'</div>'
       +'<div><label class="lbl">Phone</label>'+suRo(a.phone)+'</div></div></div>'
       +'<div class="stepcard"><div class="step-h"><span class="stepn">3</span>Employment</div>'
-      +'<label class="lbl">Department join date <span class="lopt">· from their signup</span></label>'+suRo(a.join)+'</div>'
+      +'<div class="addgrid"><div><label class="lbl">Department join date <span class="lopt">· from their signup</span></label>'+suRo(a.join)+'</div></div></div>'
       +'<button class="btn addbtn" id="suSeat">Approve &amp; seat on roster</button>'
       +'</div><div class="addprev">'
       +'<div class="prevcard"><div class="pc-lbl">Slot preview</div><div id="suPrev"></div></div>'
