@@ -1313,6 +1313,13 @@ function onEdit(e) {
     // the roster (sheet-driven approval). LIMITED-safe — every write is in THIS workbook.
     if (CONFIG.sheets.signups && name === CONFIG.sheets.signups && e.value != null) {
       if (typeof approveSignupFromSheet_ === 'function') { try { approveSignupFromSheet_(sheet, row, col, e.value, e.oldValue); } catch (e2) { log_('onEdit.approveSignup', e2); } }
+      // Any STATUS change re-groups the tab RIGHT AWAY (dropdown order: e.g. Pending → Approve → Flagged → Processed) —
+      // the sort otherwise only ran when the form sync added rows, so a hand-flagged row stayed put. AFTER the approve
+      // handler, so a just-Processed applicant drops into place too — same pattern as the Patrol Log's edit-sort above.
+      try {
+        const sSC = (typeof signupCols_ === 'function') ? signupCols_(sheet) : null;
+        if (sSC && sSC.status && col === sSC.status && row >= sSC.dataStart && typeof sortSignups_ === 'function') sortSignups_(sheet);
+      } catch (e2) { log_('onEdit.sortSignups', e2); }
     }
     // F-003: refreshing the WHOLE workbook on every keystroke is the biggest recurring cost. Short-circuit:
     //  • roster/tracker edits change the numbers → full refresh (all tag/KPI locations may need updating).
