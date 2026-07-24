@@ -94,6 +94,15 @@ the latter auto-detects the header row, so a themed tab with a banner works).
 or deletes rows/columns on user sheets and never repaints their formatting. (The Police Academy and #group
 division tabs are engine-built exceptions.)
 
+**Editable assignment/group tabs (`buildGroupSheets_`).** A #group / assignment tab (Canine Unit, District
+Patrol…) is an **editable upsert**, not a read-only FILTER: the engine keeps one row per matching member (matched
+by Unique ID, else name), mirrors the roster's columns by header, places members into the tab's RANK GROUP bands
+via the roster's own band ranges — and **preserves any column the tab has that the roster doesn't** (the
+operator's own per-member fields, e.g. a K9 dog's name), never overwriting them. Members who leave the group are
+removed; column B bands and the operator's data validations (their checkboxes/dropdowns) are untouched. The
+Police Academy uses a parallel builder with the same preservation, plus a GRADUATE LOG and rank-stem band
+placement.
+
 **Unique IDs.** Discord IDs (17–19 digits) or Community IDs (1–8 digits) — switchable from the menu (🆔 Unique
 ID Type). IDs are **text**: `'@'`-formatted before every write, `copyTo` on moves, never coerced to Number.
 

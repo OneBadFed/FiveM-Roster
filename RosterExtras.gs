@@ -465,9 +465,6 @@ function inferGroup_(name) {
 /** Normalize a group value for matching: lowercase, collapse whitespace, trim. */
 function groupNorm_(x) { return String(x).toLowerCase().replace(/\s+/g, ' ').trim(); }
 
-/** A normalized value as an RE2-safe, quote-safe fragment for a "^…" REGEXMATCH inside a FILTER formula. */
-function groupRe_(v) { return groupNorm_(v).replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/"/g, '""'); }
-
 /** 0-based column offsets within [firstCol, firstCol+width-1] that carry a CHECKBOX data-validation rule (scans a few rows). @return {number[]} */
 function checkboxOffsets_(sheet, firstRow, firstCol, width) {
   const out = {};
@@ -586,6 +583,8 @@ function buildGroupSheets_() {
   if (!rosterBandCol && RC.rank > 1) rosterBandCol = RC.rank - 1;
   const firstColRange = rName + '!' + L(firstCol) + start + ':' + L(firstCol); // for ROW() row-range tests
   const rosterRanges = rosterBandRanges_(roster, rosterBandCol); // group label → roster row range
+  const nRg = Math.max(0, roster.getLastRow() - start + 1);
+  const rd = nRg ? roster.getRange(start, 1, nRg, lastCol).getDisplayValues() : []; // roster member rows — the upsert reads + mirrors these
   // Don't touch the roster or the engine's own system tabs.
   const sysNames = {};
   Object.keys(CONFIG.sheets || {}).forEach((k) => { if (CONFIG.sheets[k]) sysNames[String(CONFIG.sheets[k]).toUpperCase()] = true; });
@@ -597,7 +596,7 @@ function buildGroupSheets_() {
     if (sh.getSheetId() === roster.getSheetId()) return;
     const nm = sh.getName();
     if (sysNames[nm.toUpperCase()]) return;
-    if (isAcademyTab_(sh)) return; // the Academy is an editable tracker, not a read-only #group view
+    if (isAcademyTab_(sh)) return; // the Academy has its own builder (graduate log); this handles the assignment/group tabs
     const marker = groupMarker_(sh);
     // A tab counts as a group tab if it has an explicit marker OR its name reads like a group.
     if (!marker && !groupNoun.test(nm)) return;
@@ -613,24 +612,23 @@ function buildGroupSheets_() {
     if (!rankTabCol) rankTabCol = 1;
     if (!gCol) { skipped.push({ name: nm, why: 'couldn\'t match "' + (marker ? marker.raw : nm) + '" to a roster column' }); return; }
     const dataRow = hdr.row + headerToData; // skip the same divider gap the roster leaves below its header (member rows start there)
-    // Map THIS tab's headers (from its RANK column rightward) to roster columns, so each value lands under the matching
-    // header even when the tab OMITS columns (e.g. EMAIL/DOB) or REORDERS them (MAY before JUN). A header matching no
-    // roster column becomes a blank column, keeping everything after it aligned. Replaces the old contiguous mirror,
-    // which shifted every value right once the roster carried columns the tab doesn't show.
+    // EDITABLE UPSERT (replaces the old read-only FILTER): mirror the roster's columns onto the tab BY HEADER, keep
+    // one row per matching member (matched by UNIQUE ID / NAME so the operator's edits stay put), and PRESERVE every
+    // column the tab has that the roster does NOT (their own fields — e.g. a K9 dog's name). Members drop into the
+    // tab's RANK GROUP bands by the roster's own band structure; anyone who leaves the group is removed.
     let tabLastCol = rankTabCol;
     for (let i = hdr.headers.length - 1; i >= rankTabCol - 1; i--) { if (String(hdr.headers[i] || '').trim() !== '') { tabLastCol = i + 1; break; } }
     const fillW = Math.min(tabLastCol - rankTabCol + 1, sh.getMaxColumns() - rankTabCol + 1);
     if (fillW <= 0) { skipped.push({ name: nm, why: 'not enough columns to the right of RANK' }); return; }
-    const blockParts = [];
-    for (let tc = rankTabCol; tc < rankTabCol + fillW; tc++) {
-      const rc = colForTab(hdr.headers[tc - 1] || '');
-      if (!rc) { blockParts.push('IF(' + firstColRange + '="","","")'); continue; } // header maps to no roster column → blank, aligned
-      const rgc = rName + '!' + L(rc) + start + ':' + L(rc);
-      blockParts.push(cbSet[rc] ? ('IF(' + rgc + ',"☑","☐")') : rgc);
-    }
-    const block = '{' + blockParts.join(',') + '}';
-    // Find the tab's RANK GROUP column. Its "RANK GROUP" label is usually merged across the banner+label rows, so its
-    // value only sits in the top row — scan both rows, and fall back to the column just left of RANK (mirrors the roster).
+    // tab column → roster column (0 = a column the roster doesn't have → operator-owned, preserved & never overwritten).
+    const colMap = {};
+    for (let tc = rankTabCol; tc < rankTabCol + fillW; tc++) colMap[tc] = colForTab(hdr.headers[tc - 1] || '');
+    let tabIdCol = 0, tabNameCol = 0;
+    for (let tc = rankTabCol; tc < rankTabCol + fillW; tc++) { if (colMap[tc] === RC.discord && !tabIdCol) tabIdCol = tc; if (colMap[tc] === RC.name && !tabNameCol) tabNameCol = tc; }
+    const useId = !!(tabIdCol && RC.discord);
+    const keyTabCol = useId ? tabIdCol : tabNameCol;
+    if (!keyTabCol) { skipped.push({ name: nm, why: 'no NAME or UNIQUE ID column to match members by' }); return; }
+    // The tab's RANK GROUP band column (label often merged across banner+label rows → scan both; else col left of RANK).
     const topHdr = hdr.row > 1 ? sh.getRange(hdr.row - 1, 1, 1, Math.max(1, sh.getLastColumn())).getDisplayValues()[0].map((x) => String(x).toUpperCase()) : [];
     let tabBandCol = 0;
     for (let i = 0; i < Math.max(hdr.headers.length, topHdr.length); i++) {
@@ -638,29 +636,55 @@ function buildGroupSheets_() {
       if (combined.indexOf('RANK') !== -1 && combined.indexOf('GROUP') !== -1) { tabBandCol = i + 1; break; }
     }
     if (!tabBandCol && rankTabCol > 1) tabBandCol = rankTabCol - 1;
-    // Clear only the member CELLS we fill (content + any blocking merges + stray validations, e.g. a checkbox rule that
-    // would occupy the array's cells) — never formatting, never column B (your bands stay put) — so the FILTER can spill.
-    if (sh.getMaxRows() >= dataRow) {
-      const area = sh.getRange(dataRow, rankTabCol, sh.getMaxRows() - dataRow + 1, fillW);
-      area.breakApart(); area.clearContent(); area.clearDataValidations();
-    }
-    const gRange = rName + '!' + L(gCol) + start + ':' + L(gCol);
-    // "Starts with" (case/space-tolerant) so a "Day Shift" tab finds a roster SHIFT of "Days"; OR across listed values.
-    const shiftOR = '(' + grp.values.map((v) => 'REGEXMATCH(LOWER(TRIM(' + gRange + ')),"^' + groupRe_(v) + '")').join('+') + ')';
-    // Fill INSIDE your bands: one capped FILTER per band drops that rank group's members at the band's top and leaves the
-    // rest of the band's spots blank. ARRAY_CONSTRAIN caps each to its band height, so it can never overflow into the next.
+    const maxRows = sh.getMaxRows();
     const bands = tabBandRanges_(sh, dataRow, tabBandCol);
-    let placed = 0;
-    bands.forEach((tb) => {
-      const rb = rosterRanges[tb.label];
-      if (!rb) return; // a tab band whose label isn't one of the roster's rank groups — leave it blank
-      const f = '=IFERROR(ARRAY_CONSTRAIN(FILTER(' + block + ',' + shiftOR + ',' + nameRange + '<>"",ROW(' + firstColRange + ')>=' + rb.top + ',ROW(' + firstColRange + ')<=' + rb.bottom + '),' + tb.height + ',' + fillW + '),"")';
-      sh.getRange(tb.top, rankTabCol).setFormula(f);
-      placed++;
-    });
-    if (!placed) {
-      // Tab has no rank-group bands — fall back to one contiguous FILTER (everyone in rank order, no blank spots).
-      sh.getRange(dataRow, rankTabCol).setFormula('=IFERROR(FILTER(' + block + ',' + shiftOR + ',' + nameRange + '<>""),"No members in this group yet.")');
+    // PRESERVE the operator's own columns: read the current body keyed by ID/NAME BEFORE clearing anything.
+    const bodyN = Math.max(0, maxRows - dataRow + 1);
+    const existVals = bodyN ? sh.getRange(dataRow, rankTabCol, bodyN, fillW).getValues() : [];
+    const existKeys = bodyN ? sh.getRange(dataRow, keyTabCol, bodyN, 1).getDisplayValues() : [];
+    const existByKey = {};
+    for (let i = 0; i < existVals.length; i++) { const k = String(existKeys[i][0] || '').trim(); if (k && existVals[i].some((c) => String(c || '').trim() !== '')) existByKey[k] = existVals[i].slice(); }
+    const blankRow = () => new Array(fillW).fill('');
+    const keyOfIdx = (i) => (useId ? String(rd[i][RC.discord - 1] || '') : String(rd[i][RC.name - 1] || '')).trim();
+    const rowForIdx = (i) => { // preserved custom columns + mirrored roster columns
+      const k = keyOfIdx(i);
+      const row = (k && existByKey[k]) ? existByKey[k].slice() : blankRow();
+      while (row.length < fillW) row.push('');
+      for (let tc = rankTabCol; tc < rankTabCol + fillW; tc++) {
+        const rc = colMap[tc];
+        if (!rc) continue; // operator-owned column → keep whatever they typed
+        row[tc - rankTabCol] = cbSet[rc] ? (String(rd[i][rc - 1]).trim().toUpperCase() === 'TRUE' ? '☑' : '☐') : String(rd[i][rc - 1] || '');
+      }
+      return row;
+    };
+    // Selected members: named AND matching the group value (starts-with, case/space-tolerant), in roster order.
+    const gvals = grp.values.map((v) => groupNorm_(v)).filter(Boolean);
+    const selected = [];
+    for (let i = 0; i < rd.length; i++) {
+      if (String(rd[i][RC.name - 1] || '').trim() === '') continue;
+      const cell = groupNorm_(rd[i][gCol - 1] || '');
+      if (gvals.some((v) => cell.indexOf(v) === 0)) selected.push(i);
+    }
+    // Clear the member area (content + merges) — NEVER data validations, so the operator's own checkboxes/dropdowns on
+    // their columns survive; then '@' the ID column so long IDs write exact. Column B (your bands) is never touched.
+    if (maxRows >= dataRow) { const area = sh.getRange(dataRow, rankTabCol, maxRows - dataRow + 1, fillW); try { area.breakApart(); } catch (e) { /* nothing merged */ } area.clearContent(); }
+    if (tabIdCol && maxRows >= dataRow) sh.getRange(dataRow, tabIdCol, maxRows - dataRow + 1, 1).setNumberFormat('@');
+    const writeBlock = (rows, atRow) => { if (rows.length) sh.getRange(atRow, rankTabCol, rows.length, fillW).setValues(rows); };
+    if (bands.length && Object.keys(rosterRanges).length) {
+      const bandLabelOfRow = (rrow) => { for (const lbl in rosterRanges) { const rb = rosterRanges[lbl]; if (rrow >= rb.top && rrow <= rb.bottom) return groupNorm_(lbl); } return ''; };
+      const byBand = {}; bands.forEach((b) => { byBand[groupNorm_(b.label)] = []; });
+      selected.forEach((i) => { const lbl = bandLabelOfRow(start + i); if (lbl in byBand) byBand[lbl].push(i); });
+      bands.forEach((b) => {
+        const idxs = byBand[groupNorm_(b.label)] || [];
+        const rows = [];
+        for (let j = 0; j < b.height; j++) rows.push(j < idxs.length ? rowForIdx(idxs[j]) : blankRow());
+        writeBlock(rows, b.top);
+      });
+    } else {
+      const rows = selected.map((i) => rowForIdx(i));
+      const need = dataRow + Math.max(rows.length, 1) - 1;
+      if (need > maxRows) sh.insertRowsAfter(maxRows, need - maxRows);
+      writeBlock(rows, dataRow);
     }
     built.push(nm);
   });
@@ -675,7 +699,7 @@ function buildGroupSheets() {
     let msg = '';
     if (res.built) {
       msg += 'Filled ' + res.built + ' group tab' + (res.built === 1 ? '' : 's') + ':\n• ' + res.sheets.join('\n• ') +
-        '\n\nMembers drop into the top of each of your RANK GROUP bands (blank spots left as-is). Your bands aren’t resized.\n';
+        '\n\nMembers drop into the top of each RANK GROUP band. These tabs are now EDITABLE — any column you add that the roster doesn’t have (e.g. a K9 dog’s name) is kept per member (matched by Unique ID) and never overwritten. Your bands aren’t resized.\n';
     }
     if (res.skipped && res.skipped.length) {
       msg += (msg ? '\n' : '') + 'Skipped:\n' + res.skipped.map((s) => '• ' + s.name + ' — ' + s.why).join('\n') + '\n';
@@ -689,8 +713,9 @@ function buildGroupSheets() {
 }
 
 /* ======================================================================
- * POLICE ACADEMY — an EDITABLE, roster-synced training tracker. Unlike the
- * read-only #group tabs, the engine keeps one row per Cadet / Probationary
+ * POLICE ACADEMY — an EDITABLE, roster-synced training tracker with a
+ * GRADUATE LOG. (Group/assignment tabs are also editable now — see
+ * buildGroupSheets_ above — but without the graduate flow.) One row per Cadet / Probationary
  * member (matched by UNIQUE ID so your edits stay put), fills the identity
  * columns (UNIQUE ID / RANK / NAME / CALLSIGN) from the roster, and NEVER
  * touches your own training columns (Exam, Ride-Alongs, Notes, …). Members
