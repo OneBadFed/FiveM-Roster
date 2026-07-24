@@ -1258,7 +1258,8 @@
   /* ── Discord sections: per-channel webhook management (URLs live in the ADMIN spreadsheet) ── */
   function discordShell(g){
     return '<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+(ICONS[g.id]||ICONS.table)+'</span><b>Webhook</b><small>['+esc(g.channel)+']</small></div><div id="dcwh"></div></div>'
-      +'<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+ICONS.theme+'</span><b>Embed builder</b><small>[EMBEDS]</small></div><div id="dcBuild"></div></div>'
+      +'<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+ICONS.theme+'</span><b>Embed builder</b><small>[EMBEDS]</small>'
+        +'<button type="button" class="rlt" data-dcresetall="1" style="margin-left:auto;color:var(--red)" title="Clear every saved override for this channel and factory-reset its embed title settings — one click to adopt the current built-in look">Reset ALL to defaults</button></div><div id="dcBuild"></div></div>'
       +'<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+ICONS.check+'</span><b>What posts here</b></div><ul class="dcev">'
       +g.events.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('')+'</ul></div>';
   }
@@ -1273,6 +1274,14 @@
     PATROL:[{id:'patrolLogged',label:'Hours credited',ph:['user','name','rank','callsign','hours','total','start','end']},
             {id:'patrolFlagged',label:'Flagged logs',ph:['count','rows']}],
     ERRORS:[{id:'error',label:'Engine error',ph:['code','message','hint','function']}],
+  };
+  // Per-channel: the stored *_TITLE settings that feed this channel's built-in headings. "Reset ALL to defaults"
+  // factory-resets these (KV .def = the schema default) alongside clearing the channel's saved template overrides.
+  var DC_RESET_KEYS={
+    LOA:['DISCORD.SUBMIT_TITLE','DISCORD.EXPIRE_TITLE','NOTIFICATIONS.LEAVE_APPROVED_TITLE','NOTIFICATIONS.LEAVE_STARTED_TITLE'],
+    PATROL:['NOTIFICATIONS.PATROL_LOGGED_TITLE'],
+    AUDIT:['NOTIFICATIONS.TRANSFER_TITLE','NOTIFICATIONS.MEMBER_ADDED_TITLE','NOTIFICATIONS.WEEKLY_DIGEST_TITLE'],
+    ERRORS:[]
   };
   var DC_SAMPLE={user:'<@1234567890123456789>',editor:'admin@example.com',sheet:'Member Information',cell:'F14',member:'J. Bennett',old:'Active','new':'LOA',action:'Status change',
     name:'J. Bennett',rank:'Sergeant',callsign:'S-07',type:'LOA',start:'21 Jul 2026',end:'4 Aug 2026',length:'14 Days',
@@ -1680,6 +1689,15 @@
     if(gdel){ var grow=gdel.closest('[data-gt]'); if(grow){ TBL[grow.dataset.gt].splice(Number(grow.dataset.gr),1); renderSection(); updateBar(); } return; }
     var dev=e.target.closest('[data-dcev]');
     if(dev){ DCEV[CUR]=dev.dataset.dcev; renderDcBuilder(); return; }
+    var drall=e.target.closest('[data-dcresetall]');
+    if(drall){ var mRA=dcCurMeta(); if(mRA){
+      var rkeys=(DC_RESET_KEYS[mRA.g.channel]||[]).filter(function(bk){ return KV[bk]; });
+      if(confirm('Reset ALL '+mRA.g.channel+' embeds to the built-in defaults?\n\n• Clears every saved template override for this channel'+(rkeys.length?'\n• Factory-resets its embed title setting(s)':'')+'\n\nNothing is written until you press Save.')){
+        mRA.evs.forEach(function(x){ embReset_(x.id); });
+        rkeys.forEach(function(bk){ if(KV[bk].def!=null) KV[bk].value=String(KV[bk].def); });
+        renderSection(); updateBar();
+      }
+    } return; }
     var drs=e.target.closest('[data-dcreset]');
     if(drs){ var mR=dcCurMeta(); if(mR){ embReset_(mR.cur); renderDcBuilder(); } return; }
     var daf=e.target.closest('[data-dcaddf]');
