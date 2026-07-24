@@ -553,6 +553,15 @@ function auditEdit(e) {
     const skip = [TRUST.snapshotSheet, TRUST.auditSheet, CONFIG.sheets.hoursHistory, CONFIG.sheets.coverage, CONFIG.sheets.integrity, SYS_LOG_SHEET];
     if (skip.indexOf(sheetName) !== -1) return;
 
+    // WHO fired this? Installable onEdit triggers are PER USER, and every admin who has opened the panel installs their
+    // own — so all of them fire on each edit. A trigger owned by the EDITING account resolves that editor's email; a
+    // trigger owned by a DIFFERENT account can't see a cross-account editor and gets blank. If we can't identify the
+    // editor, DON'T log: the editor's OWN trigger logs the same edit WITH their name, so a blank pass here is pure
+    // duplicate ("unknown" alongside the named entry). Bailing here is what removes those duplicates from the AUDIT feed.
+    let email = '';
+    try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* cross-account: not available */ }
+    if (!email) return;
+
     // A member move (an existing roster ID entered into another row) is logged as a transfer.
     if (sheetName === CONFIG.sheets.roster && e.range.getColumn() === rosterCols_(e.range.getSheet()).discord) {
       const mv = cpDetectMove_(e.range.getSheet(), e.range.getRow(), e.value === undefined ? '' : String(e.value));
@@ -566,9 +575,6 @@ function auditEdit(e) {
       log.appendRow(['Time', 'Editor', 'Sheet', 'Cell', 'Old', 'New', 'Type', 'Member']);
       log.setFrozenRows(1);
     }
-    let email = '';
-    try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* cross-account: not available */ }
-
     const multi = e.range.getNumRows() * e.range.getNumColumns() > 1;
     const oldV = multi ? '(multi-cell)' : (e.oldValue === undefined ? '' : e.oldValue);
     const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
@@ -690,13 +696,16 @@ function cpEnsureAuditTrigger() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(8000)) return false; // someone else is already ensuring it
   try {
-    let hasAudit = false;
+    let kept = false;
     ScriptApp.getProjectTriggers().forEach((t) => {
       const fn = t.getHandlerFunction();
-      if (fn === 'auditEdit' && String(t.getEventType()) === 'ON_EDIT') hasAudit = true;
-      else if (fn === 'recordEdit' && String(t.getEventType()) === 'ON_EDIT') ScriptApp.deleteTrigger(t);
+      if (fn === 'auditEdit' && String(t.getEventType()) === 'ON_EDIT') {
+        if (kept) ScriptApp.deleteTrigger(t); else kept = true; // keep exactly ONE of my auditEdit triggers; extras just double-log
+      } else if (fn === 'recordEdit' && String(t.getEventType()) === 'ON_EDIT') {
+        ScriptApp.deleteTrigger(t); // legacy handler — must never run alongside auditEdit
+      }
     });
-    if (!hasAudit) ScriptApp.newTrigger('auditEdit').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
+    if (!kept) ScriptApp.newTrigger('auditEdit').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
     return true;
   } finally {
     lock.releaseLock();
