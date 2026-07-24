@@ -517,6 +517,8 @@ function setupWizard() {
           : '❌ Leave form link FAILED — the response tab was not detected, so submissions will NOT sync. Re-run First-Run Setup; if it persists, open the form and check its response destination.');
       }
       if (form) { styleFormResponses_(form); steps.push('✅ Form Response sheet themed.'); }
+      // The patrol form's response tab gets the same console theme when it's linked.
+      try { const pf = CONFIG.sheets.patrol ? ss.getSheetByName(CONFIG.sheets.patrol) : null; if (pf) { styleFormResponses_(pf); steps.push('✅ Patrol form response sheet themed.'); } } catch (e2) { /* best-effort */ }
     } catch (e) { steps.push(`⚠️ Leave form: ${e.message}`); }
 
     // 4. Column classification — scan roster headers into the [COLUMNS] block.
@@ -1330,31 +1332,31 @@ function onFormSubmit(e) {
   }
   // v1.0 — the same spreadsheet onFormSubmit fires for BOTH forms; the patrol sync only scans its own tab (no-op when
   // that form wasn't the one submitted, or when the feature is off), so running it here needs no per-form routing.
-  try { syncPatrolHours(); } catch (err) { log_('onFormSubmit.patrol', err); }
+  try { syncPatrolFormNow_(); } catch (err) { log_('onFormSubmit.patrol', err); } // transfer onto the Patrol Log (START_END) or credit directly (DURATION) — same path as the menu
   // Roster Signups: a submission lands on the FORM's own response tab (SIGNUP_FORM_RESPONSES); the sync field-matches it
   // into the themed SIGNUPS review tab and stamps Pending — just like the LOA form feeds the LOA Tracker. syncSignupForm
   // only scans its own tab and no-ops when the feature is off, so (like the patrol sync) it needs no per-form routing.
   try { if (typeof syncSignupForm === 'function') syncSignupForm(); } catch (err) { log_('onFormSubmit.signups', err); }
   // Re-apply the dark theme so every new submission looks polished + on-brand (runs even if the sync above threw).
-  try {
-    const form = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.form);
-    if (form) styleFormResponses_(form);
-  } catch (err) {
-    log_('onFormSubmit.style', err);
-  }
+  // BOTH form response tabs — the LOA form and the patrol form — get the same treatment (the one that was just
+  // submitted actually changed; re-styling the other is a cheap idempotent no-op).
+  const ss2 = SpreadsheetApp.getActive();
+  [CONFIG.sheets.form, CONFIG.sheets.patrol].forEach((nm) => {
+    if (!nm) return;
+    try { const sh = ss2.getSheetByName(nm); if (sh) styleFormResponses_(sh); } catch (err) { log_('onFormSubmit.style', err); }
+  });
 }
 
 /**
- * Applies the dark "command-console" theme to the LOA/ROA Form Response sheet so new
- * submissions look polished + on-brand. Does NOT touch data-row backgrounds — those are the
- * status tints (processing/done/error) owned by syncFormToTracker_; this themes only the
- * header, fonts, monospace IDs, the empty canvas below, borders, and column widths.
+ * Applies the dark "command-console" theme to a Form Response sheet (LOA, patrol, or signup) so new
+ * submissions look polished + on-brand. Does NOT touch data-row backgrounds — those are the status tints
+ * (processing/done/error) owned by the syncs; this themes the header, fonts, monospace IDs, the empty canvas
+ * below, borders — and CENTRES + WRAPS the text. Column widths are the operator's — never touched.
  */
 function styleFormResponses_(sheet) {
   if (!sheet) return;
   const maxRows = sheet.getMaxRows();
-  const FC = leaveFormCols_(sheet); // header-resolved (same map the sync uses), fixed order as fallback
-  const lastCol = Math.max(sheet.getLastColumn(), FC.end || CONFIG.form.end);
+  const lastCol = Math.max(sheet.getLastColumn(), 1);
   const lastRow = Math.max(sheet.getLastRow(), 1);
 
   // Base text: light Roboto across the grid, CENTRED + WRAPPED so long answers read as tidy multi-line cells
@@ -1370,8 +1372,11 @@ function styleFormResponses_(sheet) {
   sheet.setFrozenRows(1);
   sheet.setRowHeight(1, 42);
 
-  // Discord IDs in monospace so the 17-19 digit strings line up.
-  if (FC.discord) sheet.getRange(1, FC.discord, maxRows, 1).setFontFamily('Roboto Mono');
+  // Monospace the Unique-ID column (17-19 digit strings line up), found generically so ANY form tab works.
+  const hdrs = sheet.getRange(1, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
+  let idCol = 0;
+  for (let c = 0; c < hdrs.length; c++) { if (hdrs[c].indexOf('UNIQUE ID') !== -1 || hdrs[c].indexOf('DISCORD') !== -1 || hdrs[c].indexOf('COMMUNITY ID') !== -1) { idCol = c + 1; break; } }
+  if (idCol) sheet.getRange(1, idCol, maxRows, 1).setFontFamily('Roboto Mono');
 
   // Empty canvas below the data → dark fill so the whole sheet reads as one console.
   if (maxRows > lastRow) {
@@ -2552,6 +2557,7 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
   const F = {
     sDate: fFind('START', 'DATE'), sTime: fFind('START', 'TIME'),
     eDate: fFind('END', 'DATE'), eTime: fFind('END', 'TIME'),
+    narrative: fFind('NARRATIVE') || fFind('NOTES') || fFind('NOTE') || fFind('REASON') || fFind('DETAILS'), // the free-text patrol write-up → the log's NOTES
     name: 0,
   };
   for (let c = 0; c < fh.length; c++) { if (fh[c].indexOf('NAME') !== -1 && fh[c].indexOf('OOC') === -1) { F.name = c + 1; break; } }
@@ -2621,6 +2627,7 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
       logSheet.getRange(at, PC.startTime).setValue(tOnly(sd));
       logSheet.getRange(at, PC.endDate).setValue(dOnly(ed));
       logSheet.getRange(at, PC.endTime).setValue(tOnly(ed));
+      if (PC.notes && F.narrative) { const nar = String(cell(F.narrative) || '').trim(); if (nar) logSheet.getRange(at, PC.notes).setNumberFormat('@').setValue(clamp_(nar, 1000)); } // the patrol write-up → the log's NOTES
       try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done); } catch (e2) { /* best-effort */ }
       out.added++;
     } catch (err) { // one bad row must never kill the sync (e.g. an unexpected validation reject)
@@ -2632,31 +2639,46 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
   return out;
 }
 
+/**
+ * Shared patrol-form entry (menu + onFormSubmit): transfer new submissions onto the Patrol Log tab (START_END
+ * mode) or credit directly (DURATION, or no log tab). No UI — returns a result the caller can announce.
+ * @return {{off?, missing?, locked?, mode?, logless?, res?}} mode='log'|'credit'.
+ */
+function syncPatrolFormNow_() {
+  if (!CONFIG.sheets.patrol) return { off: true };
+  const ss = SpreadsheetApp.getActive();
+  const form = ss.getSheetByName(CONFIG.sheets.patrol);
+  if (!form) return { missing: true };
+  const log = CONFIG.sheets.patrolLog ? ss.getSheetByName(CONFIG.sheets.patrolLog) : null;
+  if (!log || norm_(CONFIG.patrol.mode) === 'DURATION') {
+    const res = syncPatrolHours(); // classic direct credit (takes its own lock) — DURATION carries no times to place
+    return { mode: 'credit', logless: !log, res };
+  }
+  const lock = LockService.getScriptLock();
+  if (!lock.tryLock(30000)) return { locked: true };
+  let res;
+  try { res = syncPatrolFormToLog_(form, log, ss.getSheetByName(CONFIG.sheets.roster)); } finally { lock.releaseLock(); }
+  try { refreshPatrolLog_(); } catch (e) { log_('syncPatrolFormNow_.refresh', e); } // autofill + credit + flag + sort, the log's own path
+  return { mode: 'log', res };
+}
+
 /** Menu action: pull patrol-form submissions onto the Patrol Log tab (DURATION-mode forms credit directly — no times to place). */
 function manualSyncPatrol() {
   runAction_('Sync Patrol Forms', () => {
     const ui = SpreadsheetApp.getUi();
-    if (!CONFIG.sheets.patrol) {
-      ui.alert('🚔 Sync Patrol Forms', 'Patrol form sync is OFF.\n\nSet [SHEETS].PATROL_FORM_RESPONSES to your patrol form\'s response tab (⚙️ Engine Settings ▸ Sheets & layout ▸ Google Form links), then run this again.', ui.ButtonSet.OK);
-      return;
-    }
-    const ss = SpreadsheetApp.getActive();
-    const form = ss.getSheetByName(CONFIG.sheets.patrol);
-    if (!form) { ui.alert('🚔 Sync Patrol Forms', `The form response tab "${CONFIG.sheets.patrol}" was not found.`, ui.ButtonSet.OK); return; }
-    const log = CONFIG.sheets.patrolLog ? ss.getSheetByName(CONFIG.sheets.patrolLog) : null;
-    if (!log || norm_(CONFIG.patrol.mode) === 'DURATION') {
-      const res = syncPatrolHours(); // classic direct credit — still marker-deduped on the form
+    const r = syncPatrolFormNow_();
+    if (r.off) { ui.alert('🚔 Sync Patrol Forms', 'Patrol form sync is OFF.\n\nSet [SHEETS].PATROL_FORM_RESPONSES to your patrol form\'s response tab (⚙️ Engine Settings ▸ Sheets & layout ▸ Google Form links), then run this again.', ui.ButtonSet.OK); return; }
+    if (r.missing) { ui.alert('🚔 Sync Patrol Forms', `The form response tab "${CONFIG.sheets.patrol}" was not found.`, ui.ButtonSet.OK); return; }
+    if (r.locked) { ui.alert('Sync skipped — another roster operation is running.'); return; }
+    if (r.mode === 'credit') {
+      const res = r.res;
       if (res === false) { ui.alert('Sync skipped — another roster operation is running.'); return; }
-      const why = log ? 'DURATION-mode submissions carry no start/end times to place on the log — hours were credited directly instead.'
-        : `No "${CONFIG.sheets.patrolLog || 'Patrol Log'}" tab — hours were credited directly from the form.`;
+      const why = r.logless ? `No "${CONFIG.sheets.patrolLog || 'Patrol Log'}" tab — hours were credited directly from the form.`
+        : 'DURATION-mode submissions carry no start/end times to place on the log — hours were credited directly instead.';
       ui.alert('🚔 Sync Patrol Forms', `${why}\n\n✅ ${res.credited.length} log(s) credited (+${res.hoursAdded} hrs) · ${res.errored} flagged red on the form.`, ui.ButtonSet.OK);
       return;
     }
-    const lock = LockService.getScriptLock();
-    if (!lock.tryLock(30000)) { ui.alert('Sync skipped — another roster operation is running.'); return; }
-    let res;
-    try { res = syncPatrolFormToLog_(form, log, ss.getSheetByName(CONFIG.sheets.roster)); } finally { lock.releaseLock(); }
-    try { refreshPatrolLog_(); } catch (e) { log_('manualSyncPatrol.refresh', e); } // autofill + credit + flag + sort, the log's own path
+    const res = r.res;
     const skipNote = res.skipped.length ? ('\n\n⚠️ ' + res.skipped.slice(0, 5).map((k) => (k.row ? `Row ${k.row}: ` : '') + k.reason).join('\n')) : '';
     ui.alert('🚔 Sync Patrol Forms', res.added
       ? `✅ Moved ${res.added} patrol log${res.added === 1 ? '' : 's'} onto "${CONFIG.sheets.patrolLog}" — identity, TOTAL TIME, crediting and flagging are handled there.${skipNote}`
