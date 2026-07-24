@@ -1792,7 +1792,7 @@ function publishHeaderRow_(sh) {
  * frozen string it happened to evaluate to. Self-referential formulas (the tracker's LENGTH / TIME LEFT) therefore keep
  * recalculating publicly instead of going stale between publishes.
  */
-function publishReadCells_(range, valuesOnly) {
+function publishReadCells_(range, valuesOnly, force) {
   const v = range.getValues();
   // valuesOnly: the destination tab has a DIFFERENT column layout (header-matched publish onto a narrower public copy).
   // A copied formula keeps its relative references — e.g. TIME IN RANK's =IF(Q38="",…,TODAY()-INT(Q38)) points at
@@ -1805,7 +1805,12 @@ function publishReadCells_(range, valuesOnly) {
   for (let r = 0; r < v.length; r++) {
     for (let c = 0; c < v[r].length; c++) {
       const fx = String(f[r][c] == null ? '' : f[r][c]);
-      if (fx !== '') v[r][c] = fx;
+      if (fx === '') continue;
+      // FORCE-mirror cell whose internal formula references ANOTHER sheet → publish its computed VALUE (the public file
+      // can't resolve that ref, so the formula would break). A self-contained formula (e.g. a NOW() clock) still copies
+      // as-is below, so it keeps ticking on the public copy.
+      if (force && force[r] && force[r][c] && /'[^']+'!|[A-Za-z0-9_]+![A-Z$]/.test(fx)) continue; // keep v[r][c] (the value)
+      v[r][c] = fx;
     }
   }
   return v;
@@ -1903,12 +1908,50 @@ function publishKeepRanges_() {
 }
 
 /**
+ * The INVERSE of publishKeepRanges_: cells the publish must ALWAYS mirror from the internal, even when the public copy
+ * holds a formula there (which the formula-keep rule would otherwise preserve). Built-ins cover the Welcome Page header
+ * cells that read from the internal; [PUBLISH].FORCE_RANGES adds to them. Same Tab!Range grammar as the keep list.
+ */
+function publishForceRanges_() {
+  const out = {};
+  const add = (spec) => {
+    const t = String(spec).trim(); if (!t) return;
+    const i = t.lastIndexOf('!'); if (i < 1) return;
+    const tab = norm_(t.slice(0, i).replace(/^'|'$/g, '')), a1 = t.slice(i + 1).trim();
+    if (!a1) return;
+    const list = (out[tab] = out[tab] || []);
+    if (list.indexOf(a1) === -1) list.push(a1);
+  };
+  ['Welcome Page!F40:H40', 'Welcome Page!F41:H41', 'Welcome Page!AE6'].forEach(add); // built-in: mirror these Welcome Page cells from the internal
+  try { (cfg_().kv.PUBLISH.FORCE_RANGES || []).forEach(add); } catch (e) { /* config absent -> built-ins only */ }
+  return out;
+}
+
+/** Cells to FORCE-mirror from the internal on THIS tab (a boolean grid over the block), or null if none apply here. */
+function publishForceMask_(dest, top, left, rows, cols) {
+  let any = false;
+  const mask = [];
+  for (let r = 0; r < rows; r++) mask.push(new Array(cols).fill(false));
+  const all = publishForceRanges_();
+  (all[norm_(dest.getName())] || []).concat(all['*'] || []).forEach((a1) => {
+    try {
+      const rg = dest.getRange(a1);
+      const r0 = rg.getRow() - top, c0 = rg.getColumn() - left;
+      for (let r = Math.max(0, r0); r < Math.min(rows, r0 + rg.getNumRows()); r++) {
+        for (let c = Math.max(0, c0); c < Math.min(cols, c0 + rg.getNumColumns()); c++) { mask[r][c] = true; any = true; }
+      }
+    } catch (e) { logWarn_('publishForceMask_', dest.getName() + ': cannot resolve force-range "' + a1 + '"'); }
+  });
+  return any ? mask : null;
+}
+
+/**
  * Cells on the PUBLIC copy that publishing must leave alone:
  *   1. any cell holding a FORMULA — the public sheet's own live date/time/counters must keep recalculating, and
  *      copying the internal sheet's computed value would freeze them as plain text;
  *   2. anything listed in [PUBLISH].KEEP_RANGES for this tab (static text that is meant to differ, e.g. the title).
  */
-function publishKeepMask_(dest, top, left, rows, cols) {
+function publishKeepMask_(dest, top, left, rows, cols, force) {
   const mask = [];
   for (let r = 0; r < rows; r++) mask.push(new Array(cols).fill(false));
   try {
@@ -1925,6 +1968,10 @@ function publishKeepMask_(dest, top, left, rows, cols) {
       }
     } catch (e) { logWarn_('publishKeepMask_', dest.getName() + ': cannot resolve keep-range "' + a1 + '"'); }
   });
+  // FORCE-mirror WINS over keep: un-keep every force cell so the internal's content is written even over a public
+  // formula. (Caller may pass a pre-computed mask; otherwise resolve it here so a per-column match-mode call is covered.)
+  const fm = force || publishForceMask_(dest, top, left, rows, cols);
+  if (fm) for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) if (fm[r][c]) mask[r][c] = false;
   return mask;
 }
 
@@ -2003,7 +2050,10 @@ function publishMirrorTab_(src, dest) {
   const step = (label, fn) => { try { return fn(); } catch (e) { throw new Error(label + ' -> ' + ((e && e.message) ? e.message : e)); } };
   if (src.getMaxColumns() === dest.getMaxColumns()) {
     if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
-    const vals = step('read src ' + sRows + 'x' + sCols, () => publishReadCells_(src.getRange(1, 1, sRows, sCols)));
+    // FORCE-mirror cells (e.g. Welcome Page headers reading from the internal): computed once, it both (a) tells the
+    // read to publish a cross-sheet formula as its VALUE, and (b) un-keeps those cells so the write isn't skipped.
+    const force = publishForceMask_(dest, 1, 1, sRows, sCols);
+    const vals = step('read src ' + sRows + 'x' + sCols, () => publishReadCells_(src.getRange(1, 1, sRows, sCols), false, force));
     // NEVER transmit a sensitive column: blank it in the outgoing block BEFORE the write. Writing first and wiping
     // after left every member's Email/DOB/Phone live on the public file between the two calls — and permanently so
     // if the execution died in that window.
@@ -2012,7 +2062,7 @@ function publishMirrorTab_(src, dest) {
       src.getRange(sh, 1, 1, sCols).getDisplayValues()[0].forEach((h, i) => { if (publishSensitiveHeader_(h)) sens.push(i); });
       sens.forEach((i) => { for (let r = sh; r < vals.length; r++) vals[r][i] = ''; });
     }
-    const keep = publishKeepMask_(dest, 1, 1, sRows, sCols);
+    const keep = publishKeepMask_(dest, 1, 1, sRows, sCols, force);
     const bad = step('write dest ' + sRows + 'x' + sCols, () => writeValuesSafe_(dest, 1, 1, vals, keep));
     if (bad) logWarn_('publishMirrorTab_', dest.getName() + ': ' + bad + ' cell(s) could not be written (in-cell image or chip).');
     if (sh && sRows > sh) { // and scrub any residue the original manual tab copy brought along (cells the masked write skipped)
