@@ -156,12 +156,12 @@ function weekKey_(d) {
   return Utilities.formatDate(base, tz, 'yyyy-MM-dd');
 }
 
-/** Posts a simple summary embed to the AUDIT channel (no-op if none set). */
+/** Posts a simple summary embed to the AUDIT channel (no-op if none set). House style: the title renders as a "# "
+ *  markdown heading at the top of the DESCRIPTION (so a boxed `emoji` in it renders — native titles can't). */
 function postSummary_(title, description, color) {
   sendWebhookPayloadCh_('AUDIT', {
     embeds: [{
-      title,
-      description: clamp_(description, 4000),
+      description: clamp_('# ' + String(title || '') + '\n' + String(description || ''), 4000),
       color: color || 3447003,
       footer: footer_(),
       timestamp: new Date().toISOString(),
@@ -292,18 +292,17 @@ function doWeeklyReset_() {
     logInfo_('doWeeklyReset_', `reset complete; ${dropped.length} dropped to ${lowestTier}.`);
     if (CONFIG.notify && CONFIG.notify.weeklyDigest) { // v1.0 richer opt-in digest supersedes the basic reset notice
       notifyCh_('AUDIT', true, {
-        title: fill_(CONFIG.notify.digestTitle, {}),
         color: hexToInt_(CONFIG.notify.digestColor, 5793266),
-        description: `Hours have been zeroed and statuses recomputed for the new period.`,
+        description: `# ${fill_(CONFIG.notify.digestTitle, {})}\nHours have been zeroed and statuses recomputed for the new period.`,
         fields: [
-          { name: '👥 Roster', value: `${after.length} member(s)`, inline: true },
-          { name: '🟢 Active', value: `${activeCount}`, inline: true },
-          { name: '🔻 Dropped', value: `${dropped.length} → ${lowestTier}`, inline: true },
-          { name: '⏱️ Hours logged', value: `${Math.round(totalHours * 10) / 10} hrs this period`, inline: true },
+          { name: '`👥` Roster', value: `${after.length} member(s)`, inline: true },
+          { name: '`🟢` Active', value: `${activeCount}`, inline: true },
+          { name: '`🔻` Dropped', value: `${dropped.length} → ${lowestTier}`, inline: true },
+          { name: '`⏱️` Hours Logged', value: `${Math.round(totalHours * 10) / 10} hrs this period`, inline: true },
         ],
       });
     } else {
-      postSummary_('🗑️ Weekly Reset', `Hours zeroed and statuses recomputed. **${dropped.length}** member(s) dropped to ${lowestTier}.`, 15105570);
+      postSummary_('`🗑️` Weekly Reset', `Hours zeroed and statuses recomputed. **${dropped.length}** member(s) dropped to ${lowestTier}.`, 15105570);
     }
     try { PropertiesService.getScriptProperties().setProperty(LAST_RESET_PROP, String(Date.now())); } catch (e) { /* best-effort cadence marker */ } // v1.0: advance the cadence clock (manual + scheduled both count)
     return { captured: captured, shifted: shifted, lastActivity: lastAct, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
@@ -1166,7 +1165,7 @@ function scanIntegrityCore_() {
   if (log.getLastRow() === 0) log.appendRow(['Time', '# Issues', 'Detail']);
   log.appendRow([new Date(), issues.length, issues.join(' | ')]);
   const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // bound growth (v1.0: config cap)
-  if (issues.length) postSummary_(`🔍 Integrity Scan — ${issues.length} issue(s)`, issues.slice(0, 12).join('\n'), 15548997);
+  if (issues.length) postSummary_(`\`🔍\` Integrity Scan — ${issues.length} Issue(s)`, issues.slice(0, 12).map((s) => '`❌` ' + s).join('\n'), 15548997);
   logInfo_('scanIntegrity', `${issues.length} issue(s) found.`);
   return issues;
 }

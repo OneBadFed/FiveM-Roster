@@ -941,12 +941,12 @@ function cpAssignMember(payload) {
   try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('cpAssignMember.academy', e2); }
   try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('cpAssignMember.groups', e2); }
   notifyCh_('AUDIT', CONFIG.notify.memberAdded, { // roster-change traffic → AUDIT channel; after the lock releases
-    title: fill_(CONFIG.notify.memberAddedTitle, { name: seated.name }),
+    description: clamp_(`# ${fill_(CONFIG.notify.memberAddedTitle, { name: seated.name })}\nThis member has been added to the roster.`, 4000),
     color: hexToInt_(CONFIG.notify.memberAddedColor, 5749594),
     fields: [
-      { name: '👤 Name', value: clamp_(dash_(seated.name), 1000), inline: true },
-      { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(seated.rank)), 1000), inline: true },
-      { name: '🎙️ Callsign', value: clamp_(dash_(seated.callsign), 1000), inline: true },
+      { name: '`👮` Name', value: clamp_(dash_(seated.name), 1000), inline: true },
+      { name: '`🛡️` Rank', value: clamp_(dash_(withIcon_(seated.rank)), 1000), inline: true },
+      { name: '`🎙️` Callsign', value: clamp_(dash_(seated.callsign), 1000), inline: true },
     ],
   }, mention_(seated.discord));
   return seated;
@@ -1026,12 +1026,12 @@ function cpMoveMember(payload) {
   try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('cpMoveMember.groups', e2); }
   promoRecord_(Number(payload && payload.fromRow), Number(payload && payload.toRow), res.name, res.fromRank, res.toRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
   notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; after the lock releases, only on a successful move
-    title: fill_(CONFIG.notify.transferTitle, { name: res.name, from: res.fromRank, to: res.toRank }),
+    description: clamp_(`# ${fill_(CONFIG.notify.transferTitle, { name: res.name, from: res.fromRank, to: res.toRank })}\nThis member has been transferred. Their roster row has been updated.`, 4000),
     color: hexToInt_(CONFIG.notify.transferColor, 5793266),
     fields: [
-      { name: '👤 Name', value: clamp_(dash_(res.name), 1000), inline: true },
-      { name: '↗️ From', value: clamp_(dash_(withIcon_(res.fromRank)), 1000), inline: true },
-      { name: '🛡️ To', value: clamp_(dash_(withIcon_(res.toRank)), 1000), inline: true },
+      { name: '`👮` Name', value: clamp_(dash_(res.name), 1000), inline: true },
+      { name: '`↗️` From', value: clamp_(dash_(withIcon_(res.fromRank)), 1000), inline: true },
+      { name: '`🛡️` To', value: clamp_(dash_(withIcon_(res.toRank)), 1000), inline: true },
     ],
   }, mention_(res.discord));
   return { moved: true, name: res.name, fromRank: res.fromRank, toRank: res.toRank, wiped: res.wiped, toRow: res.member.row, member: res.member };

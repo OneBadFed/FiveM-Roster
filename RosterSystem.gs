@@ -2030,12 +2030,11 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
     if (CONFIG.notify && CONFIG.notify.leaveStarted) {
       summary.started.forEach((s) => {
         notifyEvent_('LOA', true, 'loaStarted', { name: s.name, rank: s.rank, type: s.type }, {
-          title: fill_(CONFIG.notify.startedTitle, { type: s.type }),
-          description: clamp_(`This member's **${s.type}** has started. Their status has been updated on the roster.`, 4000),
+          description: clamp_(`# ${fill_(CONFIG.notify.startedTitle, { type: s.type })}\nThis member's **${s.type}** has started. Their status has been updated on the roster.`, 4000),
           color: hexToInt_(CONFIG.notify.startedColor, 5154774),
           fields: [
-            { name: '👮 Name', value: clamp_(dash_(s.name), 1000), inline: true },
-            { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(s.rank)), 1000), inline: true },
+            { name: '`👮` Name', value: clamp_(dash_(s.name), 1000), inline: true },
+            { name: '`🛡️` Rank', value: clamp_(dash_(withIcon_(s.rank)), 1000), inline: true },
           ],
         }, mention_(s.id));
         Utilities.sleep(300);
@@ -2534,11 +2533,10 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   }
   // Flagged rows → ONE summary embed on the PATROL channel (webhook presence = the opt-in; never per-row spam).
   if (sendWebhooks && summary.flags.length && webhookFor_('PATROL')) {
-    const lines = summary.flags.slice(0, 15).map((f) => `❌ Row ${f.row} — ${f.reason}`);
+    const lines = summary.flags.slice(0, 15).map((f) => `\`❌\` Row ${f.row} — ${f.reason}`);
     if (summary.flags.length > 15) lines.push(`…and ${summary.flags.length - 15} more`);
     notifyEvent_('PATROL', true, 'patrolFlagged', { count: String(summary.flags.length), rows: lines.join('\n') }, {
-      title: `⚠️ ${summary.flags.length} Patrol Log${summary.flags.length === 1 ? '' : 's'} Flagged`,
-      description: clamp_(lines.join('\n') + `\n\nFlagged rows are red on "${CONFIG.sheets.patrol}" — fix them and re-run 🚔 Sync Patrol Hours.`, 4000),
+      description: clamp_(`# \`⚠️\` ${summary.flags.length} Patrol Log${summary.flags.length === 1 ? '' : 's'} Flagged\n` + lines.join('\n') + `\n\nFlagged rows are red on "${CONFIG.sheets.patrol}" — fix them and re-run 🚔 Sync Patrol Hours.`, 4000),
       color: hexToInt_('#e0a52c', 14721324),
     }, '');
   }
@@ -2982,29 +2980,27 @@ function patrolNotifyRow_(kind, d) {
     const nm = String(d.name || '').trim() || 'Unknown member';
     if (kind === 'processed') {
       const fields = [];
-      if (nz(d.rank)) fields.push({ name: '🛡️ Rank', value: clamp_(dash_(withIcon_(d.rank)), 1000), inline: true });
-      if (nz(d.callsign)) fields.push({ name: '🎙️ Callsign', value: clamp_(dash_(d.callsign), 1000), inline: true });
-      fields.push({ name: '⏱️ Hours Logged', value: `${d.hours} hrs`, inline: true });
-      fields.push({ name: '📊 New Total', value: `${d.total} hrs`, inline: true });
-      if (start) fields.push({ name: '▶️ Start Date', value: clamp_(dash_(start), 1000), inline: true });
-      if (end) fields.push({ name: '⏹️ End Date', value: clamp_(dash_(end), 1000), inline: true });
+      if (nz(d.rank)) fields.push({ name: '`🛡️` Rank', value: clamp_(dash_(withIcon_(d.rank)), 1000), inline: true });
+      if (nz(d.callsign)) fields.push({ name: '`🎙️` Callsign', value: clamp_(dash_(d.callsign), 1000), inline: true });
+      fields.push({ name: '`⏱️` Hours Logged', value: `${d.hours} hrs`, inline: true });
+      fields.push({ name: '`📊` New Total', value: `${d.total} hrs`, inline: true });
+      if (start) fields.push({ name: '`▶️` Start Date', value: clamp_(dash_(start), 1000), inline: true });
+      if (end) fields.push({ name: '`⏹️` End Date', value: clamp_(dash_(end), 1000), inline: true });
       notifyEvent_('PATROL', true, 'patrolLogged',
         { name: d.name, rank: d.rank, callsign: d.callsign, hours: String(d.hours), total: String(d.total), start: start, end: end },
-        { title: fill_(N.patrolTitle || '🚔 {name} logged {hours}h of patrol', { name: d.name, hours: d.hours, total: d.total }),
-          description: clamp_("This member's patrol log has been verified and their hours credited to the roster.", 4000),
+        { description: clamp_(`# ${fill_(N.patrolTitle || '\`🚔\` {name} logged {hours}h of patrol', { name: d.name, hours: d.hours, total: d.total })}\nThis member's patrol log has been verified and their hours credited to the roster.`, 4000),
           color: hexToInt_(N.patrolColor, 5154774), fields: fields },
         mention_(d.discord));
     } else { // flagged
-      const fields = [{ name: '👮 Name', value: clamp_(dash_(nm), 1000), inline: true }];
-      if (nz(d.rank)) fields.push({ name: '🛡️ Rank', value: clamp_(dash_(withIcon_(d.rank)), 1000), inline: true });
-      if (nz(d.callsign)) fields.push({ name: '🎙️ Callsign', value: clamp_(dash_(d.callsign), 1000), inline: true });
-      if (start) fields.push({ name: '▶️ Start Date', value: clamp_(dash_(start), 1000), inline: true });
-      if (end) fields.push({ name: '⏹️ End Date', value: clamp_(dash_(end), 1000), inline: true });
-      if (nz(d.reason)) fields.push({ name: '⚠️ Reason', value: clamp_(dash_(d.reason), 1000), inline: false });
+      const fields = [{ name: '`👮` Name', value: clamp_(dash_(nm), 1000), inline: true }];
+      if (nz(d.rank)) fields.push({ name: '`🛡️` Rank', value: clamp_(dash_(withIcon_(d.rank)), 1000), inline: true });
+      if (nz(d.callsign)) fields.push({ name: '`🎙️` Callsign', value: clamp_(dash_(d.callsign), 1000), inline: true });
+      if (start) fields.push({ name: '`▶️` Start Date', value: clamp_(dash_(start), 1000), inline: true });
+      if (end) fields.push({ name: '`⏹️` End Date', value: clamp_(dash_(end), 1000), inline: true });
+      if (nz(d.reason)) fields.push({ name: '`⚠️` Reason', value: clamp_(dash_(d.reason), 1000), inline: false });
       notifyEvent_('PATROL', true, 'patrolFlagged',
-        { count: '1', rows: '❌ ' + nm + ' — ' + (d.reason || 'flagged'), name: d.name, rank: d.rank, callsign: d.callsign, reason: d.reason || '', start: start, end: end },
-        { title: '⚠️ Patrol Log Flagged' + (nz(d.name) ? ' — ' + d.name : ''),
-          description: clamp_("This member's patrol log needs admin review before it can be credited.", 4000),
+        { count: '1', rows: '`❌` ' + nm + ' — ' + (d.reason || 'flagged'), name: d.name, rank: d.rank, callsign: d.callsign, reason: d.reason || '', start: start, end: end },
+        { description: clamp_('# `⚠️` Patrol Log Flagged' + (nz(d.name) ? ' — ' + d.name : '') + "\nThis member's patrol log needs admin review before it can be credited.", 4000),
           color: hexToInt_('#e0a52c', 14721324), fields: fields },
         '');
     }
@@ -3379,16 +3375,16 @@ function sendDiscordWebhook(name, rank, callsign, type, start, end, duration, di
   const typeStr = String(type == null ? '' : type).trim() || 'Leave';
   const isReturn = CONFIG.returnStatus && norm_(typeStr) === norm_(CONFIG.returnStatus); // ROA-style returning leave → warmer color
   const E = CONFIG.embed; // v1.0: configurable title/colour
-  const fallback = {
-    title: String(E.submitTitle).replace(/\{type\}/g, typeStr),
+  const fallback = { // house style: the title is a "# " heading in the DESCRIPTION (native titles can't render the `emoji` box)
+    description: clamp_('# ' + String(E.submitTitle).replace(/\{type\}/g, typeStr), 4000),
     color: isReturn ? hexToInt_(E.returnColor, 15105570) : hexToInt_(E.submitColor, 3447003),
     fields: [
-      { name: '👮 Name', value: clamp_(dash_(name), 1000), inline: true },
-      { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
-      { name: '🎙️ Callsign', value: clamp_(dash_(callsign), 1000), inline: true },
-      { name: '▶️ Start Date', value: clamp_(dash_(start), 1000), inline: true },
-      { name: '⏹️ End Date', value: clamp_(dash_(end), 1000), inline: true },
-      { name: '⌛ Length', value: clamp_(dash_(duration), 1000), inline: true },
+      { name: '`👮` Name', value: clamp_(dash_(name), 1000), inline: true },
+      { name: '`🛡️` Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
+      { name: '`🎙️` Callsign', value: clamp_(dash_(callsign), 1000), inline: true },
+      { name: '`▶️` Start Date', value: clamp_(dash_(start), 1000), inline: true },
+      { name: '`⏹️` End Date', value: clamp_(dash_(end), 1000), inline: true },
+      { name: '`⌛` Length', value: clamp_(dash_(duration), 1000), inline: true },
     ],
   };
   const vars = { name, rank, callsign, type: typeStr, start, end, length: duration };
@@ -3397,13 +3393,12 @@ function sendDiscordWebhook(name, rank, callsign, type, start, end, duration, di
 
 function sendExpirationWebhook(name, rank, discordId, type) {
   const E = CONFIG.embed; // v1.0: configurable title/colour
-  const fallback = {
-    title: String(E.expireTitle).replace(/\{type\}/g, type),
-    description: clamp_(`This member's **${type}** has ended. Their status has been updated on the roster.`, 4000),
+  const fallback = { // house style: "# " heading in the description, boxed-emoji labels
+    description: clamp_(`# ${String(E.expireTitle).replace(/\{type\}/g, type)}\nThis member's **${type}** has ended. Their status has been updated on the roster.`, 4000),
     color: hexToInt_(E.expireColor, 15548997),
     fields: [
-      { name: '👮 Name', value: clamp_(dash_(name), 1000), inline: true },
-      { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
+      { name: '`👮` Name', value: clamp_(dash_(name), 1000), inline: true },
+      { name: '`🛡️` Rank', value: clamp_(dash_(withIcon_(rank)), 1000), inline: true },
     ],
   };
   notifyEvent_('LOA', true, 'loaExpired', { name, rank, type }, fallback, mention_(discordId));
@@ -3538,14 +3533,13 @@ function notifyLeaveApproved_(sheet, row) {
     const type = trackerLeaveType_() || 'Leave';
     const vars = { name: g(RC.name), rank: g(RC.rank), type, start: g(RC.start), end: g(RC.end) };
     notifyEvent_('LOA', true, 'loaApproved', vars, {
-      title: fill_(CONFIG.notify.approvedTitle, { type: type }),
-      description: clamp_(`This member's **${type}** has been approved. It will apply to the roster on its start date.`, 4000),
+      description: clamp_(`# ${fill_(CONFIG.notify.approvedTitle, { type: type })}\nThis member's **${type}** has been approved. It will apply to the roster on its start date.`, 4000),
       color: hexToInt_(CONFIG.notify.approvedColor, 5749594),
       fields: [
-        { name: '👮 Name', value: clamp_(dash_(vars.name), 1000), inline: true },
-        { name: '🛡️ Rank', value: clamp_(dash_(withIcon_(vars.rank)), 1000), inline: true },
-        { name: '▶️ Start Date', value: clamp_(dash_(vars.start), 1000), inline: true },
-        { name: '⏹️ End Date', value: clamp_(dash_(vars.end), 1000), inline: true },
+        { name: '`👮` Name', value: clamp_(dash_(vars.name), 1000), inline: true },
+        { name: '`🛡️` Rank', value: clamp_(dash_(withIcon_(vars.rank)), 1000), inline: true },
+        { name: '`▶️` Start Date', value: clamp_(dash_(vars.start), 1000), inline: true },
+        { name: '`⏹️` End Date', value: clamp_(dash_(vars.end), 1000), inline: true },
       ],
     }, mention_(g(RC.discord)));
   } catch (e) { log_('notifyLeaveApproved_', e); }
@@ -3823,12 +3817,12 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   try { PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_BACKOFF_PROP_); } catch (ig) { /* best-effort */ }
   // Discord webhook LAST: UrlFetchApp is unavailable in AuthMode.LIMITED, so this may throw — nothing important is after it.
   notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; only reached on a successful move
-    title: fill_(CONFIG.notify.transferTitle, { name: memberName, from: sourceRank, to: targetRank }),
+    description: clamp_(`# ${fill_(CONFIG.notify.transferTitle, { name: memberName, from: sourceRank, to: targetRank })}\nThis member has been transferred. Their roster row has been updated.`, 4000),
     color: hexToInt_(CONFIG.notify.transferColor, 5793266),
     fields: [
-      { name: '👤 Name', value: clamp_(dash_(memberName), 1000), inline: true },
-      { name: '↗️ From', value: clamp_(dash_(withIcon_(sourceRank)), 1000), inline: true },
-      { name: '🛡️ To', value: clamp_(dash_(withIcon_(targetRank)), 1000), inline: true },
+      { name: '`👮` Name', value: clamp_(dash_(memberName), 1000), inline: true },
+      { name: '`↗️` From', value: clamp_(dash_(withIcon_(sourceRank)), 1000), inline: true },
+      { name: '`🛡️` To', value: clamp_(dash_(withIcon_(targetRank)), 1000), inline: true },
     ],
   }, mention_(target));
 }

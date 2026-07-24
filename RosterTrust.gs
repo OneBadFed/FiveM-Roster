@@ -661,15 +661,15 @@ function auditNotify_(editor, sheetName, cellA1, oldV, newV, type, member) {
     if (!webhookFor_('AUDIT')) return; // memoized per execution — cheap when unset
     const fields = [];
     const add = (n, v) => { if (String(v == null ? '' : v).trim() !== '') fields.push({ name: n, value: clamp_(dash_(String(v)), 1000), inline: true }); };
-    add('👤 Editor', editor);
-    add('📄 Sheet', sheetName);
-    add('📍 Cell', cellA1);
-    add('👮 Member', member);
-    add('◀️ Old', oldV);
-    add('▶️ New', newV);
+    add('`👤` Editor', editor);
+    add('`📄` Sheet', sheetName);
+    add('`📍` Cell', cellA1);
+    add('`👮` Member', member);
+    add('`◀️` Old', oldV);
+    add('`▶️` New', newV);
     const vars = { editor, sheet: sheetName, cell: cellA1, member, old: oldV, 'new': newV, action: auditTypeLabel_(type) };
-    const fallback = {
-      title: `📝 ${auditTypeLabel_(type)}`,
+    const fallback = { // house style: "# " heading in the description with a boxed `emoji` (native titles can't render it)
+      description: clamp_(`# \`📝\` ${auditTypeLabel_(type)}`, 4000),
       color: 5793266,
       fields,
       footer: { text: `${CONFIG.systemName} • audit` },

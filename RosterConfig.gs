@@ -123,12 +123,12 @@ function maybeErrorWebhook_(ae, fnName) {
     if (!url) return;
     cache.put(key, '1', 300);
     const sysName = (CFG_ && CFG_.legacy) ? CFG_.legacy.systemName : 'Roster System';
-    let desc = `📄 **Message:** ${ae.message || ''}`;
-    if (ae.hint) desc += `\n🛠️ **Fix:** ${ae.hint}`;
-    desc += `\n📍 **Where:** \`${fnName || 'engine'}\``;
+    let desc = `# \`🚨\` Engine Error · ${ae.code}`; // house style: "# " heading in the description with a boxed \`emoji\`
+    desc += `\n\`📄\` **Message:** ${ae.message || ''}`;
+    if (ae.hint) desc += `\n\`🛠️\` **Fix:** ${ae.hint}`;
+    desc += `\n\`📍\` **Where:** \`${fnName || 'engine'}\``;
     desc = desc.slice(0, 1500) + '\n\n_See SYS Log for the complete record._'; // F-044: one safe bound on the whole description + pointer
     const fallbackEmbed = {
-      title: `🚨 Engine Error · ${ae.code}`,
       description: desc,
       color: 14702415, // #e0574f — semantic red
       footer: { text: `${sysName} • ${ENGINE_VERSION}` },
@@ -361,8 +361,8 @@ const BLOCK_SPECS_ = Object.freeze({
     SUBMIT_COLOR: { t: 'color', d: '#3498db', req: true, help: 'Colour bar of a new leave-submission embed.' },
     RETURN_COLOR: { t: 'color', d: '#e67e22', req: true, help: 'Colour bar when the submission is the returning-leave type.' },
     EXPIRE_COLOR: { t: 'color', d: '#ed4245', req: true, help: 'Colour bar of a leave-expired embed.' },
-    SUBMIT_TITLE: { t: 'string', d: '📥 New {type} Submission', req: true, help: 'Title of a new leave-submission embed. {type} = the leave type.' },
-    EXPIRE_TITLE: { t: 'string', d: '⌛ {type} Expired', req: true, help: 'Title of a leave-expired embed. {type} = the leave type.' },
+    SUBMIT_TITLE: { t: 'string', d: '`📥` New {type} Submission', req: true, help: 'Title of a new leave-submission embed. {type} = the leave type.' },
+    EXPIRE_TITLE: { t: 'string', d: '`⌛` {type} Expired', req: true, help: 'Title of a leave-expired embed. {type} = the leave type.' },
     EMBED_AUTHOR: { t: 'string', d: '', req: false, help: 'Small author line shown ABOVE the title (e.g. the department name). Blank = off.' },
     EMBED_AUTHOR_ICON: { t: 'string', d: '', req: false, help: 'Author icon image URL (https://…), shown beside the author name. Needs an author.' },
     EMBED_THUMBNAIL: { t: 'string', d: '', req: false, help: 'Thumbnail image URL (https://…) shown at the embed\'s top-right. Blank = off.' },
@@ -372,22 +372,22 @@ const BLOCK_SPECS_ = Object.freeze({
   } },
   NOTIFICATIONS: { type: 'kv', help: 'Optional Discord embeds for roster events. All OFF by default; each posts to the same webhook and reuses the [DISCORD] embed author/thumbnail/image/footer.', keys: {
     MEMBER_ADDED: { t: 'bool', d: false, req: false, help: 'Post an embed when a member is seated into a slot.' },
-    MEMBER_ADDED_TITLE: { t: 'string', d: '➕ {name} joined the roster', req: false, help: 'Title for the member-added embed. {name} = the member name.' },
+    MEMBER_ADDED_TITLE: { t: 'string', d: '`➕` {name} joined the roster', req: false, help: 'Title for the member-added embed. {name} = the member name.' },
     MEMBER_ADDED_COLOR: { t: 'color', d: '#57b85a', req: false, help: 'Colour bar of the member-added embed.' },
     TRANSFER: { t: 'bool', d: false, req: false, help: 'Post an embed when a member moves rows (transfer / promotion / demotion).' },
-    TRANSFER_TITLE: { t: 'string', d: '🔄 {name} — {from} → {to}', req: false, help: 'Title for the transfer embed. {name}, {from} rank, {to} rank.' },
+    TRANSFER_TITLE: { t: 'string', d: '`🔄` {name} — {from} → {to}', req: false, help: 'Title for the transfer embed. {name}, {from} rank, {to} rank.' },
     TRANSFER_COLOR: { t: 'color', d: '#5865f2', req: false, help: 'Colour bar of the transfer embed.' },
     LEAVE_APPROVED: { t: 'bool', d: false, req: false, help: 'Post an embed when a leave is approved on the tracker.' },
-    LEAVE_APPROVED_TITLE: { t: 'string', d: '✅ {type} Approved', req: false, help: 'Title for the leave-approved embed. {type} = the leave type.' },
+    LEAVE_APPROVED_TITLE: { t: 'string', d: '`✅` {type} Approved', req: false, help: 'Title for the leave-approved embed. {type} = the leave type.' },
     LEAVE_APPROVED_COLOR: { t: 'color', d: '#57b85a', req: false, help: 'Colour bar of the leave-approved embed.' },
     LEAVE_STARTED: { t: 'bool', d: false, req: false, help: 'Post an embed when a leave becomes active (its start date arrives).' },
-    LEAVE_STARTED_TITLE: { t: 'string', d: '▶️ {type} Started', req: false, help: 'Title for the leave-started embed. {type} = the leave type.' },
+    LEAVE_STARTED_TITLE: { t: 'string', d: '`▶️` {type} Started', req: false, help: 'Title for the leave-started embed. {type} = the leave type.' },
     LEAVE_STARTED_COLOR: { t: 'color', d: '#4ea7d6', req: false, help: 'Colour bar of the leave-started embed.' },
     WEEKLY_DIGEST: { t: 'bool', d: false, req: false, help: 'Post a roster-summary embed (headcount by status) at each hours reset.' },
-    WEEKLY_DIGEST_TITLE: { t: 'string', d: '📊 Weekly Roster Summary', req: false, help: 'Title for the weekly digest embed.' },
+    WEEKLY_DIGEST_TITLE: { t: 'string', d: '`📊` Weekly Roster Summary', req: false, help: 'Title for the weekly digest embed.' },
     WEEKLY_DIGEST_COLOR: { t: 'color', d: '#5865f2', req: false, help: 'Colour bar of the weekly digest embed.' },
     PATROL_LOGGED: { t: 'bool', d: false, req: false, help: 'Post an embed when a patrol log credits hours to a member.' },
-    PATROL_LOGGED_TITLE: { t: 'string', d: '🚔 {name} logged {hours}h of patrol', req: false, help: 'Title for the patrol-logged embed. Tokens: {name}, {hours} (this log), {total} (new total).' },
+    PATROL_LOGGED_TITLE: { t: 'string', d: '`🚔` {name} logged {hours}h of patrol', req: false, help: 'Title for the patrol-logged embed. Tokens: {name}, {hours} (this log), {total} (new total).' },
     PATROL_LOGGED_COLOR: { t: 'color', d: '#4ea7d6', req: false, help: 'Colour bar of the patrol-logged embed.' },
   } },
   PUBLISH: { type: 'kv', help: 'Public-roster publishing. Cells on the PUBLIC copy that must never be overwritten. A destination cell containing a FORMULA is always left alone automatically (so its own live date/time/counters keep recalculating) — this list is for STATIC text that should differ, like the public title.', keys: {
@@ -952,18 +952,18 @@ function materialize_(c, fromTab) {
     formats: { date: kv.FORMATS.DATE_DISPLAY || 'd MMM. yyyy', timestamp: kv.FORMATS.TIMESTAMP_DISPLAY || 'd MMM yyyy, h:mm a' },
     embed: {
       submitColor: kv.DISCORD.SUBMIT_COLOR || '#3498db', returnColor: kv.DISCORD.RETURN_COLOR || '#e67e22', expireColor: kv.DISCORD.EXPIRE_COLOR || '#ed4245',
-      submitTitle: kv.DISCORD.SUBMIT_TITLE || '📥 New {type} Submission', expireTitle: kv.DISCORD.EXPIRE_TITLE || '⌛ {type} Expired',
+      submitTitle: kv.DISCORD.SUBMIT_TITLE || '`📥` New {type} Submission', expireTitle: kv.DISCORD.EXPIRE_TITLE || '`⌛` {type} Expired',
       authorName: kv.DISCORD.EMBED_AUTHOR || '', authorIcon: kv.DISCORD.EMBED_AUTHOR_ICON || '', // v1.0 embed-body chrome (all blank by default)
       thumbnail: kv.DISCORD.EMBED_THUMBNAIL || '', image: kv.DISCORD.EMBED_IMAGE || '',
       footerText: kv.DISCORD.EMBED_FOOTER || '', footerIcon: kv.DISCORD.EMBED_FOOTER_ICON || '',
     },
     notify: { // v1.0 event notifications — all default off
-      memberAdded: N.MEMBER_ADDED === true, memberAddedTitle: N.MEMBER_ADDED_TITLE || '➕ {name} joined the roster', memberAddedColor: N.MEMBER_ADDED_COLOR || '#57b85a',
-      transfer: N.TRANSFER === true, transferTitle: N.TRANSFER_TITLE || '🔄 {name} — {from} → {to}', transferColor: N.TRANSFER_COLOR || '#5865f2',
-      leaveApproved: N.LEAVE_APPROVED === true, approvedTitle: N.LEAVE_APPROVED_TITLE || '✅ {type} Approved', approvedColor: N.LEAVE_APPROVED_COLOR || '#57b85a',
-      leaveStarted: N.LEAVE_STARTED === true, startedTitle: N.LEAVE_STARTED_TITLE || '▶️ {type} Started', startedColor: N.LEAVE_STARTED_COLOR || '#4ea7d6',
-      weeklyDigest: N.WEEKLY_DIGEST === true, digestTitle: N.WEEKLY_DIGEST_TITLE || '📊 Weekly Roster Summary', digestColor: N.WEEKLY_DIGEST_COLOR || '#5865f2',
-      patrolLogged: N.PATROL_LOGGED === true, patrolTitle: N.PATROL_LOGGED_TITLE || '🚔 {name} logged {hours}h of patrol', patrolColor: N.PATROL_LOGGED_COLOR || '#4ea7d6',
+      memberAdded: N.MEMBER_ADDED === true, memberAddedTitle: N.MEMBER_ADDED_TITLE || '`➕` {name} joined the roster', memberAddedColor: N.MEMBER_ADDED_COLOR || '#57b85a',
+      transfer: N.TRANSFER === true, transferTitle: N.TRANSFER_TITLE || '`🔄` {name} — {from} → {to}', transferColor: N.TRANSFER_COLOR || '#5865f2',
+      leaveApproved: N.LEAVE_APPROVED === true, approvedTitle: N.LEAVE_APPROVED_TITLE || '`✅` {type} Approved', approvedColor: N.LEAVE_APPROVED_COLOR || '#57b85a',
+      leaveStarted: N.LEAVE_STARTED === true, startedTitle: N.LEAVE_STARTED_TITLE || '`▶️` {type} Started', startedColor: N.LEAVE_STARTED_COLOR || '#4ea7d6',
+      weeklyDigest: N.WEEKLY_DIGEST === true, digestTitle: N.WEEKLY_DIGEST_TITLE || '`📊` Weekly Roster Summary', digestColor: N.WEEKLY_DIGEST_COLOR || '#5865f2',
+      patrolLogged: N.PATROL_LOGGED === true, patrolTitle: N.PATROL_LOGGED_TITLE || '`🚔` {name} logged {hours}h of patrol', patrolColor: N.PATROL_LOGGED_COLOR || '#4ea7d6',
     },
     limits: { snapshotKeep: kv.LIMITS.SNAPSHOT_KEEP, logRowCap: kv.LIMITS.LOG_ROW_CAP, validationBuffer: kv.LIMITS.VALIDATION_BUFFER },
     patrol: { // v1.0 patrol-log → hours (all default; feature OFF until sheets.patrol is set)
