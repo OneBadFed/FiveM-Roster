@@ -1701,10 +1701,11 @@ function approveSignupFromSheet_(signups, row, col, newVal, oldVal) {
     const rowNow = signupResolveRow_(signups, row, id); // the prompt can sit open for minutes while a form sync re-sorts the tab
     const result = approveSignup_(signups, rowNow, roster, slot.row); // assigns + copies PII + stamps Processed
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
-    // Seating a new member changes who sits in each assignment/group band (and the Academy for a cadet rank). Queue the
-    // rebuild AND run it now, so the assignment tabs reflect the new member immediately — the queue is the backstop if
-    // this rebuild is cut short by the simple-trigger budget (the sweep finishes it). Same pattern as a member move.
-    try { if (typeof deferWork_ === 'function') { deferWork_('academy'); deferWork_('groups'); } } catch (ig) {}
+    // Seating a new member changes who sits in each assignment/group band (and the Academy for a cadet rank), and bumps
+    // the welcome-page counts (TOTAL MEMBERS, per-rank totals). Queue all three AND run them now, so the derived tabs +
+    // dashboard reflect the new member immediately — the queue is the backstop if this is cut short by the simple-
+    // trigger budget (the sweep finishes it). Same pattern as a member move.
+    try { if (typeof deferWork_ === 'function') { deferWork_('academy'); deferWork_('groups'); deferWork_('dashboard'); } } catch (ig) {}
     try { if (typeof runDeferredWork_ === 'function') runDeferredWork_(); } catch (ig) {}
     ui.alert('✅ Signup Approved', `${result.name} placed at ${slot.rank}${slot.unit ? ' (' + slot.unit + ')' : ''}.\nPrivate details copied to the roster. Signup marked Processed.`, ui.ButtonSet.OK);
   } catch (e) {
@@ -2412,11 +2413,13 @@ function cpSignupApprove(payload) {
     try { sortSignups_(sh); } catch (e) { log_('cpSignupApprove.sort', e); }
     try { cpAudit_('signup-approved', '', res.name, `row ${slotRow}`, res.name); } catch (e) { /* audit is best-effort */ } // also marks the public copy dirty
   } finally { lock.releaseLock(); }
-  // Seating a new member changes who's in each assignment/group band (and the Academy for a cadet/probationary rank) —
-  // rebuild the derived tabs now so the assignment tabs reflect the new member immediately, exactly like a move. Run
-  // AFTER the lock releases so it never contends with the seating write above.
+  // Seating a new member changes who's in each assignment/group band (and the Academy for a cadet/probationary rank),
+  // and bumps the welcome-page counts (TOTAL MEMBERS, per-rank totals) — rebuild the derived tabs AND repaint the
+  // dashboard now so everything reflects the new member immediately, exactly like a move. Run AFTER the lock releases
+  // so none of it contends with the seating write above.
   try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('cpSignupApprove.academy', e2); }
   try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('cpSignupApprove.groups', e2); }
+  try { if (typeof refreshDashboard_ === 'function') refreshDashboard_(); } catch (e2) { log_('cpSignupApprove.dashboard', e2); }
   return res;
 }
 
