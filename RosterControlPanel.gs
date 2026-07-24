@@ -1555,7 +1555,21 @@ function ensureSignupTab_(file) {
   return sh;
 }
 
-/** Stamp blank statuses as Pending, then re-group Pending → Approved → Processed (value rewrite; keeps formatting). */
+/** The signup STATUS grouping order = the tab's OWN dropdown list when one exists (the operator may have customized it,
+ *  e.g. Pending → Approve → Flagged → Processed — the sort must mirror THEIR order, same layout-ownership rule as the
+ *  chip colours). Fallback: the engine's built-in flow. */
+function signupStatusOrder_(sheet, SC) {
+  try {
+    const dv = sheet.getRange(SC.dataStart, SC.status).getDataValidation();
+    if (dv && String(dv.getCriteriaType()) === 'VALUE_IN_LIST') {
+      const list = (dv.getCriteriaValues()[0] || []).map((v) => String(v).trim()).filter(Boolean);
+      if (list.length) return list;
+    }
+  } catch (e) { /* no/unreadable dropdown → built-in order */ }
+  return SIGNUP_STATUSES_.slice();
+}
+
+/** Stamp blank statuses as Pending, then re-group by the STATUS dropdown's own order (value rewrite; keeps formatting). */
 function sortSignups_(sheet) {
   try {
     const SC = signupCols_(sheet), W = SC.width, ds = SC.dataStart;
@@ -1575,8 +1589,9 @@ function sortSignups_(sheet) {
       rows.push(r);
     }
     if (!rows.length) return 0;
-    const rank = {}; SIGNUP_STATUSES_.forEach((s, i) => { rank[norm_(s)] = i; });
-    const dec = rows.map((r, i) => ({ r: r, i: i, p: (norm_(String(r[SC.status - 1] || '').trim()) in rank) ? rank[norm_(String(r[SC.status - 1]).trim())] : SIGNUP_STATUSES_.length }));
+    const flow = signupStatusOrder_(sheet, SC); // the dropdown's order, e.g. Pending → Approve → Flagged → Processed
+    const rank = {}; flow.forEach((s, i) => { if (!(norm_(s) in rank)) rank[norm_(s)] = i; });
+    const dec = rows.map((r, i) => ({ r: r, i: i, p: (norm_(String(r[SC.status - 1] || '').trim()) in rank) ? rank[norm_(String(r[SC.status - 1]).trim())] : flow.length }));
     dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
     if (SC.discord) sheet.getRange(ds, SC.discord, sorted.length, 1).setNumberFormat('@');
