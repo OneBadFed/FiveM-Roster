@@ -1340,10 +1340,12 @@ function styleFormResponses_(sheet) {
   const lastCol = Math.max(sheet.getLastColumn(), FC.end || CONFIG.form.end);
   const lastRow = Math.max(sheet.getLastRow(), 1);
 
-  // Base text: light Roboto across the grid (row backgrounds belong to the header / status tints / canvas below).
+  // Base text: light Roboto across the grid, CENTRED + WRAPPED so long answers read as tidy multi-line cells
+  // (row backgrounds belong to the header / status tints / canvas below).
   // Phase 1: every hex here comes from [THEME] via theme_() — brief Part D rule zero (no hardcoded hex in engine UI).
   sheet.getRange(1, 1, maxRows, lastCol)
-    .setFontFamily('Roboto').setFontColor(theme_('TEXT')).setFontSize(10).setVerticalAlignment('middle');
+    .setFontFamily('Roboto').setFontColor(theme_('TEXT')).setFontSize(10)
+    .setVerticalAlignment('middle').setHorizontalAlignment('center').setWrap(true);
 
   // Header bar: banner fill, bold strong text, wrapped, frozen, taller.
   const header = sheet.getRange(1, 1, 1, lastCol);
@@ -1364,9 +1366,8 @@ function styleFormResponses_(sheet) {
     .setBorder(true, true, true, true, true, true, theme_('GRID'), SpreadsheetApp.BorderStyle.SOLID);
   header.setBorder(null, null, true, null, null, null, theme_('ACCENT'), SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 
-  // Widths sized for the long form-question headers.
-  const widths = { 1: 150, 2: 235, 3: 180, 4: 95, 5: 150, 6: 115, 7: 110, 8: 110 };
-  Object.keys(widths).forEach((c) => { if (Number(c) <= lastCol) sheet.setColumnWidth(Number(c), widths[Number(c)]); });
+  // COLUMN WIDTHS ARE THE OPERATOR'S — never touched. (The old fixed widths, sized for the engine-created
+  // form's column order, were re-imposed on EVERY submission and fought any width the operator set.)
 
   SpreadsheetApp.flush();
 }
