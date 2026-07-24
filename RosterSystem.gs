@@ -3715,14 +3715,14 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   if (sheet.getName() === CONFIG.sheets.roster) {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
   }
-  // A transfer changes the member's rank, which can move them in/out of the Academy / group-tab bands — re-sync those.
-  // QUEUE it (deferWork_ = sweep backstop) and run it through the DEBOUNCED path (syncDerivedNow_) rather than a direct
-  // heavy rebuild here: the editable group/academy upserts are expensive, and a BURST of transfers would otherwise fire
-  // one full rebuild per transfer, stretching each simple-onEdit execution and worsening the lock race with the
-  // publisher (the "another roster change is in progress" the operator saw). Debounced, a burst collapses to one rebuild.
+  // A transfer changes the member's rank, which can move them in/out of the Academy / group-tab bands — re-sync those
+  // NOW so the assignment tabs reflect the move immediately. runDeferredWork_ (not the debounced syncDerivedNow_) so
+  // it ALWAYS runs — transfers are serialized by their confirm dialog, so this can't stampede, and the rebuild is
+  // lock-free (it runs AFTER releaseLock above), so it never contends for the transfer lock. deferWork_ also leaves a
+  // queue entry, so the 1-minute sweep is still a backstop if this rebuild is cut short by the simple-trigger budget.
   if (sheet.getName() === CONFIG.sheets.roster) {
     try { deferWork_('academy'); deferWork_('groups'); } catch (e2) { /* queue is best-effort */ }
-    try { if (typeof syncDerivedNow_ === 'function') syncDerivedNow_(); } catch (e2) { log_('checkForMemberMove.derived', e2); }
+    try { if (typeof runDeferredWork_ === 'function') runDeferredWork_(); } catch (e2) { log_('checkForMemberMove.derived', e2); }
   }
   // Discord webhook LAST: UrlFetchApp is unavailable in AuthMode.LIMITED, so this may throw — nothing important is after it.
   notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; only reached on a successful move
