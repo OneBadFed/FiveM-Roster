@@ -1701,7 +1701,11 @@ function approveSignupFromSheet_(signups, row, col, newVal, oldVal) {
     const rowNow = signupResolveRow_(signups, row, id); // the prompt can sit open for minutes while a form sync re-sorts the tab
     const result = approveSignup_(signups, rowNow, roster, slot.row); // assigns + copies PII + stamps Processed
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
-    try { if (typeof deferWork_ === 'function') { deferWork_('academy'); deferWork_('groups'); } } catch (ig) {} // rebuild derived tabs on the sweep
+    // Seating a new member changes who sits in each assignment/group band (and the Academy for a cadet rank). Queue the
+    // rebuild AND run it now, so the assignment tabs reflect the new member immediately — the queue is the backstop if
+    // this rebuild is cut short by the simple-trigger budget (the sweep finishes it). Same pattern as a member move.
+    try { if (typeof deferWork_ === 'function') { deferWork_('academy'); deferWork_('groups'); } } catch (ig) {}
+    try { if (typeof runDeferredWork_ === 'function') runDeferredWork_(); } catch (ig) {}
     ui.alert('✅ Signup Approved', `${result.name} placed at ${slot.rank}${slot.unit ? ' (' + slot.unit + ')' : ''}.\nPrivate details copied to the roster. Signup marked Processed.`, ui.ButtonSet.OK);
   } catch (e) {
     log_('approveSignupFromSheet_', e);
@@ -2401,13 +2405,19 @@ function cpSignupApprove(payload) {
   if (!(slotRow >= CONFIG.rosterStartRow)) throw new Error('Pick an open slot to place them in.');
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(20000)) throw new Error('Another roster operation is running — try again in a moment.');
+  let res;
   try {
     const vr = signupResolveRow_(sh, row, String((payload && payload.id) || '')); // the queue re-sorts under an open panel — verify identity first
-    const res = approveSignup_(sh, vr, roster, slotRow);
+    res = approveSignup_(sh, vr, roster, slotRow);
     try { sortSignups_(sh); } catch (e) { log_('cpSignupApprove.sort', e); }
-    try { cpAudit_('signup-approved', '', res.name, `row ${slotRow}`, res.name); } catch (e) { /* audit is best-effort */ }
-    return res;
+    try { cpAudit_('signup-approved', '', res.name, `row ${slotRow}`, res.name); } catch (e) { /* audit is best-effort */ } // also marks the public copy dirty
   } finally { lock.releaseLock(); }
+  // Seating a new member changes who's in each assignment/group band (and the Academy for a cadet/probationary rank) —
+  // rebuild the derived tabs now so the assignment tabs reflect the new member immediately, exactly like a move. Run
+  // AFTER the lock releases so it never contends with the seating write above.
+  try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('cpSignupApprove.academy', e2); }
+  try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('cpSignupApprove.groups', e2); }
+  return res;
 }
 
 /** Grow the grid when a write would land past the last row (a full 1000-row grid would otherwise throw). */
