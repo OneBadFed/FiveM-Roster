@@ -1298,6 +1298,11 @@ function onEdit(e) {
 
 /** Installable trigger: syncs a new form submission to the tracker, then re-themes the response sheet. */
 function onFormSubmit(e) {
+  // INTERACTIVE-FIRST: a member's submission must outrank the background publisher for the shared lock, exactly
+  // like menu actions and transfers. Without this stamp, a form arriving mid-publish waited out its 30s lock and
+  // gave up — the row synced to nothing and the response tab was left unmarked (neither green nor red). Stamped
+  // BEFORE the settle sleep so an in-flight publish finishes and no new pass starts while the sync claims the lock.
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (ig) { /* best-effort priority hint */ }
   try {
     const form = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.form);
     const before = form ? form.getLastRow() : -1; // capture BEFORE the settle window
