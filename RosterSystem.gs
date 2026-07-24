@@ -1138,19 +1138,30 @@ function deferWork_(key) {
   } catch (e) { /* best-effort: the nightly run rebuilds anyway */ }
 }
 
-/** Run whatever is queued, clearing the queue FIRST so edits during a rebuild re-queue rather than being lost. */
+/**
+ * Run whatever is queued. BUILD FIRST, clear the flags AFTER each build succeeds — so a heavy rebuild cut short by
+ * the simple-trigger budget (the editable group/Academy upserts can be big) leaves its flag SET, and the 1-minute
+ * sweep re-runs it. (Clearing first lost the work on any timeout — an assignment edit then never reached the tabs
+ * until a manual Build/Refresh.) An edit that lands DURING a rebuild re-sets the same flag; the rebuild already read
+ * the current sheet so it's reflected, and clearing that flag is safe — a genuinely newer state re-queues next edit.
+ */
 function runDeferredWork_() {
   let pending = '';
   try {
-    const p = PropertiesService.getDocumentProperties();
-    pending = String(p.getProperty(DEFER_PROP_) || '');
+    pending = String(PropertiesService.getDocumentProperties().getProperty(DEFER_PROP_) || '');
     if (pending.replace(/\|/g, '') === '') return;
-    p.deleteProperty(DEFER_PROP_);
   } catch (e) { return; }
   const has = (k) => pending.indexOf('|' + k + '|') !== -1;
-  if (has('academy')) { try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('deferred.academy', e); } }
-  if (has('groups')) { try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e) { log_('deferred.groups', e); } }
-  if (has('dashboard')) { try { refreshDashboard_(); } catch (e) { log_('deferred.dashboard', e); } }
+  const done = [];
+  if (has('academy')) { try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); done.push('academy'); } catch (e) { log_('deferred.academy', e); } }
+  if (has('groups')) { try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); done.push('groups'); } catch (e) { log_('deferred.groups', e); } }
+  if (has('dashboard')) { try { refreshDashboard_(); done.push('dashboard'); } catch (e) { log_('deferred.dashboard', e); } }
+  try { // clear ONLY the flags whose rebuild actually completed (a throw/timeout leaves it queued for the sweep)
+    const p = PropertiesService.getDocumentProperties();
+    let cur = String(p.getProperty(DEFER_PROP_) || '|');
+    done.forEach((k) => { cur = cur.split('|' + k + '|').join('|'); });
+    if (cur.replace(/\|/g, '') === '') p.deleteProperty(DEFER_PROP_); else p.setProperty(DEFER_PROP_, cur);
+  } catch (e) { /* best-effort */ }
 }
 
 const DERIVED_LAST_PROP_ = 'DERIVED_LAST_SYNC';
