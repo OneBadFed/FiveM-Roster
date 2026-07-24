@@ -723,8 +723,12 @@ function dashboardStats_(roster) {
   const tagByNorm = {}; (CONFIG.sectionCategories || []).forEach((t) => { tagByNorm[norm_(t.label)] = t.label; });
   Object.keys(CONFIG.dashboard.groups).forEach((g) => CONFIG.dashboard.groups[g].forEach((cat) => {
     const canon = tagByNorm[norm_(cat)];
-    if (canon) { groupOf[canon] = g; groupOf[cat] = g; }                // category entry (canonical + as-typed keys)
-    else if (!(norm_(cat) in rankGroupOf)) rankGroupOf[norm_(cat)] = g; // rank entry — the FIRST group listing it wins
+    if (canon) { groupOf[canon] = g; groupOf[cat] = g; }             // category entry (canonical + as-typed keys)
+    // EVERY entry ALSO registers as a rank match (first group listing it wins) — an entry that collides with a
+    // [SECTION_TAGS] label can still be a real RANK ("Cadet" is both), and the old else-branch dropped that rank
+    // role entirely: a Cadet then bucketed by their section divider (→ Members) and #training stayed 0. Same
+    // collision the Academy's rank matcher already fixed. Labels that aren't ranks simply never match a member.
+    if (!(norm_(cat) in rankGroupOf)) rankGroupOf[norm_(cat)] = g;
   }));
   const groups = {}; Object.keys(CONFIG.dashboard.groups).forEach((g) => { groups[g] = 0; });
   // Config-driven buckets: one per configured TIER, and a normalized leave-type set. No hardcoded status names.
