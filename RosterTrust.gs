@@ -576,8 +576,42 @@ function auditEdit(e) {
     log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV, '', '']);
     const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v1.0: config cap)
     auditNotify_(who, sheetName, e.range.getA1Notation(), oldV, newV, 'edit', ''); // AUDIT channel mirror (webhook presence = opt-in)
+    try { stampPendingUpdatedBy_(who); } catch (e2) { log_('auditEdit.updatedBy', e2); } // authoritative UPDATED BY stamp (reliable email in this installable trigger)
   } catch (err) {
     log_('auditEdit', err);
+  }
+}
+
+/**
+ * The RELIABLE-email half of the tracker's UPDATED BY stamp. A SIMPLE onEdit can't read the editor's email on a
+ * consumer account, so it captures the just-edited leaves' IDENTITIES into RE_UPDATEDBY_PENDING (before its sort);
+ * THIS runs from the INSTALLABLE auditEdit (email available), relocates each leave by its Unique ID / name (so a
+ * status re-sort can't put the stamp on the wrong row), and writes the resolved name into APPROVED/UPDATED BY.
+ * Idempotent + self-clearing; stale markers (>60s) are ignored.
+ */
+function stampPendingUpdatedBy_(who) {
+  const props = PropertiesService.getDocumentProperties();
+  const raw = props.getProperty('RE_UPDATEDBY_PENDING');
+  if (!raw) return;
+  props.deleteProperty('RE_UPDATEDBY_PENDING'); // consume once
+  if (!who) return;
+  let p; try { p = JSON.parse(raw); } catch (e) { return; }
+  if (!p || !Array.isArray(p.idents) || (Date.now() - (p.at || 0)) > 60000) return;
+  const tracker = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.tracker);
+  if (!tracker) return;
+  const TRC = trackerCols_(tracker);
+  if (!TRC.approvedBy) return;
+  const start = CONFIG.trackerStartRow, lastRow = tracker.getLastRow();
+  if (lastRow < start) return;
+  const n = lastRow - start + 1;
+  const ids = TRC.discord ? tracker.getRange(start, TRC.discord, n, 1).getDisplayValues() : null;
+  const names = TRC.name ? tracker.getRange(start, TRC.name, n, 1).getDisplayValues() : null;
+  const wantId = {}, wantName = {};
+  p.idents.forEach((it) => { const i = String((it && it.id) || '').trim(); const nm = String((it && it.name) || '').trim(); if (i) wantId[i] = true; else if (nm) wantName[norm_(nm)] = true; }); // ID preferred; name only when the leave has no ID
+  for (let i = 0; i < n; i++) {
+    const idv = ids ? String(ids[i][0]).trim() : '';
+    const nmv = names ? String(names[i][0]).trim() : '';
+    if ((idv && wantId[idv]) || (!idv && nmv && wantName[norm_(nmv)])) tracker.getRange(start + i, TRC.approvedBy).setValue(who);
   }
 }
 

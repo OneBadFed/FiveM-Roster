@@ -1239,18 +1239,30 @@ function onEdit(e) {
         checkImmediateLOAStart(sheet, row);
         notifyLeaveApproved_(sheet, row); // v1.0 optional embed (toggle off by default)
       }
-      // UPDATED BY / APPROVED BY: stamp WHO changed the status (email → roster name via auditWho_) on each edited
-      // data row that still holds a leave — BEFORE the sort below, so the stamp travels with the row. LIMITED-safe
-      // (Session + same-sheet writes). Consumer accounts can hide a non-owner editor's email → skip, never "unknown".
+      // UPDATED BY / APPROVED BY: stamp WHO changed the status. The editor's email is only RELIABLY readable from
+      // the INSTALLABLE audit trigger — a SIMPLE onEdit can't read it on a consumer (gmail) account, which is why
+      // a plain stamp here silently left the column blank. So here (simple, LIMITED-safe) we capture the edited
+      // leaves' IDENTITIES before the sort; the installable auditEdit relocates them by identity (sort-safe) and
+      // stamps the resolved name. A best-effort immediate stamp still covers the owner / Workspace editors.
       if (statusTouched && TRC.approvedBy) {
         try {
-          let em = ''; try { em = Session.getActiveUser().getEmail() || ''; } catch (ig) { /* hidden on consumer accounts */ }
-          const who = em ? ((typeof auditWho_ === 'function') ? auditWho_(em) : em) : '';
-          if (who) {
-            const rL2 = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
-            for (let rr = Math.max(row, CONFIG.trackerStartRow); rr <= rL2; rr++) {
-              if (TRC.status && String(sheet.getRange(rr, TRC.status).getDisplayValue()).trim() === '') continue; // cleared rows aren't stamped
-              sheet.getRange(rr, TRC.approvedBy).setValue(who);
+          const rL2 = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
+          const idents = [];
+          for (let rr = Math.max(row, CONFIG.trackerStartRow); rr <= rL2; rr++) {
+            if (TRC.status && String(sheet.getRange(rr, TRC.status).getDisplayValue()).trim() === '') continue; // cleared rows aren't stamped
+            const idv = TRC.discord ? String(sheet.getRange(rr, TRC.discord).getDisplayValue()).trim() : '';
+            const nmv = TRC.name ? String(sheet.getRange(rr, TRC.name).getDisplayValue()).trim() : '';
+            if (idv || nmv) idents.push({ id: idv, name: nmv });
+          }
+          if (idents.length) {
+            try { PropertiesService.getDocumentProperties().setProperty('RE_UPDATEDBY_PENDING', JSON.stringify({ idents: idents, at: Date.now() })); } catch (ig) { /* installable auditEdit picks it up */ }
+            let em = ''; try { em = Session.getActiveUser().getEmail() || ''; } catch (ig) { /* blank on consumer simple triggers → auditEdit fills it */ }
+            const who = em ? ((typeof auditWho_ === 'function') ? auditWho_(em) : em) : '';
+            if (who) {
+              for (let rr = Math.max(row, CONFIG.trackerStartRow); rr <= rL2; rr++) {
+                if (TRC.status && String(sheet.getRange(rr, TRC.status).getDisplayValue()).trim() === '') continue;
+                sheet.getRange(rr, TRC.approvedBy).setValue(who);
+              }
             }
           }
         } catch (e2) { log_('onEdit.updatedBy', e2); }
