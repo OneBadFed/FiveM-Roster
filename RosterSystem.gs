@@ -3651,6 +3651,10 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
 
   const target = String(discordId).trim();
   if (target === '') return;
+  // INTERACTIVE-FIRST (stamped as EARLY as possible): a member move must outrank the background publisher for the
+  // shared lock. Stamping here — before the roster scan, the confirm dialog, and the tryLock — gives the publisher
+  // the longest possible head-start to stand down, so back-to-back transfers don't lose the lock to a fresh publish.
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (ig) { /* best-effort priority hint */ }
   const ids = sheet.getRange(CONFIG.rosterStartRow, RC.discord, lastRow - CONFIG.rosterStartRow + 1, 1).getDisplayValues();
   let sourceRow = -1;
   for (let i = 0; i < ids.length; i++) {
@@ -3671,11 +3675,6 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   const occupiedWarning = (targetName && targetName !== String(memberName).trim())
     ? `\n\n⚠️ Row ${targetRow} already holds ${targetName} — continuing OVERWRITES ${targetName}'s row.`
     : '';
-
-  // INTERACTIVE-FIRST: stamp the publisher's backoff BEFORE the confirm dialog, so no NEW publish pass starts
-  // while the human reads it — the transfer's short tryLock below then wins instead of losing to a fresh pass.
-  // (LIMITED-safe: one document-property write.)
-  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
 
   if (!confirmMove(`Move ${memberName} from ${sourceRank} to ${targetRank}?${occupiedWarning}`)) {
     targetRange.clearContent();
@@ -3716,12 +3715,14 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   if (sheet.getName() === CONFIG.sheets.roster) {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
   }
-  // A transfer changes the member's rank (SLOT rank stays with the destination), which can move them in/out of the
-  // Police Academy's rank-group bands — re-sync it (and the group tabs). Heavy, but ALSO queued by onEdit's deferWork_,
-  // so the sweep still carries it if this is cut short. Live roster tab only (sandbox moves must not rebuild).
+  // A transfer changes the member's rank, which can move them in/out of the Academy / group-tab bands — re-sync those.
+  // QUEUE it (deferWork_ = sweep backstop) and run it through the DEBOUNCED path (syncDerivedNow_) rather than a direct
+  // heavy rebuild here: the editable group/academy upserts are expensive, and a BURST of transfers would otherwise fire
+  // one full rebuild per transfer, stretching each simple-onEdit execution and worsening the lock race with the
+  // publisher (the "another roster change is in progress" the operator saw). Debounced, a burst collapses to one rebuild.
   if (sheet.getName() === CONFIG.sheets.roster) {
-    try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('checkForMemberMove.academy', e2); }
-    try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('checkForMemberMove.groups', e2); }
+    try { deferWork_('academy'); deferWork_('groups'); } catch (e2) { /* queue is best-effort */ }
+    try { if (typeof syncDerivedNow_ === 'function') syncDerivedNow_(); } catch (e2) { log_('checkForMemberMove.derived', e2); }
   }
   // Discord webhook LAST: UrlFetchApp is unavailable in AuthMode.LIMITED, so this may throw — nothing important is after it.
   notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; only reached on a successful move
