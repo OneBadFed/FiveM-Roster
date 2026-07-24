@@ -1560,11 +1560,8 @@ function ensureSignupTab_(file) {
  *  chip colours). Fallback: the engine's built-in flow. */
 function signupStatusOrder_(sheet, SC) {
   try {
-    const dv = sheet.getRange(SC.dataStart, SC.status).getDataValidation();
-    if (dv && String(dv.getCriteriaType()) === 'VALUE_IN_LIST') {
-      const list = (dv.getCriteriaValues()[0] || []).map((v) => String(v).trim()).filter(Boolean);
-      if (list.length) return list;
-    }
+    const dd = (typeof statusDropdownOrder_ === 'function') ? statusDropdownOrder_(sheet, SC.dataStart, SC.status) : null; // shared helper (RosterSystem) — same rule as the tracker + Patrol Log sorts
+    if (dd) return dd;
   } catch (e) { /* no/unreadable dropdown → built-in order */ }
   return SIGNUP_STATUSES_.slice();
 }

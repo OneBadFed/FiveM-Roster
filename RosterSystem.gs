@@ -2266,6 +2266,21 @@ function buildTrackerRow_(RC, W, f) {
  * @param {Array} [prepend] a 16-column value row to add at the top before sorting.
  * @param {Sheet} [trackerSheet] the tracker to sort (defaults to the live tracker tab; the injectable add-cores pass their own so tests + white-label runs stay isolated).
  */
+/** The operator's OWN STATUS-dropdown order for a grouped tab (the VALUE_IN_LIST rule on its first data row), or null
+ *  when there's no dropdown — callers then fall back to their config flow. The dropdown is what admins actually SEE
+ *  when they pick a status, so grouping mirrors ITS order (same layout-ownership rule as the chip colours); an
+ *  operator-added status (e.g. Flagged) groups where their dropdown says instead of sinking below everything. */
+function statusDropdownOrder_(sheet, row, col) {
+  try {
+    const dv = sheet.getRange(row, col).getDataValidation();
+    if (dv && String(dv.getCriteriaType()) === 'VALUE_IN_LIST') {
+      const list = (dv.getCriteriaValues()[0] || []).map((v) => String(v).trim()).filter(Boolean);
+      if (list.length) return list;
+    }
+  } catch (e) { /* no/unreadable dropdown */ }
+  return null;
+}
+
 function sortTracker_(prepend, trackerSheet) {
   try {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
@@ -2301,9 +2316,11 @@ function sortTracker_(prepend, trackerSheet) {
     }
     if (!records.length) return;
 
-    // Status priority from [LEAVE].STATUS_FLOW (Pending < Approved < Denied < Expired); unknown/blank → bottom.
+    // Status priority: the tracker's OWN STATUS dropdown order when one exists (what admins see when they pick —
+    // an operator-added status like Flagged groups where THEIR list says), else [LEAVE].STATUS_FLOW; unknown/blank → bottom.
     let flow = ['Pending', 'Approved', 'Denied', 'Expired'];
     try { const f = cfg_().leave.STATUS_FLOW; if (f && f.length) flow = f; } catch (e) { /* config broken — classic order */ }
+    try { const dd = statusDropdownOrder_(tracker, start, RC.status); if (dd) flow = dd; } catch (e) { /* config flow stands */ }
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
     const prio = (row) => { const k = norm_(String(row[RC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
     const dec = records.map((row, i) => ({ row: row, i: i, p: prio(row) }));
@@ -3046,7 +3063,9 @@ function sortPatrolLog_(patrolSheet) {
       }
     }
     if (!records.length) return;
-    const flow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Approved', 'Denied', 'Processed'];
+    // Grouping order: the log's OWN STATUS dropdown when one exists (what admins see when they pick), else [PATROL].STATUS_FLOW.
+    let flow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Approved', 'Denied', 'Processed'];
+    try { const dd = statusDropdownOrder_(sheet, start, PC.status); if (dd) flow = dd; } catch (e) { /* config flow stands */ }
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
     const prio = (r) => { const k = norm_(String(r[PC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
     const dec = records.map((r, i) => ({ r: r, i: i, p: prio(r) }));
