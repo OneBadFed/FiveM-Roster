@@ -1976,10 +1976,14 @@ function publishForceMask_(dest, top, left, rows, cols) {
 /**
  * Cells on the PUBLIC copy that publishing must leave alone:
  *   1. any cell holding a FORMULA — the public sheet's own live date/time/counters must keep recalculating, and
- *      copying the internal sheet's computed value would freeze them as plain text;
+ *      copying the internal sheet's computed value would freeze them as plain text. EXCEPTION (`mirrorWins`): on a
+ *      HEADER-MATCHED tab, a mirrored column is the internal's data by definition — a formula found there is residue
+ *      from the era when the match-mode publish copied formulas (whose relative refs point at the wrong public column,
+ *      the "46227 days" ghosts on empty rows). With mirrorWins the internal value overwrites it, healing the residue
+ *      and keeping the column clean; a DELIBERATE public formula there can still be protected via KEEP_RANGES.
  *   2. anything listed in [PUBLISH].KEEP_RANGES for this tab (static text that is meant to differ, e.g. the title).
  */
-function publishKeepMask_(dest, top, left, rows, cols, force) {
+function publishKeepMask_(dest, top, left, rows, cols, force, mirrorWins) {
   const mask = [];
   for (let r = 0; r < rows; r++) mask.push(new Array(cols).fill(false));
   let img = null; // in-cell IMAGE / smart-chip cells: the API can't setValues over them, so they must always be kept —
@@ -1989,7 +1993,7 @@ function publishKeepMask_(dest, top, left, rows, cols, force) {
     const rg0 = dest.getRange(top, left, rows, cols);
     const f = rg0.getFormulas(), vv = rg0.getValues();
     for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
-      if (String(f[r][c] || '').trim() !== '') mask[r][c] = true;                                    // a live formula (own clock/counter)
+      if (!mirrorWins && String(f[r][c] || '').trim() !== '') mask[r][c] = true;                     // a live formula (own clock/counter)
       const x = vv[r][c];
       if (x && typeof x === 'object' && !(x instanceof Date)) { (img = img || []).push(r * cols + c); mask[r][c] = true; } // CellImage/chip object (never a primitive/Date)
     }
@@ -2136,8 +2140,10 @@ function publishMirrorTab_(src, dest) {
     pairs.forEach((p) => {
       // valuesOnly=true: this is the header-matched path (public layout differs), so publish computed VALUES — a copied
       // formula's relative refs would point at the wrong public column (e.g. TIME IN RANK reading a checkbox column).
+      // mirrorWins=true: and the value WINS over any formula already sitting in this mirrored public column — that's
+      // residue from the old formula-copying publishes (the "46227 days" ghosts on empty rows), healed on this write.
       writeValuesSafe_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1), true),
-        publishKeepMask_(dest, destStart, p.dc, n, 1));
+        publishKeepMask_(dest, destStart, p.dc, n, 1, null, true));
       try { dest.getRange(destStart, p.dc, n, 1).setNumberFormats(src.getRange(srcStart, p.sc, n, 1).getNumberFormats()); }
       catch (e) { log_('publishMirrorTab_.formats', e); }
     });
