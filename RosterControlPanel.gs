@@ -420,6 +420,11 @@ function openControlPanel(initialTab) {
   });
 }
 
+/** Menu: jump straight to the signup review. It lives IN the Control Panel (Signups tab) now, not a separate popup. */
+function openSignupsDialog() {
+  openControlPanel('signups');
+}
+
 /* ----------------------------------------------------------------------------
  * READ — bootstrap + snapshot
  * ------------------------------------------------------------------------- */

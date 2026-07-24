@@ -308,6 +308,7 @@ function buildMenus_(prefix) {
       .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
       .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
       .addItem('🧾 Sync Signup Form to Review', p + 'manualSyncSignups')
+      .addItem('📋 Review Roster Signups', p + 'openSignupsDialog')
       .addItem('🚔 Sync Patrol Forms to Log', p + 'manualSyncPatrol')
       .addItem('📸 Capture & Reset Activity', p + 'weeklyResetWithHistory')
       .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
