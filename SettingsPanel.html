@@ -1309,6 +1309,20 @@
     for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ rows[i][1]=j; updateBar(); return; } }
     rows.push([ev,j]); updateBar(); }
   function embReset_(ev){ var rows=TBL.EMBEDS||[]; for(var i=0;i<rows.length;i++){ if(String(rows[i][0]).trim()===ev){ rows.splice(i,1); break; } } updateBar(); }
+  // The builder's WORKING copy: the saved override if there is one, else a fresh clone of the built-in default — so the
+  // form shows the real field content (not blank inputs), and Add/Delete-field operate on the visible fields. Cloned so
+  // edits never mutate the shared DC_DEFAULTS.
+  function embWorking_(ev){ var s=embGet_(ev); if(s) return s; var d=DC_DEFAULTS[ev]; return d?JSON.parse(JSON.stringify(d)):{}; }
+  // Does a form-derived template still match the built-in default? If so we must NOT save it — otherwise merely viewing
+  // a pre-filled tab would store a redundant override and (falsely) light this channel's dirty dot.
+  function embIsDefault_(ev,t){
+    var norm=function(o){ o=o||{}; var r={};
+      ['content','author','authorUrl','authorIcon','title','desc','color','image','thumb','footer','footerIcon'].forEach(function(k){ if(o[k]!=null&&String(o[k]).trim()!=='') r[k]=String(o[k]); });
+      r.e=(o.sendEmbed===false)?0:1;
+      r.f=(o.fields||[]).filter(function(fl){ return String(fl.n||'').trim()!==''||String(fl.v||'').trim()!==''; }).map(function(fl){ return String(fl.n||'')+''+String(fl.v||'')+''+(fl.inline?1:0); });
+      return JSON.stringify(r); };
+    return norm(t)===norm(DC_DEFAULTS[ev]);
+  }
   function dcCurMeta(){
     var g=SECTIONS.filter(function(x){return x.id===CUR;})[0];
     if(!g||g.custom!=='discord') return null;
@@ -1322,7 +1336,7 @@
   function renderDcBuilder(){
     var host=$('dcBuild'); if(!host) return;
     var m=dcCurMeta(); if(!m){ host.innerHTML=''; return; }
-    var saved=embGet_(m.cur), t=saved||{};
+    var saved=embGet_(m.cur), t=saved||embWorking_(m.cur); // no override → pre-fill the form with the built-in default so every field shows its real content
     var seg=m.evs.map(function(x){ return '<button type="button" class="rlt'+(x.id===m.cur?' on':'')+'" data-dcev="'+esc(x.id)+'">'+esc(x.label)+'</button>'; }).join('');
     var chips=m.meta.ph.map(function(p){ return '<span class="rlt" data-dcph="{'+esc(p)+'}" title="Click to insert into the focused field">{'+esc(p)+'}</span>'; }).join('');
     var f=function(k,ph){ return '<input class="in" data-emb="'+k+'" value="'+esc(t[k]||'')+'" placeholder="'+esc(ph)+'" autocomplete="off" spellcheck="false">'; };
@@ -1372,7 +1386,9 @@
       if(String(n).trim()!==''||String(v).trim()!=='') fl.push({n:n,v:v,inline:inl});
     });
     if(fl.length) t.fields=fl;
-    if(Object.keys(t).length) embSet_(m.cur,t); else embReset_(m.cur);
+    // Save an override only when the form actually DIFFERS from the built-in default — the form is pre-filled with the
+    // default, so an untouched (or reverted) tab must stay "built-in in use" and never light this channel's dirty dot.
+    if(!Object.keys(t).length||embIsDefault_(m.cur,t)) embReset_(m.cur); else embSet_(m.cur,t);
     var pv=$('dcPrev'); if(pv) pv.innerHTML=dcMock_(Object.keys(t).length?t:(DC_DEFAULTS[m.cur]||t)); // emptied form → back to the built-in example
   }
   function insertAt_(el,txt){
@@ -1664,9 +1680,9 @@
     var drs=e.target.closest('[data-dcreset]');
     if(drs){ var mR=dcCurMeta(); if(mR){ embReset_(mR.cur); renderDcBuilder(); } return; }
     var daf=e.target.closest('[data-dcaddf]');
-    if(daf){ var mA=dcCurMeta(); if(mA){ var tA=embGet_(mA.cur)||{}; tA.fields=(tA.fields||[]).concat([{n:'',v:'',inline:true}]); embSet_(mA.cur,tA); renderDcBuilder(); } return; }
+    if(daf){ var mA=dcCurMeta(); if(mA){ var tA=embWorking_(mA.cur); tA.fields=(tA.fields||[]).concat([{n:'',v:'',inline:true}]); embSet_(mA.cur,tA); renderDcBuilder(); } return; }
     var ddl=e.target.closest('[data-embdel]');
-    if(ddl){ var mD=dcCurMeta(); if(mD){ var tD=embGet_(mD.cur)||{}; (tD.fields||[]).splice(Number(ddl.dataset.embdel),1); embSet_(mD.cur,tD); renderDcBuilder(); } return; }
+    if(ddl){ var mD=dcCurMeta(); if(mD){ var tD=embWorking_(mD.cur); (tD.fields||[]).splice(Number(ddl.dataset.embdel),1); embSet_(mD.cur,tD); renderDcBuilder(); } return; }
     var dsw=e.target.closest('[data-dccol]');
     if(dsw){ var ci=document.querySelector('#dcBuild [data-emb="color"]'); if(ci){ ci.value=dsw.dataset.dccol; } dcSyncFromForm_(); return; }
     var dph=e.target.closest('[data-dcph]');
