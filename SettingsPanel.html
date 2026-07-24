@@ -1269,7 +1269,7 @@
          {id:'loaApproved',label:'Approved',ph:['user','name','rank','type','start','end']},
          {id:'loaStarted',label:'Started',ph:['user','name','rank','type']},
          {id:'loaExpired',label:'Expired',ph:['user','name','rank','type']}],
-    PATROL:[{id:'patrolLogged',label:'Hours credited',ph:['user','name','hours','total']},
+    PATROL:[{id:'patrolLogged',label:'Hours credited',ph:['user','name','hours','total','start','end']},
             {id:'patrolFlagged',label:'Flagged logs',ph:['count','rows']}],
     ERRORS:[{id:'error',label:'Engine error',ph:['code','message','hint','function']}],
   };
@@ -1285,7 +1285,7 @@
     loaApproved:{color:'#2ea043',title:'✅ {type} Approved',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'▶️ Start',v:'{start}',inline:true},{n:'⏹️ End',v:'{end}',inline:true}]},
     loaStarted:{color:'#c9a227',title:'▶️ {type} Started',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true}]},
     loaExpired:{color:'#8a929e',title:'⏹️ {type} Ended',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true}]},
-    patrolLogged:{color:'#43b585',title:'🚔 {name} logged {hours}h of patrol',fields:[{n:'⏱️ This log',v:'{hours} hrs',inline:true},{n:'📊 New total',v:'{total} hrs',inline:true}]},
+    patrolLogged:{color:'#43b585',title:'🚔 {name} logged {hours}h of patrol',fields:[{n:'⏱️ This log',v:'{hours} hrs',inline:true},{n:'📊 New total',v:'{total} hrs',inline:true},{n:'▶️ Start',v:'{start}',inline:true},{n:'⏹️ End',v:'{end}',inline:true}]},
     patrolFlagged:{color:'#d99257',title:'⚠️ {count} patrol log(s) flagged',desc:'{rows}'},
     error:{color:'#e0574f',title:'🚨 Engine error · {code}',fields:[{n:'Message',v:'{message}',inline:false},{n:'Fix',v:'{hint}',inline:false},{n:'Where',v:'`{function}`',inline:true}]}
   };

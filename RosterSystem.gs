@@ -2476,6 +2476,7 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   const n = last - 1;
   const bgs = patrolSheet.getRange(2, 1, n, 1).getBackgrounds();
   const grid = patrolSheet.getRange(2, 1, n, width).getValues();
+  const gridDisp = patrolSheet.getRange(2, 1, n, width).getDisplayValues(); // for the embed: start/end shown exactly as the Patrol Log formats them (date + time)
   const done = String(CONFIG.bg.done).toLowerCase();
   for (let i = 0; i < n; i++) {
     const marker = String(grid[i][markCol - 1] == null ? '' : grid[i][markCol - 1]).trim();
@@ -2507,21 +2508,26 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
       const memberId = String(roster.getRange(memberRow, RC.discord).getDisplayValue()).trim();
       if (typeof auditEvent_ === 'function') { try { auditEvent_('patrol', String(cur), String(next), roster.getRange(memberRow, RC.hours).getA1Notation(), memberName); } catch (e) { /* best-effort */ } }
       patrolSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done);
-      summary.credited.push({ name: memberName, hours: hours, total: next, discord: memberId });
+      const startDisp = cols.start > 0 ? String(gridDisp[i][cols.start - 1] || '') : '';
+      const endDisp = cols.end > 0 ? String(gridDisp[i][cols.end - 1] || '') : '';
+      summary.credited.push({ name: memberName, hours: hours, total: next, discord: memberId, start: startDisp, end: endDisp });
       summary.hoursAdded += hours;
     } catch (e) { log_('syncPatrolHours_.credit', e); } // dedup key already written → this log is never re-credited (a partial failure is logged, not doubled)
   }
   // Notifications fire AFTER all writes (never block a credit). Off by default.
   if (sendWebhooks && CONFIG.notify && CONFIG.notify.patrolLogged) {
     summary.credited.forEach((c) => {
-      notifyEvent_('PATROL', true, 'patrolLogged', { name: c.name, hours: String(c.hours), total: String(c.total) }, {
+      const patrolFields = [
+        { name: '👤 Name', value: clamp_(dash_(c.name), 1000), inline: true },
+        { name: '🚔 Patrol', value: `${c.hours} hr${c.hours === 1 ? '' : 's'}`, inline: true },
+        { name: '⏱️ New total', value: `${c.total} hrs`, inline: true },
+      ];
+      if (c.start) patrolFields.push({ name: '▶️ Start', value: clamp_(dash_(c.start), 1000), inline: true }); // start date + time (only when the log has it)
+      if (c.end) patrolFields.push({ name: '⏹️ End', value: clamp_(dash_(c.end), 1000), inline: true });       // end date + time
+      notifyEvent_('PATROL', true, 'patrolLogged', { name: c.name, hours: String(c.hours), total: String(c.total), start: c.start, end: c.end }, {
         title: fill_(CONFIG.notify.patrolTitle, { name: c.name, hours: c.hours, total: c.total }),
         color: hexToInt_(CONFIG.notify.patrolColor, 5154774),
-        fields: [
-          { name: '👤 Name', value: clamp_(dash_(c.name), 1000), inline: true },
-          { name: '🚔 Patrol', value: `${c.hours} hr${c.hours === 1 ? '' : 's'}`, inline: true },
-          { name: '⏱️ New total', value: `${c.total} hrs`, inline: true },
-        ],
+        fields: patrolFields,
       }, mention_(c.discord));
       Utilities.sleep(200); // stay under Discord's webhook rate limit on a batch
     });
