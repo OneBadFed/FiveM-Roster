@@ -3744,6 +3744,14 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
     try { deferWork_('academy'); deferWork_('groups'); } catch (e2) { /* queue is best-effort */ }
     try { if (typeof runDeferredWork_ === 'function') runDeferredWork_(); } catch (e2) { log_('checkForMemberMove.derived', e2); }
   }
+  // The move + its derived rebuild are SETTLED → release the publisher's stand-down NOW, so the ~8s catch-up (already
+  // scheduled by publishOnChange on the ID paste) publishes the result in seconds instead of standing down the full
+  // 45s a fresh transfer stamped. Without this, an isolated move — and any ordinary edit made in the next 45s — didn't
+  // reach the public roster until the backoff expired and the 1-minute sweep ran (~45-60s). Cleared only after the
+  // rebuild so the public copy publishes a fully-settled state; if a big rebuild overran the LIMITED budget this line
+  // isn't reached and the 45s backoff + sweep still carry it (no regression). This trigger is AuthMode.LIMITED, so
+  // clearing the hint is all it can do — it can neither publish nor schedule a trigger itself.
+  try { PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_BACKOFF_PROP_); } catch (ig) { /* best-effort */ }
   // Discord webhook LAST: UrlFetchApp is unavailable in AuthMode.LIMITED, so this may throw — nothing important is after it.
   notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; only reached on a successful move
     title: fill_(CONFIG.notify.transferTitle, { name: memberName, from: sourceRank, to: targetRank }),
