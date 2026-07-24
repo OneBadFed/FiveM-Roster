@@ -1377,6 +1377,13 @@ function onFormSubmit(e) {
     if (!nm) return;
     try { const sh = ss2.getSheetByName(nm); if (sh) styleFormResponses_(sh); } catch (err) { log_('onFormSubmit.style', err); }
   });
+  // The submission is fully settled (synced, credited, styled) → release the publisher's stand-down NOW and schedule
+  // the ~8s catch-up so the PUBLIC roster shows the result in seconds. Without this, the 45s backoff stamped at entry
+  // just expired on its own, and — since a form submission fires no onEdit to schedule a catch-up — the public copy
+  // waited for backoff-expiry + the next 1-minute sweep (~45-105s). Both calls are safe here: this is an INSTALLABLE
+  // trigger (ScriptApp available for scheduleCatchup_), and if either fails the sweep still carries it.
+  try { PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_BACKOFF_PROP_); } catch (ig) { /* best-effort */ }
+  try { if (typeof scheduleCatchup_ === 'function') scheduleCatchup_(); } catch (ig) { /* sweep is the backstop */ }
 }
 
 /**
