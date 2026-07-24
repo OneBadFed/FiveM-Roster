@@ -1341,31 +1341,39 @@ function onFormSubmit(e) {
   // gave up — the row synced to nothing and the response tab was left unmarked (neither green nor red). Stamped
   // BEFORE the settle sleep so an in-flight publish finishes and no new pass starts while the sync claims the lock.
   try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (ig) { /* best-effort priority hint */ }
-  try {
-    const form = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.form);
-    const before = form ? form.getLastRow() : -1; // capture BEFORE the settle window
-    Utilities.sleep(2000); // let Sheets finish writing the row
-    // F-036: if a response row disappeared during the settle window, the submission would vanish silently — log it.
-    if (form && before >= 2 && form.getLastRow() < before) {
-      const who = (e && e.namedValues) ? String(JSON.stringify(e.namedValues)).slice(0, 300) : '(event data unavailable)';
-      logWarn_('onFormSubmit', `a response row disappeared during the 2s settle window (rows ${before} → ${form.getLastRow()}); a submission may not have synced. Submitted: ${who}`);
-    }
-    syncFormToTracker();
-  } catch (err) {
-    log_('onFormSubmit', err);
+  // ROUTE by which form was submitted. The spreadsheet onFormSubmit fires for ALL forms; e.range is the new row on
+  // that form's OWN response tab. Identifying it lets a patrol submission run ONLY the patrol path — not the leave +
+  // signup scans and a 3-tab restyle it doesn't need — so it reaches the Patrol Log with the least in-execution delay.
+  // If the form can't be identified (no range), fall back to running everything: correctness over speed.
+  let submittedTab = '';
+  try { submittedTab = (e && e.range) ? e.range.getSheet().getName() : ''; } catch (ig) { submittedTab = ''; }
+  const sameTab_ = (a, b) => !!(a && b && norm_(a) === norm_(b));
+  const isLeave = sameTab_(submittedTab, CONFIG.sheets.form);
+  const isPatrol = sameTab_(submittedTab, CONFIG.sheets.patrol);
+  const isSignup = sameTab_(submittedTab, CONFIG.sheets.signupForm);
+  const routed = isLeave || isPatrol || isSignup; // identified → do only that form's work; else run all three (below)
+
+  const leaveForm = (!routed || isLeave) ? SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.form) : null;
+  const beforeLeave = leaveForm ? leaveForm.getLastRow() : -1; // capture BEFORE the settle window
+  Utilities.sleep(2000); // let Sheets finish writing the submitted row
+  if (!routed || isLeave) {
+    try {
+      // F-036: if a response row disappeared during the settle window, the submission would vanish silently — log it.
+      if (leaveForm && beforeLeave >= 2 && leaveForm.getLastRow() < beforeLeave) {
+        const who = (e && e.namedValues) ? String(JSON.stringify(e.namedValues)).slice(0, 300) : '(event data unavailable)';
+        logWarn_('onFormSubmit', `a response row disappeared during the 2s settle window (rows ${beforeLeave} → ${leaveForm.getLastRow()}); a submission may not have synced. Submitted: ${who}`);
+      }
+      syncFormToTracker();
+    } catch (err) { log_('onFormSubmit', err); }
   }
-  // v1.0 — the same spreadsheet onFormSubmit fires for BOTH forms; the patrol sync only scans its own tab (no-op when
-  // that form wasn't the one submitted, or when the feature is off), so running it here needs no per-form routing.
-  try { syncPatrolFormNow_(); } catch (err) { log_('onFormSubmit.patrol', err); } // transfer onto the Patrol Log (START_END) or credit directly (DURATION) — same path as the menu
-  // Roster Signups: a submission lands on the FORM's own response tab (SIGNUP_FORM_RESPONSES); the sync field-matches it
-  // into the themed SIGNUPS review tab and stamps Pending — just like the LOA form feeds the LOA Tracker. syncSignupForm
-  // only scans its own tab and no-ops when the feature is off, so (like the patrol sync) it needs no per-form routing.
-  try { if (typeof syncSignupForm === 'function') syncSignupForm(); } catch (err) { log_('onFormSubmit.signups', err); }
-  // Re-apply the dark theme so every new submission looks polished + on-brand (runs even if the sync above threw).
-  // ALL THREE form response tabs — leave, patrol, and signup — get the same treatment (the one that was just
-  // submitted actually changed; re-styling the others is a cheap idempotent no-op).
+  // Patrol: transfer onto the Patrol Log (START_END) or credit directly (DURATION) — same path as the menu.
+  if (!routed || isPatrol) { try { syncPatrolFormNow_(); } catch (err) { log_('onFormSubmit.patrol', err); } }
+  // Roster Signups: field-match the submission into the themed SIGNUPS review tab (like the LOA form feeds the tracker).
+  if (!routed || isSignup) { try { if (typeof syncSignupForm === 'function') syncSignupForm(); } catch (err) { log_('onFormSubmit.signups', err); } }
+  // Re-apply the dark theme so the new submission looks polished — only the tab that actually changed (all three when
+  // the form couldn't be identified). Runs even if the sync above threw.
   const ss2 = SpreadsheetApp.getActive();
-  [CONFIG.sheets.form, CONFIG.sheets.patrol, CONFIG.sheets.signupForm].forEach((nm) => {
+  (routed ? [submittedTab] : [CONFIG.sheets.form, CONFIG.sheets.patrol, CONFIG.sheets.signupForm]).forEach((nm) => {
     if (!nm) return;
     try { const sh = ss2.getSheetByName(nm); if (sh) styleFormResponses_(sh); } catch (err) { log_('onFormSubmit.style', err); }
   });
