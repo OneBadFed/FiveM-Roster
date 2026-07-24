@@ -1782,8 +1782,16 @@ function publishHeaderRow_(sh) {
  * frozen string it happened to evaluate to. Self-referential formulas (the tracker's LENGTH / TIME LEFT) therefore keep
  * recalculating publicly instead of going stale between publishes.
  */
-function publishReadCells_(range) {
-  const v = range.getValues(), f = range.getFormulas();
+function publishReadCells_(range, valuesOnly) {
+  const v = range.getValues();
+  // valuesOnly: the destination tab has a DIFFERENT column layout (header-matched publish onto a narrower public copy).
+  // A copied formula keeps its relative references — e.g. TIME IN RANK's =IF(Q38="",…,TODAY()-INT(Q38)) points at
+  // LAST PROMOTION (col Q) on the internal roster, but col Q is a different column on the public sheet (the deleted
+  // EMAIL/DOB shift everything left), so the formula computes garbage ("46226 days"). Publish the COMPUTED VALUE
+  // instead, which is layout-independent and correct. (Same-width FULL publishes keep formulas — their refs still line
+  // up — so dashboards and any live cells survive.)
+  if (valuesOnly) return v;
+  const f = range.getFormulas();
   for (let r = 0; r < v.length; r++) {
     for (let c = 0; c < v[r].length; c++) {
       const fx = String(f[r][c] == null ? '' : f[r][c]);
@@ -2029,7 +2037,9 @@ function publishMirrorTab_(src, dest) {
   if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
   if (n) {
     pairs.forEach((p) => {
-      writeValuesSafe_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1)),
+      // valuesOnly=true: this is the header-matched path (public layout differs), so publish computed VALUES — a copied
+      // formula's relative refs would point at the wrong public column (e.g. TIME IN RANK reading a checkbox column).
+      writeValuesSafe_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1), true),
         publishKeepMask_(dest, destStart, p.dc, n, 1));
       try { dest.getRange(destStart, p.dc, n, 1).setNumberFormats(src.getRange(srcStart, p.sc, n, 1).getNumberFormats()); }
       catch (e) { log_('publishMirrorTab_.formats', e); }
