@@ -2510,25 +2510,16 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
       patrolSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done);
       const startDisp = cols.start > 0 ? String(gridDisp[i][cols.start - 1] || '') : '';
       const endDisp = cols.end > 0 ? String(gridDisp[i][cols.end - 1] || '') : '';
-      summary.credited.push({ name: memberName, hours: hours, total: next, discord: memberId, start: startDisp, end: endDisp });
+      const memberRank = RC.rank ? String(roster.getRange(memberRow, RC.rank).getDisplayValue()).trim() : '';
+      const memberCall = RC.unit ? String(roster.getRange(memberRow, RC.unit).getDisplayValue()).trim() : '';
+      summary.credited.push({ name: memberName, rank: memberRank, callsign: memberCall, hours: hours, total: next, discord: memberId, start: startDisp, end: endDisp });
       summary.hoursAdded += hours;
     } catch (e) { log_('syncPatrolHours_.credit', e); } // dedup key already written → this log is never re-credited (a partial failure is logged, not doubled)
   }
-  // Notifications fire AFTER all writes (never block a credit). Off by default.
+  // Notifications fire AFTER all writes (never block a credit). Off by default (the [DISCORD].PATROL_LOGGED opt-in).
   if (sendWebhooks && CONFIG.notify && CONFIG.notify.patrolLogged) {
     summary.credited.forEach((c) => {
-      const patrolFields = [
-        { name: '👤 Name', value: clamp_(dash_(c.name), 1000), inline: true },
-        { name: '🚔 Patrol', value: `${c.hours} hr${c.hours === 1 ? '' : 's'}`, inline: true },
-        { name: '⏱️ New total', value: `${c.total} hrs`, inline: true },
-      ];
-      if (c.start) patrolFields.push({ name: '▶️ Start', value: clamp_(dash_(c.start), 1000), inline: true }); // start date + time (only when the log has it)
-      if (c.end) patrolFields.push({ name: '⏹️ End', value: clamp_(dash_(c.end), 1000), inline: true });       // end date + time
-      notifyEvent_('PATROL', true, 'patrolLogged', { name: c.name, hours: String(c.hours), total: String(c.total), start: c.start, end: c.end }, {
-        title: fill_(CONFIG.notify.patrolTitle, { name: c.name, hours: c.hours, total: c.total }),
-        color: hexToInt_(CONFIG.notify.patrolColor, 5154774),
-        fields: patrolFields,
-      }, mention_(c.discord));
+      patrolNotifyRow_('processed', { name: c.name, rank: c.rank, callsign: c.callsign, discord: c.discord, hours: c.hours, total: c.total, startDate: c.start, startTime: '', endDate: c.end, endTime: '' });
       Utilities.sleep(200); // stay under Discord's webhook rate limit on a batch
     });
   }
@@ -2803,10 +2794,12 @@ function evaluatePatrolLog_(memberRow, startDT, endDT, hours, now) {
   if (!(hours > 0)) return { reason: 'End is not after start.', blocking: true };
   if (hours > 24) return { reason: 'Over 24 hrs — check the dates.', blocking: true }; // a single session can't exceed a day → force a fix, don't let it be approved
   if (hours > CONFIG.patrol.maxHours) return { reason: `Exceeds ${CONFIG.patrol.maxHours} hr max.`, blocking: false };
-  // Compare DATES (sheet timezone), not instants: a script/sheet timezone gap would otherwise flag a log entered
-  // earlier today as "future" purely from the offset.
-  const endOfToday = (function () { const t = todayInSheetTz_(); return new Date(t.getFullYear(), t.getMonth(), t.getDate(), 23, 59, 59); })();
-  if (startDT.getTime() > endOfToday.getTime() || endDT.getTime() > endOfToday.getTime()) return { reason: 'Dated in the future.', blocking: false };
+  // A patrol is a COMPLETED session, so its END must be in the PAST. Flag anything ending after "now" — a future DAY
+  // OR just a future TIME today (e.g. a 10:00–12:00 log submitted at 01:55). A one-hour grace absorbs clock / daylight-
+  // saving skew, so a log entered right after the patrol ended is never false-flagged. (Sheet + script time zones should
+  // match — set both to your local zone; the grace covers a one-hour DST slip either way.)
+  const graceMs = 60 * 60 * 1000;
+  if (endDT.getTime() > now.getTime() + graceMs || startDT.getTime() > now.getTime() + graceMs) return { reason: 'Dated in the future — a patrol can\'t end after now.', blocking: false };
   return { reason: '', blocking: false };
 }
 
@@ -2876,6 +2869,7 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
     const isApproved = P.approvedStatus && cur === norm_(P.approvedStatus);
     const isDenied = P.deniedStatus && cur === norm_(P.deniedStatus);
     let desired = null;
+    let notify = null; // set to {kind} only when THIS pass moves the row INTO Flagged/Processed → one embed on the change
     if (isDenied) {
       // admin rejection — never credit; leave their note in place (don't clobber the reason they denied it for).
     } else if (isApproved) {
@@ -2895,11 +2889,24 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
       const ev = evaluatePatrolLog_(memberRow, startDT, endDT, hours, new Date());
       if (ev.blocking || ev.reason) {
         setStatus(P.flaggedStatus); setNote(ev.reason); // blocking OR advisory → Flagged; an admin credits it by setting Approved
+        if (cur !== norm_(P.flaggedStatus)) notify = { kind: 'flagged', reason: ev.reason }; // moved INTO Flagged this pass
       } else {
         setStatus(P.processedStatus); setNote(''); desired = { hours: hours, mid: idv }; // fully valid → auto-Processed + credit
+        if (cur !== norm_(P.processedStatus)) notify = { kind: 'processed' }; // moved INTO Processed this pass
       }
     }
     reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, priorMark);
+    // A status TRANSITION this pass → ONE Discord embed (processed = credited, flagged = why). Skipped when the status
+    // didn't change, so the nightly sweep and ordinary re-edits never re-post.
+    if (notify) {
+      try {
+        const total = (memberRow !== -1 && RCr.hours) ? parseHours_(roster.getRange(memberRow, RCr.hours).getValue()) : hours;
+        patrolNotifyRow_(notify.kind, {
+          name: disp(PC.name), rank: disp(PC.rank), callsign: disp(PC.unit), discord: idv, hours: hours, total: total, reason: notify.reason,
+          startDate: disp(PC.startDate), startTime: disp(PC.startTime), endDate: disp(PC.endDate), endTime: disp(PC.endTime),
+        });
+      } catch (e2) { log_('processPatrolLog_.notify', e2); }
+    }
   } catch (e) { log_('processPatrolLog_', e); }
 }
 
@@ -2948,6 +2955,47 @@ function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, prior
       }
     }
   } catch (e) { log_('reconcilePatrolCredit_', e); }
+}
+
+/**
+ * ONE Discord embed for a Patrol Log row that just CHANGED status: 'processed' (credited) or 'flagged' (why). The caller
+ * fires this only on the actual transition, so re-processing (the nightly sweep, a re-edit) never re-posts. PATROL-webhook
+ * presence IS the opt-in — no webhook, no post. `d` carries the row's identity + times (date and time kept separate;
+ * combined here). Never throws into crediting.
+ */
+function patrolNotifyRow_(kind, d) {
+  try {
+    if (typeof webhookFor_ === 'function' && !webhookFor_('PATROL')) return; // PATROL webhook set = opt-in
+    const N = CONFIG.notify || {};
+    const nz = (x) => String(x == null ? '' : x).trim() !== '';
+    const start = [d.startDate, d.startTime].filter(nz).join(' ').trim();
+    const end = [d.endDate, d.endTime].filter(nz).join(' ').trim();
+    const nm = String(d.name || '').trim() || 'Unknown member';
+    if (kind === 'processed') {
+      const fields = [];
+      if (nz(d.rank)) fields.push({ name: '🛡️ Rank', value: clamp_(dash_(withIcon_(d.rank)), 1000), inline: true });
+      if (nz(d.callsign)) fields.push({ name: '🎙️ Callsign', value: clamp_(dash_(d.callsign), 1000), inline: true });
+      fields.push({ name: '⏱️ This log', value: `${d.hours} hrs`, inline: true });
+      fields.push({ name: '📊 New total', value: `${d.total} hrs`, inline: true });
+      if (start) fields.push({ name: '▶️ Start', value: clamp_(dash_(start), 1000), inline: true });
+      if (end) fields.push({ name: '⏹️ End', value: clamp_(dash_(end), 1000), inline: true });
+      notifyEvent_('PATROL', true, 'patrolLogged',
+        { name: d.name, rank: d.rank, callsign: d.callsign, hours: String(d.hours), total: String(d.total), start: start, end: end },
+        { title: fill_(N.patrolTitle || '🚔 {name} logged {hours}h of patrol', { name: d.name, hours: d.hours, total: d.total }), color: hexToInt_(N.patrolColor, 5154774), fields: fields },
+        mention_(d.discord));
+    } else { // flagged
+      const fields = [{ name: '👤 Name', value: clamp_(dash_(nm), 1000), inline: true }];
+      if (nz(d.rank)) fields.push({ name: '🛡️ Rank', value: clamp_(dash_(withIcon_(d.rank)), 1000), inline: true });
+      if (nz(d.callsign)) fields.push({ name: '🎙️ Callsign', value: clamp_(dash_(d.callsign), 1000), inline: true });
+      if (start) fields.push({ name: '▶️ Start', value: clamp_(dash_(start), 1000), inline: true });
+      if (end) fields.push({ name: '⏹️ End', value: clamp_(dash_(end), 1000), inline: true });
+      if (nz(d.reason)) fields.push({ name: '⚠️ Reason', value: clamp_(dash_(d.reason), 1000), inline: false });
+      notifyEvent_('PATROL', true, 'patrolFlagged',
+        { count: '1', rows: '• ' + nm + ' — ' + (d.reason || 'flagged'), name: d.name, rank: d.rank, callsign: d.callsign, reason: d.reason || '', start: start, end: end },
+        { title: '⚠️ Patrol log flagged' + (nz(d.name) ? ' — ' + d.name : ''), description: nz(d.reason) ? clamp_(String(d.reason), 1000) : '', color: hexToInt_('#e0a52c', 14721324), fields: fields },
+        '');
+    }
+  } catch (e) { log_('patrolNotifyRow_', e); }
 }
 
 /** Re-group + compact the Patrol Log by [PATROL].STATUS_FLOW (Pending → Flagged → Processed); preserves formatting, carries the marker. */
