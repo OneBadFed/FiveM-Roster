@@ -664,7 +664,7 @@ function auditNotify_(editor, sheetName, cellA1, oldV, newV, type, member) {
     add('👤 Editor', editor);
     add('📄 Sheet', sheetName);
     add('📍 Cell', cellA1);
-    add('🧾 Member', member);
+    add('👮 Member', member);
     add('◀️ Old', oldV);
     add('▶️ New', newV);
     const vars = { editor, sheet: sheetName, cell: cellA1, member, old: oldV, 'new': newV, action: auditTypeLabel_(type) };

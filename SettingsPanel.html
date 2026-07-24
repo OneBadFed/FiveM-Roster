@@ -1275,20 +1275,20 @@
     ERRORS:[{id:'error',label:'Engine error',ph:['code','message','hint','function']}],
   };
   var DC_SAMPLE={user:'<@1234567890123456789>',editor:'admin@example.com',sheet:'Member Information',cell:'F14',member:'J. Bennett',old:'Active','new':'LOA',action:'Status change',
-    name:'J. Bennett',rank:'Sergeant',callsign:'S-07',type:'LOA',start:'21 Jul 2026',end:'4 Aug 2026',length:'14 days',
-    hours:'6.5',total:'18.75',count:'2',rows:'• Row 14 — no matching member\n• Row 17 — bad or missing time',
+    name:'J. Bennett',rank:'Sergeant',callsign:'S-07',type:'LOA',start:'21 Jul 2026',end:'4 Aug 2026',length:'14 Days',
+    hours:'6.5',total:'18.75',count:'2',rows:'❌ Row 14 — no matching member\n❌ Row 17 — bad or missing time',
     code:'E-102',message:'Config has 1 error.',hint:'Open ⚙️ Config and fix the red cell.','function':'cfg_'};
   // The BUILT-IN embed for each event — shown in the preview (with sample data) until an override is saved, so every
   // notification has a visible example. Overriding any field in the builder replaces this.
   var DC_DEFAULTS={
-    audit:{color:'#4f8ee8',title:'📝 Roster edited',desc:'{editor} changed **{sheet}** · `{cell}`',fields:[{n:'Member',v:'{member}',inline:true},{n:'Action',v:'{action}',inline:true},{n:'Change',v:'`{old}` → `{new}`',inline:false}],footer:'Audit log'},
-    loaSubmitted:{color:'#236995',title:'📥 New {type} Submission',content:'{user}',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'🎙️ Callsign',v:'{callsign}',inline:true},{n:'▶️ Start',v:'{start}',inline:true},{n:'⏹️ End',v:'{end}',inline:true},{n:'⏳ Length',v:'{length}',inline:true}]},
-    loaApproved:{color:'#2ea043',title:'✅ {type} Approved',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'▶️ Start',v:'{start}',inline:true},{n:'⏹️ End',v:'{end}',inline:true}]},
-    loaStarted:{color:'#c9a227',title:'▶️ {type} Started',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true}]},
-    loaExpired:{color:'#8a929e',title:'⏹️ {type} Ended',fields:[{n:'👤 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true}]},
-    patrolLogged:{color:'#43b585',title:'🚔 {name} logged {hours}h of patrol',fields:[{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'🎙️ Callsign',v:'{callsign}',inline:true},{n:'⏱️ This log',v:'{hours} hrs',inline:true},{n:'📊 New total',v:'{total} hrs',inline:true},{n:'▶️ Start',v:'{start}',inline:true},{n:'⏹️ End',v:'{end}',inline:true}]},
-    patrolFlagged:{color:'#d99257',title:'⚠️ {count} patrol log(s) flagged',desc:'{rows}'},
-    error:{color:'#e0574f',title:'🚨 Engine error · {code}',fields:[{n:'Message',v:'{message}',inline:false},{n:'Fix',v:'{hint}',inline:false},{n:'Where',v:'`{function}`',inline:true}]}
+    audit:{color:'#4f8ee8',title:'📝 Roster Edited',desc:'{editor} changed **{sheet}** · `{cell}`',fields:[{n:'👮 Member',v:'{member}',inline:true},{n:'⚖️ Action',v:'{action}',inline:true},{n:'🔁 Change',v:'`{old}` → `{new}`',inline:false}],footer:'Audit log'},
+    loaSubmitted:{color:'#3498db',title:'📥 New {type} Submission',content:'{user}',fields:[{n:'👮 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'🎙️ Callsign',v:'{callsign}',inline:true},{n:'▶️ Start Date',v:'{start}',inline:true},{n:'⏹️ End Date',v:'{end}',inline:true},{n:'⌛ Length',v:'{length}',inline:true}]},
+    loaApproved:{color:'#57b85a',title:'✅ {type} Approved',desc:'This member\'s **{type}** has been approved. It will apply to the roster on its start date.',fields:[{n:'👮 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'▶️ Start Date',v:'{start}',inline:true},{n:'⏹️ End Date',v:'{end}',inline:true}]},
+    loaStarted:{color:'#4ea7d6',title:'▶️ {type} Started',desc:'This member\'s **{type}** has started. Their status has been updated on the roster.',fields:[{n:'👮 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true}]},
+    loaExpired:{color:'#ed4245',title:'⌛ {type} Expired',desc:'This member\'s **{type}** has ended. Their status has been updated on the roster.',fields:[{n:'👮 Name',v:'{name}',inline:true},{n:'🛡️ Rank',v:'{rank}',inline:true}]},
+    patrolLogged:{color:'#4ea7d6',title:'🚔 {name} logged {hours}h of patrol',desc:'This member\'s patrol log has been verified and their hours credited to the roster.',fields:[{n:'🛡️ Rank',v:'{rank}',inline:true},{n:'🎙️ Callsign',v:'{callsign}',inline:true},{n:'⏱️ Hours Logged',v:'{hours} hrs',inline:true},{n:'📊 New Total',v:'{total} hrs',inline:true},{n:'▶️ Start Date',v:'{start}',inline:true},{n:'⏹️ End Date',v:'{end}',inline:true}]},
+    patrolFlagged:{color:'#d99257',title:'⚠️ {count} Patrol Log(s) Flagged',desc:'{rows}'},
+    error:{color:'#e0574f',title:'🚨 Engine Error · {code}',fields:[{n:'📄 Message',v:'{message}',inline:false},{n:'🛠️ Fix',v:'{hint}',inline:false},{n:'📍 Where',v:'`{function}`',inline:true}]}
   };
   var DC_SWATCH=['#00458E','#8a1f1f','#c2691c','#c9a227','#e64bb0','#2ea043','#a68a00','#b02a2a','#7c5cff','#4f8ee8'];
   var DCEV={}, LASTEMB=null;

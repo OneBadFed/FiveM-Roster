@@ -123,11 +123,12 @@ function maybeErrorWebhook_(ae, fnName) {
     if (!url) return;
     cache.put(key, '1', 300);
     const sysName = (CFG_ && CFG_.legacy) ? CFG_.legacy.systemName : 'Roster System';
-    let desc = String(ae.message || '');
-    if (ae.hint) desc += `\n\n**Fix:** ${ae.hint}`;
+    let desc = `📄 **Message:** ${ae.message || ''}`;
+    if (ae.hint) desc += `\n🛠️ **Fix:** ${ae.hint}`;
+    desc += `\n📍 **Where:** \`${fnName || 'engine'}\``;
     desc = desc.slice(0, 1500) + '\n\n_See SYS Log for the complete record._'; // F-044: one safe bound on the whole description + pointer
     const fallbackEmbed = {
-      title: `⚠️ ${ae.code} — ${fnName || 'engine'}`,
+      title: `🚨 Engine Error · ${ae.code}`,
       description: desc,
       color: 14702415, // #e0574f — semantic red
       footer: { text: `${sysName} • ${ENGINE_VERSION}` },
@@ -361,7 +362,7 @@ const BLOCK_SPECS_ = Object.freeze({
     RETURN_COLOR: { t: 'color', d: '#e67e22', req: true, help: 'Colour bar when the submission is the returning-leave type.' },
     EXPIRE_COLOR: { t: 'color', d: '#ed4245', req: true, help: 'Colour bar of a leave-expired embed.' },
     SUBMIT_TITLE: { t: 'string', d: '📥 New {type} Submission', req: true, help: 'Title of a new leave-submission embed. {type} = the leave type.' },
-    EXPIRE_TITLE: { t: 'string', d: '⏳ {type} Expired', req: true, help: 'Title of a leave-expired embed. {type} = the leave type.' },
+    EXPIRE_TITLE: { t: 'string', d: '⌛ {type} Expired', req: true, help: 'Title of a leave-expired embed. {type} = the leave type.' },
     EMBED_AUTHOR: { t: 'string', d: '', req: false, help: 'Small author line shown ABOVE the title (e.g. the department name). Blank = off.' },
     EMBED_AUTHOR_ICON: { t: 'string', d: '', req: false, help: 'Author icon image URL (https://…), shown beside the author name. Needs an author.' },
     EMBED_THUMBNAIL: { t: 'string', d: '', req: false, help: 'Thumbnail image URL (https://…) shown at the embed\'s top-right. Blank = off.' },
@@ -951,7 +952,7 @@ function materialize_(c, fromTab) {
     formats: { date: kv.FORMATS.DATE_DISPLAY || 'd MMM. yyyy', timestamp: kv.FORMATS.TIMESTAMP_DISPLAY || 'd MMM yyyy, h:mm a' },
     embed: {
       submitColor: kv.DISCORD.SUBMIT_COLOR || '#3498db', returnColor: kv.DISCORD.RETURN_COLOR || '#e67e22', expireColor: kv.DISCORD.EXPIRE_COLOR || '#ed4245',
-      submitTitle: kv.DISCORD.SUBMIT_TITLE || '📥 New {type} Submission', expireTitle: kv.DISCORD.EXPIRE_TITLE || '⏳ {type} Expired',
+      submitTitle: kv.DISCORD.SUBMIT_TITLE || '📥 New {type} Submission', expireTitle: kv.DISCORD.EXPIRE_TITLE || '⌛ {type} Expired',
       authorName: kv.DISCORD.EMBED_AUTHOR || '', authorIcon: kv.DISCORD.EMBED_AUTHOR_ICON || '', // v1.0 embed-body chrome (all blank by default)
       thumbnail: kv.DISCORD.EMBED_THUMBNAIL || '', image: kv.DISCORD.EMBED_IMAGE || '',
       footerText: kv.DISCORD.EMBED_FOOTER || '', footerIcon: kv.DISCORD.EMBED_FOOTER_ICON || '',
