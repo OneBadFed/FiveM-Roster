@@ -691,8 +691,8 @@ function installDataValidation_() {
       if (PC.discord) { const idCol = patrolLog.getRange(pstart, PC.discord, n, 1); idCol.setNumberFormat('@').setDataValidation(idRuleFor(idCol)); counts.patrolLog++; }
       if (PC.startDate) { patrolLog.getRange(pstart, PC.startDate, n, 1).setDataValidation(dateRule('Enter the patrol start date.')); counts.patrolLog++; }
       if (PC.endDate) { patrolLog.getRange(pstart, PC.endDate, n, 1).setDataValidation(dateRule('Enter the patrol end date.')); counts.patrolLog++; }
-      const pflow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Processed'];
-      if (PC.status) { applyStatusDropdown(patrolLog.getRange(pstart, PC.status, n, 1), pflow, 'Patrol status: Pending, Flagged, or Processed.'); counts.patrolLog++; }
+      const pflow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Approved', 'Denied', 'Processed'];
+      if (PC.status) { applyStatusDropdown(patrolLog.getRange(pstart, PC.status, n, 1), pflow, 'Patrol status: ' + pflow.join(' · ') + '.'); counts.patrolLog++; }
     }
   }
   return counts;
@@ -2837,20 +2837,36 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
     const setStatus = (s) => { if (PC.status && norm_(curStatus) !== norm_(s)) sheet.getRange(row, PC.status).setValue(s); };
     const setNote = (t) => { if (PC.notes && disp(PC.notes) !== t) sheet.getRange(row, PC.notes).setValue(t); };
 
+    // Five-state model. ADMIN-OWNED terminals (Approved / Denied) are respected — the engine never overwrites them:
+    //   APPROVED = an admin reviewed/corrected the log → credit it (keep the status, don't re-flag).
+    //   DENIED   = an admin rejected it → reverse any credit (keep the status).
+    // ENGINE-OWNED (Pending / Flagged / Processed) recompute every pass:
+    //   incomplete → Pending · a parameter fails → Flagged (no credit until Approved) · clean → Processed + credit.
+    const cur = norm_(curStatus);
+    const isApproved = P.approvedStatus && cur === norm_(P.approvedStatus);
+    const isDenied = P.deniedStatus && cur === norm_(P.deniedStatus);
     let desired = null;
-    if (!complete) {
+    if (isDenied) {
+      // admin rejection — never credit; leave their note in place (don't clobber the reason they denied it for).
+    } else if (isApproved) {
+      // admin override — credit when the log is actually computable; otherwise keep Approved but explain why not.
+      if (complete && hours > 0 && memberRow !== -1) {
+        const ev = evaluatePatrolLog_(memberRow, startDT, endDT, hours, new Date());
+        setNote(ev.reason ? ('Override: ' + ev.reason) : ''); // advisory reason kept as an override note
+        desired = { hours: hours, mid: idv };
+      } else {
+        const why = !complete ? 'incomplete (missing ID / start / end)'
+          : (memberRow === -1 ? 'Unique ID not on the roster' : 'non-positive duration');
+        setNote('Approved but not credited — ' + why); // respect the admin's status; be honest it can't credit yet
+      }
+    } else if (!complete) {
       if (!curStatus) setStatus(P.pendingStatus); // half-entered → Pending, no credit yet
     } else {
       const ev = evaluatePatrolLog_(memberRow, startDT, endDT, hours, new Date());
-      const wantsProcessed = norm_(curStatus) === norm_(P.processedStatus);
-      if (ev.blocking) {
-        setStatus(P.flaggedStatus); setNote(ev.reason);        // can't credit (unknown ID / bad time / date typo) → Flagged; a Processed override snaps back
-      } else if (ev.reason) {
-        // ADVISORY (over the hour max / future-dated): counts ONLY once an admin approves it by marking it Processed
-        if (wantsProcessed) { setNote('Override: ' + ev.reason); desired = { hours: hours, mid: idv }; } // approved → credit, keep Processed
-        else { setStatus(P.flaggedStatus); setNote(ev.reason); }                                        // not yet approved → Flagged, no credit
+      if (ev.blocking || ev.reason) {
+        setStatus(P.flaggedStatus); setNote(ev.reason); // blocking OR advisory → Flagged; an admin credits it by setting Approved
       } else {
-        setStatus(P.processedStatus); setNote(''); desired = { hours: hours, mid: idv };                // fully valid → auto-mark Processed + credit
+        setStatus(P.processedStatus); setNote(''); desired = { hours: hours, mid: idv }; // fully valid → auto-Processed + credit
       }
     }
     reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, priorMark);
@@ -2929,7 +2945,7 @@ function sortPatrolLog_(patrolSheet) {
       }
     }
     if (!records.length) return;
-    const flow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Processed'];
+    const flow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Approved', 'Denied', 'Processed'];
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
     const prio = (r) => { const k = norm_(String(r[PC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
     const dec = records.map((r, i) => ({ r: r, i: i, p: prio(r) }));

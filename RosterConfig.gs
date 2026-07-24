@@ -397,9 +397,11 @@ const BLOCK_SPECS_ = Object.freeze({
     MAX_HOURS: { t: 'int', d: 16, req: false, min: 1, max: 24, help: 'Reject a single patrol log longer than this many hours (guards typos / bad times).' },
     OVERNIGHT: { t: 'bool', d: true, req: false, help: 'START_END only: if the end time is before the start, treat it as crossing midnight (+24h) instead of an error.' },
     RECOMPUTE: { t: 'bool', d: true, req: false, help: 'Recompute the member\'s activity status from their new hours after crediting a patrol.' },
-    STATUS_FLOW: { t: 'list', d: 'Pending, Flagged, Processed', req: false, help: 'Manual Patrol Log tab: the STATUS dropdown values AND their top-to-bottom sort order (Pending at the top, then Flagged, then Processed).' },
-    FLAGGED_STATUS: { t: 'string', d: 'Flagged', req: false, help: 'Patrol Log: the status auto-set on a log the engine flags (bad time, over-max, unknown ID, future date). The reason is written to NOTES.' },
-    PROCESSED_STATUS: { t: 'string', d: 'Processed', req: false, help: 'Patrol Log: the "reviewed / done" status. Hours credit on entry regardless; this just marks a log as handled.' },
+    STATUS_FLOW: { t: 'list', d: 'Pending, Flagged, Approved, Denied, Processed', req: false, help: 'Manual Patrol Log tab: the STATUS dropdown values AND their top-to-bottom sort order. Roles: PENDING = the engine is still processing / the log is half-entered (no credit). FLAGGED = a parameter failed (unknown ID, bad time, over-max, future — reason in NOTES; no credit). APPROVED = an admin reviewed/corrected a flagged log and credits it (admin-owned; the engine won\'t revert it). DENIED = an admin rejected it (no credit; any prior credit is reversed; admin-owned). PROCESSED = the engine verified it clean and credited it.' },
+    FLAGGED_STATUS: { t: 'string', d: 'Flagged', req: false, help: 'Patrol Log: the status auto-set on a log that fails a parameter (bad time, over-max, unknown ID, future date). The reason is written to NOTES; no hours credit until an admin sets it APPROVED.' },
+    APPROVED_STATUS: { t: 'string', d: 'Approved', req: false, help: 'Patrol Log: the ADMIN override. Setting a flagged (or corrected) log to this credits its hours and the engine stops re-flagging it. BLANK = disabled (use PROCESSED to credit, as before).' },
+    DENIED_STATUS: { t: 'string', d: 'Denied', req: false, help: 'Patrol Log: the ADMIN rejection. Setting a log to this reverses any credit and the engine leaves it alone. BLANK = disabled.' },
+    PROCESSED_STATUS: { t: 'string', d: 'Processed', req: false, help: 'Patrol Log: the engine\'s "verified clean and credited" status, set automatically when a complete log passes every parameter.' },
     COL_DISCORD: { t: 'string', d: 'Discord', req: false, help: 'Form-header keyword for the Discord-ID column (primary match key).' },
     COL_CALLSIGN: { t: 'string', d: 'Callsign', req: false, help: 'Form-header keyword for the callsign column (fallback match key when the ID is blank/unmatched).' },
     COL_START: { t: 'string', d: 'Start', req: false, help: 'START_END mode: header keyword for the on-duty / start-time column.' },
@@ -966,9 +968,11 @@ function materialize_(c, fromTab) {
       colDiscord: P.COL_DISCORD || 'Discord', colCallsign: P.COL_CALLSIGN || 'Callsign',
       colStart: P.COL_START || 'Start', colEnd: P.COL_END || 'End', colDuration: P.COL_DURATION || 'Hours',
       // Manual Patrol Log tab statuses (sort order + the flagged/processed names).
-      statusFlow: (P.STATUS_FLOW && P.STATUS_FLOW.length) ? P.STATUS_FLOW : ['Pending', 'Flagged', 'Processed'],
+      statusFlow: (P.STATUS_FLOW && P.STATUS_FLOW.length) ? P.STATUS_FLOW : ['Pending', 'Flagged', 'Approved', 'Denied', 'Processed'],
       pendingStatus: (P.STATUS_FLOW && P.STATUS_FLOW.length ? P.STATUS_FLOW[0] : 'Pending'),
       flaggedStatus: P.FLAGGED_STATUS || 'Flagged',
+      approvedStatus: (P.APPROVED_STATUS === undefined ? 'Approved' : String(P.APPROVED_STATUS || '').trim()), // admin credit override; blank = disabled
+      deniedStatus: (P.DENIED_STATUS === undefined ? 'Denied' : String(P.DENIED_STATUS || '').trim()),         // admin rejection; blank = disabled
       processedStatus: P.PROCESSED_STATUS || 'Processed',
     },
     sheets: {

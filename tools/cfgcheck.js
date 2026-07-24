@@ -48,7 +48,8 @@ ok('NEVER_PUBLISH default has 5 entries incl. PHONE', Array.isArray(m0.kv.PUBLIS
 ok('FORM_MAP rows are {Role, Header} objects', Array.isArray(v0.config.tables.FORM_MAP) && v0.config.tables.FORM_MAP.length === 8 && v0.config.tables.FORM_MAP[0].Role === 'TIMESTAMP' && 'Header' in v0.config.tables.FORM_MAP[0], JSON.stringify(v0.config.tables.FORM_MAP[0]));
 ok('statusFlow default', JSON.stringify(m0.legacy.statusFlow) === JSON.stringify(['Pending', 'Approved', 'Denied', 'Expired']), JSON.stringify(m0.legacy.statusFlow));
 ok('expiredStatus default', m0.legacy.expiredStatus === 'Expired', String(m0.legacy.expiredStatus));
-ok('patrol statusFlow default', JSON.stringify(m0.legacy.patrol.statusFlow) === JSON.stringify(['Pending', 'Flagged', 'Processed']), JSON.stringify(m0.legacy.patrol.statusFlow));
+ok('patrol statusFlow default', JSON.stringify(m0.legacy.patrol.statusFlow) === JSON.stringify(['Pending', 'Flagged', 'Approved', 'Denied', 'Processed']), JSON.stringify(m0.legacy.patrol.statusFlow));
+ok('patrol approved/denied statuses default', m0.legacy.patrol.approvedStatus === 'Approved' && m0.legacy.patrol.deniedStatus === 'Denied', JSON.stringify([m0.legacy.patrol.approvedStatus, m0.legacy.patrol.deniedStatus]));
 
 // ---- 2 · key aliases (renamed keys keep working) ----
 console.log('\n[2] aka aliases — legacy rows are honoured');

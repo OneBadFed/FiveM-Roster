@@ -162,7 +162,14 @@ Sessions live on the **Patrol Log tab** (`[SHEETS].PATROL_LOG`): identity + star
 header-resolved. Each row is processed by `processPatrolLog_`: identity auto-fills from the roster, the
 ISNUMBER-guarded TOTAL TIME formula computes hours — and a row with a blank/malformed ID gets the same
 corroborated name+rank/unit failsafe as the leave sync (the resolved ID is written onto the row so crediting
-stays ID-keyed; a valid-but-unknown ID still Flags). `evaluatePatrolLog_` classifies problems — **blocking**
+stays ID-keyed; a valid-but-unknown ID still Flags).
+
+**Five-state status model** (`[PATROL].STATUS_FLOW`): **PENDING** (engine processing / incomplete — no credit) ·
+**FLAGGED** (a parameter failed — reason in NOTES, no credit) · **APPROVED** (admin-owned override — credits a
+corrected/flagged log; the engine never reverts it) · **DENIED** (admin-owned rejection — reverses any credit,
+engine leaves it alone) · **PROCESSED** (engine verified clean + credited). Credit states = PROCESSED + APPROVED;
+the engine recomputes only the non-admin states, so an admin decision is never overwritten by a sweep.
+`evaluatePatrolLog_` classifies problems — **blocking**
 (unknown ID, non-positive or >24h span → Flagged, data must be fixed) vs **advisory** (over the configured max,
 future-dated → Flagged until an admin marks it Processed, which credits with an override note). Valid rows
 auto-mark Processed and credit.
