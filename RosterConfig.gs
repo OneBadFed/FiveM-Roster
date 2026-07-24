@@ -282,6 +282,7 @@ const BLOCK_SPECS_ = Object.freeze({
     COVERAGE: { t: 'string', d: 'Leave Coverage', req: false, help: 'Leave-coverage view tab. Blank = "Leave Coverage".' },
     INTEGRITY: { t: 'string', d: 'Integrity Log', req: false, help: 'Integrity-scan log tab. Blank = "Integrity Log".' },
     SNAPSHOTS: { t: 'string', d: '_Snapshots', req: false, help: 'Hidden snapshot/restore tab. Blank = "_Snapshots".' },
+    WELCOME: { t: 'string', d: 'Welcome Page', req: false, help: 'The Welcome Page / dashboard tab (the front page with the title banner + Department Statistics). Blank = "Welcome Page". A leading emoji is matched automatically, so "👋 Welcome Page" works even at the default; set the exact name here only if you renamed it to something else. Used so the publish protects its title block (F6:W7 reads differently public vs internal) and force-mirrors the header cells (F40:H41, AE6) from the internal.' },
     PATROL_FORM_RESPONSES: { t: 'string', d: '', req: false, aka: 'PATROL_RESPONSES', help: 'The PATROL Google Form\'s responses tab. BLANK = patrol-form sync OFF (the manual Patrol Log tab still works). Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
     PATROL_LOG: { t: 'string', d: 'Patrol Log', req: false, help: 'Manual Patrol Log tracker tab (like the LOA Tracker). Enter Unique ID + start/end date + start/end time; the engine auto-fills member info, computes TOTAL TIME, credits the hours to the roster, and sorts Pending → Flagged → Processed. BLANK = OFF. Activates only if a tab with this name exists.' },
     SIGNUPS: { t: 'string', d: 'Roster Signups', req: false, help: 'Roster Signup REVIEW tab (like the LOA Tracker): the engine adds field-matched form submissions here (from SIGNUP_FORM_RESPONSES) for admins to review — STATUS + NOTES are admin-owned. Lay it out with a header row (NAME / OOC NAME / UNIQUE ID / DOB / EMAIL / STATUS / NOTES…) anywhere in the top rows. Approving adds the member to a slot and writes their private details to the Internal Roster.' },
@@ -987,6 +988,7 @@ function materialize_(c, fromTab) {
       coverage: kv.SHEETS.COVERAGE || 'Leave Coverage',
       integrity: kv.SHEETS.INTEGRITY || 'Integrity Log',
       snapshots: kv.SHEETS.SNAPSHOTS || '_Snapshots',
+      welcome: kv.SHEETS.WELCOME || 'Welcome Page', // the Welcome Page / dashboard tab (publish keep + force ranges resolve against this)
     },
     rosterStartRow: kv.ROSTER_LAYOUT.DATA_START_ROW,
     trackerStartRow: kv.ROSTER_LAYOUT.TRACKER_START_ROW,

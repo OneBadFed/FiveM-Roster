@@ -1889,20 +1889,28 @@ function publishSelfComputing_(dest) {
   return false;
 }
 
+/** Tolerant tab-name key: uppercased + whitespace-collapsed (via norm_), with a LEADING emoji/symbol run stripped so a
+ *  keep/force range written for "Welcome Page" ALSO matches a tab named "👋 Welcome Page". The '*' (all-tabs) key passes
+ *  through unchanged. Exact after the strip — never a substring — so "Roster" can't match "Roster Signups". */
+function tabKey_(name) {
+  if (String(name == null ? '' : name).trim() === '*') return '*';
+  return norm_(name).replace(/^[^A-Z0-9]+/, '');
+}
+
 function publishKeepRanges_() {
   const out = {};
   const add = (spec) => {
     const t = String(spec).trim(); if (!t) return;
     const i = t.lastIndexOf('!'); if (i < 1) return;
-    const tab = norm_(t.slice(0, i).replace(/^'|'$/g, '')), a1 = t.slice(i + 1).trim();
+    const key = tabKey_(t.slice(0, i).replace(/^'|'$/g, '')), a1 = t.slice(i + 1).trim();
     if (!a1) return;
-    const list = (out[tab] = out[tab] || []);
+    const list = (out[key] = out[key] || []);
     if (list.indexOf(a1) === -1) list.push(a1);
   };
   // BUILT-IN: the title blocks that are meant to read differently in the two files. These are applied even when the
   // operator's Config tab already carries a KEEP_RANGES row (a stored row overrides the schema default, so relying on
   // the default alone silently did nothing). Config entries ADD to these rather than replacing them.
-  ['Welcome Page!F6:W7', (CONFIG.sheets.roster || 'Member Information') + '!D3:H3'].forEach(add); // roster tab name follows the [SHEETS] rename
+  [(CONFIG.sheets.welcome || 'Welcome Page') + '!F6:W7', (CONFIG.sheets.roster || 'Member Information') + '!D3:H3'].forEach(add); // tab names follow the [SHEETS] renames
   try { (cfg_().kv.PUBLISH.KEEP_RANGES || []).forEach(add); } catch (e) { /* config absent -> built-ins only */ }
   return out;
 }
@@ -1917,12 +1925,13 @@ function publishForceRanges_() {
   const add = (spec) => {
     const t = String(spec).trim(); if (!t) return;
     const i = t.lastIndexOf('!'); if (i < 1) return;
-    const tab = norm_(t.slice(0, i).replace(/^'|'$/g, '')), a1 = t.slice(i + 1).trim();
+    const key = tabKey_(t.slice(0, i).replace(/^'|'$/g, '')), a1 = t.slice(i + 1).trim();
     if (!a1) return;
-    const list = (out[tab] = out[tab] || []);
+    const list = (out[key] = out[key] || []);
     if (list.indexOf(a1) === -1) list.push(a1);
   };
-  ['Welcome Page!F40:H40', 'Welcome Page!F41:H41', 'Welcome Page!AE6'].forEach(add); // built-in: mirror these Welcome Page cells from the internal
+  const W = CONFIG.sheets.welcome || 'Welcome Page';
+  [W + '!F40:H40', W + '!F41:H41', W + '!AE6'].forEach(add); // built-in: mirror these Welcome Page header cells from the internal
   try { (cfg_().kv.PUBLISH.FORCE_RANGES || []).forEach(add); } catch (e) { /* config absent -> built-ins only */ }
   return out;
 }
@@ -1933,7 +1942,7 @@ function publishForceMask_(dest, top, left, rows, cols) {
   const mask = [];
   for (let r = 0; r < rows; r++) mask.push(new Array(cols).fill(false));
   const all = publishForceRanges_();
-  (all[norm_(dest.getName())] || []).concat(all['*'] || []).forEach((a1) => {
+  (all[tabKey_(dest.getName())] || []).concat(all['*'] || []).forEach((a1) => {
     try {
       const rg = dest.getRange(a1);
       const r0 = rg.getRow() - top, c0 = rg.getColumn() - left;
@@ -1967,7 +1976,7 @@ function publishKeepMask_(dest, top, left, rows, cols, force) {
     }
   } catch (e) { /* best-effort */ }
   const all = publishKeepRanges_();
-  (all[norm_(dest.getName())] || []).concat(all['*'] || []).forEach((a1) => {
+  (all[tabKey_(dest.getName())] || []).concat(all['*'] || []).forEach((a1) => {
     try {
       const rg = dest.getRange(a1);
       const r0 = rg.getRow() - top, c0 = rg.getColumn() - left;
