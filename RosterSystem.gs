@@ -3888,7 +3888,7 @@ function fillTimeInRank_(roster) {
     if (isMemberSlot_(ranks[r][0])) { out.push([`=IF(${pc}${row}="","",TODAY()-INT(${pc}${row}))`]); count++; }
     else out.push(['']);                                          // dividers / empty scaffolding rows stay blank (never #VALUE)
   }
-  roster.getRange(CONFIG.rosterStartRow, RC.timeInRank, n, 1).setFormulas(out).setNumberFormat('0" days"');
+  roster.getRange(CONFIG.rosterStartRow, RC.timeInRank, n, 1).setFormulas(out).setNumberFormat('[=1]0" day";0" days"'); // singular at exactly 1 ("1 day", "5 days")
   return count;
 }
 

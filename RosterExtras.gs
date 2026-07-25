@@ -1206,7 +1206,63 @@ function runIntegritySummary_() {
       }
     });
   }
+
+  // ASSIGNMENT-TYPO failsafe: a group-column value that matches NO group tab but sits within 2 edits of a declared
+  // value (e.g. "Distict 1 Patrol" vs "District 1 Patrol") silently keeps that member off their tab while LOOKING
+  // correct — surface it with the member's name. Near-miss only: an assignment that legitimately has no tab (e.g.
+  // "Office of the Chief") is never flagged. Capped at 10 per scan so a systemic rename can't flood the log.
+  try {
+    const start = CONFIG.rosterStartRow, lastR = roster.getLastRow();
+    const RCr = rosterCols_(roster);
+    if (lastR >= start && RCr.name) {
+      const byCol = {}; // roster group-column → [{tab, vals(normalized)}] from each tab's #group marker
+      ss.getSheets().forEach((sh) => {
+        try {
+          const mk = groupMarker_(sh);
+          if (!mk || !mk.values || !mk.values.length) return;
+          const col = findGroupColumn_(roster, start, mk.values[0]);
+          if (col > 0) (byCol[col] = byCol[col] || []).push({ tab: sh.getName(), vals: mk.values.map(groupNorm_).filter(Boolean) });
+        } catch (e2) { /* unreadable tab → skip */ }
+      });
+      let flagged = 0;
+      Object.keys(byCol).forEach((ck) => {
+        if (flagged >= 10) return;
+        const colN = Number(ck), n = lastR - start + 1;
+        const cells = roster.getRange(start, colN, n, 1).getDisplayValues();
+        const names = roster.getRange(start, RCr.name, n, 1).getDisplayValues();
+        for (let i = 0; i < n && flagged < 10; i++) {
+          const raw = String(cells[i][0] || '').trim(), nm = String(names[i][0] || '').trim();
+          if (!raw || !nm) continue;
+          const cell = groupNorm_(raw);
+          let matched = false, near = null;
+          byCol[colN].forEach((t) => t.vals.forEach((v) => {
+            if (matched || !v) return;
+            if (cell.indexOf(v) === 0) { matched = true; return; } // same starts-with rule the tabs select by
+            if (!near && levDist_(cell, v) <= 2) near = { v: v, tab: t.tab };
+          }));
+          if (!matched && near) { issues.push(`${nm}: assignment "${raw}" looks like a typo of "${near.v}" — they're missing from "${near.tab}"`); flagged++; }
+        }
+      });
+    }
+  } catch (e) { logWarn_('runIntegritySummary_', 'assignment-typo check skipped: ' + ((e && e.message) || e)); }
   return issues;
+}
+
+/** Bounded edit distance for the assignment-typo check: exact value, early-exit 3 as soon as the distance must exceed 2. */
+function levDist_(a, b) {
+  a = String(a); b = String(b);
+  if (Math.abs(a.length - b.length) > 2) return 3;
+  let prev = []; for (let j = 0; j <= b.length; j++) prev.push(j);
+  for (let i = 1; i <= a.length; i++) {
+    const cur = [i]; let best = i;
+    for (let j = 1; j <= b.length; j++) {
+      cur.push(Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1)));
+      if (cur[j] < best) best = cur[j];
+    }
+    if (best > 2) return 3; // the row minimum never decreases → already past the threshold
+    prev = cur;
+  }
+  return prev[b.length];
 }
 
 /* ======================================================================
@@ -1628,7 +1684,7 @@ function seedDemoRoster() {
         const pc = (typeof cpColLetter_ === 'function') ? cpColLetter_(RC.promo) : String.fromCharCode(64 + RC.promo);
         roster.getRange(run.startRow, RC.timeInRank, len, 1)
           .setFormulas(s.map((p, k) => [`=IF(${pc}${run.startRow + k}="","",TODAY()-INT(${pc}${run.startRow + k}))`]))
-          .setNumberFormat('0" days"');
+          .setNumberFormat('[=1]0" day";0" days"'); // singular at exactly 1 ("1 day", "5 days")
       }
     });
 
