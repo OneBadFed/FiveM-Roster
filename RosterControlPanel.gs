@@ -2543,8 +2543,13 @@ function cpSignupApprove(payload) {
   const row = Number((payload && payload.row) || 0), slotRow = Number((payload && payload.slotRow) || 0);
   if (!(row >= 2)) throw new Error('Pick a signup to approve.');
   if (!(slotRow >= CONFIG.rosterStartRow)) throw new Error('Pick an open slot to place them in.');
+  // INTERACTIVE-FIRST: stamp the publisher's backoff BEFORE waiting, so no NEW publish pass starts while this seat
+  // queues — a full pass can hold the shared lock for tens of seconds, which is exactly the "Another roster operation
+  // is running" collision. The in-flight pass finishes inside the 30s wait and the lock falls to us (same pattern as
+  // cpWithLock_ / runAction_ / transfers — this endpoint was the one interactive writer missing the stamp).
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) throw new Error('Another roster operation is running — try again in a moment.');
+  if (!lock.tryLock(30000)) throw new Error('Another roster operation is running — try again in a moment.');
   let res;
   try {
     const vr = signupResolveRow_(sh, row, String((payload && payload.id) || '')); // the queue re-sorts under an open panel — verify identity first
@@ -2684,8 +2689,10 @@ function cpAddDiscipline(payload) {
   let issuedBy = '';
   try { issuedBy = Session.getActiveUser().getEmail() || ''; } catch (e) { /* consumer-Gmail may hide it */ }
   if (issuedBy && typeof auditWho_ === 'function') issuedBy = auditWho_(issuedBy); // member NAME when the email is on their roster row
+  // INTERACTIVE-FIRST: stand the publisher down before waiting (see cpWithLock_) — its pass can hold the lock 10s+.
+  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
   const lock = LockService.getScriptLock(); // two panels appending concurrently compute the same last-row and silently overwrite each other
-  if (!lock.tryLock(10000)) throw new Error('Another roster operation is running — try again in a moment.');
+  if (!lock.tryLock(30000)) throw new Error('Another roster operation is running — try again in a moment.');
   try {
     cpAppendDiscipline_(t.log, Object.assign({}, payload, { issuedBy: issuedBy }));
   } finally { lock.releaseLock(); }

@@ -1072,8 +1072,12 @@ function refreshDashboard() {
     const form = ss.getSheetByName(CONFIG.sheets.form);
 
     let newLeaves = [], sched = null, recompute = null, tir = 0;
+    // INTERACTIVE-FIRST: stand the publisher down before waiting — its pass holds the shared lock for the length of a
+    // full publish, which made this menu action collide "randomly" right after edits (the ~8s catch-up) or on the
+    // 1-minute sweep. Stamped here, the in-flight pass finishes inside the 30s wait and no new pass starts against us.
+    try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
     const lock = LockService.getScriptLock();
-    if (!lock.tryLock(10000)) { ui.alert('Another roster operation is running — try again in a moment.'); return; }
+    if (!lock.tryLock(30000)) { ui.alert('Another roster operation is running — try again in a moment.'); return; }
     try {
       // 1) Pull any new leave-form submissions onto the tracker (webhooks/audit deferred until the lock releases).
       if (form && tracker) { try { newLeaves = syncFormToTracker_(form, tracker, { sendWebhooks: false }); } catch (e) { log_('refreshDashboard.sync', e); } }
