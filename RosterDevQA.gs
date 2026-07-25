@@ -2424,19 +2424,22 @@ function devPatrolLogTests_() {
   flagCase('end<=start', { startDate: devDay_(-1), startTime: devTime_(12, 0), endDate: devDay_(-1), endTime: devTime_(9, 0) }, 'not after');
   flagCase('over-max', { startDate: devDay_(-1), startTime: devTime_(2, 0), endDate: devDay_(-1), endTime: devTime_(22, 0) }, 'max'); // 20h: advisory
   flagCase('over-a-day', { startDate: devDay_(-3), startTime: devTime_(0, 0), endDate: devDay_(-1), endTime: devTime_(0, 0) }, '24'); // 48h: blocking
-  flagCase('future', { startDate: devDay_(1), startTime: devTime_(9, 0), endDate: devDay_(1), endTime: devTime_(12, 0) }, 'future');
+  flagCase('future', { startDate: devDay_(2), startTime: devTime_(9, 0), endDate: devDay_(2), endTime: devTime_(12, 0) }, 'future'); // +2 days: beyond any sane FUTURE_GRACE_HOURS setting
   flagCase('unknown-id', { id: devId_(999), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }, 'roster');
 
   // evaluatePatrolLog_ is PURE on time — inject "now" and pin the future rule: a patrol must END in the past, with a
-  // ONE-HOUR grace for clock/DST skew. A same-day future TIME flags too (a 10:00–12:00 log submitted at 01:55).
+  // configurable grace ([PATROL].FUTURE_GRACE_HOURS, pinned to 6 here) so members ABROAD entering THEIR local times
+  // never false-flag (a UK member on a US-East sheet runs ~5h ahead). Beyond the grace still flags (advisory).
   (() => {
-    const now = new Date(2026, 0, 15, 12, 0, 0);
-    const at = (h, m) => new Date(2026, 0, 15, h, m, 0);
-    devEq_(R, 'evaluate: ended in the past -> clean', evaluatePatrolLog_(5, at(9, 0), at(11, 0), 2, now).reason, '');
-    devEq_(R, 'evaluate: ends INSIDE the 1h grace -> clean (no false flag right after a patrol)', evaluatePatrolLog_(5, at(10, 0), at(12, 30), 2.5, now).reason, '');
-    const fut = evaluatePatrolLog_(5, at(10, 0), at(14, 0), 4, now);
-    devCheck_(R, 'evaluate: same-day future END -> flagged "future"', String(fut.reason).toLowerCase().indexOf('future') !== -1);
-    devEq_(R, 'evaluate: the future flag is ADVISORY (an admin can Approve it)', fut.blocking, false);
+    devWithConfig_({ PATROL: { kind: 'kv', kv: { FUTURE_GRACE_HOURS: 6 } } }, () => {
+      const now = new Date(2026, 0, 15, 12, 0, 0);
+      const at = (h, m) => new Date(2026, 0, 15, h, m, 0);
+      devEq_(R, 'evaluate: ended in the past -> clean', evaluatePatrolLog_(5, at(9, 0), at(11, 0), 2, now).reason, '');
+      devEq_(R, 'evaluate: +5h end INSIDE the 6h grace -> clean (UK member, US-East sheet)', evaluatePatrolLog_(5, at(13, 0), at(17, 0), 4, now).reason, '');
+      const fut = evaluatePatrolLog_(5, at(13, 0), at(20, 0), 7, now); // ends +8h past "now" — beyond the grace
+      devCheck_(R, 'evaluate: end BEYOND the grace -> flagged "future"', String(fut.reason).toLowerCase().indexOf('future') !== -1);
+      devEq_(R, 'evaluate: the future flag is ADVISORY (an admin can Approve it)', fut.blocking, false);
+    });
   })();
 
   // Admin terminals (five-state): APPROVED is the credit terminal for an ADVISORY flag — the engine credits and never

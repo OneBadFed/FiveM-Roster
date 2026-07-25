@@ -2837,11 +2837,12 @@ function evaluatePatrolLog_(memberRow, startDT, endDT, hours, now) {
   if (hours > 24) return { reason: 'Over 24 hrs — check the dates.', blocking: true }; // a single session can't exceed a day → force a fix, don't let it be approved
   if (hours > CONFIG.patrol.maxHours) return { reason: `Exceeds ${CONFIG.patrol.maxHours} hr max.`, blocking: false };
   // A patrol is a COMPLETED session, so its END must be in the PAST. Flag anything ending after "now" — a future DAY
-  // OR just a future TIME today (e.g. a 10:00–12:00 log submitted at 01:55). A one-hour grace absorbs clock / daylight-
-  // saving skew, so a log entered right after the patrol ended is never false-flagged. (Sheet + script time zones should
-  // match — set both to your local zone; the grace covers a one-hour DST slip either way.)
-  const graceMs = 60 * 60 * 1000;
-  if (endDT.getTime() > now.getTime() + graceMs || startDT.getTime() > now.getTime() + graceMs) return { reason: 'Dated in the future — a patrol can\'t end after now.', blocking: false };
+  // OR a future TIME today (e.g. a 10:00–12:00 log submitted at 01:55). The grace window ([PATROL].FUTURE_GRACE_HOURS,
+  // default 6h) exists because members ABROAD enter THEIR local times: a UK member on a US-East sheet runs ~5h "ahead"
+  // of sheet time and must not false-flag. It also absorbs clock/DST skew. Advisory either way — an admin can Approve.
+  const graceH = (CONFIG.patrol && CONFIG.patrol.futureGraceHours != null) ? Number(CONFIG.patrol.futureGraceHours) : 6;
+  const graceMs = (isNaN(graceH) ? 6 : graceH) * 3600000;
+  if (endDT.getTime() > now.getTime() + graceMs || startDT.getTime() > now.getTime() + graceMs) return { reason: 'Dated in the future — ends more than ' + graceH + 'h past now (sheet time).', blocking: false };
   return { reason: '', blocking: false };
 }
 

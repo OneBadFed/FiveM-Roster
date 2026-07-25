@@ -401,6 +401,7 @@ const BLOCK_SPECS_ = Object.freeze({
   PATROL: { type: 'kv', help: 'Patrol-log form → member hours. Each new submission on the [SHEETS].PATROL_FORM_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_FORM_RESPONSES is set.', keys: {
     MODE: { t: 'enum', d: 'START_END', req: false, enum: ['START_END', 'DURATION'], help: 'START_END = compute hours from a start + end time. DURATION = read a single "hours patrolled" number.' },
     MAX_HOURS: { t: 'int', d: 16, req: false, min: 1, max: 24, help: 'Reject a single patrol log longer than this many hours (guards typos / bad times).' },
+    FUTURE_GRACE_HOURS: { t: 'int', d: 6, req: false, min: 0, max: 48, help: 'A log is flagged "future" only when it ENDS more than this many hours after now (sheet time). Members abroad enter THEIR local times — e.g. a UK member on a US-East sheet runs ~5h ahead, so the default 6 accepts them while still catching genuinely future-dated logs. 0 = strict.' },
     OVERNIGHT: { t: 'bool', d: true, req: false, help: 'START_END only: if the end time is before the start, treat it as crossing midnight (+24h) instead of an error.' },
     RECOMPUTE: { t: 'bool', d: true, req: false, help: 'Recompute the member\'s activity status from their new hours after crediting a patrol.' },
     STATUS_FLOW: { t: 'list', d: 'Pending, Flagged, Approved, Denied, Processed', req: false, help: 'Manual Patrol Log tab: the STATUS dropdown values AND their top-to-bottom sort order. Roles: PENDING = the engine is still processing / the log is half-entered (no credit). FLAGGED = a parameter failed (unknown ID, bad time, over-max, future — reason in NOTES; no credit). APPROVED = an admin reviewed/corrected a flagged log and credits it (admin-owned; the engine won\'t revert it). DENIED = an admin rejected it (no credit; any prior credit is reversed; admin-owned). PROCESSED = the engine verified it clean and credited it.' },
@@ -972,6 +973,7 @@ function materialize_(c, fromTab) {
     limits: { snapshotKeep: kv.LIMITS.SNAPSHOT_KEEP, logRowCap: kv.LIMITS.LOG_ROW_CAP, validationBuffer: kv.LIMITS.VALIDATION_BUFFER },
     patrol: { // v1.0 patrol-log → hours (all default; feature OFF until sheets.patrol is set)
       mode: P.MODE || 'START_END', maxHours: P.MAX_HOURS || 16, overnight: P.OVERNIGHT !== false, recompute: P.RECOMPUTE !== false,
+      futureGraceHours: (P.FUTURE_GRACE_HOURS == null ? 6 : P.FUTURE_GRACE_HOURS), // == null: 0 is a valid (strict) setting
       colDiscord: P.COL_DISCORD || 'Discord', colCallsign: P.COL_CALLSIGN || 'Callsign',
       colStart: P.COL_START || 'Start', colEnd: P.COL_END || 'End', colDuration: P.COL_DURATION || 'Hours',
       // Manual Patrol Log tab statuses (sort order + the flagged/processed names).
