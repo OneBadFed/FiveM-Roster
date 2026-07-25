@@ -2516,16 +2516,38 @@ function cpSignupApprove(payload) {
     const vr = signupResolveRow_(sh, row, String((payload && payload.id) || '')); // the queue re-sorts under an open panel — verify identity first
     res = approveSignup_(sh, vr, roster, slotRow);
     try { sortSignups_(sh); } catch (e) { log_('cpSignupApprove.sort', e); }
-    try { cpAudit_('signup-approved', '', res.name, `row ${slotRow}`, res.name); } catch (e) { /* audit is best-effort */ } // also marks the public copy dirty
   } finally { lock.releaseLock(); }
-  // Seating a new member changes who's in each assignment/group band (and the Academy for a cadet/probationary rank),
-  // and bumps the welcome-page counts (TOTAL MEMBERS, per-rank totals) — rebuild the derived tabs AND repaint the
-  // dashboard now so everything reflects the new member immediately, exactly like a move. Run AFTER the lock releases
-  // so none of it contends with the seating write above.
-  try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e2) { log_('cpSignupApprove.academy', e2); }
-  try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e2) { log_('cpSignupApprove.groups', e2); }
-  try { if (typeof refreshDashboard_ === 'function') refreshDashboard_(); } catch (e2) { log_('cpSignupApprove.dashboard', e2); }
+  // AFTER the lock: the audit mirror can fire a Discord webhook (a network call) — holding the shared lock through it
+  // slowed every seat and starved concurrent operations for no reason.
+  try { cpAudit_('signup-approved', '', res.name, `row ${slotRow}`, res.name); } catch (e) { /* audit is best-effort */ } // also marks the public copy dirty
+  // Seating changes the assignment/group bands, the Academy (cadet ranks) and the welcome-page counts — but rebuilding
+  // ALL of that here kept the admin staring at "Seating…" for the whole pass. QUEUE the work and return NOW: the panel
+  // immediately fires cpSignupPostSeat in the background (targeted refresh, no spinner), and the 1-minute sweep's full
+  // drain remains the guaranteed backstop if that background call is ever cut short.
+  try { if (typeof deferWork_ === 'function') { deferWork_('academy'); deferWork_('groups'); deferWork_('dashboard'); } } catch (ig) { /* queue is best-effort */ }
   return res;
+}
+
+/**
+ * Panel endpoint, fired in the BACKGROUND right after a successful seat: refresh the derived tabs for the just-seated
+ * member without making the admin wait. buildGroupSheets_ gets a HINT (the seated roster row) so only the assignment
+ * tab(s) they actually joined rebuild — not all of them; Academy + dashboard are single passes. The deferred queue is
+ * left SET on purpose: the sweep's full drain backstops any miss, and the upserts are idempotent so the overlap is
+ * harmless.
+ */
+function cpSignupPostSeat(payload) {
+  const slotRow = Number((payload && payload.slotRow) || 0);
+  const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+  let hint = null;
+  try {
+    if (roster && slotRow >= CONFIG.rosterStartRow) {
+      hint = { rowVals: roster.getRange(slotRow, 1, 1, roster.getLastColumn()).getDisplayValues()[0], editedCol: 0, oldVal: '' }; // editedCol 0 → membership judged purely on the row's CURRENT values
+    }
+  } catch (e) { hint = null; /* unreadable row → full rebuild below */ }
+  try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('cpSignupPostSeat.academy', e); }
+  try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(hint); } catch (e) { log_('cpSignupPostSeat.groups', e); }
+  try { if (typeof refreshDashboard_ === 'function') refreshDashboard_(); } catch (e) { log_('cpSignupPostSeat.dashboard', e); }
+  return { ok: true };
 }
 
 /** Grow the grid when a write would land past the last row (a full 1000-row grid would otherwise throw). */

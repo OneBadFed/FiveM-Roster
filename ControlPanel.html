@@ -196,6 +196,8 @@
     background:var(--e2);border:1px solid var(--hair-2);border-radius:var(--r-md);box-shadow:var(--sh-3);padding:6px;
     animation:paneIn .16s var(--ease) both;}
   .sdrop-group + .sdrop-group{margin-top:4px;border-top:1px solid var(--hair);padding-top:4px;}
+  .sdrop-search{padding:2px 4px 8px;border-bottom:1px solid var(--hair);margin-bottom:4px;}
+  .sdrop-search .in{width:100%;font-size:12.5px;}
   .sdrop-ghead{display:flex;align-items:center;gap:8px;padding:6px 8px 5px;}
   .sg-rank{flex:1;min-width:0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--txt-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sg-cnt{font-size:10.5px;color:var(--txt-3);font-weight:700;flex:0 0 auto;}
@@ -1290,7 +1292,8 @@
     if(!SU.slots.length) return '<div class="sdrop-empty">No open slots — free one on the roster.</div>';
     var groups={},order=[];
     SU.slots.forEach(function(s){ if(!groups[s.rank]){groups[s.rank]=[];order.push(s.rank);} groups[s.rank].push(s); });
-    return order.map(function(r){
+    return '<div class="sdrop-search"><input type="text" class="in" id="suSlotQ" placeholder="Search callsign or rank…" autocomplete="off" spellcheck="false"></div>'
+      +order.map(function(r){
       return '<div class="sdrop-group"><div class="sdrop-ghead">'+rankAvatar(r)+'<span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
         +groups[r].map(function(s){ return '<button type="button" class="sdrop-opt'+(SU.slot===s.row?' sel':'')+'" data-suslot="'+s.row+'"><span class="so-call">'+esc(s.unit||('Row '+s.row))+'</span><span class="so-rank">'+esc(r)+'</span></button>'; }).join('')+'</div>';
     }).join('');
@@ -1343,7 +1346,19 @@
     el.innerHTML=chips+suForm();
     suPreview();
   }
-  function suOpenMenu(on){ var d=$('suSlotDrop'),menu=$('suSlotMenu'),btn=$('suSlotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false'); }
+  function suOpenMenu(on){ var d=$('suSlotDrop'),menu=$('suSlotMenu'),btn=$('suSlotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false');
+    if(show){ var qi=$('suSlotQ'); if(qi){ qi.value=''; suFilterSlots(); setTimeout(function(){ try{ qi.focus(); }catch(ig){} },0); } } } // open → fresh filter + type-to-search immediately
+  /* Live slot filter: matches an option's whole text (callsign + rank), hides groups that empty out. */
+  function suFilterSlots(){
+    var qi=$('suSlotQ'), menu=$('suSlotMenu'); if(!menu) return;
+    var q=(qi&&qi.value?qi.value:'').trim().toLowerCase();
+    menu.querySelectorAll('.sdrop-group').forEach(function(g){
+      var any=false;
+      g.querySelectorAll('.sdrop-opt').forEach(function(o){ var hit=!q||o.textContent.toLowerCase().indexOf(q)!==-1; o.style.display=hit?'':'none'; if(hit) any=true; });
+      g.style.display=any?'':'none';
+    });
+  }
+  document.addEventListener('input',function(e){ if(e.target&&e.target.id==='suSlotQ') suFilterSlots(); });
   function suSetSlot(row){
     SU.slot=(row==null?null:Number(row));
     var s=(SU.slot!=null)?suSlotObj(SU.slot):null, cur=$('suSlotCur');
@@ -1356,10 +1371,12 @@
     if(SU.cur==null){ toast('Pick an applicant first.','err'); return; }
     var app=null; for(var ai=0;ai<SU.signups.length;ai++){ if(SU.signups[ai].row===SU.cur){ app=SU.signups[ai]; break; } }
     var btn=$('suSeat'); if(btn){ btn.disabled=true; btn.textContent='Seating…'; }
+    var seatedRow=SU.slot; // captured before the reset below — the background refresh needs it
     api(function(r){
       toast('✅ '+(r.name||'Applicant')+' seated'+(r.piiWritten?(' · '+r.piiWritten+' private field'+(r.piiWritten===1?'':'s')+' copied'):'')+'.','ok');
       SU.slot=null; refresh(); loadSignups(true);
-    }, function(e){ if(btn){ btn.disabled=false; btn.textContent='Approve & seat on roster'; } onError(e); }, 'cpSignupApprove', {row:SU.cur, slotRow:SU.slot, id:(app&&app.discord)||''});
+      api(function(){},function(){},'cpSignupPostSeat',{slotRow:seatedRow}); // background: targeted assignment/Academy/dashboard refresh — the admin never waits on it
+    }, function(e){ if(btn){ btn.disabled=false; btn.textContent='Approve & seat on roster'; } onError(e); }, 'cpSignupApprove', {row:SU.cur, slotRow:seatedRow, id:(app&&app.discord)||''});
   }
   function loadSignups(force){
     if(SU.loaded && !force){ renderSignups(); return; }
