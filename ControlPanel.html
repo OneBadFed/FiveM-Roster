@@ -198,6 +198,12 @@
   .sdrop-group + .sdrop-group{margin-top:4px;border-top:1px solid var(--hair);padding-top:4px;}
   .sdrop-search{padding:2px 4px 8px;border-bottom:1px solid var(--hair);margin-bottom:4px;}
   .sdrop-search .in{width:100%;font-size:12.5px;}
+  /* Promotions-feed manager (Tools tab) */
+  .sdesc{color:var(--txt-3);font-size:12px;line-height:1.5;}
+  .promo-r{display:flex;align-items:center;gap:12px;background:var(--e2);border-radius:10px;padding:8px 12px;margin-bottom:6px;font-size:12.5px;box-shadow:var(--hi);}
+  .promo-d{color:var(--txt-3);min-width:96px;} .promo-n{flex:1;font-weight:700;} .promo-k{color:var(--txt-2);}
+  .promo-x{background:none;border:none;color:var(--red,#e0574f);cursor:pointer;font-size:13px;font-weight:700;padding:3px 8px;border-radius:7px;transition:background var(--t);}
+  .promo-x:hover{background:var(--e3);} .promo-x:disabled{opacity:.45;cursor:default;}
   .sdrop-ghead{display:flex;align-items:center;gap:8px;padding:6px 8px 5px;}
   .sg-rank{flex:1;min-width:0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--txt-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sg-cnt{font-size:10.5px;color:var(--txt-3);font-weight:700;flex:0 0 auto;}
@@ -750,6 +756,11 @@
         <div class="tcard" style="--a:var(--amber)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></span><span class="tt"><b>Check duplicate IDs</b><small>Find repeated or malformed IDs</small></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
         <div class="tcard" style="--a:var(--gray)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></span><span class="tt"><b>Engine settings</b><small>Open the Settings Studio (replaces this dialog)</small></span><button class="runbtn" id="openSettingsBtn">Open</button></div>
       </div>
+    </div>
+
+    <div class="tsec">
+      <div class="tsec-h"><b>Promotions feed</b><small>the RECENT PROMOTIONS entries — remove one and every table repaints without it</small></div>
+      <div id="promoFeed"><div class="sdesc">Loading…</div></div>
     </div>
 
     <div class="tsec">
@@ -1359,6 +1370,26 @@
     });
   }
   document.addEventListener('input',function(e){ if(e.target&&e.target.id==='suSlotQ') suFilterSlots(); });
+
+  /* ── Promotions feed manager (Tools tab): list the RE_PROMOS entries, remove one → every table repaints ── */
+  function loadPromos(){
+    var el=$('promoFeed'); if(!el) return;
+    el.innerHTML='<div class="sdesc">Loading…</div>';
+    api(function(list){
+      if(!list||!list.length){ el.innerHTML='<div class="sdesc">No promotions recorded yet — a member moving UP the roster to a new rank lands here.</div>'; return; }
+      el.innerHTML=list.map(function(p){
+        return '<div class="promo-r"><span class="promo-d">'+esc(p.when)+'</span><b class="promo-n">'+esc(p.name)+'</b><span class="promo-k">'+esc(p.rank)+'</span>'
+          +'<button type="button" class="promo-x" title="Remove this entry from the feed" data-promorm="'+p.i+'" data-promot="'+esc(String(p.t))+'" data-promon="'+esc(p.name)+'">✕</button></div>';
+      }).join('');
+    }, function(e){ el.innerHTML='<div class="sdesc">Couldn\'t load the feed: '+esc((e&&e.message)||'')+'</div>'; }, 'cpPromoList');
+  }
+  document.addEventListener('click',function(e){
+    var b=e.target.closest('[data-promorm]'); if(!b) return;
+    if(!confirm('Remove '+b.dataset.promon+' from the RECENT PROMOTIONS feed?\n\nEvery promotions table repaints without them. This does not undo the transfer itself.')) return;
+    b.disabled=true;
+    api(function(r){ toast('Removed '+((r&&r.removed)||'entry')+' from the promotions feed.','ok'); loadPromos(); },
+      function(err){ b.disabled=false; onError(err); loadPromos(); }, 'cpPromoRemove', {index:Number(b.dataset.promorm), t:b.dataset.promot, name:b.dataset.promon});
+  });
   function suSetSlot(row){
     SU.slot=(row==null?null:Number(row));
     var s=(SU.slot!=null)?suSlotObj(SU.slot):null, cur=$('suSlotCur');
@@ -1623,7 +1654,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); $('stats').style.display=(t.dataset.tab==='members')?'':'none'; if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); $('stats').style.display=(t.dataset.tab==='members')?'':'none'; if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('rediv').addEventListener('click',function(){ loadDividers(); });
   $('divBody').addEventListener('click',function(e){

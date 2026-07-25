@@ -2550,6 +2550,32 @@ function cpSignupPostSeat(payload) {
   return { ok: true };
 }
 
+/** Panel: the RECENT PROMOTIONS feed entries (the RE_PROMOS document-property store, newest first). */
+function cpPromoList() {
+  let list; try { list = JSON.parse(PropertiesService.getDocumentProperties().getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  return list.map((p, i) => ({ i: i, t: Number(p.t) || 0, when: p.t ? fmtDisplay_(new Date(Number(p.t))) : '', name: String(p.n || ''), rank: String(p.r || '') }));
+}
+
+/** Panel: remove ONE promotions-feed entry — matched by index + timestamp + name so a promotion recorded while the
+ *  panel sat open can't shift the wrong row out — then repaint every RECENT PROMOTIONS table (the removed row blanks). */
+function cpPromoRemove(payload) {
+  const idx = Number(payload && payload.index);
+  const P = PropertiesService.getDocumentProperties();
+  let list; try { list = JSON.parse(P.getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  const p = list[idx];
+  if (!p || String(p.t) !== String(payload && payload.t) || String(p.n || '') !== String((payload && payload.name) || '')) {
+    throw new Error('The promotions feed changed since the panel loaded — it will reload; try again.');
+  }
+  list.splice(idx, 1);
+  P.setProperty(PROMO_STORE_PROP_, JSON.stringify(list));
+  try { renderPromotions_(true); } catch (e) { log_('cpPromoRemove.render', e); }         // repaint every feed table now
+  try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {} // the public Welcome Page mirrors it
+  try { cpAudit_('action', '', `Removed promotions-feed entry: ${p.n} → ${p.r}`, '', p.n); } catch (e) { /* best-effort */ }
+  return { ok: true, removed: p.n, left: list.length };
+}
+
 /** Grow the grid when a write would land past the last row (a full 1000-row grid would otherwise throw). */
 function adminEnsureRow_(sheet, r) {
   if (r > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 100);
