@@ -1261,6 +1261,17 @@ function devSyncTests_() {
     devEq_(R, 'sortTracker_ prepend -> total is now 5 rows', devDataRows_(tr, CONFIG.trackerStartRow), 5);
   })();
 
+  // Inside a status group the NEWEST leave sits on top (KEY-timestamp recency; START date is the key-less fallback).
+  (() => {
+    const tr = devBuildTracker_([
+      { name: 'OldP', id: devId_(486), start: devDay_(1), end: devDay_(5), status: 'Pending' },
+      { name: 'NewP', id: devId_(487), start: devDay_(3), end: devDay_(6), status: 'Pending' },
+    ]);
+    sortTracker_(null, tr);
+    devEq_(R, 'newest-first: the later leave sits on top of its group', tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.name).getDisplayValue(), 'NewP');
+    devEq_(R, 'newest-first: the older leave below it', tr.getRange(CONFIG.trackerStartRow + 1, CONFIG.tracker.name).getDisplayValue(), 'OldP');
+  })();
+
   // Deleting a leave (clearing its row) leaves a blank gap; sortTracker_ compacts the survivors up to the top with no gap.
   (() => {
     const tr = devBuildTracker_([
@@ -2516,18 +2527,20 @@ function devPatrolLogTests_() {
     devEq_(R, 'delete: cleared row reverses the credit (back to 4)', rosterHrs(ro), 4);
   })();
 
-  // Status sort: Pending -> Flagged -> Processed.
+  // Status sort: Pending -> Flagged -> Processed — and INSIDE a group, the newest start date+time sits on top.
   (() => {
     const pl = devBuildPatrolLog_([
-      { id: devId_(74), name: 'Proc', status: CONFIG.patrol.processedStatus },
+      { id: devId_(74), name: 'ProcOld', status: CONFIG.patrol.processedStatus, startDate: devDay_(-3), startTime: devTime_(9, 0), endDate: devDay_(-3), endTime: devTime_(11, 0) },
       { id: devId_(75), name: 'Flag', status: CONFIG.patrol.flaggedStatus },
+      { id: devId_(577), name: 'ProcNew', status: CONFIG.patrol.processedStatus, startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(11, 0) },
       { id: devId_(76), name: 'Pend', status: CONFIG.patrol.pendingStatus },
     ]);
     sortPatrolLog_(pl);
     const PC = patrolLogCols_(pl);
     devEq_(R, 'sort: row0 = Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
     devEq_(R, 'sort: row1 = Flagged', String(pl.getRange(PS + 1, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
-    devEq_(R, 'sort: row2 = Processed', String(pl.getRange(PS + 2, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
+    devEq_(R, 'sort: newest Processed sits ABOVE the older one', String(pl.getRange(PS + 2, PC.name).getDisplayValue()).trim(), 'ProcNew');
+    devEq_(R, 'sort: oldest Processed last', String(pl.getRange(PS + 3, PC.name).getDisplayValue()).trim(), 'ProcOld');
   })();
 
   return R;
@@ -2589,6 +2602,22 @@ function devSignupTests_() {
     devEq_(R, 'dropdown sort: Pending first', g(sh, 2, S.name), 'P0');
     devEq_(R, 'dropdown sort: Flagged BELOW Pending (the dropdown\'s order, not the engine\'s)', g(sh, 3, S.name), 'F1');
     devEq_(R, 'dropdown sort: Processed last', g(sh, 4, S.name), 'D3');
+  })();
+
+  // Inside a status group the NEWEST submission sits on top (the form Timestamp the sync copies to column 1).
+  (() => {
+    const sh = devBuildSignups_([
+      { name: 'Old', id: devId_(585), status: 'Pending' },
+      { name: 'New', id: devId_(586), status: 'Pending' },
+      { name: 'Mid', id: devId_(587), status: 'Pending' },
+    ]);
+    sh.getRange(2, 1).setValue(new Date(2026, 0, 1, 9, 0, 0));
+    sh.getRange(3, 1).setValue(new Date(2026, 0, 3, 9, 0, 0));
+    sh.getRange(4, 1).setValue(new Date(2026, 0, 2, 9, 0, 0));
+    sortSignups_(sh);
+    devEq_(R, 'newest-first: latest submission on top', g(sh, 2, S.name), 'New');
+    devEq_(R, 'newest-first: middle next', g(sh, 3, S.name), 'Mid');
+    devEq_(R, 'newest-first: oldest last', g(sh, 4, S.name), 'Old');
   })();
 
   // The review queue shows what still needs action and hides what's done.

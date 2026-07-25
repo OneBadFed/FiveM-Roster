@@ -1085,6 +1085,10 @@ function refreshDashboard() {
       try { tir = fillTimeInRank_(roster); } catch (e) { log_('refreshDashboard.tir', e); }
       // 3c) Re-process the manual Patrol Log — matures once-future logs, reconciles any credit deltas, re-groups.
       try { refreshPatrolLog_(); } catch (e) { log_('refreshDashboard.patrol', e); }
+      // 3d) Re-group the other two status tabs too — Refresh & Update All must leave EVERYTHING in canonical order
+      // (status groups, newest first inside each) even when no new rows arrived. Patrol was just sorted by 3c.
+      try { sortTracker_(); } catch (e) { log_('refreshDashboard.sortTracker', e); }
+      try { const sgs = CONFIG.sheets.signups ? SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.signups) : null; if (sgs) sortSignups_(sgs); } catch (e) { log_('refreshDashboard.sortSignups', e); }
     } finally {
       lock.releaseLock();
     }
@@ -2312,11 +2316,13 @@ function sortTracker_(prepend, trackerSheet) {
         records.push(row);
       }
     }
+    let prependN = 0; // prepended rows are JUST-ADDED by definition → pinned newest inside their status group
     if (prepend && prepend.length) {
       // ONE row (an array of values) or SEVERAL (an array of rows) — the form sync seats a whole batch in one pass
       // instead of paying a full tracker read+rewrite per leave.
       const rowsIn = Array.isArray(prepend[0]) ? prepend : [prepend];
       for (let k = rowsIn.length - 1; k >= 0; k--) records.unshift(rowsIn[k].slice(0, W));
+      prependN = rowsIn.length;
     }
     if (!records.length) return;
 
@@ -2327,8 +2333,19 @@ function sortTracker_(prepend, trackerSheet) {
     try { const dd = statusDropdownOrder_(tracker, start, RC.status); if (dd) flow = dd; } catch (e) { /* config flow stands */ }
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
     const prio = (row) => { const k = norm_(String(row[RC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
-    const dec = records.map((row, i) => ({ row: row, i: i, p: prio(row) }));
-    dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable: ties keep prior order, so a prepended new leave stays on top
+    // Within a status group: NEWEST submission first. Recency = the millis embedded in the dedup KEY ("KEY|id|<ts>" —
+    // the form's own Timestamp; panel/autofill rows stamp creation time), falling back to the leave's START date for
+    // key-less rows. Prepended rows are just-added → pinned above everything in their group regardless of key.
+    const NEWEST_ = 8.64e15; // beyond any real date millis
+    const rec = (row, i) => {
+      if (i < prependN) return NEWEST_;
+      const m = String(row[RC.key - 1] || '').match(/^KEY\|[^|]*\|(\d{10,})$/);
+      if (m) return Number(m[1]);
+      const s = row[RC.start - 1];
+      return (s instanceof Date && !isNaN(s.getTime())) ? s.getTime() : 0;
+    };
+    const dec = records.map((row, i) => ({ row: row, i: i, p: prio(row), t: rec(row, i) }));
+    dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable: full ties keep prior order
     const sorted = dec.map((d) => d.row);
 
     // Write reordered VALUES back into the SAME physical rows. '@' the ID column BEFORE writing so long IDs stay exact.
@@ -2365,6 +2382,9 @@ function sortTracker_(prepend, trackerSheet) {
 function manualSyncLOA() {
   runAction_('Sync Leave Forms', () => {
     const res = syncFormToTracker();
+    // Always re-group — even with nothing new to add, the menu action must leave the tracker in the canonical order
+    // (status groups, newest leave first inside each), e.g. right after an ordering-rule change.
+    if (res !== false) { try { sortTracker_(); } catch (e) { log_('manualSyncLOA.sort', e); } }
     SpreadsheetApp.getUi().alert(
       res === false ? 'Sync skipped — another sync is already running.'
         : res > 0 ? `✅ Synced ${res} new leave form${res === 1 ? '' : 's'} to the tracker.`
@@ -3074,8 +3094,12 @@ function sortPatrolLog_(patrolSheet) {
     try { const dd = statusDropdownOrder_(sheet, start, PC.status); if (dd) flow = dd; } catch (e) { /* config flow stands */ }
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
     const prio = (r) => { const k = norm_(String(r[PC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
-    const dec = records.map((r, i) => ({ r: r, i: i, p: prio(r) }));
-    dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable
+    // Within a status group: NEWEST patrol first (start date+time, descending) — a fresh log surfaces at the top of
+    // its group instead of sinking to the bottom. Rows with no parsable start (hand-typed partials) tie at 0 and keep
+    // their prior order.
+    const rec = (r) => { const d = (PC.startDate && PC.startTime) ? combineDateTime_(r[PC.startDate - 1], r[PC.startTime - 1]) : null; return d ? d.getTime() : 0; };
+    const dec = records.map((r, i) => ({ r: r, i: i, p: prio(r), t: rec(r) }));
+    dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
 
     if (start + sorted.length - 1 > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), start + sorted.length - 1 - sheet.getMaxRows());

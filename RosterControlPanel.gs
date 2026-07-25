@@ -1444,7 +1444,7 @@ function syncSignupForm_(formSheet, signupSheet) {
     const values = range.getValues();
     const backgrounds = range.getBackgrounds();
     const doneBg = String(CONFIG.bg.done).toLowerCase();
-    const roles = ['name', 'ooc', 'discord', 'email', 'dob', 'phone', 'join'];
+    const roles = ['timestamp', 'name', 'ooc', 'discord', 'email', 'dob', 'phone', 'join']; // timestamp: the review tab's sort keys "newest first" off it (copied only when the tab HAS a TIMESTAMP column)
     // Free rows are computed ONCE. Calling signupFirstFreeRow_ inside the loop re-read the whole review tab per
     // added submission (O(n²) on a backfill). Same rule it applies: identity-free rows first, then append past the end.
     const freeRows = [];
@@ -1594,8 +1594,11 @@ function sortSignups_(sheet) {
     if (!rows.length) return 0;
     const flow = signupStatusOrder_(sheet, SC); // the dropdown's order, e.g. Pending → Approve → Flagged → Processed
     const rank = {}; flow.forEach((s, i) => { if (!(norm_(s) in rank)) rank[norm_(s)] = i; });
-    const dec = rows.map((r, i) => ({ r: r, i: i, p: (norm_(String(r[SC.status - 1] || '').trim()) in rank) ? rank[norm_(String(r[SC.status - 1]).trim())] : flow.length }));
-    dec.sort((a, b) => (a.p - b.p) || (a.i - b.i)); // stable
+    // Within a status group: NEWEST submission first (the form Timestamp the sync copies across); rows without one
+    // (older syncs, hand-added applicants) tie at 0 and keep their prior order.
+    const rec = (r) => { const v = SC.timestamp ? r[SC.timestamp - 1] : ''; return (v instanceof Date && !isNaN(v.getTime())) ? v.getTime() : 0; };
+    const dec = rows.map((r, i) => ({ r: r, i: i, p: (norm_(String(r[SC.status - 1] || '').trim()) in rank) ? rank[norm_(String(r[SC.status - 1]).trim())] : flow.length, t: rec(r) }));
+    dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
     if (SC.discord) sheet.getRange(ds, SC.discord, sorted.length, 1).setNumberFormat('@');
     writeValuesSafe_(sheet, ds, 1, sorted, null); // merge-safe (see sortTracker_)
