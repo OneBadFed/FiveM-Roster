@@ -1272,6 +1272,19 @@ function devSyncTests_() {
     devEq_(R, 'newest-first: the older leave below it', tr.getRange(CONFIG.trackerStartRow + 1, CONFIG.tracker.name).getDisplayValue(), 'OldP');
   })();
 
+  // SUBMISSION recency (the millis in the dedup KEY — the form's Timestamp) OUTRANKS the start-date fallback: a leave
+  // SUBMITTED later tops its group even when its start date is earlier.
+  (() => {
+    const tr = devBuildTracker_([
+      { name: 'SubOld', id: devId_(488), start: devDay_(5), end: devDay_(9), status: 'Pending' }, // newer START…
+      { name: 'SubNew', id: devId_(489), start: devDay_(1), end: devDay_(9), status: 'Pending' }, // …but SubNew was SUBMITTED later
+    ]);
+    tr.getRange(CONFIG.trackerStartRow, 1).setValue('KEY|' + devId_(488) + '|' + new Date(2026, 0, 10).getTime());
+    tr.getRange(CONFIG.trackerStartRow + 1, 1).setValue('KEY|' + devId_(489) + '|' + new Date(2026, 0, 12).getTime());
+    sortTracker_(null, tr);
+    devEq_(R, 'KEY recency: newest SUBMITTED on top (beats a newer start date)', tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.name).getDisplayValue(), 'SubNew');
+  })();
+
   // Deleting a leave (clearing its row) leaves a blank gap; sortTracker_ compacts the survivors up to the top with no gap.
   (() => {
     const tr = devBuildTracker_([

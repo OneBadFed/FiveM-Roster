@@ -1594,9 +1594,34 @@ function sortSignups_(sheet) {
     if (!rows.length) return 0;
     const flow = signupStatusOrder_(sheet, SC); // the dropdown's order, e.g. Pending → Approve → Flagged → Processed
     const rank = {}; flow.forEach((s, i) => { if (!(norm_(s) in rank)) rank[norm_(s)] = i; });
-    // Within a status group: NEWEST submission first (the form Timestamp the sync copies across); rows without one
-    // (older syncs, hand-added applicants) tie at 0 and keep their prior order.
-    const rec = (r) => { const v = SC.timestamp ? r[SC.timestamp - 1] : ''; return (v instanceof Date && !isNaN(v.getTime())) ? v.getTime() : 0; };
+    // Within a status group: NEWEST submission first. Recency source, in order: (1) the form's own Timestamp, looked
+    // up LIVE from the signup form tab by Unique ID — covers every row, including ones synced before recency existed
+    // and review tabs with no TIMESTAMP column (no backfill needed); (2) the review tab's own TIMESTAMP column, when
+    // it has one; (3) 0 — hand-added applicants keep their prior order.
+    let formTs = null; // Unique ID -> submission ms (a re-submission keeps the LATEST)
+    try {
+      const fsh = CONFIG.sheets.signupForm ? SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.signupForm) : null;
+      if (fsh && fsh.getLastRow() >= 2) {
+        const FSC = signupCols_(fsh);
+        if (FSC.discord && FSC.timestamp) {
+          const nF = fsh.getLastRow() - 1;
+          const fids = fsh.getRange(2, FSC.discord, nF, 1).getDisplayValues();
+          const ftss = fsh.getRange(2, FSC.timestamp, nF, 1).getValues();
+          formTs = {};
+          for (let k = 0; k < nF; k++) {
+            const fid = String(fids[k][0] || '').trim();
+            const tv = ftss[k][0];
+            if (fid && tv instanceof Date && !isNaN(tv.getTime()) && (!(fid in formTs) || tv.getTime() > formTs[fid])) formTs[fid] = tv.getTime();
+          }
+        }
+      }
+    } catch (e) { formTs = null; /* form unreadable → the column/stable fallbacks below */ }
+    const rec = (r) => {
+      const idv = SC.discord ? String(r[SC.discord - 1] || '').trim() : '';
+      if (formTs && idv && formTs[idv]) return formTs[idv];
+      const v = SC.timestamp ? r[SC.timestamp - 1] : '';
+      return (v instanceof Date && !isNaN(v.getTime())) ? v.getTime() : 0;
+    };
     const dec = rows.map((r, i) => ({ r: r, i: i, p: (norm_(String(r[SC.status - 1] || '').trim()) in rank) ? rank[norm_(String(r[SC.status - 1]).trim())] : flow.length, t: rec(r) }));
     dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
