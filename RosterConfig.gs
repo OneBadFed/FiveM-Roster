@@ -116,6 +116,7 @@ function getErrorsWebhookUrl_() {
 function maybeErrorWebhook_(ae, fnName) {
   try {
     if (!ae || ae.sev !== 'ERROR') return;
+    if (typeof DEV_WEBHOOKS_OFF_ !== 'undefined' && DEV_WEBHOOKS_OFF_) return; // DevQA-raised errors (adversarial cases) stay in the SYS Log only
     const key = 'errwh:' + (ae.code || 'E-601') + ':' + (fnName || ''); // F-045: throttle per code AND function, not code alone
     const cache = CacheService.getScriptCache();
     if (cache.get(key)) return; // throttle FIRST — the URL now lives in the admin file, so don't open it during a storm

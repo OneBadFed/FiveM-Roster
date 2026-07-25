@@ -3699,7 +3699,10 @@ function postToWebhook_(url, payload) {
 }
 
 /** Posts to the MAIN webhook. @return {{ok:boolean, code:number, error?:string}} (callers may ignore the return). */
+let DEV_WEBHOOKS_OFF_ = false; // set by the DevQA runners for the length of a test execution: the suite must NEVER post to Discord (globals reset per execution, so live behavior is untouched)
+
 function sendWebhookPayload_(payload, channel) {
+  if (DEV_WEBHOOKS_OFF_) return { ok: true, code: 0, suppressed: true }; // DevQA run — sandbox activity makes no Discord traffic
   const url = webhookFor_(channel || 'LOA');
   if (!url) return { ok: false, code: 0, error: 'no-url' }; // channel unconfigured, or this account can't read the admin file
   return postToWebhook_(url, payload);

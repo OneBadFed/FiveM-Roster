@@ -628,6 +628,8 @@ function stampPendingUpdatedBy_(who) {
  */
 function auditEvent_(type, oldText, newText, cellA1, member) {
   try {
+    // DevQA run → sandbox actions (patrol credits, snapshots, …) must not pollute the live Edit Log or post to Discord.
+    if (typeof DEV_WEBHOOKS_OFF_ !== 'undefined' && DEV_WEBHOOKS_OFF_) return;
     const ss = SpreadsheetApp.getActive();
     let log = ss.getSheetByName(TRUST.auditSheet);
     if (!log) {

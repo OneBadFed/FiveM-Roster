@@ -294,6 +294,7 @@ const DEV_PART_ENDS_ = [8, 16]; // Part 1 = sections 1..8, Part 2 = 9..16, Part 
 
 /** Runs DEV_GROUPS[from..to] (1-based, inclusive) with preflight, guaranteed teardown, and a labeled report. */
 function devRunRange_(from, to, partLabel) {
+  try { DEV_WEBHOOKS_OFF_ = true; } catch (e) { /* engine file missing → the suite can't run anyway */ } // NO Discord posts / live Edit Log writes from sandbox activity (resets when this execution ends)
   const collectors = [];
   // PREFLIGHT (F-028) — runs before every section so a customized live config is flagged up front, not as mystery reds.
   try { collectors.push(devConfigPreflight_()); }
@@ -326,6 +327,7 @@ function devRunAllTestsPart3() { devRunRange_(DEV_PART_ENDS_[1] + 1, DEV_GROUPS.
  * ====================================================================== */
 /** Runs one group fn with guaranteed sandbox teardown, then writes results + popup. */
 function devRunOne_(label, fn) {
+  try { DEV_WEBHOOKS_OFF_ = true; } catch (e) { /* engine file missing → the section can't run anyway */ } // same suppression as the part runners
   let collector;
   try {
     try {
