@@ -2207,7 +2207,7 @@ function publishMirrorTab_(src, dest) {
  * Publish: every tab in the PUBLIC file that has a same-named tab here is mirrored. The public file's OWN tab list is
  * therefore the allow-list — copy a tab across to publish it, delete it to stop. Blocked tabs are never mirrored.
  */
-function publishPublicRoster_(onlyTab) {
+function publishPublicRoster_(onlyTab, opts) {
   const file = publicFile_();
   if (!file) return { linked: false, tabs: [], rows: 0, skipped: [] };
   const ss = SpreadsheetApp.getActive();
@@ -2219,8 +2219,16 @@ function publishPublicRoster_(onlyTab) {
   const out = { linked: true, tabs: [], rows: 0, skipped: [], url: '' };
   try { out.url = file.getUrl(); } catch (e) { /* cosmetic */ }
   out.detail = [];
+  // PREEMPTIBLE, CHUNKED PASS: the script lock is taken PER TAB (seconds), never for the whole pass (tens of seconds
+  // on a many-tab workbook) — that whole-pass hold was why interactive actions kept hitting "Another roster operation
+  // is running". With yieldToBackoff, the pass also STOPS between tabs the moment an interactive actor stamps the
+  // backoff (or wins a tab's lock): the caller re-marks dirty and the sweep finishes the leftover tabs within a minute.
+  const yieldOn = !!(opts && opts.yieldToBackoff);
+  const lock = LockService.getScriptLock();
+  let aborted = false;
   file.getSheets().forEach((dest) => {
     const name = dest.getName();
+    if (aborted) { out.skipped.push(name); return; }
     if (onlyTab && norm_(name) !== norm_(onlyTab)) return; // incremental: only the tab that actually changed
     if (publishTabBlocked_(name)) { out.skipped.push(name); out.detail.push(`${name}: BLOCKED (never published)`); return; }
     const src = ss.getSheetByName(name);
@@ -2232,17 +2240,33 @@ function publishPublicRoster_(onlyTab) {
       out.detail.push(`${name}: self-computing - left alone` + (freed ? ` (freed ${freed} blocked spill cell(s))` : ''));
       return;
     }
-    const sg = src.getMaxColumns(), dg = dest.getMaxColumns();
-    const mode = (sg === dg) ? 'FULL' : 'match';
-    try {
-      const n = publishMirrorTab_(src, dest);
-      out.tabs.push(name); out.rows += n;
-      out.detail.push(`${name}: ${mode} · ${n} row(s) · grid ${sg}/${dg} · src rows ${src.getLastRow()}`);
-    } catch (e) {
-      log_('publishMirrorTab_.' + name, e);
-      out.skipped.push(name);
-      out.detail.push(`${name}: ERROR ${e && e.message ? e.message : e} | grid ${sg}/${dg} | src ${src.getLastRow()}x${src.getLastColumn()} | dest grid ${dest.getMaxRows()}x${dest.getMaxColumns()}`);
+    if (yieldOn) { // an interactive actor stamped the backoff mid-pass → get out of their way NOW
+      try {
+        if (Date.now() < Number(PropertiesService.getDocumentProperties().getProperty(PUBLISH_BACKOFF_PROP_) || 0)) {
+          aborted = true; out.aborted = true; out.skipped.push(name);
+          out.detail.push(`${name}: yielded to an interactive operation (the sweep finishes the rest)`);
+          return;
+        }
+      } catch (e) { /* unreadable → keep publishing */ }
     }
+    if (!lock.tryLock(yieldOn ? 4000 : 20000)) { // an interactive writer holds the lock → background passes yield
+      out.skipped.push(name); out.detail.push(`${name}: lock busy${yieldOn ? ' — yielded' : ''}`);
+      if (yieldOn) { aborted = true; out.aborted = true; }
+      return;
+    }
+    try {
+      const sg = src.getMaxColumns(), dg = dest.getMaxColumns();
+      const mode = (sg === dg) ? 'FULL' : 'match';
+      try {
+        const n = publishMirrorTab_(src, dest);
+        out.tabs.push(name); out.rows += n;
+        out.detail.push(`${name}: ${mode} · ${n} row(s) · grid ${sg}/${dg} · src rows ${src.getLastRow()}`);
+      } catch (e) {
+        log_('publishMirrorTab_.' + name, e);
+        out.skipped.push(name);
+        out.detail.push(`${name}: ERROR ${e && e.message ? e.message : e} | grid ${sg}/${dg} | src ${src.getLastRow()}x${src.getLastColumn()} | dest grid ${dest.getMaxRows()}x${dest.getMaxColumns()}`);
+      }
+    } finally { lock.releaseLock(); }
   });
   return out;
 }
@@ -2257,6 +2281,18 @@ const PUBLISH_CATCHUP_PROP_ = 'PUBLIC_CATCHUP_AT';
 const PUBLISH_CATCHUP_MS_ = 8000; // trailing publish ~8s after a burst's last deferred edit — so the tail shows in seconds, not on the 1-minute sweep
 const PUBLISH_BACKOFF_PROP_ = 'PUBLISH_BACKOFF_UNTIL'; // interactive-first: a pending panel write / transfer stamps now+45s here and NEW publish passes stand down until it expires
 const PUBLISH_BACKOFF_MS_ = 45000;
+const PUBLISH_PASS_PROP_ = 'PUBLISH_PASS_UNTIL'; // pass mutex: per-tab locking replaced the whole-pass script lock, so this keeps two passes from interleaving (stale after 5 min — a dead pass can never wedge publishing)
+
+/** Claim the one-publish-at-a-time slot. @return {boolean} false when another pass is already running. */
+function publishPassClaim_() {
+  try {
+    const p = PropertiesService.getDocumentProperties();
+    if (Date.now() < Number(p.getProperty(PUBLISH_PASS_PROP_) || 0)) return false;
+    p.setProperty(PUBLISH_PASS_PROP_, String(Date.now() + 300000));
+    return true;
+  } catch (e) { return true; } // properties unreadable → publish anyway; the per-tab locks still serialize the writes
+}
+function publishPassRelease_() { try { PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_PASS_PROP_); } catch (e) { /* expires on its own */ } }
 
 /** Flag the public copy as stale WITHOUT publishing. Script writes (panel actions, the schedulers, patrol crediting)
  *  never fire onEdit, so they mark it here and the 1-minute sweep carries them. Cheap: one property write.
@@ -2271,15 +2307,15 @@ function publishMarkDirty_() {
   try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_, '1'); _pubDirtyMemo_ = true; } catch (e) { /* best-effort */ }
 }
 
-/** Publish under the lock, clearing the dirty flag FIRST so an edit landing mid-publish re-marks itself. */
+/** Background publish: chunked + preemptible (per-tab locks, yields to interactive stamps mid-pass). Clears the dirty
+ *  flag FIRST so an edit landing mid-publish re-marks itself; an aborted pass re-marks it so the sweep resumes. */
 function publishPublicRosterQuiet_(onlyTab, mayClear) {
   const props = PropertiesService.getDocumentProperties();
   // INTERACTIVE-FIRST: a panel write or member transfer waiting on the shared lock has stamped a backoff — don't
-  // START a new publish pass against it (a full pass can outlast any reasonable interactive wait). The dirty flag
-  // stays set, so the sweep carries the publish the moment the interactive burst is over.
+  // START a new publish pass against it. The dirty flag stays set, so the sweep carries the publish the moment the
+  // interactive burst is over.
   try { if (Date.now() < Number(props.getProperty(PUBLISH_BACKOFF_PROP_) || 0)) return; } catch (e) { /* best-effort */ }
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) return; // another publish is already running — it will carry this change
+  if (!publishPassClaim_()) return; // another pass is already running — it (or the sweep) carries this change
   try {
     // The GLOBAL flag: a FULL pass always clears it. A PARTIAL (single-tab) pass may clear it ONLY when its
     // caller saw the flag clean before marking its own edit (mayClear) — then this pass covers everything
@@ -2290,10 +2326,11 @@ function publishPublicRosterQuiet_(onlyTab, mayClear) {
       props.deleteProperty(PUBLISH_DIRTY_PROP_); // BEFORE publishing, so a concurrent edit re-marks itself
       _pubDirtyMemo_ = false;
     }
-    publishPublicRoster_(onlyTab);
+    const res = publishPublicRoster_(onlyTab, { yieldToBackoff: true });
+    if (res && res.aborted) { props.setProperty(PUBLISH_DIRTY_PROP_, '1'); _pubDirtyMemo_ = true; } // yielded mid-pass → the sweep finishes the leftover tabs
     props.setProperty(PUBLISH_LAST_PROP_, String(Date.now()));
   } catch (e) { log_('publishPublicRosterQuiet_', e); }
-  finally { lock.releaseLock(); }
+  finally { publishPassRelease_(); }
 }
 
 /** Installable onEdit + onChange handler: republish the public copy promptly, rate-limited against edit bursts. */
@@ -2377,10 +2414,10 @@ function publishCatchup() {
   try { publishSweep(); } catch (e) { log_('publishCatchup', e); }
 }
 
-/** Time-driven + menu entry point for the publish. */
+/** Time-driven + menu entry point for the publish. Chunked like the background pass (per-tab locks, so it never
+ *  starves interactive actions) but NEVER yields — the operator asked for a full publish, so it runs every tab. */
 function publishPublicRoster() {
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) return false;
+  if (!publishPassClaim_()) return false; // a background pass is mid-flight — rare and brief now; try again in a moment
   try {
     const props = PropertiesService.getDocumentProperties();
     const linked = !!String(props.getProperty(PUBLIC_FILE_PROP_) || '').trim();
@@ -2391,7 +2428,7 @@ function publishPublicRoster() {
       logInfo_('publishPublicRoster', `published ${res.rows} row(s) across ${res.tabs.length} tab(s).`);
     }
     return res;
-  } finally { lock.releaseLock(); }
+  } finally { publishPassRelease_(); }
 }
 
 /** Menu: publish now and report. */
