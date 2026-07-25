@@ -88,6 +88,9 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpAddDiscipline: (p) => cpAddDiscipline(p),
   cpSignupList: () => cpSignupList(),
   cpSignupApprove: (p) => cpSignupApprove(p),
+  cpSignupPostSeat: (p) => cpSignupPostSeat(p),
+  cpPromoList: () => cpPromoList(),
+  cpPromoRemove: (p) => cpPromoRemove(p),
 });
 
 /** The panel's single server entry point. @param {string} name @param {Array} args */
