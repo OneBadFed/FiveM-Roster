@@ -3369,7 +3369,7 @@ function makeLeaveKey_(discordId, timestamp) {
  * ====================================================================== */
 
 const WEBHOOK_TAB_ = 'Webhooks';
-const WEBHOOK_CHANNELS_ = Object.freeze(['AUDIT', 'LOA', 'PATROL', 'ERRORS']);
+const WEBHOOK_CHANNELS_ = Object.freeze(['AUDIT', 'LOA', 'PATROL', 'SIGNUP', 'ERRORS']);
 let _webhookMemo_ = null; // per-execution only — NEVER cached anywhere shared (the admin file's ACL is the gate)
 
 /** Normalize a channel name; unknown/legacy names map to LOA (the classic "main" traffic). */

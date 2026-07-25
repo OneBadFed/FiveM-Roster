@@ -192,6 +192,7 @@ const WH_TEST_DESC_ = Object.freeze({
   AUDIT: 'Roster edits will post to this channel.',
   LOA: 'Leave submissions, approvals and expiries will post to this channel.',
   PATROL: 'Patrol log credits and flagged logs will post to this channel.',
+  SIGNUP: 'New roster signups awaiting review will post to this channel.',
   ERRORS: 'Engine errors (coded, throttled) will post to this channel.',
 });
 
@@ -1476,12 +1477,14 @@ function syncSignupForm_(formSheet, signupSheet) {
       added++;
     }
     if (added) { try { sortSignups_(signupSheet); } catch (e) { log_('syncSignupForm_.sort', e); } }
-    // Opt-in Discord embed per NEW signup (AUDIT channel, [NOTIFICATIONS].SIGNUP_SUBMITTED) — after all writes, so a
-    // webhook hiccup can never block the sync. Name + Unique ID only: an applicant's DOB/email/phone NEVER reach Discord.
+    // Opt-in Discord embed per NEW signup ([NOTIFICATIONS].SIGNUP_SUBMITTED) — after all writes, so a webhook hiccup
+    // can never block the sync. Name + Unique ID only: an applicant's DOB/email/phone NEVER reach Discord. Posts to
+    // the SIGNUP channel when its webhook is set; falls back to AUDIT so pre-SIGNUP-channel setups keep working.
     if (newcomers.length && CONFIG.notify && CONFIG.notify.signupSubmitted && typeof notifyEvent_ === 'function') {
+      const signupCh = (typeof webhookFor_ === 'function' && webhookFor_('SIGNUP')) ? 'SIGNUP' : 'AUDIT';
       newcomers.forEach((s) => {
         try {
-          notifyEvent_('AUDIT', true, 'signupSubmitted', { name: s.name, id: s.id }, {
+          notifyEvent_(signupCh, true, 'signupSubmitted', { name: s.name, id: s.id }, {
             description: clamp_(`# ${fill_(CONFIG.notify.signupSubmittedTitle, { name: s.name, id: s.id })}\nA new signup is awaiting review — seat or deny it under Control Panel ▸ Signups.`, 4000),
             color: hexToInt_(CONFIG.notify.signupSubmittedColor, 14721324),
             fields: [

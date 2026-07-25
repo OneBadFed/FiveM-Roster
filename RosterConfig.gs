@@ -371,7 +371,7 @@ const BLOCK_SPECS_ = Object.freeze({
     EMBED_FOOTER_ICON: { t: 'string', d: '', req: false, help: 'Footer icon image URL (https://…), shown beside the footer text. Blank = off.' },
   } },
   NOTIFICATIONS: { type: 'kv', help: 'Optional Discord embeds for roster events. All OFF by default; each posts to the same webhook and reuses the [DISCORD] embed author/thumbnail/image/footer.', keys: {
-    SIGNUP_SUBMITTED: { t: 'bool', d: false, req: false, help: 'Post an embed on the AUDIT channel when a new roster signup lands on the review tab (name + Unique ID only — never DOB/email/phone).' },
+    SIGNUP_SUBMITTED: { t: 'bool', d: false, req: false, help: 'Post an embed when a new roster signup lands on the review tab (name + Unique ID only — never DOB/email/phone). Posts to the SIGNUP channel; while no SIGNUP webhook is set it falls back to the AUDIT channel.' },
     SIGNUP_SUBMITTED_TITLE: { t: 'string', d: '`🧾` New Roster Signup — {name}', req: false, help: 'Title for the signup-submitted embed. {name} = applicant name, {id} = their Unique ID.' },
     SIGNUP_SUBMITTED_COLOR: { t: 'color', d: '#e0a52c', req: false, help: 'Colour bar of the signup-submitted embed.' },
     MEMBER_ADDED: { t: 'bool', d: false, req: false, help: 'Post an embed when a member is seated into a slot.' },
