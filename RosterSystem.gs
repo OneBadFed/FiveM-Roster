@@ -2939,8 +2939,9 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
     }
     reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, priorMark);
     // A status TRANSITION this pass → ONE Discord embed (processed = credited, flagged = why). Skipped when the status
-    // didn't change, so the nightly sweep and ordinary re-edits never re-post.
-    if (notify) {
+    // didn't change, so the nightly sweep and ordinary re-edits never re-post. Sandbox tabs (🧪 — the DevQA suite)
+    // never notify: every test row is a transition, and a test run must not post to the real channel.
+    if (notify && sheet.getName().indexOf('🧪') !== 0) {
       try {
         const total = (memberRow !== -1 && RCr.hours) ? parseHours_(roster.getRange(memberRow, RCr.hours).getValue()) : hours;
         patrolNotifyRow_(notify.kind, {

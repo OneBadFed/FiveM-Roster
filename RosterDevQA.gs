@@ -814,6 +814,17 @@ function devUnitTests_() {
   devEq_(R, 'webhookChannel_ "errors" -> ERRORS', webhookChannel_('errors'), 'ERRORS');
   devEq_(R, 'webhookChannel_ unknown -> LOA', webhookChannel_('nope'), 'LOA');
   devEq_(R, 'webhookChannel_ empty -> LOA', webhookChannel_(''), 'LOA');
+  devEq_(R, 'webhookChannel_ "signup" -> SIGNUP (own channel)', webhookChannel_('signup'), 'SIGNUP');
+
+  // --- tabKey_ (publish keep/force tab matching): a LEADING emoji never breaks the match, and it stays EXACT ---
+  devEq_(R, 'tabKey_ strips a leading emoji ("👋 Welcome Page" = "Welcome Page")', tabKey_('👋 Welcome Page'), tabKey_('Welcome Page'));
+  devEq_(R, 'tabKey_ "*" (all-tabs) passes through', tabKey_('*'), '*');
+  devCheck_(R, 'tabKey_ never substring-matches ("Roster" ≠ "Roster Signups")', tabKey_('Roster') !== tabKey_('Roster Signups'));
+
+  // --- levDist_ (integrity scan's assignment-typo near-miss) ---
+  devEq_(R, 'levDist_ exact -> 0', levDist_('district 1 patrol', 'district 1 patrol'), 0);
+  devEq_(R, 'levDist_ one-letter typo -> 1 ("distict")', levDist_('distict 1 patrol', 'district 1 patrol'), 1);
+  devCheck_(R, 'levDist_ unrelated values early-exit above the threshold', levDist_('office', 'district 1 patrol') > 2);
 
   // --- fill_ template interpolation ---
   devEq_(R, 'fill_ replaces a known token', fill_('Hi {name}', { name: 'Bob' }), 'Hi Bob');
@@ -1957,6 +1968,17 @@ function devConfigDispatchTests_() {
     devCheck_(R, 'dispatch rejects an unknown endpoint', unknownThrew);
   })();
 
+  // Every endpoint the panel's client code calls is REGISTERED in the whitelist — the E-506 class of bug (endpoint
+  // shipped, whitelist line forgotten) fails here instead of in a user's dialog. Membership only for the mutating
+  // ones; the read-only cpPromoList also round-trips through the real dispatcher.
+  (() => {
+    ['cpSignupList', 'cpSignupApprove', 'cpSignupPostSeat', 'cpPromoList', 'cpPromoRemove'].forEach((n) => {
+      devCheck_(R, `whitelist: ${n} is dispatchable`, typeof DISPATCH_ENDPOINTS_[n] === 'function');
+    });
+    let promoOk = false; try { promoOk = Array.isArray(dispatch('cpPromoList')); } catch (e) { promoOk = false; }
+    devCheck_(R, 'whitelist: cpPromoList round-trips (read-only)', promoOk);
+  })();
+
   // Additive migration: an absent block materializes to its spec defaults (no ERROR).
   (() => {
     const v = validateConfig_({}); // no [PATROL], no [SHEETS] etc.
@@ -2405,7 +2427,20 @@ function devPatrolLogTests_() {
   flagCase('future', { startDate: devDay_(1), startTime: devTime_(9, 0), endDate: devDay_(1), endTime: devTime_(12, 0) }, 'future');
   flagCase('unknown-id', { id: devId_(999), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }, 'roster');
 
-  // Admin override: an ADVISORY flag (over-max / future) is approved by moving STATUS to Processed → the hours credit.
+  // evaluatePatrolLog_ is PURE on time — inject "now" and pin the future rule: a patrol must END in the past, with a
+  // ONE-HOUR grace for clock/DST skew. A same-day future TIME flags too (a 10:00–12:00 log submitted at 01:55).
+  (() => {
+    const now = new Date(2026, 0, 15, 12, 0, 0);
+    const at = (h, m) => new Date(2026, 0, 15, h, m, 0);
+    devEq_(R, 'evaluate: ended in the past -> clean', evaluatePatrolLog_(5, at(9, 0), at(11, 0), 2, now).reason, '');
+    devEq_(R, 'evaluate: ends INSIDE the 1h grace -> clean (no false flag right after a patrol)', evaluatePatrolLog_(5, at(10, 0), at(12, 30), 2.5, now).reason, '');
+    const fut = evaluatePatrolLog_(5, at(10, 0), at(14, 0), 4, now);
+    devCheck_(R, 'evaluate: same-day future END -> flagged "future"', String(fut.reason).toLowerCase().indexOf('future') !== -1);
+    devEq_(R, 'evaluate: the future flag is ADVISORY (an admin can Approve it)', fut.blocking, false);
+  })();
+
+  // Admin terminals (five-state): APPROVED is the credit terminal for an ADVISORY flag — the engine credits and never
+  // re-flags it. Hand-setting PROCESSED is NOT an override (engine-owned; it recomputes straight back to Flagged).
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Over', id: devId_(80), activity: 'Active', hours: 6 }]);
     const pl = devBuildPatrolLog_([{ id: devId_(80), startDate: devDay_(-1), startTime: devTime_(2, 0), endDate: devDay_(-1), endTime: devTime_(22, 0) }]); // 20h → over-max
@@ -2413,11 +2448,28 @@ function devPatrolLogTests_() {
     processPatrolLog_(pl, PS, PC, ro);
     devEq_(R, 'override: over-max starts Flagged', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
     devEq_(R, 'override: nothing credited while Flagged (stays 6)', rosterHrs(ro), 6);
-    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.processedStatus); // admin reviews + approves by processing
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.processedStatus); // NOT an override — engine-owned status
     processPatrolLog_(pl, PS, PC, ro);
-    devEq_(R, 'override: processing credits 20 hrs (6 -> 26)', rosterHrs(ro), 26);
-    devEq_(R, 'override: status stays Processed', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
+    devEq_(R, 'override: hand-set Processed snaps back to Flagged (advisory recomputes)', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
+    devEq_(R, 'override: still not credited (stays 6)', rosterHrs(ro), 6);
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.approvedStatus); // the REAL override: admin reviews + Approves
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'override: Approved credits 20 hrs (6 -> 26)', rosterHrs(ro), 26);
+    devEq_(R, 'override: status stays Approved (admin-owned terminal)', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.approvedStatus);
     devCheck_(R, 'override: NOTES keeps an "Override" trace', String(pl.getRange(PS, PC.notes).getDisplayValue()).toLowerCase().indexOf('override') !== -1);
+  })();
+
+  // DENIED is the rejection terminal: it REVERSES an already-landed credit and the engine leaves the status alone.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Deny', id: devId_(82), activity: 'Active', hours: 8 }]);
+    const pl = devBuildPatrolLog_([{ id: devId_(82), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }]); // clean 3h
+    const PC = patrolLogCols_(pl);
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'denied: a clean log auto-Processes + credits (8 -> 11)', rosterHrs(ro), 11);
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.deniedStatus); // admin rejects it after the fact
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'denied: the credit is REVERSED (back to 8)', rosterHrs(ro), 8);
+    devEq_(R, 'denied: status stays Denied (admin-owned terminal)', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.deniedStatus);
   })();
 
   // A BLOCKING flag (end<=start) can NOT be approved by processing — the data must be fixed first.
@@ -2479,7 +2531,7 @@ function devPatrolLogTests_() {
 }
 
 /* ======================================================================
- * SECTION 23 — ROSTER SIGNUPS (sandbox): header resolution, the Pending →
+ * SECTION 22 — ROSTER SIGNUPS (sandbox): header resolution, the Pending →
  * Approved → Processed sort, the review queue, and approveSignup_ — including
  * its refusals and the "Processed is stamped LAST" guarantee.
  * ====================================================================== */
@@ -2515,6 +2567,25 @@ function devSignupTests_() {
     devEq_(R, 'sort: row1 = Approved', g(sh, 3, S.status), 'Approved');
     devEq_(R, 'sort: row2 = Processed', g(sh, 4, S.status), 'Processed');
     devEq_(R, 'sort: the blank-status submission is the one stamped Pending', g(sh, 2, S.name), 'P1');
+  })();
+
+  // The sort follows the tab's OWN STATUS dropdown order when one exists (operator-customized flow — e.g. a Flagged
+  // status the engine doesn't ship). Without a dropdown it falls back to the engine's built-in order (test above).
+  (() => {
+    const sh = devBuildSignups_([
+      { name: 'F1', id: devId_(88), status: 'Flagged' },
+      { name: 'D3', id: devId_(89), status: 'Processed' },
+      { name: 'P0', id: devId_(90), status: 'Pending' },
+    ]);
+    const SC = signupCols_(sh);
+    devEq_(R, 'dropdown order: no dropdown -> null (engine fallback)', statusDropdownOrder_(sh, SC.dataStart, SC.status), null);
+    const rule = SpreadsheetApp.newDataValidation().requireValueInList(['Pending', 'Approve', 'Flagged', 'Processed'], true).setAllowInvalid(true).build();
+    sh.getRange(SC.dataStart, SC.status, 3, 1).setDataValidation(rule);
+    devEq_(R, 'dropdown order: reads the operator\'s list', (statusDropdownOrder_(sh, SC.dataStart, SC.status) || []).join(','), 'Pending,Approve,Flagged,Processed');
+    sortSignups_(sh);
+    devEq_(R, 'dropdown sort: Pending first', g(sh, 2, S.name), 'P0');
+    devEq_(R, 'dropdown sort: Flagged BELOW Pending (the dropdown\'s order, not the engine\'s)', g(sh, 3, S.name), 'F1');
+    devEq_(R, 'dropdown sort: Processed last', g(sh, 4, S.name), 'D3');
   })();
 
   // The review queue shows what still needs action and hides what's done.
@@ -2753,6 +2824,33 @@ function devPublishTests_() {
       devEq_(R, 'keep-range: public subtitle untouched', g(dest, 2, 2), 'public sub');
       devEq_(R, 'keep-range: the header row still published', g(dest, 1, 1), 'TITLE');
     });
+  })();
+
+  // MIRROR-WINS (header-matched tabs): a formula sitting in a MIRRORED public column is residue from the old
+  // formula-copying publishes — with mirrorWins the internal VALUE overwrites it (the "46227 days" ghosts heal).
+  (() => {
+    const dest = devFreshSheet_('PubMirrorDest');
+    dest.getRange(1, 1, 1, 2).setValues([['TIME IN RANK', 'NAME']]);
+    dest.getRange(2, 1).setFormula('=UPPER("stale")'); // residue formula in a mirrored column
+    const keepDef = publishKeepMask_(dest, 1, 1, 2, 2);
+    devCheck_(R, 'mirrorWins off: the formula is kept (wholesale rule unchanged)', keepDef[1][0] === true);
+    const keepMw = publishKeepMask_(dest, 1, 1, 2, 2, null, true);
+    devCheck_(R, 'mirrorWins on: the formula is NOT kept', keepMw[1][0] === false);
+    writeValuesSafe_(dest, 1, 1, [['TIME IN RANK', 'NAME'], ['', 'Alice']], keepMw);
+    devEq_(R, 'mirrorWins: the residue formula healed to the internal value', dest.getRange(2, 1).getFormula(), '');
+    devEq_(R, 'mirrorWins: neighbouring value published normally', g(dest, 2, 2), 'Alice');
+  })();
+
+  // VALUES-ONLY read (header-matched path): a source formula publishes as its COMPUTED value — a copied formula's
+  // relative refs would point at the wrong column on a narrower public layout.
+  (() => {
+    const src = devFreshSheet_('PubValSrc');
+    src.getRange(1, 1).setValue('HDR');
+    src.getRange(2, 1).setFormula('=UPPER("live")');
+    const vals = publishReadCells_(src.getRange(1, 1, 2, 1), true);
+    devEq_(R, 'valuesOnly: the computed VALUE, never the formula', String(vals[1][0]), 'LIVE');
+    const fx = publishReadCells_(src.getRange(1, 1, 2, 1));
+    devCheck_(R, 'default read: still carries the live formula (wholesale path)', String(fx[1][0]).indexOf('=UPPER') === 0);
   })();
 
   // A SOURCE formula is carried across as a formula, so live clocks/counters keep recalculating publicly.
