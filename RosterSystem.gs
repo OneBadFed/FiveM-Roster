@@ -2666,12 +2666,13 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
   }
   const dOnly = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
   const tOnly = (d) => new Date(2020, 0, 1, d.getHours(), d.getMinutes(), d.getSeconds()); // shared fixed base → TOTAL's date parts cancel
+  const backfill = []; // {key: id|startMs|endMs, ts} from ALREADY-transferred form rows → stamps historical log rows' recency
   for (let i = 0; i < n; i++) {
     const rowIndex = 2 + i;
     try {
       const marker = String(grid[i][markCol - 1] == null ? '' : grid[i][markCol - 1]).trim();
       const bg = String(bgs[i][0] || '').toLowerCase();
-      if (marker !== '' || bg === done) continue; // already transferred — or already credited by the direct path
+      const already = (marker !== '' || bg === done); // already transferred (or credited by the direct path) → no re-ingest; still parsed below so its submission stamp can BACKFILL the log's sort recency
       const cell = (c) => (c > 0 && c <= width) ? grid[i][c - 1] : '';
       // Date+time PER FIELD: split pairs combine (combineDateTime_ handles Date dates + time-only/serial times);
       // single datetime columns pass through whole.
@@ -2680,6 +2681,7 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
       const ed = (F.eDate && F.eTime) ? combineDateTime_(cell(F.eDate), cell(F.eTime))
         : (function (v) { const d = (v instanceof Date) ? v : new Date(v); return isNaN(d.getTime()) ? null : d; })(cell(cols.end));
       if (!sd || !ed) {
+        if (already) continue; // an old row with bad times has nothing to backfill
         try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); } catch (e2) { /* best-effort */ }
         out.skipped.push({ row: rowIndex, reason: 'unparseable start/end date+time — fix the row and re-run' });
         continue;
@@ -2695,8 +2697,16 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
       const nm = String(F.name ? cell(F.name) : '').trim() || csName;
       if (id && !isValidId_(id)) {
         const rec = rosterMatchByFields_(idx, { name: nm, rank: '', unit: unit });
-        if (rec) { logInfo_('syncPatrolFormToLog_', `form row ${rowIndex}: "${id}" is not a valid Unique ID — matched by name+callsign to roster row ${rec.row}.`); id = rec.id; }
+        if (rec) { if (!already) logInfo_('syncPatrolFormToLog_', `form row ${rowIndex}: "${id}" is not a valid Unique ID — matched by name+callsign to roster row ${rec.row}.`); id = rec.id; }
         else id = ''; // never write an invalid ID into the log's REJECT-validated cell
+      }
+      // Submission recency: the form's own Timestamp, carried onto the log row (marker col, 3rd field) so the log
+      // sorts "newest SUBMITTED first" — a patrol that STARTED earlier but was submitted later still tops its group.
+      const tsv = (cols.timestamp > 0) ? grid[i][cols.timestamp - 1] : '';
+      const subMs = (tsv instanceof Date && !isNaN(tsv.getTime())) ? tsv.getTime() : 0;
+      if (already) { // historical row → offer its stamp to the backfill pass below, nothing else
+        if (id && isValidId_(id) && subMs) backfill.push({ key: id + '|' + sd.getTime() + '|' + ed.getTime(), ts: subMs });
+        continue;
       }
       // Durable marker + flush BEFORE the transfer: once stamped, this submission can never be ingested twice.
       formSheet.getRange(rowIndex, markCol).setValue('✓ ' + Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm') + ' → ' + logSheet.getName());
@@ -2711,6 +2721,7 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
       logSheet.getRange(at, PC.endDate).setValue(dOnly(ed));
       logSheet.getRange(at, PC.endTime).setValue(tOnly(ed));
       if (PC.notes && F.narrative) { const nar = String(cell(F.narrative) || '').trim(); if (nar) logSheet.getRange(at, PC.notes).setNumberFormat('@').setValue(clamp_(nar, 1000)); } // the patrol write-up → the log's NOTES
+      if (PC.mark && subMs) logSheet.getRange(at, PC.mark).setNumberFormat('@').setValue('||' + subMs); // marker grammar hours|memberId|submissionMs — no credit yet, just the sort recency
       try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done); } catch (e2) { /* best-effort */ }
       out.added++;
     } catch (err) { // one bad row must never kill the sync (e.g. an unexpected validation reject)
@@ -2719,6 +2730,34 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
       out.skipped.push({ row: rowIndex, reason: 'unexpected error — row marked red; see SYS Log' });
     }
   }
+  // BACKFILL: log rows transferred before the submission stamp existed can only sort by start time — stamp them once
+  // from the form's Timestamp (matched by Unique ID + exact start/end datetimes). Self-terminating: once every row
+  // carries a stamp, the scan below finds nothing to do.
+  try {
+    if (backfill.length && PC.mark) {
+      const lastL = logSheet.getLastRow();
+      if (lastL >= start) {
+        const nL = lastL - start + 1;
+        const lv = logSheet.getRange(start, 1, nL, PC.width).getValues();
+        const lids = PC.discord ? logSheet.getRange(start, PC.discord, nL, 1).getDisplayValues() : null;
+        const byKey = {};
+        backfill.forEach((b) => { (byKey[b.key] = byKey[b.key] || []).push(b.ts); });
+        for (let i2 = 0; i2 < nL; i2++) {
+          const parts = String(lv[i2][PC.mark - 1] == null ? '' : lv[i2][PC.mark - 1]).trim().split('|');
+          if (parts.length > 2 && Number(parts[2]) > 0) continue; // already stamped
+          const lid = lids ? String(lids[i2][0] || '').trim() : '';
+          const lsd = combineDateTime_(lv[i2][PC.startDate - 1], lv[i2][PC.startTime - 1]);
+          const led = combineDateTime_(lv[i2][PC.endDate - 1], lv[i2][PC.endTime - 1]);
+          if (!lid || !lsd || !led) continue;
+          const q = byKey[lid + '|' + lsd.getTime() + '|' + led.getTime()];
+          if (q && q.length) { // duplicate identical logs each consume one stamp
+            logSheet.getRange(start + i2, PC.mark).setNumberFormat('@').setValue([parts[0] || '', parts[1] || '', String(q.shift())].join('|'));
+            out.backfilled = (out.backfilled || 0) + 1;
+          }
+        }
+      }
+    }
+  } catch (e) { log_('syncPatrolFormToLog_.backfill', e); }
   return out;
 }
 
@@ -2988,8 +3027,8 @@ function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, prior
     // `priorMark` is the sweep's cached read of this cell (each row is processed exactly once per sweep, and only this
     // function writes the marker — so the cache can't be stale). null = read live (the onEdit single-row path).
     const prior = (priorMark == null) ? String(markCell.getDisplayValue()).trim() : String(priorMark).trim();
-    let priorHours = 0, priorMid = '';
-    if (prior) { const p = prior.split('|'); priorHours = parseFloat(p[0]) || 0; priorMid = (p[1] || '').trim(); }
+    let priorHours = 0, priorMid = '', priorTs = ''; // marker grammar: hours|memberId|submissionMs (ts survives every credit/reverse)
+    if (prior) { const p = prior.split('|'); priorHours = parseFloat(p[0]) || 0; priorMid = (p[1] || '').trim(); priorTs = (p[2] || '').trim(); }
     const wantHours = desired ? (Math.round(desired.hours * 100) / 100) : 0;
     const wantMid = desired ? String(desired.mid).trim() : '';
     if (prior && priorMid === wantMid && Math.abs(priorHours - wantHours) < 0.005) return; // already exactly credited → no-op
@@ -3005,12 +3044,15 @@ function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, prior
     // Durably "uncredited" before any re-credit (self-heals on the next process if we die here). Only when there IS a
     // marker: an uncredited row (flagged/incomplete) must not pay for a write + flush on every single edit and on every
     // row of the nightly refreshPatrolLog_ sweep.
-    if (prior) { markCell.clearContent(); SpreadsheetApp.flush(); }
+    if (prior) { // durably "uncredited" — but the submission stamp (3rd field) must survive for the newest-first sort
+      if (priorTs) markCell.setNumberFormat('@').setValue('||' + priorTs); else markCell.clearContent();
+      SpreadsheetApp.flush();
+    }
 
     if (desired && wantHours > 0 && wantMid) { // apply the new credit on the target member
       const trow = patrolFindRow_(roster, wantMid, '', idx);
       if (trow !== -1) {
-        markCell.setValue(wantHours + '|' + wantMid); SpreadsheetApp.flush(); // durable marker BEFORE the credit
+        markCell.setValue(wantHours + '|' + wantMid + (priorTs ? '|' + priorTs : '')); SpreadsheetApp.flush(); // durable marker BEFORE the credit
         const cur = parseHours_(roster.getRange(trow, RCr.hours).getValue());
         const next = Math.round((cur + wantHours) * 100) / 100;
         roster.getRange(trow, RCr.hours).setValue(next);
@@ -3094,10 +3136,14 @@ function sortPatrolLog_(patrolSheet) {
     try { const dd = statusDropdownOrder_(sheet, start, PC.status); if (dd) flow = dd; } catch (e) { /* config flow stands */ }
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
     const prio = (r) => { const k = norm_(String(r[PC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
-    // Within a status group: NEWEST patrol first (start date+time, descending) — a fresh log surfaces at the top of
-    // its group instead of sinking to the bottom. Rows with no parsable start (hand-typed partials) tie at 0 and keep
-    // their prior order.
-    const rec = (r) => { const d = (PC.startDate && PC.startTime) ? combineDateTime_(r[PC.startDate - 1], r[PC.startTime - 1]) : null; return d ? d.getTime() : 0; };
+    // Within a status group: NEWEST SUBMISSION first — the form Timestamp carried in the marker's 3rd field
+    // (hours|memberId|submissionMs). A patrol that STARTED earlier but was submitted later still tops its group.
+    // Hand-typed rows (no submission) fall back to their start date+time; unparsable rows tie at 0 and keep order.
+    const rec = (r) => {
+      if (PC.mark) { const p = String(r[PC.mark - 1] == null ? '' : r[PC.mark - 1]).split('|'); const ts = p.length > 2 ? Number(p[2]) : 0; if (ts > 0) return ts; }
+      const d = (PC.startDate && PC.startTime) ? combineDateTime_(r[PC.startDate - 1], r[PC.startTime - 1]) : null;
+      return d ? d.getTime() : 0;
+    };
     const dec = records.map((r, i) => ({ r: r, i: i, p: prio(r), t: rec(r) }));
     dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);

@@ -2541,6 +2541,12 @@ function devPatrolLogTests_() {
     devEq_(R, 'sort: row1 = Flagged', String(pl.getRange(PS + 1, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
     devEq_(R, 'sort: newest Processed sits ABOVE the older one', String(pl.getRange(PS + 2, PC.name).getDisplayValue()).trim(), 'ProcNew');
     devEq_(R, 'sort: oldest Processed last', String(pl.getRange(PS + 3, PC.name).getDisplayValue()).trim(), 'ProcOld');
+    // SUBMISSION recency (marker 3rd field) OUTRANKS start time: ProcOld submitted later → it climbs above ProcNew.
+    pl.getRange(PS + 2, 1).setNumberFormat('@').setValue('||' + new Date(2026, 0, 20).getTime()); // ProcNew: older submission
+    pl.getRange(PS + 3, 1).setNumberFormat('@').setValue('||' + new Date(2026, 0, 22).getTime()); // ProcOld: NEWER submission
+    sortPatrolLog_(pl);
+    devEq_(R, 'sort: newest SUBMITTED tops the group (beats a newer start time)', String(pl.getRange(PS + 2, PC.name).getDisplayValue()).trim(), 'ProcOld');
+    devCheck_(R, 'sort: the submission stamp travels with its row', String(pl.getRange(PS + 2, 1).getDisplayValue()).indexOf(String(new Date(2026, 0, 22).getTime())) !== -1);
   })();
 
   return R;
