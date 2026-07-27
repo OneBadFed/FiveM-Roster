@@ -78,7 +78,7 @@
   svg{display:block;}
 
   /* ─── app shell: sidebar + content (Studio pattern) ─── */
-  .app{display:grid;grid-template-columns:208px 1fr;height:100vh;}
+  .app{display:grid;grid-template-columns:218px 1fr;height:100vh;}
   /* The sidebar sits LIGHTER than the content — that tonal split is what vibrancy actually looks like on a Mac,
      and it does the separating that a border would otherwise have to do. */
   .side{display:flex;flex-direction:column;background:var(--sidebar);
@@ -86,7 +86,7 @@
         border-right:1px solid rgba(0,0,0,.42);}
   .brand{display:flex;align-items:center;gap:9px;padding:14px 12px 12px 14px;}
   .badge{width:28px;height:28px;border-radius:7px;background:linear-gradient(180deg,#3a3a3e,#2c2c30);
-        box-shadow:0 0 0 .5px rgba(255,255,255,.14) inset;
+        box-shadow:0 0 0 .5px rgba(255,255,255,.14) inset,0 1px 2px rgba(0,0,0,.35);
         color:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
   .badge svg{width:15px;height:15px;stroke-width:1.6;}
   .ttl{flex:1;min-width:0;}
@@ -98,6 +98,12 @@
             display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;
             transition:background var(--t) var(--ease),color var(--t) var(--ease);}
   .icon-btn:hover{background:var(--e2);color:var(--txt);}
+  /* In the brand row it is a recessed square, sized to the title block rather than to the toolbar. */
+  .brand .icon-btn{width:22px;height:22px;border-radius:5px;background:rgba(255,255,255,.07);
+                   box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;color:rgba(255,255,255,.6);}
+  .brand .icon-btn:hover{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);}
+  .brand .icon-btn:disabled{opacity:.4;cursor:default;}
+  .brand .icon-btn svg{width:13px;height:13px;stroke-width:1.9;}
   .icon-btn:active{background:var(--e3);}
   .icon-btn svg{width:15px;height:15px;stroke-width:1.7;}
   .spin{animation:sp .8s linear infinite;}
@@ -106,7 +112,7 @@
   /* Sidebar nav — macOS System Settings at its real size: 28px rows, a 15px icon at 1.7 stroke, a 13px label.
      The selected row is a GRADIENT with an inner top highlight and a soft drop shadow; a flat blue rectangle is
      the Windows reading of this control. One accent for the whole list — never a per-tab hue. */
-  .tabs{flex:1;overflow-y:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:1px;}
+  .tabs{flex:1;overflow-y:auto;padding:0 10px;display:flex;flex-direction:column;gap:1px;}
   .ngroup{font-size:11px;font-weight:600;color:rgba(255,255,255,.38);text-transform:none;letter-spacing:0;padding:16px 8px 6px;}
   .ngroup:first-child{padding-top:8px;}
   .tab{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;color:rgba(255,255,255,.84);
@@ -119,7 +125,7 @@
   .tab .nico{width:15px;height:15px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:rgba(255,255,255,.52);
        background:none;border-radius:0;transition:color var(--t) var(--ease);}
   /* A right-aligned count is how a Mac sidebar reports "there is something waiting in here". */
-  .tab .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.4);flex:0 0 auto;}
+  .tab .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:500;color:rgba(255,255,255,.4);flex:0 0 auto;}
   .tab.active .cnt{color:rgba(255,255,255,.75);}
   .tab .cnt:empty{display:none;}
   .tab.active .nico{color:#fff;}
@@ -131,6 +137,7 @@
        box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;transition:background var(--t) var(--ease);}
   .hpill2:hover{background:var(--e2);}
   .hpill2[hidden]{display:none;}
+  .hpill2 .pdot{width:6px;height:6px;} /* the capsules took .pdot to 5px; this one is 6 */
   .hpill2.ok{color:var(--txt-2);background:var(--e1);} .hpill2.ok .pdot{background:var(--green);}
   .hpill2.bad{color:#ffb340;background:rgba(255,159,10,.13);box-shadow:0 0 0 .5px rgba(255,159,10,.25) inset;} .hpill2.bad .pdot{background:var(--amber);}
 
@@ -784,7 +791,7 @@
          background:none;border:none;border-radius:0;}
   .empty .ei{width:36px;height:36px;border-radius:0;display:flex;align-items:center;justify-content:center;background:none;color:var(--txt-3);border:none;box-shadow:none;}
   .empty .ei svg{width:26px;height:26px;stroke-width:1.5;}
-  .foot{font-size:9px;color:var(--txt-3);letter-spacing:.02em;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .foot{font-size:10.5px;color:rgba(255,255,255,.24);letter-spacing:0;line-height:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   /* A toast genuinely floats, so this is one of the few things that keeps a shadow. */
   #toast{position:fixed;left:50%;transform:translate(-50%,180%);bottom:var(--s5);max-width:560px;background:var(--e2);border:none;
@@ -803,6 +810,7 @@
     <div class="brand">
       <div class="badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6l7-3z"/></svg></div>
       <div class="ttl"><div class="r1"><b id="sysName">Roster System</b></div><div class="sub">Control panel</div></div>
+      <button class="icon-btn" id="refreshBtn" title="Refresh" aria-label="Refresh data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round"><path d="M20 12a8 8 0 1 1-2.6-5.9"/><path d="M20 4v4h-4"/></svg></button>
     </div>
     <div class="tabs">
       <div class="ngroup">Roster</div>
@@ -818,7 +826,7 @@
     </div>
     <div class="sfoot">
       <button class="hpill2" id="healthPill" hidden aria-label="System health"></button>
-      <div style="display:flex;align-items:center;gap:7px"><span class="ver" id="verLbl">…</span><div class="foot" id="foot" style="text-align:left;flex:1">Roster Control Panel</div></div>
+      <div style="display:flex;align-items:baseline;gap:6px"><span class="ver" id="verLbl">…</span><div class="foot" id="foot" style="text-align:left;flex:1">Roster Control Panel</div></div>
     </div>
   </div>
   <div class="main">
@@ -831,7 +839,6 @@
         <input class="field search" id="search" placeholder="Search roster" autocomplete="off" aria-label="Search members">
         <button class="search-clear" id="searchClear" aria-label="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
-      <button class="icon-btn" id="refreshBtn" title="Refresh" aria-label="Refresh data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
       <button class="btn-primary" id="tbAdd">+ Add</button>
     </div>
     <div class="filterbar" id="filterbar">
