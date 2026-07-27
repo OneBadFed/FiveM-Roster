@@ -542,7 +542,7 @@
 
   var GROUPS=[
     {label:'Setup', ids:['sheets']},
-    {label:'Roster', ids:['statuses','ranks','leave']},
+    {label:'Roster', ids:['statuses','ranks','activity','leave']},
     {label:'Appearance', ids:['theme','dashboard']},
     {label:'Discord', ids:['dcaudit','dcloa','dcpatrol','dcsignup','dcerrors']},
     {label:'Operations', ids:['automation','advanced']},
@@ -584,6 +584,7 @@
     flist:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></svg>',
     fdrop:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 10l4 4 4-4"/></svg>',
   };
+  ICONS.activity=ICONS.cycle; // the activity cycle: check → period column → previous activity
   ICONS.dcaudit=ICONS.file; ICONS.dcloa=ICONS.leave; ICONS.dcpatrol=ICONS.clock; ICONS.dcsignup=ICONS.identity||ICONS.file; ICONS.dcerrors=ICONS.bell||ICONS.theme; // Discord section icons
   var CARD_ICONS={
     'Identity':'identity','Discord notifications':'bell','Embed appearance':'theme','Leave notifications':'leave',
@@ -592,7 +593,7 @@
     'Data tabs':'sheets','System tabs':'server','Roster layout':'table','Training sections':'grad','Patrol logs → hours':'clock',
     '1 · Request':'inbox','2 · Approval':'check','3 · Ending':'cycle','Early returns · optional':'leave',
     'Canvas & frame':'window','Text':'ftext','Status colours':'theme',
-    'Hours reset':'clock','Nightly leave check':'moon','Logging':'file','Dashboard':'dashboard','Live dashboard':'dashboard','Formats':'clock',
+    'Hours reset':'clock','Activity checks':'clock','Period columns':'table','Previous activity':'archive','Activity Panel board':'dashboard','Nightly leave check':'moon','Logging':'file','Dashboard':'dashboard','Live dashboard':'dashboard','Formats':'clock',
     'Engine flags':'flag','Retention limits':'archive'
   };
   function cardIcon(title,gid){ var k=CARD_ICONS[title]; return (k&&ICONS[k])?ICONS[k]:(ICONS[gid]||ICONS.table); }
@@ -608,7 +609,7 @@
     return ICONS.ftext;
   }
   // Friendlier display labels/help for keys whose config names read wrong in the UI (display only — keys unchanged).
-  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.LEAVE_FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_FORM_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'SIGNUP REVIEW TAB','SHEETS.SIGNUP_FORM_RESPONSES':'SIGNUP FORM RESPONSES','SHEETS.WELCOME':'WELCOME PAGE TAB','PUBLISH.FORCE_RANGES':'FORCE-MIRROR RANGES',
+  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.LEAVE_FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_FORM_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'SIGNUP REVIEW TAB','SHEETS.SIGNUP_FORM_RESPONSES':'SIGNUP FORM RESPONSES','SHEETS.WELCOME':'WELCOME PAGE TAB','SHEETS.ACTIVITY':'ACTIVITY PANEL TAB','PUBLISH.FORCE_RANGES':'FORCE-MIRROR RANGES',
     'ROSTER_LAYOUT.LAST_ACTIVITY_COLS':'PREVIOUS-ACTIVITY COLUMNS',
     'PATROL.COL_DISCORD':'DISCORD COLUMN','PATROL.COL_CALLSIGN':'CALLSIGN COLUMN','PATROL.COL_START':'START TIME COLUMN','PATROL.COL_END':'END TIME COLUMN','PATROL.COL_DURATION':'HOURS COLUMN',
     'LEAVE.STATUS_FLOW':'TRACKER STATUSES','LEAVE.APPROVED_STATUS':'COUNTS AS APPROVED','LEAVE.EXPIRED_STATUS':'MARK ENDED AS',
@@ -634,6 +635,7 @@
         +'Value = the exact label; Kind = RANK (member slot) or DIVIDER (section header). Unlisted labels fall back to the all-caps rule.'; }};
   var HELPS={'SHEETS.LEAVE_FORM_RESPONSES':'Google Form responses for LOAs.','SHEETS.PATROL_FORM_RESPONSES':'Google Form responses for Patrol Logs.',
     'SHEETS.PATROL_LOG':'Manual Patrol Log tracker tab (not a form). Blank = off.',
+    'SHEETS.ACTIVITY':'The searchable Activity Panel board — one row per patrol submission with its live status, rebuilt on every sync. The engine creates the tab. Blank = off.',
     'SHEETS.SIGNUPS':'Signup REVIEW tab (like the LOA Tracker): synced form submissions land here for admins; STATUS + NOTES are admin-owned.',
     'SHEETS.SIGNUP_FORM_RESPONSES':'The signup Google Form\'s own responses tab. Each submission is field-matched into the review tab. Blank = signup sync off.',
     'ROSTER_LAYOUT.HEADER_ROW':'The row with your column titles (RANK, NAME, HOURS…).',
@@ -709,7 +711,7 @@
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, where headers and data begin, and which Google Form responses tab feeds each tracker.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.PATROL_LOG','SHEETS.SIGNUPS','LIMITS.BLANK_TAIL_ROWS']},
              {t:'Google Form links — responses tab → tracker', keys:['SHEETS.LEAVE_FORM_RESPONSES','SHEETS.PATROL_FORM_RESPONSES','SHEETS.SIGNUP_FORM_RESPONSES']},
-             {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT','ROSTER_LAYOUT.LAST_ACTIVITY_COLS','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
+             {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT']}, // previous-activity columns live in the Activity section
              {t:'Patrol logs → hours', keys:['PATROL.MODE','PATROL.MAX_HOURS','PATROL.FUTURE_GRACE_HOURS','PATROL.OVERNIGHT','PATROL.RECOMPUTE','PATROL.COL_DISCORD','PATROL.COL_CALLSIGN','PATROL.COL_START','PATROL.COL_END','PATROL.COL_DURATION']},
              {t:'Public roster', keys:['SHEETS.WELCOME','PUBLISH.NEVER_PUBLISH','PUBLISH.KEEP_RANGES','PUBLISH.FORCE_RANGES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']}]},
@@ -727,9 +729,17 @@
     {id:'dashboard', a:'var(--cyan)', title:'Dashboard & sections', desc:'The live #tags the dashboard keeps filled, the headcount groups behind them, and the tags that colour the Dividers view.',
       cards:[{t:'Live dashboard', keys:['DASHBOARD.ENABLE']}],
       tablesMulti:['SECTION_TAGS','DASHBOARD_GROUPS']},
-    {id:'automation', a:'var(--amber)', title:'Automation & logging', desc:'When the hours reset and the nightly leave check run, and what the engine writes to its diagnostics log.',
-      cards:[{t:'Hours reset', keys:['SCHEDULE.AUTO_RESET','SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR','SCHEDULE.PERIOD_BUCKET','SCHEDULE.PERIOD_LABEL_FORMAT']},
-             {t:'Nightly leave check', keys:['SCHEDULE.NIGHTLY_HOUR']},
+    // Everything about the activity cycle in ONE place — the checks, the period columns they write, the previous-
+    // activity snapshot and the Activity Panel board. The keys still live in their own config blocks (SCHEDULE /
+    // ROSTER_LAYOUT / SHEETS); this section is where they are EDITED, and each key appears in exactly one section
+    // so the dirty dots and search counts stay honest.
+    {id:'activity', a:'var(--green)', title:'Activity & periods', desc:'How often activity is checked, what each period column holds, and how previous periods are kept.',
+      cards:[{t:'Activity checks', keys:['SCHEDULE.AUTO_RESET','SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR']},
+             {t:'Period columns', keys:['SCHEDULE.PERIOD_BUCKET','SCHEDULE.PERIOD_LABEL_FORMAT']},
+             {t:'Previous activity', keys:['ROSTER_LAYOUT.LAST_ACTIVITY_COLS','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
+             {t:'Activity Panel board', keys:['SHEETS.ACTIVITY']}]},
+    {id:'automation', a:'var(--amber)', title:'Automation & logging', desc:'When the nightly leave check runs, and what the engine writes to its diagnostics log.',
+      cards:[{t:'Nightly leave check', keys:['SCHEDULE.NIGHTLY_HOUR']},
              {t:'Logging', keys:['LOGGING.LOG_LEVEL','LOGGING.LOG_MAX_ROWS','LOGGING.PERF_TIMING']},
              {t:'Formats', keys:['FORMATS.DATE_DISPLAY','FORMATS.TIMESTAMP_DISPLAY']}]},
     {id:'advanced', a:'var(--red)', title:'Advanced', desc:'Engine flags, retention limits and the structural mappings that tell the engine how to read your sheet.', warn:true,
@@ -1092,7 +1102,7 @@
     if(g.id==='leave') h+='<div class="callout" id="leaveStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+leaveStoryText()+'</div>';
     if(g.id==='theme') h+=sheetPreview();
     if(g.id==='dashboard') h+='<div class="callout" id="tagCheat" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+tagCheatText()+'</div>';
-    if(g.id==='automation') h+='<div class="callout" id="schedStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+schedStoryText()+'</div>';
+    if(g.id==='activity') h+='<div class="callout" id="schedStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+schedStoryText()+'</div>';
     if(g.cards){
       g.cards.forEach(function(c){
         var rows=''; c.keys.forEach(function(bk){ rows+=setting(bk); });

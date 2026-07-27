@@ -186,7 +186,9 @@ ACTIVITY dropdown and `[ROSTER_LAYOUT].LAST_ACTIVITY_STYLE` colouring. Add a **L
 each capture also writes the date per member (the engine fills it only when the operator adds it — layout
 ownership as usual).
 
-**§3a · Period columns & their labels.** `shiftArchiveColumns_` rolls every "… HOURS" column (all but the live
+**§3a · Period columns & their labels.** *(All ten activity options — checks, period columns, previous activity, the Activity Panel board — are edited together under Engine Settings ▸ **Activity & periods**; the keys themselves stay in their own config blocks.)*
+
+**The roll.** `shiftArchiveColumns_` rolls every "… HOURS" column (all but the live
 HOURS) one to the LEFT on each 📸 Capture & Reset — data *and* header — the oldest dropping off the visible set
 and the rightmost receiving the hours just closed under `periodLabel_()`. **How many periods stay visible is
 simply how many such columns the operator laid out.**
