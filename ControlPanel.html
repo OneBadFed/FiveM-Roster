@@ -130,7 +130,9 @@
   /* KPI stats — six peers, so none of them shouts. Tinted cards, coloured dots and a pulsing "live" glow all
      competed for a glance none of them deserved; the number carries the weight now and colour is gone.
      Numerals are tabular so the row doesn't shuffle as counts change. */
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;margin-bottom:var(--s6);
+  /* 24 above the search, 16 between search and filters: the stats ARE a separate block, so the step is
+     deliberate — just gentler than the 32/16 jump, which read as an accident rather than a decision. */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;margin-bottom:var(--s5);
          background:var(--hair);border-radius:var(--r-lg);overflow:hidden;}
   .stat{display:block;padding:var(--s4);background:var(--e1);transition:background var(--t) var(--ease);}
   .stat .sdot{display:none;}
@@ -270,7 +272,11 @@
          transition:background var(--t) var(--ease),color var(--t) var(--ease);}
   .fchip:hover{color:var(--txt);background:var(--e2);}
   .fchip.active{background:var(--e3);color:var(--txt);font-weight:500;}
+  /* A native select sizes itself to its WIDEST option, so the rank filter was stretched by "Probationary
+     Officer" while displaying "All ranks" — ~250px of box around ten characters. Capped: the closed control now
+     fits what it is showing, and the open list is unaffected. */
   .fselect{background:var(--e1);border:none;color:var(--txt);border-radius:var(--r-sm);padding:var(--s1) var(--s3);min-height:30px;
+           max-width:168px;text-overflow:ellipsis;
            font-size:var(--f2);font-family:inherit;cursor:pointer;outline:none;transition:background var(--t) var(--ease);}
   .fselect:hover{background:var(--e2);}
   .fselect:focus{background:var(--e2);box-shadow:0 0 0 3px var(--accent-soft);}
@@ -484,9 +490,13 @@
   .pill{display:inline-flex;align-items:center;gap:5px;padding:2px var(--s2);border-radius:var(--r-pill);font-size:var(--f1);font-weight:500;
         border:none;white-space:nowrap;box-shadow:none;}
   .pdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;}
+  /* Colour marks the EXCEPTION, not the norm. Inactive is the resting state on a real roster — 65 of 82 members
+     here — so painting it red made the strongest signal in the interface the most common thing on screen, and
+     left the six Active members, the genuinely notable ones, as the quietest. Inactive is now grey and simply
+     recedes; green earns its meaning back because it is rare. */
   .p-Active{background:var(--green-t);color:var(--green-f);} .p-Active .pdot{background:var(--green);}
   .p-SemiActive{background:var(--amber-t);color:var(--amber-f);} .p-SemiActive .pdot{background:var(--amber);}
-  .p-Inactive{background:var(--red-t);color:var(--red-f);} .p-Inactive .pdot{background:var(--red);}
+  .p-Inactive{background:var(--gray-t);color:var(--gray-f);} .p-Inactive .pdot{background:var(--gray);}
   .p-LOA{background:var(--blue-t);color:var(--blue-f);} .p-LOA .pdot{background:var(--blue);}
   .p-ROA{background:var(--amber-t);color:var(--amber-f);} .p-ROA .pdot{background:var(--amber);}
   .p-Reserve{background:var(--purple-t);color:var(--purple-f);} .p-Reserve .pdot{background:var(--purple);}
