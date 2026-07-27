@@ -2122,6 +2122,38 @@ function writeValuesSafe_(dest, top, left, values, keep) {
   return failed;
 }
 
+/**
+ * Size a public tab's GRID to mirror this tab's, so rows added here show up there. Two things the old
+ * grow-if-content-overflows check got wrong: it only fired when the internal's CONTENT passed the public's whole
+ * grid (a public copy sitting on 1000 default rows never grew, so nothing visibly tracked), and when it did fire
+ * it appended at the very bottom — past the operator's closing bar, unstyled.
+ * Growth now inserts ABOVE the public tab's final row, so new rows inherit that tab's own banding, formatting and
+ * row height; the final row (its end-bar) always stays last. Surplus rows are removed only when everything from
+ * `target` down is empty — one getLastRow check, no block read — and never the final row. The tail mirrored is
+ * this tab's own (spare rows + closing bar), so the public copy ends as neatly as the internal.
+ * @param {number} dataEnd last row the write occupies on the destination  @param {boolean} allowTrim shrink too (call after the write)
+ */
+function publishFitRows_(src, dest, dataEnd, allowTrim) {
+  try {
+    if (!(dataEnd > 0)) return;
+    const keepTail = Math.max(1, src.getMaxRows() - src.getLastRow()); // this tab's spare rows + its closing bar
+    const target = dataEnd + keepTail;
+    const M = dest.getMaxRows();
+    if (M < target) {
+      const need = target - M;
+      if (M > dataEnd) {                                   // a closing row exists → grow inside the band, above it
+        dest.insertRowsBefore(M, need);
+        try { dest.setRowHeights(M, need, dest.getRowHeight(Math.max(1, M - 1))); } catch (e) { /* default height */ }
+      } else {                                             // grid ends at the data → nothing to protect, append
+        dest.insertRowsAfter(M, need);
+        try { dest.setRowHeights(M + 1, need, dest.getRowHeight(M)); } catch (e) { /* default height */ }
+      }
+    } else if (allowTrim && M > target && dest.getLastRow() < target) {
+      dest.deleteRows(target, M - target);                 // rows target..M-1; the old final row survives as the last
+    }
+  } catch (e) { logWarn_('publishFitRows_', 'row fit skipped for ' + dest.getName() + ': ' + ((e && e.message) ? e.message : e)); }
+}
+
 function publishMirrorTab_(src, dest) {
   const sh = publishHeaderRow_(src), dh = publishHeaderRow_(dest);
   const sRows = src.getLastRow(), sCols = src.getLastColumn();
@@ -2137,7 +2169,7 @@ function publishMirrorTab_(src, dest) {
   // public copy whose dynamic cells are still blank is correctly recognised as an untouched copy of the same shape.
   const step = (label, fn) => { try { return fn(); } catch (e) { throw new Error(label + ' -> ' + ((e && e.message) ? e.message : e)); } };
   if (src.getMaxColumns() === dest.getMaxColumns()) {
-    if (sRows > dest.getMaxRows()) step('insertRows ' + (sRows - dest.getMaxRows()), () => dest.insertRowsAfter(dest.getMaxRows(), sRows - dest.getMaxRows()));
+    step('fit rows ' + sRows, () => publishFitRows_(src, dest, sRows, false)); // make room BEFORE the write (grow only)
     // FORCE-mirror cells (e.g. Welcome Page headers reading from the internal): computed once, it both (a) tells the
     // read to publish a cross-sheet formula as its VALUE, and (b) un-keeps those cells so the write isn't skipped.
     const force = publishForceMask_(dest, 1, 1, sRows, sCols);
@@ -2162,6 +2194,7 @@ function publishMirrorTab_(src, dest) {
     catch (e) { log_('publishMirrorTab_.formats', e); }
     const dLast = dest.getLastRow();
     if (dLast > sRows) step('clear trailing ' + (dLast - sRows), () => dest.getRange(sRows + 1, 1, dLast - sRows, sCols).clearContent());
+    publishFitRows_(src, dest, sRows, true); // now the trailing rows are empty, shrink to mirror this tab's tail
     return sRows;
   }
 
@@ -2182,7 +2215,7 @@ function publishMirrorTab_(src, dest) {
   const srcStart = sh + 1, destStart = dh + 1;
   const n = Math.max(0, src.getLastRow() - srcStart + 1);
   const need = destStart + n - 1;
-  if (need > dest.getMaxRows()) dest.insertRowsAfter(dest.getMaxRows(), need - dest.getMaxRows());
+  publishFitRows_(src, dest, need, false); // room BEFORE the write; the shrink runs once the trailing rows are cleared
   if (n) {
     pairs.forEach((p) => {
       // valuesOnly=true: this is the header-matched path (public layout differs), so publish computed VALUES — a copied
@@ -2201,6 +2234,7 @@ function publishMirrorTab_(src, dest) {
     const widest = Math.max.apply(null, pairs.map((p) => p.dc).concat(scrub).concat([1]));
     dest.getRange(destStart + n, 1, dLast - (destStart + n) + 1, widest).clearContent();
   }
+  publishFitRows_(src, dest, need, true); // shrink to mirror this tab's tail now the leftovers are cleared
   return n;
 }
 

@@ -389,6 +389,13 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
   a leading emoji (`tabKey_` — exact match after the strip, never a substring, so "Roster" can't match "Roster
   Signups"). Self-computing tabs (cross-sheet ARRAY formulas) are
   left alone and their blocked spill residue is freed — only genuine spill anchors claim their block.
+- **Row counts mirror too** (`publishFitRows_`): a public tab is grown so rows added here appear there, and
+  trimmed so it ends as neatly. The old check only grew when the internal's *content* passed the public's whole
+  *grid* — a public copy sitting on 1000 default rows never grew — and appended past the operator's closing bar.
+  Growth now inserts **above the public tab's final row**, so new rows inherit that tab's own banding, formatting
+  and row height, and its end-bar stays last. The tail mirrored is the internal's own (spare rows + closing bar).
+  Shrinking runs after the write, only when everything from the target row down is empty (one `getLastRow` check,
+  no block read), and never removes the final row.
 - **All block writes are merge-safe** (`writeValuesSafe_` — plain `setValues` across merged cells throws), and
   in-cell images/chips (CellImage values, which `setValues` can never overwrite) are detected by
   `publishKeepMask_` and kept cleanly — an image always wins the mask, even over a FORCE range.
