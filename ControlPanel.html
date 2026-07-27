@@ -24,7 +24,7 @@
     --card:#2c2c2e; --card-2:#3a3a3c;
     /* SEPARATORS — Apple separates with a hairline, not a border or a shadow. Nearer macOS's separatorColor;
        at .08 they read as faint rather than crisp. */
-    --hair:rgba(255,255,255,.1); --hair-2:rgba(255,255,255,.16);
+    --hair:rgba(255,255,255,.08); --hair-2:rgba(255,255,255,.14);
     /* No glass, no inner highlight, no glow. Kept as no-ops so older rules still parse while sections migrate. */
     --glass:none; --glass-2:none;
     --ring:none; --hi:none;
@@ -37,18 +37,18 @@
     /* TYPE — SF's macOS ramp. Six steps, nothing between them. */
     --f1:11px; --f2:13px; --f3:15px; --f4:17px; --f5:22px; --f6:28px;
     /* Apple's label hierarchy: white at falling opacity, never a different hue. */
-    --txt:#f5f5f7; --txt-2:rgba(235,235,245,.62); --txt-3:rgba(235,235,245,.38);
+    --txt:rgba(255,255,255,.85); --txt-2:rgba(255,255,255,.55); --txt-3:rgba(255,255,255,.25);
     /* THE accent. systemBlue (dark). One colour carries every interactive state in the panel. */
     --accent:#0A84FF; --accent-2:#409CFF; --accent-soft:rgba(10,132,255,.18);
     /* Apple's system palette (dark variants). These stay defined so every existing rule keeps working —
        but on this tab colour is reserved for MEANING (status, destructive), never for decoration. */
-    --green:#30D158; --green-t:rgba(48,209,88,.16); --green-b:rgba(48,209,88,.3); --green-f:#30D158;
-    --amber:#FF9F0A; --amber-t:rgba(255,159,10,.16); --amber-b:rgba(255,159,10,.3); --amber-f:#FF9F0A;
-    --red:#FF453A; --red-t:rgba(255,69,58,.16); --red-b:rgba(255,69,58,.3); --red-f:#FF453A;
-    --blue:#0A84FF; --blue-t:rgba(10,132,255,.16); --blue-b:rgba(10,132,255,.3); --blue-f:#409CFF;
-    --purple:#BF5AF2; --purple-t:rgba(191,90,242,.16); --purple-b:rgba(191,90,242,.3); --purple-f:#BF5AF2;
-    --orange:#FF9F0A; --orange-t:rgba(255,159,10,.16); --orange-b:rgba(255,159,10,.3); --orange-f:#FF9F0A;
-    --gray:#8E8E93; --gray-t:rgba(142,142,147,.16); --gray-b:rgba(142,142,147,.28); --gray-f:#AEAEB2;
+    --green:#30D158; --green-t:rgba(48,209,88,.12); --green-b:rgba(48,209,88,.3); --green-f:#30D158;
+    --amber:#FF9F0A; --amber-t:rgba(255,159,10,.12); --amber-b:rgba(255,159,10,.3); --amber-f:#FF9F0A;
+    --red:#FF453A; --red-t:rgba(255,69,58,.12); --red-b:rgba(255,69,58,.3); --red-f:#FF453A;
+    --blue:#0A84FF; --blue-t:rgba(10,132,255,.12); --blue-b:rgba(10,132,255,.3); --blue-f:#409CFF;
+    --purple:#BF5AF2; --purple-t:rgba(191,90,242,.12); --purple-b:rgba(191,90,242,.3); --purple-f:#BF5AF2;
+    --orange:#FF9F0A; --orange-t:rgba(255,159,10,.12); --orange-b:rgba(255,159,10,.3); --orange-f:#FF9F0A;
+    --gray:#8E8E93; --gray-t:rgba(142,142,147,.12); --gray-b:rgba(142,142,147,.28); --gray-f:#AEAEB2;
     /* role / division accents — Apple system hues */
     --exec:#FF453A; --exec-t:rgba(255,69,58,.16); --exec-b:rgba(255,69,58,.3); --exec-f:#FF6961;
     --admin:#0A84FF; --admin-t:rgba(10,132,255,.16); --admin-b:rgba(10,132,255,.3); --admin-f:#409CFF;
@@ -57,7 +57,7 @@
     --training:#5E5CE6; --training-t:rgba(94,92,230,.16); --training-b:rgba(94,92,230,.3); --training-f:#7D7AFF;
     --cadet:#FF9F0A; --cadet-t:rgba(255,159,10,.16); --cadet-b:rgba(255,159,10,.3); --cadet-f:#FF9F0A;
     --aux:#8E8E93; --aux-t:rgba(142,142,147,.16); --aux-b:rgba(142,142,147,.28); --aux-f:#AEAEB2;
-    --mono:'Roboto Mono',monospace;
+    --mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;height:100%;}
@@ -515,14 +515,21 @@
   .mrow.exp{transform:none;background:var(--e2);box-shadow:0 1px 0 var(--hair);}
   /* ONE grid template shared by the header and every row — that shared definition is what makes the columns
      actually line up, rather than each row guessing at widths. */
-  .thead,.mhead{display:grid;grid-template-columns:22px 14px 26px minmax(140px,1.6fr) minmax(110px,1fr) 72px 72px 104px;
+  .thead,.mhead{display:grid;grid-template-columns:20px 14px 24px minmax(140px,1.6fr) minmax(110px,1fr) 64px 68px 96px;
                 align-items:center;gap:var(--s3);padding:0 var(--s4);}
-  .thead{height:30px;font-size:var(--f1);color:var(--txt-2);box-shadow:0 1px 0 var(--hair);}
+  .thead{height:28px;font-size:var(--f1);color:var(--txt-2);box-shadow:0 1px 0 var(--hair);}
   .thead .num{text-align:right;} .thead .st{text-align:right;}
-  .mhead{cursor:pointer;min-height:34px;}
+  /* Sortable header — the reference asks for a "sortable header … it scans like Mail". Clicking a column drives
+     the SAME sort the pop-up does, so the two can never disagree. */
+  .sortcol{cursor:pointer;user-select:none;transition:color var(--t) var(--ease);}
+  .sortcol:hover{color:var(--txt);}
+  .sortcol.on{color:var(--txt);}
+  .sortcol.on::after{content:"";display:inline-block;margin-left:5px;width:0;height:0;
+                     border-left:3px solid transparent;border-right:3px solid transparent;border-bottom:4px solid currentColor;vertical-align:middle;}
+  .mhead{cursor:pointer;min-height:32px;}
   .c-name{font-size:var(--f2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .c-rank,.c-slot{font-size:var(--f2);color:var(--txt-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .c-hrs{font-size:var(--f2);color:var(--txt-2);text-align:right;font-variant-numeric:tabular-nums;}
+  .c-hrs{font-size:var(--f2);color:var(--txt-2);text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
   .c-st{display:flex;justify-content:flex-end;min-width:0;}
   .chev{color:var(--txt-3);width:15px;height:15px;flex:0 0 auto;transition:transform .2s var(--ease),color var(--t);}
   .mrow.exp .chev{transform:rotate(90deg);color:var(--accent-2);}
@@ -536,7 +543,7 @@
      was rounding the artwork a second time. */
   /* 24px, to FIT the 26px grid column. At 32px the badge overflowed its cell and crowded both the chevron and
      the name, and with only 34px of row height the badges in consecutive rows nearly touched vertically. */
-  .mav{width:24px;height:24px;border-radius:6px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  .mav{width:22px;height:22px;border-radius:5px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
        font-size:9px;font-weight:600;letter-spacing:0;
        background:color-mix(in srgb,var(--rank,#8E8E93) 22%,var(--e3));color:var(--txt);border:none;overflow:hidden;}
   .mav.mav-has{background:var(--e3);padding:2px;}
@@ -546,7 +553,9 @@
   .mname>span{display:block;font-size:var(--f1);color:var(--txt-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
   /* Status pills — flat tint + coloured label, no ring, no glow. Colour here is information, so it stays. */
-  .pill{display:inline-flex;align-items:center;gap:5px;padding:2px var(--s2);border-radius:var(--r-pill);font-size:var(--f1);font-weight:500;
+  /* 12% tint, 17px tall, 11px medium — the reference's "Mail and Reminders" treatment: colour carries the
+     signal and the row stays quiet. Dialled back from a full-height chip that competed with the name. */
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:0 7px;height:17px;border-radius:var(--r-pill);font-size:var(--f1);font-weight:500;
         border:none;white-space:nowrap;box-shadow:none;}
   .pdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;}
   /* Colour marks the EXCEPTION, not the norm. Inactive is the resting state on a real roster — 65 of 82 members
@@ -586,7 +595,7 @@
   .kvc .k{display:flex;align-items:center;gap:6px;font-size:var(--f1);color:var(--txt-2);text-transform:none;letter-spacing:0;margin-bottom:3px;font-weight:400;}
   .kvc .k svg{width:13px;height:13px;flex:0 0 auto;}
   .kvc .v{font-size:13px;font-weight:600;}
-  .kvc.idcell .v{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);font-family:inherit;font-variant-numeric:tabular-nums;font-size:var(--f2);font-weight:400;word-break:break-all;}
+  .kvc.idcell .v{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:var(--f2);font-weight:400;word-break:break-all;}
   .copybtn{flex:0 0 auto;background:var(--e2);border:none;color:var(--txt-3);border-radius:8px;width:26px;height:26px;
            display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--hi);transition:all var(--t);}
   .copybtn svg{width:14px;height:14px;} .copybtn:hover{color:var(--accent-2);background:var(--e3);transform:translateY(-1px);}
@@ -634,7 +643,7 @@
   .chk-wk{font-size:var(--f1);font-weight:400;color:var(--txt-2);text-transform:none;letter-spacing:0;}
   .chk-top{display:flex;align-items:center;justify-content:space-between;width:100%;gap:6px;}
   .chk-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
-  .chk-big{font-size:var(--f4);font-weight:600;font-family:inherit;font-variant-numeric:tabular-nums;}
+  .chk-big{font-size:var(--f4);font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums;}
   .chk-big em{font-style:normal;font-size:10px;font-weight:700;color:var(--txt-3);margin-left:3px;}
   .chk-st{font-size:10px;color:var(--txt-2);font-weight:650;}
 
@@ -650,7 +659,7 @@
   .callchip{background:var(--e2);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);box-shadow:var(--hi);flex:0 0 auto;}
   .pc-stat{flex:0 0 auto;align-self:stretch;background:var(--e2);border-radius:14px;padding:10px 14px;box-shadow:var(--hi),var(--sh-1);display:flex;flex-direction:column;gap:3px;justify-content:center;min-width:130px;}
   .ps-k{font-size:var(--f1);font-weight:400;color:var(--txt-2);text-transform:none;letter-spacing:0;}
-  .ps-v{font-size:var(--f5);font-weight:600;color:var(--txt);font-family:inherit;font-variant-numeric:tabular-nums;}
+  .ps-v{font-size:var(--f5);font-weight:600;color:var(--txt);font-family:var(--mono);font-variant-numeric:tabular-nums;}
   .ps-v em{font-style:normal;font-size:11px;font-weight:700;color:var(--txt-2);}
   .pc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--hair);box-shadow:0 -1px 0 var(--hair);}
   .pc-statusrow{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;}
@@ -801,7 +810,7 @@
 
   <div class="pane active" id="pane-members">
     <div class="bulkbar" id="bulkbar" hidden></div>
-    <div class="thead" aria-hidden="true"><span></span><span></span><span></span><span>Name</span><span>Rank</span><span>Slot</span><span class="num">Hours</span><span class="st">Status</span></div>
+    <div class="thead"><span></span><span></span><span></span><span class="sortcol" data-sort="name">Name</span><span>Rank</span><span class="sortcol" data-sort="roster">Slot</span><span class="num sortcol" data-sort="hours">Hours</span><span class="st sortcol" data-sort="status">Status</span></div>
     <div class="mlist" id="mlist"><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div></div>
   </div>
 
@@ -1829,6 +1838,18 @@
   $('colBody').addEventListener('click',function(e){ var seg=e.target.closest('.cseg'); if(!seg||seg.classList.contains('on')) return; var tog=seg.closest('.coltog'); var header=tog.getAttribute('data-header'); var k=seg.getAttribute('data-k'); tog.querySelectorAll('.cseg').forEach(function(s){ s.classList.remove('on'); }); seg.classList.add('on'); api(function(d){ renderColumns(d); toast('“'+header+'” → '+(k==='MEMBER'?'Member':'Slot'),'ok'); }, function(ev){ onError(ev); loadColumns(); }, "cpSetColumnClass", header, k); });
   $('refreshBtn').addEventListener('click',refresh);
   $('sideToggle').addEventListener('click',function(){ document.querySelector('.app').classList.toggle('side-off'); });
+  /* Column headers drive the existing sort select rather than a parallel sort of their own — one source of truth,
+     so the header arrow and the pop-up always agree. */
+  document.querySelector('.thead').addEventListener('click',function(e){
+    var h=e.target.closest('.sortcol'); if(!h) return;
+    $('sortBy').value=h.dataset.sort; markSortCol(); renderMembers();
+  });
+  function markSortCol(){
+    var v=$('sortBy').value;
+    document.querySelectorAll('.thead .sortcol').forEach(function(c){ c.classList.toggle('on', c.dataset.sort===v); });
+  }
+  $('sortBy').addEventListener('change',markSortCol);
+  markSortCol();
   $('tbAdd').addEventListener('click',function(){ var t=document.querySelector('.tab[data-tab="add"]'); if(t) t.click(); });
   var searchT; $('search').addEventListener('input',function(){ $('searchWrap').classList.toggle('has-text',this.value.length>0); clearTimeout(searchT); searchT=setTimeout(renderMembers,200); });
   $('searchClear').addEventListener('click',function(){ var s=$('search'); s.value=''; $('searchWrap').classList.remove('has-text'); s.focus(); renderMembers(); });

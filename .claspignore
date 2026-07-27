@@ -16,3 +16,5 @@ docs/**
 tools/**
 # Claude Code project config + skills (settings.local.json is JSON, so be explicit)
 .claude/**
+# Design reference mockups — never part of the Apps Script project
+*.dc.html
