@@ -1166,9 +1166,17 @@ function buildActivityPanel_() {
   const form = ss.getSheetByName(CONFIG.sheets.patrol);
   if (!form) return null;
 
-  // --- Patrol Log status index: "id|startMs|endMs" → queue of {status, notes} (duplicate identical logs each consume one) ---
+  // --- Patrol Log index. Each log row is one shared entry reachable by up to three keys, consumed once:
+  //   1. "S:id|submissionMs" — the marker's submission stamp (hours|id|submissionMs). PRIMARY: it survives
+  //      credits, reversals AND hand-corrected dates/times, so an admin fixing a member's typo'd date never
+  //      orphans the row (the old exact-times-only key broke on every correction — corrected rows read
+  //      "Not on log" while sitting right there on the log).
+  //   2. "id|startMs|endMs" — exact times, for rows without a stamp.
+  //   3. "N:name|startMs|endMs" — the NAME breadcrumb, for blank-ID landings (Flagged "unknown member").
   const log = CONFIG.sheets.patrolLog ? ss.getSheetByName(CONFIG.sheets.patrolLog) : null;
   const byKey = {};
+  const put = (k, entry) => { (byKey[k] = byKey[k] || []).push(entry); };
+  const take = (k) => { const q = byKey[k]; while (q && q.length) { const e2 = q.shift(); if (!e2.used) { e2.used = true; return e2; } } return null; };
   if (log) {
     try {
       const PC = patrolLogCols_(log);
@@ -1179,18 +1187,26 @@ function buildActivityPanel_() {
         const ld = log.getRange(startL, 1, nL, PC.width).getDisplayValues();
         for (let i = 0; i < nL; i++) {
           const lid = String(ld[i][PC.discord - 1] || '').trim();
-          // A row the sync couldn't resolve lands with a BLANK ID + NAME breadcrumb and is Flagged "unknown
-          // member" — key those by name ('N:' prefix; real IDs are digits, so the spaces never collide) so the
-          // panel still shows their Flagged status + reason instead of "Not on log".
           const lnm = PC.name ? String(ld[i][PC.name - 1] || '').trim() : '';
           const lsd = combineDateTime_(lv[i][PC.startDate - 1], lv[i][PC.startTime - 1]);
           const led = combineDateTime_(lv[i][PC.endDate - 1], lv[i][PC.endTime - 1]);
-          if ((!lid && !lnm) || !lsd || !led) continue;
-          const k = (lid || ('N:' + norm_(lnm))) + '|' + lsd.getTime() + '|' + led.getTime();
-          (byKey[k] = byKey[k] || []).push({
+          const tot = PC.total ? lv[i][PC.total - 1] : null; // the TOTAL formula's raw number (format adds " hrs")
+          const entry = {
+            used: false,
             status: String(ld[i][PC.status - 1] || '').trim() || CONFIG.patrol.pendingStatus,
             notes: PC.notes ? String(ld[i][PC.notes - 1] || '').trim() : '',
-          });
+            sd: lsd, ed: led,
+            hours: (typeof tot === 'number' && isFinite(tot)) ? Math.round(tot * 100) / 100
+              : ((lsd && led) ? Math.round(((led.getTime() - lsd.getTime()) / 3600000) * 100) / 100 : null),
+          };
+          const mparts = (PC.mark ? String(ld[i][PC.mark - 1] == null ? '' : ld[i][PC.mark - 1]).trim() : '').split('|');
+          const subMs = (mparts.length > 2 && Number(mparts[2]) > 0) ? Number(mparts[2]) : 0;
+          const kid = lid || String(mparts[1] || '').trim();
+          if (subMs && kid) put('S:' + kid + '|' + subMs, entry);
+          if (lsd && led) {
+            const tk = '|' + lsd.getTime() + '|' + led.getTime();
+            if (lid) put(lid + tk, entry); else if (lnm) put('N:' + norm_(lnm) + tk, entry);
+          }
         }
       }
     } catch (e) { log_('buildActivityPanel_.log', e); }
@@ -1257,14 +1273,23 @@ function buildActivityPanel_() {
       const marker = String(cell(markCol) == null ? '' : cell(markCol)).trim();
       let notes = String(F.narrative ? cell(F.narrative) : '').trim();
       let status;
-      let q = null;
-      if (sd && ed) {
+      let hit = null;
+      const subMs = (ts instanceof Date) ? ts.getTime() : 0;
+      if (id && subMs) hit = take('S:' + id + '|' + subMs); // submission-stamp join — immune to admin-corrected dates
+      if (!hit && sd && ed) {
         const tk = '|' + sd.getTime() + '|' + ed.getTime();
-        if (id) q = byKey[id + tk];
-        if ((!q || !q.length) && nm) q = byKey['N:' + norm_(nm) + tk]; // blank/unresolvable-ID rows match the log's NAME breadcrumb
+        if (id) hit = take(id + tk);
+        if (!hit && nm) hit = take('N:' + norm_(nm) + tk); // blank/unresolvable-ID rows match the log's NAME breadcrumb
       }
-      const hit = (q && q.length) ? q.shift() : null;
-      if (hit) { status = hit.status; if (hit.notes) notes = hit.notes; }
+      if (hit) {
+        status = hit.status; if (hit.notes) notes = hit.notes;
+        // The log is the source of truth once a row lands there: show ITS (possibly admin-corrected) times and
+        // hours, not the raw submission's — a fixed typo (wrong month, AM instead of PM) reads correctly here
+        // instead of surfacing the member's 145-hour "patrol" again.
+        if (hit.sd) sd = hit.sd;
+        if (hit.ed) ed = hit.ed;
+        if (hit.hours != null) hours = hit.hours;
+      }
       else if (String(bgs[i][0] || '').toLowerCase() === errBg) status = 'Error — fix the red form row';
       else if (marker) status = log ? 'Not on log' : CONFIG.patrol.processedStatus; // transferred but since removed from the log / direct-credited
       else status = CONFIG.patrol.pendingStatus; // not yet synced — the next patrol sync picks it up

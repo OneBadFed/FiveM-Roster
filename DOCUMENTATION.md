@@ -238,9 +238,12 @@ OFF; auto-created like the coverage board) showing **one row per patrol form sub
 UNIQUE ID · RANK · CALLSIGN · START · END · HOURS · STATUS · NOTES — under a **native filter row**, so admins
 search and sort by any column (member, dates, patrol length, status…). Identity resolves exactly like the sync
 (valid ID → the roster's current rank/callsign; invalid → the corroborated name+callsign failsafe); STATUS and
-NOTES join **live from the Patrol Log** by Unique ID + exact start/end datetimes (the sync backfill's own match
-key, duplicate identical logs each consume one; blank-ID log rows — the sync's unresolvable-member landings —
-match by their NAME breadcrumb + times, so a Flagged "unknown member" row still shows its status and reason).
+NOTES join **live from the Patrol Log**, primary key = Unique ID + the marker's **submission stamp**
+(`hours|id|submissionMs` — survives credits, reversals, and admin-corrected dates, so fixing a member's typo'd
+date never orphans the row), falling back to ID + exact start/end datetimes for unstamped rows, then to the
+NAME breadcrumb + times for blank-ID landings (a Flagged "unknown member" row still shows its status and
+reason); each log row is consumed once. **On a join hit the panel shows the log's own start/end/hours** — the
+log is the source of truth after transfer, so an admin's correction reads back, not the typo'd submission.
 Unmatched rows show Pending (not yet synced), "Not on log"
 (transferred but since removed), or an error hint for red form rows; DURATION-mode forms list the submitted hours
 with marker-derived status (no start/end to join on). Default order: newest submitted first — the filter re-sorts
