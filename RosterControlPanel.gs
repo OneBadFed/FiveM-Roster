@@ -480,6 +480,18 @@ function cpSnapshot_() {
   CONFIG.tiers.forEach((t) => { tierByNorm[norm_(t.name)] = t.name; tierCounts[t.name] = 0; });
   const PENDING = CONFIG.pendingStatus;   // tracker "new" state
   const APPROVED = CONFIG.approvedStatus; // tracker "active leave" state
+  // Hours REQUIREMENT per member: the MinHours of the top tier on whichever ladder applies to their rank, so an
+  // [STATUS_OVERRIDES] rank (Auxiliary Trooper: Active:5) reports 5 while everyone else reports the global 10.
+  // Without it the panel can only show a bare hours figure, with nothing to say whether it is good or bad.
+  const SE = statusEngine_();
+  const reqCache = {};
+  const reqFor = (rank) => {
+    if (reqCache[rank] == null) {
+      const ladder = statusLadderFor_(rank, SE); // sorted high→low; [0] is the top tier
+      reqCache[rank] = (ladder && ladder.length) ? (Number(ladder[0].min) || 0) : 0;
+    }
+    return reqCache[rank];
+  };
 
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
   if (roster) {
@@ -505,6 +517,7 @@ function cpSnapshot_() {
           lastPromo: String(block[i][RC.promo - 1]).trim(),
           status,
           hours: String(block[i][RC.hours - 1]).trim(),
+          req: reqFor(rank),                        // top-tier MinHours for THIS rank's ladder (0 = no requirement)
           color: String(rankBg[i][0] || '').trim(), // exact rank-cell color from the sheet
           filled,
         });

@@ -121,9 +121,84 @@ function buildConfigPayload(X, lists) {
   };
 }
 
+/* ---- 3b · a roster for the Control Panel to draw ----
+ * The settings payload comes from the real schema, but there is no equivalent source for MEMBERS — they live in
+ * a spreadsheet. Without this the Control Panel preview shows an empty list, and every panel that loads on demand
+ * (the profile chart, the activity checks, leave history) sits on "Loading…" forever, which reads as a bug in the
+ * panel rather than a gap in the harness. Shaped exactly like cpSnapshot_ / cpGetProfile. */
+const RANKS = ['Chief of Police', 'Captain', 'Lieutenant', 'Sergeant', 'Corporal', 'Master Officer',
+  'Police Officer II', 'Police Officer I', 'Probationary Officer', 'Cadet'];
+const FIRST = ['Liam', 'Aisha', 'Marcus', 'Elena', 'Devon', 'Priya', 'Noah', 'Camille', 'Theo', 'Rosa',
+  'Silas', 'Nadia', 'Owen', 'Bea', 'Hugo', 'Imani', 'Jonas', 'Kira', 'Milo', 'Sana'];
+const LAST = ['Kowalski', 'Nguyen', 'Okonkwo', 'Vasquez', 'Reed', 'Malhotra', 'Bergstrom', 'Duval', 'Petrakis',
+  'Alvarez', 'Whitfield', 'Haddad', 'Lindqvist', 'Moreau', 'Castellanos', 'Boateng', 'Fenwick', 'Yamamoto'];
+const STATUSES = ['Active', 'Semi-Active', 'Inactive', 'LOA', 'ROA', 'Reserve'];
+
+function buildRoster() {
+  const members = [];
+  const stats = { total: 0, active: 0, semi: 0, inactive: 0, onLeave: 0, openSlots: 0, pending: 2, expiringSoon: 1 };
+  for (let i = 0; i < 26; i++) {
+    const rank = RANKS[Math.min(RANKS.length - 1, Math.floor(i / 3))];
+    const filled = i % 9 !== 7; // a scattering of open slots, as a real roster has
+    const status = STATUSES[i % STATUSES.length];
+    const hours = filled ? ((i * 3.7) % 23).toFixed(1) : '';
+    const req = rank === 'Cadet' ? 5 : 10; // mirrors a [STATUS_OVERRIDES] rank ladder vs. the global tiers
+    members.push({
+      row: 6 + i, rank,
+      name: filled ? `${FIRST[i % FIRST.length]} ${LAST[i % LAST.length]}` : '',
+      callsign: `S-${String(i + 4).padStart(2, '0')}`,
+      discord: filled ? String(770000000000000000 + i * 7) : '',
+      joinDate: `${(i % 27) + 1} Apr 202${i % 5}`, lastPromo: `${(i % 26) + 2} Jan 2026`,
+      status: filled ? status : '', hours, req, color: '', filled,
+    });
+    if (!filled) { stats.openSlots++; continue; }
+    stats.total++;
+    if (status === 'Active') stats.active++;
+    else if (status === 'Semi-Active') stats.semi++;
+    else if (status === 'Inactive') stats.inactive++;
+    else stats.onLeave++;
+  }
+  return { members, stats, updatedAt: '9:23 AM' };
+}
+
+function bootstrapPayload(X) {
+  const snap = buildRoster();
+  return {
+    version: 'preview', systemName: 'Roster System',
+    webhooks: { AUDIT: true, LOA: true, PATROL: false, SIGNUP: false, ERRORS: false },
+    statuses: STATUSES.slice(), statusColors: {}, protectedStatuses: ['Reserve'], leaveTypes: ['LOA', 'ROA'],
+    addCols: { ooc: true, shift: false },
+    members: snap.members, stats: snap.stats, updatedAt: snap.updatedAt,
+    rankIcons: {}, adminRoster: { linked: true, access: true, url: '#' },
+    health: { ok: false, problems: [{ sev: 'WARN', msg: 'preview' }, { sev: 'WARN', msg: 'preview' }] },
+    engine: X.ENGINE_VERSION,
+  };
+}
+
 /* ---- 4 · the google.script.run stub the page runs against ---- */
-function runtimeStub(configPayload) {
+function runtimeStub(configPayload, boot) {
+  const snap = { members: boot.members, stats: boot.stats, updatedAt: boot.updatedAt };
   const RESPONSES = {
+    cpBootstrap: boot,
+    cpRefresh: snap,
+    // Four fortnightly checks + two closed leaves — enough for the chart, the check cells and the history list.
+    cpGetProfile: {
+      leaves: [
+        { type: 'LOA', start: '8 Jun 2026', end: '14 Jun 2026', status: 'Expired' },
+        { type: 'ROA', start: '2 Feb 2026', end: '9 Feb 2026', status: 'Expired' },
+      ],
+      history: [
+        { week: '2026-06-21', hours: 21.5, status: 'Active' },
+        { week: '2026-07-05', hours: 23.0, status: 'Active' },
+        { week: '2026-07-19', hours: 24.2, status: 'Active' },
+        { week: '2026-07-25', hours: 16.5, status: 'Active' },
+      ],
+    },
+    cpSignupList: {
+      linked: true, ready: true, rankIcons: {},
+      signups: [1, 2, 3, 4].map((n) => ({ row: 100 + n, name: `${FIRST[n + 9]} ${LAST[n + 5]}`, status: 'Pending', discord: String(880000000000000000 + n) })),
+      slots: [{ row: 13, rank: 'Cadet', unit: 'S-11' }, { row: 22, rank: 'Police Officer I', unit: 'S-20' }],
+    },
     cpGetConfig: configPayload,
     cpApplyConfig: { ok: true, written: { kv: 1, tables: 0 }, state: configPayload },
     cpRankIcons: {
@@ -178,7 +253,7 @@ function runtimeStub(configPayload) {
 }
 
 /* ---- 5 · turn a GAS template into a plain page ---- */
-function renderPanel(file, configPayload, bootJson) {
+function renderPanel(file, configPayload, bootJson, boot) {
   let html = fs.readFileSync(path.join(ROOT, file), 'utf8');
   const scriptlets = (html.match(/<\?!?=?[\s\S]*?\?>/g) || []).length;
   // GAS scriptlets (<?!= bootJson ?>) are resolved server-side by HtmlService; substitute their values here.
@@ -186,7 +261,7 @@ function renderPanel(file, configPayload, bootJson) {
     .replace(/<\?!?=\s*initialTab\s*\?>/g, '')
     .replace(/<\?!?=[\s\S]*?\?>/g, 'null'); // any other template var -> null, so the page still parses
   // The stub must exist BEFORE the panel's own script runs.
-  const stub = runtimeStub(configPayload);
+  const stub = runtimeStub(configPayload, boot);
   html = html.includes('</head>') ? html.replace('</head>', stub + '</head>') : (stub + html);
   return { html, scriptlets };
 }
@@ -216,6 +291,7 @@ const which = (process.argv[2] || 'both').toLowerCase();
 const X = loadSchema();
 const lists = cpSettingsLists();
 const built = buildConfigPayload(X, lists);
+const boot = bootstrapPayload(X);
 
 if (!fs.existsSync(OUT_DIR)) fs.mkdirSync(OUT_DIR, { recursive: true });
 
@@ -225,7 +301,7 @@ if (which === 'control' || which === 'both') targets.push(['ControlPanel.html', 
 if (!targets.length) { console.error('usage: node tools/preview.js [settings|control|both]'); process.exit(2); }
 
 targets.forEach(([src, out]) => {
-  const { html, scriptlets } = renderPanel(src, built.payload, 'null');
+  const { html, scriptlets } = renderPanel(src, built.payload, 'null', boot);
   fs.writeFileSync(path.join(OUT_DIR, out), html);
   console.log(`  ${src.padEnd(20)} -> tools/.preview/${out}   (${(html.length / 1024).toFixed(0)} KB, ${scriptlets} GAS scriptlet(s) resolved)`);
 });

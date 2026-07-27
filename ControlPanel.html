@@ -18,7 +18,7 @@
        sits near #1e1e1e, the sidebar reads lighter because it is vibrant, and grouped boxes lift from there.
        (Pure black is iOS on OLED — it was the main reason this looked more iPhone than Mac.) Neutral greys with
        no hue at all, which is most of why Apple's dark mode looks expensive. */
-    --bg:#1e1e1e; --sidebar:#282828;
+    --bg:#1e1e1e; --sidebar:rgba(48,48,52,.78);
     --e1:#2c2c2e; --e2:#3a3a3c; --e3:#48484a; --e4:#545456;
     --surface:#2c2c2e; --surface-2:#3a3a3c; --surface-3:#48484a;
     --card:#2c2c2e; --card-2:#3a3a3c;
@@ -81,48 +81,58 @@
   .app{display:grid;grid-template-columns:208px 1fr;height:100vh;}
   /* The sidebar sits LIGHTER than the content — that tonal split is what vibrancy actually looks like on a Mac,
      and it does the separating that a border would otherwise have to do. */
-  .side{display:flex;flex-direction:column;background:var(--sidebar);box-shadow:1px 0 0 var(--hair);}
-  .brand{display:flex;align-items:center;gap:var(--s2);padding:var(--s4) var(--s3) var(--s3);}
-  .badge{width:26px;height:26px;border-radius:var(--r-sm);background:var(--e2);
-        color:var(--txt);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
-  .badge svg{width:16px;height:16px;}
+  .side{display:flex;flex-direction:column;background:var(--sidebar);
+        -webkit-backdrop-filter:blur(42px) saturate(180%);backdrop-filter:blur(42px) saturate(180%);
+        border-right:1px solid rgba(0,0,0,.42);}
+  .brand{display:flex;align-items:center;gap:9px;padding:14px 12px 12px 14px;}
+  .badge{width:28px;height:28px;border-radius:7px;background:linear-gradient(180deg,#3a3a3e,#2c2c30);
+        box-shadow:0 0 0 .5px rgba(255,255,255,.14) inset;
+        color:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .badge svg{width:15px;height:15px;stroke-width:1.6;}
   .ttl{flex:1;min-width:0;}
   .ttl .r1{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;}
-  .ttl b{font-size:var(--f2);font-weight:600;letter-spacing:-.01em;max-width:132px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-  .ver{font-size:var(--f1);font-weight:500;color:var(--txt-3);background:none;padding:0;border-radius:0;letter-spacing:0;}
-  .ttl .sub{font-size:var(--f1);color:var(--txt-3);text-transform:none;letter-spacing:0;margin-top:1px;font-weight:400;}
-  .icon-btn{width:28px;height:28px;border-radius:var(--r-sm);background:none;border:none;color:var(--txt-2);
+  .ttl b{font-size:13px;font-weight:600;letter-spacing:0;color:rgba(255,255,255,.88);max-width:132px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .ver{font-family:var(--mono);font-size:10.5px;font-weight:400;color:rgba(255,255,255,.32);background:none;padding:0;border-radius:0;letter-spacing:0;}
+  .ttl .sub{font-size:11px;line-height:1.3;color:rgba(255,255,255,.42);text-transform:none;letter-spacing:0;font-weight:400;}
+  .icon-btn{width:26px;height:24px;border-radius:5px;background:none;border:none;color:rgba(255,255,255,.6);
             display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;
             transition:background var(--t) var(--ease),color var(--t) var(--ease);}
   .icon-btn:hover{background:var(--e2);color:var(--txt);}
   .icon-btn:active{background:var(--e3);}
-  .icon-btn svg{width:17px;height:17px;}
+  .icon-btn svg{width:15px;height:15px;stroke-width:1.7;}
   .spin{animation:sp .8s linear infinite;}
   @keyframes sp{to{transform:rotate(360deg);}}
 
-  /* sidebar nav — the old .tab class, reborn as grouped pills */
-  /* Sidebar nav — macOS System Settings: the selected row is a SOLID accent rectangle with white content.
-     One accent for the whole list; identity comes from the icon and the label, never from a per-tab hue. */
-  .tabs{flex:1;overflow-y:auto;padding:0 var(--s2) var(--s2);display:flex;flex-direction:column;}
-  .ngroup{font-size:var(--f1);font-weight:600;color:var(--txt-3);text-transform:none;letter-spacing:0;padding:var(--s3) var(--s2) 2px;}
-  .tab{display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;background:none;border:none;color:var(--txt);
-       border-radius:6px;padding:3px var(--s2);margin-bottom:1px;min-height:26px;font-size:var(--f2);font-weight:400;
+  /* Sidebar nav — macOS System Settings at its real size: 28px rows, a 15px icon at 1.7 stroke, a 13px label.
+     The selected row is a GRADIENT with an inner top highlight and a soft drop shadow; a flat blue rectangle is
+     the Windows reading of this control. One accent for the whole list — never a per-tab hue. */
+  .tabs{flex:1;overflow-y:auto;padding:0 10px 10px;display:flex;flex-direction:column;gap:1px;}
+  .ngroup{font-size:11px;font-weight:600;color:rgba(255,255,255,.38);text-transform:none;letter-spacing:0;padding:16px 8px 6px;}
+  .ngroup:first-child{padding-top:8px;}
+  .tab{display:flex;align-items:center;gap:8px;width:100%;text-align:left;background:none;border:none;color:rgba(255,255,255,.84);
+       border-radius:6px;padding:0 8px;margin-bottom:0;height:28px;min-height:28px;font-size:13px;font-weight:400;
        cursor:pointer;position:relative;white-space:nowrap;transition:background var(--t) var(--ease),color var(--t) var(--ease);}
   .tab:hover{background:rgba(255,255,255,.06);} /* a translucent lift reads correctly on the vibrant sidebar */
   .tab:active{background:rgba(255,255,255,.1);}
-  .tab.active{background:var(--accent);color:#fff;font-weight:500;}
-  .tab .nico{width:18px;height:18px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:var(--txt-2);
+  .tab.active{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;font-weight:500;
+       box-shadow:0 .5px 0 rgba(255,255,255,.22) inset,0 1px 2px rgba(0,0,0,.28);}
+  .tab .nico{width:15px;height:15px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:rgba(255,255,255,.52);
        background:none;border-radius:0;transition:color var(--t) var(--ease);}
+  /* A right-aligned count is how a Mac sidebar reports "there is something waiting in here". */
+  .tab .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;color:rgba(255,255,255,.4);flex:0 0 auto;}
+  .tab.active .cnt{color:rgba(255,255,255,.75);}
+  .tab .cnt:empty{display:none;}
   .tab.active .nico{color:#fff;}
-  .tab .nico svg{width:14px;height:14px;stroke-width:1.8;}
-  .sfoot{padding:var(--s3) var(--s4) var(--s4);display:flex;flex-direction:column;gap:var(--s2);box-shadow:0 -1px 0 var(--hair);}
-  .hpill2{display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);border:none;background:var(--e1);color:var(--txt-2);
-       border-radius:var(--r-pill);padding:5px var(--s3);font-size:var(--f1);font-weight:500;cursor:pointer;font-family:inherit;
-       transition:background var(--t) var(--ease);}
+  .tab .nico svg{width:15px;height:15px;stroke-width:1.7;}
+  .sfoot{padding:10px;display:flex;flex-direction:column;gap:0;box-shadow:none;}
+  .sfoot>div:last-child{padding:9px 8px 3px;}
+  .hpill2{display:flex;align-items:center;justify-content:flex-start;gap:7px;border:none;background:rgba(255,255,255,.05);color:var(--txt-2);
+       border-radius:6px;padding:0 8px;height:26px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;text-align:left;
+       box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;transition:background var(--t) var(--ease);}
   .hpill2:hover{background:var(--e2);}
   .hpill2[hidden]{display:none;}
   .hpill2.ok{color:var(--txt-2);background:var(--e1);} .hpill2.ok .pdot{background:var(--green);}
-  .hpill2.bad{color:var(--amber);background:var(--amber-t);} .hpill2.bad .pdot{background:var(--amber);}
+  .hpill2.bad{color:#ffb340;background:rgba(255,159,10,.13);box-shadow:0 0 0 .5px rgba(255,159,10,.25) inset;} .hpill2.bad .pdot{background:var(--amber);}
 
   /* content column */
   /* min-height:0 + a definite height let the flex child (.content) bound itself and scroll, instead of .main
@@ -130,25 +140,33 @@
   .main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;position:relative;background:var(--bg);}
   /* Toolbar — a macOS window names the view it is showing and rules a hairline under it. The content used to
      begin abruptly on a stat tile, which is the one structural thing no amount of restyling would have fixed. */
-  .toolbar{display:flex;align-items:center;gap:var(--s3);padding:0 var(--s4) 0 var(--s3);height:56px;flex:0 0 auto;
+  .toolbar{display:flex;align-items:center;gap:10px;padding:0 14px;height:52px;flex:0 0 auto;
+           background:rgba(38,38,40,.72);-webkit-backdrop-filter:blur(30px);backdrop-filter:blur(30px);
            box-shadow:0 1px 0 var(--hair);}
   .tb-tt{flex:1;min-width:0;}
-  .tb-title{margin:0;font-size:var(--f3);font-weight:600;letter-spacing:-.02em;line-height:1.2;
+  .tb-title{margin:0;font-size:13.5px;font-weight:600;letter-spacing:-.01em;line-height:1.25;color:rgba(255,255,255,.9);
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   /* The subtitle carries the numbers that used to sit in a separate line under the filters — a Mac window puts
      "what am I looking at" directly under its title. */
-  .tb-sub{font-size:var(--f1);color:var(--txt-2);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .toolbar .search-wrap{flex:0 1 260px;max-width:260px;}
-  .toolbar .search-wrap .field{min-height:28px;padding-top:var(--s1);padding-bottom:var(--s1);}
-  .btn-primary{flex:0 0 auto;background:var(--accent);border:none;color:#fff;border-radius:var(--r-sm);
-               padding:var(--s1) var(--s3);min-height:28px;font-size:var(--f2);font-weight:500;font-family:inherit;
+  .tb-sub{font-size:11px;color:rgba(255,255,255,.42);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .toolbar .search-wrap{flex:0 0 208px;max-width:208px;}
+  .toolbar .search-wrap .si{width:12px;height:12px;left:8px;}
+  .toolbar input.search{padding-left:26px;padding-right:24px;}
+  .toolbar .search-clear{width:18px;height:18px;right:3px;}
+  .toolbar .search-clear svg{width:12px;height:12px;}
+  .toolbar .search-wrap .field{height:24px;min-height:24px;padding-top:0;padding-bottom:0;font-size:12.5px;border-radius:6px;
+                               background:rgba(255,255,255,.06);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
+  .toolbar .search-wrap .field:focus{background:rgba(255,255,255,.09);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+  .btn-primary{flex:0 0 auto;background:linear-gradient(180deg,#0f8cff,#0a7ae8);border:none;color:#fff;border-radius:6px;
+               padding:0 9px;height:24px;min-height:24px;font-size:12.5px;font-weight:500;font-family:inherit;
+               box-shadow:0 .5px 0 rgba(255,255,255,.25) inset,0 1px 2px rgba(0,0,0,.3);
                cursor:pointer;transition:filter var(--t) var(--ease);}
   .btn-primary:hover{filter:brightness(1.1);}
   .btn-primary:active{filter:brightness(.9);}
   /* Filters get their own strip under the toolbar, with the result count inline on the right where a Mac would
      put a status readout — it was previously a lonely line of grey text above the list. */
-  .filterbar{display:flex;align-items:center;gap:var(--s3);padding:var(--s2) var(--s4);flex:0 0 auto;
-             box-shadow:0 1px 0 var(--hair);}
+  .filterbar{display:flex;align-items:center;gap:8px;padding:0 14px;height:38px;flex:0 0 auto;background:#232325;
+             box-shadow:0 1px 0 rgba(255,255,255,.07);}
   .filterbar .rescount{margin:0 0 0 auto;padding-left:var(--s3);white-space:nowrap;}
   /* Collapsing the sidebar gives the table the full window — the same affordance every Mac sidebar has. */
   .app.side-off{grid-template-columns:0 1fr;}
@@ -158,24 +176,26 @@
   .progress{height:2px;overflow:hidden;position:relative;background:transparent;flex:0 0 auto;}
   .progress.on::before{content:"";position:absolute;top:0;bottom:0;width:38%;background:var(--accent);border-radius:2px;animation:prog 1.05s var(--ease) infinite;}
   @keyframes prog{0%{left:-38%;}100%{left:100%;}}
-  .content{flex:1;overflow-y:auto;padding:var(--s5) var(--s6) var(--s7);}
+  .content{flex:1;overflow-y:auto;padding:14px 14px 28px;}
 
   /* KPI stats — six peers, so none of them shouts. Tinted cards, coloured dots and a pulsing "live" glow all
      competed for a glance none of them deserved; the number carries the weight now and colour is gone.
      Numerals are tabular so the row doesn't shuffle as counts change. */
   /* 24 above the search, 16 between search and filters: the stats ARE a separate block, so the step is
      deliberate — just gentler than the 32/16 jump, which read as an accident rather than a decision. */
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;margin-bottom:var(--s5);
-         background:var(--hair);border-radius:var(--r-lg);overflow:hidden;}
+  .stats{display:grid;grid-template-columns:repeat(6,1fr);gap:0;margin-bottom:0;
+         background:rgba(255,255,255,.045);border-radius:9px;overflow:hidden;
+         box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;}
   /* Label ABOVE the number, with a small status dot — the label says what you are reading before the figure
      lands, and the dot ties the tile to the same colour its pills use in the list. Tracked uppercase at 11px
      reads as a data label (Numbers, Xcode), not as shouting. */
-  .stat{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3) var(--s4) var(--s4);
-        background:var(--e1);transition:background var(--t) var(--ease);}
-  .stat .slab{display:flex;align-items:center;gap:var(--s2);font-size:var(--f1);color:var(--txt-2);text-transform:uppercase;
-              letter-spacing:.06em;white-space:nowrap;font-weight:500;}
-  .stat .sdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:var(--sc,var(--gray));}
-  .stat b{display:block;font-family:inherit;font-size:var(--f5);font-weight:600;line-height:1;letter-spacing:-.02em;
+  .stat{display:flex;flex-direction:column;gap:0;padding:11px 14px 12px;
+        background:none;box-shadow:-.5px 0 0 rgba(255,255,255,.08);transition:background var(--t) var(--ease);}
+  .stat:first-child{box-shadow:none;}
+  .stat .slab{display:flex;align-items:center;gap:5px;font-size:10px;color:rgba(255,255,255,.42);text-transform:uppercase;
+              letter-spacing:.07em;white-space:nowrap;font-weight:600;margin-bottom:5px;}
+  .stat .sdot{width:5px;height:5px;border-radius:50%;flex:0 0 auto;background:var(--sc,var(--gray));}
+  .stat b{display:block;font-family:var(--mono);font-size:23px;font-weight:600;line-height:1;letter-spacing:-.02em;
           font-variant-numeric:tabular-nums;}
   .s-active{--sc:var(--green);} .s-semi{--sc:var(--amber);} .s-inact{--sc:var(--gray);}
   .s-leave{--sc:var(--blue);} .s-open{--sc:var(--gray);} .s-exp{--sc:var(--amber);}
@@ -292,7 +312,7 @@
 
   /* Loading rows breathe instead of sweeping — a travelling highlight draws the eye to a placeholder, which is
      the one thing on screen with nothing to say. Same rhythm as the list it becomes. */
-  .skel-row{height:52px;border-radius:0;background:var(--e1);position:relative;overflow:hidden;box-shadow:0 1px 0 var(--hair);
+  .skel-row{height:32px;border-radius:0;background:var(--e1);position:relative;overflow:hidden;box-shadow:0 1px 0 var(--hair);
             animation:skelPulse 1.6s var(--ease) infinite;}
   .skel-row:first-child{border-radius:var(--r-lg) var(--r-lg) 0 0;}
   .skel-row:last-child{border-radius:0 0 var(--r-lg) var(--r-lg);box-shadow:none;}
@@ -305,34 +325,43 @@
      states the exclusivity that five separate pills only implied. Selection is grey, not blue: in macOS the
      accent is spent on the primary action, not on a filter. */
   .filters{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;margin-top:var(--s4);}
-  .fchips{display:inline-flex;gap:2px;flex-wrap:nowrap;flex:0 0 auto;background:var(--e1);border-radius:var(--r-sm);padding:2px;}
-  .fchip{background:none;border:none;color:var(--txt-2);border-radius:6px;padding:var(--s1) var(--s3);min-height:26px;
-         font-size:var(--f2);font-weight:400;cursor:pointer;white-space:nowrap;
+  .fchips{display:inline-flex;gap:0;flex-wrap:nowrap;flex:0 0 auto;height:22px;background:rgba(255,255,255,.06);
+          border-radius:6px;padding:0;overflow:hidden;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;}
+  .fchip{background:none;border:none;color:rgba(255,255,255,.72);border-radius:0;padding:0 11px;height:22px;min-height:22px;
+         font-size:12px;font-weight:400;cursor:pointer;white-space:nowrap;
          transition:background var(--t) var(--ease),color var(--t) var(--ease);}
-  .fchip:hover{color:var(--txt);background:var(--e2);}
-  .fchip.active{background:var(--e3);color:var(--txt);font-weight:500;}
+  .fchip:hover{color:#fff;background:rgba(255,255,255,.07);}
+  .fchip.active{background:rgba(255,255,255,.16);color:#fff;font-weight:500;
+                box-shadow:0 .5px 0 rgba(255,255,255,.14) inset,0 1px 2px rgba(0,0,0,.25);}
   /* A native select sizes itself to its WIDEST option, so the rank filter was stretched by "Probationary
      Officer" while displaying "All ranks" — ~250px of box around ten characters. Capped: the closed control now
      fits what it is showing, and the open list is unaffected. */
-  .fselect{background:var(--e1);border:none;color:var(--txt);border-radius:var(--r-sm);padding:var(--s1) var(--s3);min-height:30px;
-           max-width:168px;text-overflow:ellipsis;
-           font-size:var(--f2);font-family:inherit;cursor:pointer;outline:none;transition:background var(--t) var(--ease);}
-  .fselect:hover{background:var(--e2);}
-  .fselect:focus{background:var(--e2);box-shadow:0 0 0 3px var(--accent-soft);}
-  .rescount{font-size:var(--f1);color:var(--txt-3);margin-top:var(--s4);letter-spacing:0;}
+  .fselect{background-color:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.85);border-radius:6px;
+           padding:0 24px 0 9px;height:22px;min-height:22px;max-width:168px;text-overflow:ellipsis;
+           box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 1px 1.5px rgba(0,0,0,.2);
+           font-size:12px;font-family:inherit;cursor:pointer;outline:none;transition:background var(--t) var(--ease);}
+  select.fselect{background-position:right 8px center;}
+  .fselect:hover{background-color:rgba(255,255,255,.12);}
+  .fselect:focus{background-color:rgba(255,255,255,.12);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+  .rescount{font-size:11.5px;color:rgba(255,255,255,.4);margin-top:0;letter-spacing:0;}
   /* Apple's checkbox: a filled accent square with a white tick. Round, no glow, no inset ring. */
-  .mcheck{appearance:none;-webkit-appearance:none;width:16px;height:16px;border:none;border-radius:4px;background:var(--e3);cursor:pointer;flex:0 0 auto;
-          box-shadow:none;transition:background var(--t) var(--ease);}
-  .mcheck:hover{background:var(--e4);}
-  .mcheck:checked{background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E") center/11px no-repeat;box-shadow:none;}
+  .mcheck{appearance:none;-webkit-appearance:none;width:14px;height:14px;border:none;border-radius:3.5px;background:rgba(255,255,255,.09);cursor:pointer;flex:0 0 auto;
+          box-shadow:0 0 0 .5px rgba(255,255,255,.16) inset;transition:background var(--t) var(--ease);}
+  .mcheck:hover{background:rgba(255,255,255,.14);}
+  .mcheck:checked{background:linear-gradient(180deg,#0f8cff,#0a7ae8) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E") center/10px no-repeat;box-shadow:none;}
   .mcheck:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   /* The selection bar is the one place the accent fills a surface — it IS the active task. */
-  .bulkbar{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;background:var(--e1);
-           border:none;border-radius:var(--r-lg);padding:var(--s2) var(--s3);margin-top:var(--s3);box-shadow:none;}
+  .bulkbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.05);
+           border:none;border-radius:9px;padding:6px 10px;margin-top:14px;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;}
   .bulkbar[hidden]{display:none;}
-  .bulkbar .bsel{font-size:var(--f2);font-weight:500;color:var(--txt);white-space:nowrap;}
-  .bulkbar .bbtns{display:flex;gap:var(--s1);flex-wrap:wrap;flex:1;}
-  .bulkbar .bclear{background:none;border:none;color:var(--accent);border-radius:var(--r-sm);padding:var(--s1) var(--s2);font-size:var(--f2);font-weight:400;cursor:pointer;transition:color var(--t),background var(--t);}
+  .bulkbar .bsel{font-size:12.5px;font-weight:500;color:var(--txt);white-space:nowrap;}
+  .bulkbar .bbtns{display:flex;gap:6px;flex-wrap:wrap;flex:1;}
+  /* In the selection bar these are discrete ACTIONS, one per status — not one exclusive choice — so they take the
+     recessed-button treatment instead of the segmented track the profile's status picker uses. */
+  .bulkbar .seg{border-radius:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.88);
+                box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
+  .bulkbar .seg:hover{background:rgba(255,255,255,.13);color:#fff;}
+  .bulkbar .bclear{background:none;border:none;color:var(--accent);border-radius:var(--r-sm);padding:var(--s1) var(--s2);font-size:12.5px;font-weight:400;cursor:pointer;transition:color var(--t),background var(--t);}
   .bulkbar .bclear:hover{color:var(--txt);background:var(--e3);}
   .sform{margin-top:var(--s2);}
   .srow{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s2);}
@@ -356,12 +385,18 @@
   .adm-add .sf-mini{flex:1;}
   .adm-ta{resize:vertical;min-height:52px;font-family:inherit;line-height:1.45;}
   .mvrow{display:flex;gap:var(--s2);margin-top:var(--s2);align-items:stretch;}
-  .mvrow .mv-trigger{flex:1;min-width:0;width:auto;border:1px solid var(--hair-2);border-radius:12px;background:var(--e1);}
-  .mvrow .mv-trigger:hover{background:var(--e3);border-color:rgba(255,255,255,.14);}
+  .mvrow .mv-trigger{flex:1;min-width:0;width:auto;border:none;border-radius:6px;height:24px;padding:0 4px 0 9px;font-size:12.5px;
+                     background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
+  .mvrow .mv-trigger:hover{background:rgba(255,255,255,.12);}
   .mv-trigger .sdrop-chev{transition:transform var(--t) var(--ease);}
   .mv-trigger.open{background:var(--e4);border-color:transparent;box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
   .mv-trigger.open .sdrop-chev{transform:rotate(180deg);}
-  .mvrow .mv-go{flex:0 0 auto;width:auto;margin-top:0;padding:0 20px;border-radius:12px;font-size:12.5px;}
+    /* Move stays visibly INERT until a slot is chosen — a live blue button invites a click that cannot work. */
+  .mvrow .mv-go{flex:0 0 auto;width:auto;margin-top:0;padding:0 13px;height:24px;border-radius:6px;font-size:12.5px;font-weight:500;
+                 background:rgba(255,255,255,.07);color:rgba(255,255,255,.45);box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;}
+  .mvrow .mv-go:hover{background:rgba(255,255,255,.1);transform:none;filter:none;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;}
+  .mvrow .mv-go.armed{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;box-shadow:0 .5px 0 rgba(255,255,255,.25) inset;}
+  .mvrow .mv-go.armed:hover{filter:brightness(1.07);box-shadow:0 .5px 0 rgba(255,255,255,.25) inset;}
   .mvmenu{margin-top:8px;max-height:280px;overflow-y:auto;background:var(--e2);border:1px solid var(--hair-2);border-radius:var(--r-md);padding:6px;box-shadow:var(--sh-2);animation:slide .18s var(--ease);}
   .mvmenu[hidden]{display:none;}
 
@@ -505,48 +540,48 @@
   /* Member list — one grouped container with hairline separators, the way a macOS list is built, instead of
      N floating cards. Each row was previously its own card that lifted 2px on hover and lit a coloured glow
      when open; twenty of those made the page restless. Now the list is a single object and hover is a fill. */
-  .mlist{margin-top:var(--s4);display:flex;flex-direction:column;gap:0;background:var(--e1);border-radius:var(--r-lg);overflow:hidden;}
-  .mrow{background:none;border:none;border-radius:0;overflow:hidden;box-shadow:0 1px 0 var(--hair);
+  .mlist{margin-top:0;display:flex;flex-direction:column;gap:0;background:none;border-radius:0;}
+  .mrow{background:none;border:none;border-radius:6px;overflow:hidden;box-shadow:none;
         transition:background var(--t) var(--ease);}
-  .mrow:last-child{box-shadow:none;}
+  /* No per-row rule. Separation comes from an alternating 1.8% tint — at 32px a border every row is a grid. */
+  .mrow:nth-child(odd){background:rgba(255,255,255,.018);}
   /* No hover fill. A Mac list highlights what is SELECTED, not what the pointer happens to be over — the
      travelling highlight is a web habit, and with 90 rows it made the list twitch as the cursor crossed it. */
-  .mrow:hover{transform:none;background:none;box-shadow:0 1px 0 var(--hair);}
-  .mrow.exp{transform:none;background:var(--e2);box-shadow:0 1px 0 var(--hair);}
+  .mrow:hover{transform:none;box-shadow:none;}
+  .mrow.exp{transform:none;background:none;box-shadow:none;}
   /* ONE grid template shared by the header and every row — that shared definition is what makes the columns
      actually line up, rather than each row guessing at widths. */
-  .thead,.mhead{display:grid;grid-template-columns:20px 14px 24px minmax(140px,1.6fr) minmax(110px,1fr) 64px 68px 96px;
-                align-items:center;gap:var(--s3);padding:0 var(--s4);}
-  .thead{height:28px;font-size:var(--f1);color:var(--txt-2);box-shadow:0 1px 0 var(--hair);}
+  .thead,.mhead{display:grid;grid-template-columns:30px 16px 30px minmax(0,1fr) 168px 62px 62px 104px;
+                align-items:center;gap:0;padding:0 10px;}
+  .thead{height:24px;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.32);box-shadow:0 1px 0 rgba(255,255,255,.09);margin-top:14px;}
   .thead .num{text-align:right;} .thead .st{text-align:right;}
   /* Sortable header — the reference asks for a "sortable header … it scans like Mail". Clicking a column drives
      the SAME sort the pop-up does, so the two can never disagree. */
   .sortcol{cursor:pointer;user-select:none;transition:color var(--t) var(--ease);}
   .sortcol:hover{color:var(--txt);}
-  .sortcol.on{color:var(--txt);}
+  .sortcol.on{color:rgba(255,255,255,.5);}
   .sortcol.on::after{content:"";display:inline-block;margin-left:5px;width:0;height:0;
                      border-left:3px solid transparent;border-right:3px solid transparent;border-bottom:4px solid currentColor;vertical-align:middle;}
-  .mhead{cursor:pointer;min-height:32px;}
-  .c-name{font-size:var(--f2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .c-rank,.c-slot{font-size:var(--f2);color:var(--txt-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .c-hrs{font-size:var(--f2);color:var(--txt-2);text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  .mhead{cursor:pointer;height:32px;min-height:32px;border-radius:6px;}
+  .c-name{font-size:13px;font-weight:500;color:rgba(255,255,255,.85);letter-spacing:-.005em;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .c-rank{font-size:12.5px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .c-slot{font-family:var(--mono);font-size:12px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .c-hrs{font-size:12px;color:rgba(255,255,255,.35);text-align:right;font-family:var(--mono);font-variant-numeric:tabular-nums;}
   .c-st{display:flex;justify-content:flex-end;min-width:0;}
-  .chev{color:var(--txt-3);width:15px;height:15px;flex:0 0 auto;transition:transform .2s var(--ease),color var(--t);}
-  .mrow.exp .chev{transform:rotate(90deg);color:var(--accent-2);}
-  /* The avatar is the only place rank colour appears now — the 3px left stripe on every row was a second
-     encoding of the same fact, doubled twenty times down the page. */
-  /* A ROUNDED SQUARE, not a circle. Apple reserves circles for people's photos and uses the squircle for
-     symbols — and these are rank insignia, which have meaningful shape. A circular mask with overflow:hidden
-     cut the top and bottom off any TALL badge (a Captain's or Lieutenant's bars), because object-fit sizes the
-     image to the 32px box and the inscribed circle is narrow at its vertical extremes. The star badges survived
-     only because they happen to be square. The image itself keeps square corners — inheriting the tile's radius
-     was rounding the artwork a second time. */
-  /* 24px, to FIT the 26px grid column. At 32px the badge overflowed its cell and crowded both the chevron and
-     the name, and with only 34px of row height the badges in consecutive rows nearly touched vertically. */
+  .chev{color:rgba(255,255,255,.42);width:9px;height:9px;flex:0 0 auto;transition:transform .2s var(--ease),color var(--t);}
+  /* A ROUNDED SQUARE PLATE, not a circle. Apple reserves circles for people's photos and uses the squircle for
+     symbols — and these are rank insignia, which have meaningful shape. A circular mask with overflow:hidden cut
+     the top and bottom off any TALL badge (a Captain's or Lieutenant's bars), because object-fit sizes the image
+     to the box and the inscribed circle is narrow at its vertical extremes. The image keeps SQUARE corners —
+     inheriting the tile's radius rounded the artwork a second time.
+     22px, and the plate is neutral: at 34px the gold insignia were the brightest thing on screen and competed
+     with the accent, and tinting the plate by rank re-encoded a fact the rank COLUMN already states. At 22px in
+     a plain plate they read as a rank chip. */
   .mav{width:22px;height:22px;border-radius:5px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
-       font-size:9px;font-weight:600;letter-spacing:0;
-       background:color-mix(in srgb,var(--rank,#8E8E93) 22%,var(--e3));color:var(--txt);border:none;overflow:hidden;}
-  .mav.mav-has{background:var(--e3);padding:2px;}
+       font-family:var(--mono);font-size:8px;font-weight:600;letter-spacing:.02em;
+       background:rgba(255,255,255,.07);box-shadow:0 0 0 .5px rgba(255,255,255,.12) inset;
+       color:rgba(255,255,255,.5);border:none;overflow:hidden;}
+  .mav.mav-has{padding:2px;}
   .mav .mav-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:0;} /* contain = the whole badge fits inside, never cropped */
   .mname{flex:1;min-width:0;}
   .mname b{display:block;font-size:var(--f2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;}
@@ -555,30 +590,24 @@
   /* Status pills — flat tint + coloured label, no ring, no glow. Colour here is information, so it stays. */
   /* 12% tint, 17px tall, 11px medium — the reference's "Mail and Reminders" treatment: colour carries the
      signal and the row stays quiet. Dialled back from a full-height chip that competed with the name. */
-  .pill{display:inline-flex;align-items:center;gap:5px;padding:0 7px;height:17px;border-radius:var(--r-pill);font-size:var(--f1);font-weight:500;
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:0 8px;height:17px;border-radius:5px;font-size:11px;font-weight:500;
         border:none;white-space:nowrap;box-shadow:none;}
-  .pdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;}
+  .pdot{width:5px;height:5px;border-radius:50%;flex:0 0 auto;}
   /* Colour marks the EXCEPTION, not the norm. Inactive is the resting state on a real roster — 65 of 82 members
      here — so painting it red made the strongest signal in the interface the most common thing on screen, and
      left the six Active members, the genuinely notable ones, as the quietest. Inactive is now grey and simply
      recedes; green earns its meaning back because it is rare. */
-  .p-Active{background:var(--green-t);color:var(--green-f);} .p-Active .pdot{background:var(--green);}
-  .p-SemiActive{background:var(--amber-t);color:var(--amber-f);} .p-SemiActive .pdot{background:var(--amber);}
-  .p-Inactive{background:var(--gray-t);color:var(--gray-f);} .p-Inactive .pdot{background:var(--gray);}
-  .p-LOA{background:var(--blue-t);color:var(--blue-f);} .p-LOA .pdot{background:var(--blue);}
-  .p-ROA{background:var(--amber-t);color:var(--amber-f);} .p-ROA .pdot{background:var(--amber);}
-  .p-Reserve{background:var(--purple-t);color:var(--purple-f);} .p-Reserve .pdot{background:var(--purple);}
-  .p-none{background:var(--gray-t);color:var(--gray-f);} .p-none .pdot{background:var(--gray);}
+  .p-Active{background:rgba(48,209,88,.14);color:#5fdc85;} .p-Active .pdot{background:#30d158;}
+  .p-SemiActive{background:rgba(255,159,10,.14);color:#ffb340;} .p-SemiActive .pdot{background:#ff9f0a;}
+  .p-Inactive{background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);} .p-Inactive .pdot{background:#8e8e93;}
+  .p-LOA{background:rgba(10,132,255,.16);color:#63b4ff;} .p-LOA .pdot{background:#0a84ff;}
+  .p-ROA{background:rgba(10,132,255,.16);color:#63b4ff;} .p-ROA .pdot{background:#0a84ff;}
+  .p-Reserve{background:rgba(191,90,242,.16);color:#d08cf5;} .p-Reserve .pdot{background:#bf5af2;}
+  .p-none{background:rgba(255,255,255,.08);color:rgba(255,255,255,.6);} .p-none .pdot{background:#8e8e93;}
   .hpill{background:rgba(0,0,0,.32);border-color:rgba(255,255,255,.16);color:inherit;}
 
   /* expanded: the header's identity morphs away (the hero below carries it) leaving a slim collapse bar */
-  .mhead{transition:padding .22s var(--ease);}
-  .mhead .mav{transition:opacity .18s var(--ease),transform .22s var(--ease),width .22s var(--ease),height .22s var(--ease),box-shadow .22s var(--ease);}
-  .mhead .mname,.mhead .pill{transition:opacity .18s var(--ease),transform .22s var(--ease);}
-  .mrow.exp .mhead{padding-top:6px;padding-bottom:6px;}
-  .mrow.exp .mhead .mav{opacity:0;transform:scale(.6);width:0;height:24px;padding:0;box-shadow:none;}
-  .mrow.exp .mhead .mname{opacity:0;transform:translateY(6px);height:24px;overflow:hidden;}
-  .mrow.exp .mhead .pill{opacity:0;transform:translateY(6px);}
+  .mrow.exp .mhead{display:none;}
   .mrow.exp .pc-hero>*{animation:rise .3s var(--ease) both;}
   .mrow.exp .pc-hero>:nth-child(2){animation-delay:.06s;}
   .mrow.exp .pc-hero>:nth-child(3){animation-delay:.12s;}
@@ -587,87 +616,106 @@
   .mdetail{display:none;}
   .mrow.exp .mdetail{display:block;animation:slide .24s var(--ease);}
   @keyframes slide{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
-  .pc{box-shadow:0 -1px 0 var(--hair);}
+  .pc{background:rgba(255,255,255,.05);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;
+      padding:18px 20px 20px;margin:2px 0 6px;}
   .pc-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s3) var(--s4);}
   .pc-head .nm b{font-size:15px;font-weight:700;} .pc-head .nm span{display:block;font-size:11px;opacity:.85;margin-top:1px;}
-  .pc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--hair);}
-  .kvc{background:rgba(18,22,29,.55);padding:var(--s3) var(--s4);}
-  .kvc .k{display:flex;align-items:center;gap:6px;font-size:var(--f1);color:var(--txt-2);text-transform:none;letter-spacing:0;margin-bottom:3px;font-weight:400;}
+  .pc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:rgba(255,255,255,.07);}
+  .kvc{background:none;padding:11px 14px 12px;box-shadow:-.5px 0 0 rgba(255,255,255,.08);}
+  .kvc:first-child{box-shadow:none;}
+  .kvc .k{display:flex;align-items:center;gap:6px;font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px;font-weight:600;}
   .kvc .k svg{width:13px;height:13px;flex:0 0 auto;}
-  .kvc .v{font-size:13px;font-weight:600;}
+  .kvc .v{font-size:13px;font-weight:400;color:rgba(255,255,255,.88);}
   .kvc.idcell .v{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:var(--f2);font-weight:400;word-break:break-all;}
-  .copybtn{flex:0 0 auto;background:var(--e2);border:none;color:var(--txt-3);border-radius:8px;width:26px;height:26px;
-           display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--hi);transition:all var(--t);}
-  .copybtn svg{width:14px;height:14px;} .copybtn:hover{color:var(--accent-2);background:var(--e3);transform:translateY(-1px);}
+  .copybtn{flex:0 0 auto;background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.6);border-radius:5px;width:20px;height:20px;
+           display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;transition:all var(--t);}
+  .copybtn svg{width:11px;height:11px;} .copybtn:hover{color:#fff;background:rgba(255,255,255,.14);transform:none;}
   .copybtn.ok{color:var(--green-f);background:var(--green-t);box-shadow:var(--hi),0 0 10px -4px var(--green);}
   .copybtn.ok:hover{color:var(--green-f);}
   .copybtn.ok svg{animation:cpop .22s var(--ease);}
   @keyframes cpop{from{transform:scale(.5);opacity:0;}to{transform:scale(1);opacity:1;}}
-  .pc-sec{background:rgba(18,22,29,.4);box-shadow:0 -1px 0 var(--hair);padding:var(--s3) var(--s4);}
-  .pc-lbl{display:flex;align-items:center;gap:6px;font-size:var(--f1);color:var(--txt-2);text-transform:uppercase;letter-spacing:.06em;margin-bottom:var(--s2);font-weight:500;}
+  .pc-sec{background:rgba(255,255,255,.035);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;
+          padding:13px 14px 14px;}
+  .pc-lbl{display:flex;align-items:center;gap:6px;font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:11px;font-weight:600;}
   /* Section labels earn a right-hand note — the reading of the section, stated where the eye already is. */
-  .lbl-note{margin-left:auto;font-size:var(--f1);color:var(--txt-3);text-transform:none;letter-spacing:0;font-weight:400;display:flex;align-items:center;gap:var(--s2);}
-  .lgnd .lg{display:inline-block;width:14px;height:0;border-top:2px solid var(--accent);margin-right:2px;}
-  .lgnd .lg-dash{border-top:2px dashed var(--txt-3);}
+  .lbl-note{margin-left:auto;font-size:11.5px;color:rgba(255,255,255,.35);text-transform:none;letter-spacing:0;font-weight:400;display:flex;align-items:center;gap:var(--s2);}
+  .lgnd .lg{display:inline-block;width:12px;height:0;border-top:2px solid #0a84ff;border-radius:1px;margin-right:2px;}
+  .lgnd .lg-dash{border-top:1.5px dashed #ff9f0a;}
   .lv-add{margin-left:auto;}
-  .spk-foot{display:flex;gap:var(--s4);flex-wrap:wrap;margin-top:var(--s2);font-size:var(--f1);color:var(--txt-3);}
-  .spk-foot b{color:var(--txt-2);font-weight:500;font-variant-numeric:tabular-nums;}
-  .spk-foot b.dn{color:var(--amber);} .spk-foot b.up{color:var(--green);}
+  .spk-foot{display:flex;align-items:center;gap:18px;flex-wrap:wrap;margin-top:6px;padding-top:8px;
+            border-top:1px solid rgba(255,255,255,.07);font-size:11px;color:rgba(255,255,255,.4);}
+  .spk-foot b{color:rgba(255,255,255,.85);font-family:var(--mono);font-size:12px;font-weight:500;font-variant-numeric:tabular-nums;margin-left:5px;}
+  .spk-foot b.dn{color:#ff9f0a;font-family:inherit;} .spk-foot b.up{color:#30d158;font-family:inherit;}
   .pc-lbl svg{width:13px;height:13px;flex:0 0 auto;}
   /* The status picker is the SAME kind of control as the filter row above the list — pick one of N — so it gets
      the same treatment: one recessed track, a raised grey selected segment. It was a gradient-filled blue pill
      with a glow, which both disagreed with the filters and competed with Move, the actual primary action here. */
-  .segmented{display:inline-flex;flex-wrap:wrap;gap:2px;margin-bottom:var(--s3);background:var(--e1);border-radius:var(--r-sm);padding:2px;}
-  .seg{background:none;border:none;color:var(--txt-2);border-radius:6px;padding:var(--s1) var(--s3);min-height:26px;font-size:var(--f2);
+  .segmented{display:inline-flex;flex-wrap:nowrap;gap:0;margin-bottom:0;height:24px;background:rgba(255,255,255,.06);
+             border-radius:6px;padding:0;overflow:hidden;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;}
+  .seg{background:none;border:none;color:rgba(255,255,255,.72);border-radius:0;padding:0 12px;height:24px;min-height:24px;font-size:12.5px;
        font-weight:400;cursor:pointer;box-shadow:none;transition:background var(--t) var(--ease),color var(--t) var(--ease);}
-  .seg:hover{color:var(--txt);background:var(--e2);transform:none;}
-  .seg.cur{background:var(--e3);color:var(--txt);font-weight:500;box-shadow:none;}
+  .seg:hover{color:#fff;background:rgba(255,255,255,.07);transform:none;}
+  .seg.cur{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;font-weight:500;box-shadow:0 .5px 0 rgba(255,255,255,.22) inset;}
   .seg:active{transform:none;background:var(--e4);}
   .seg:disabled{opacity:.5;cursor:default;}
-  .linkbtn{display:inline-flex;align-items:center;gap:7px;background:var(--e2);border:none;color:var(--txt);
-           border-radius:10px;padding:8px 13px;font-size:12px;font-weight:550;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:all var(--t);}
-  .linkbtn svg{width:14px;height:14px;} .linkbtn:hover{color:var(--accent-2);background:var(--e3);transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
+  .linkbtn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.88);
+           border-radius:6px;padding:0 10px;height:24px;font-size:12.5px;font-weight:400;cursor:pointer;
+           box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 1px 1.5px rgba(0,0,0,.2);transition:background var(--t) var(--ease);}
+  .linkbtn svg{width:11px;height:11px;} .linkbtn:hover{color:#fff;background:rgba(255,255,255,.13);transform:none;}
+  .lv-add{margin-left:auto;text-transform:none;height:20px;padding:0 8px;border-radius:5px;font-size:11.5px;font-weight:500;}
+  .lv-add svg{width:10px;height:10px;}
   .linkbtn.on{color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 12px -5px var(--accent);}
-  .spk{background:var(--e2);border:none;border-radius:11px;padding:var(--s2) var(--s3);box-shadow:var(--hi);}
-  .spk-meta{display:flex;justify-content:space-between;font-size:10px;color:var(--txt-3);margin-top:6px;font-family:var(--mono);}
+  .spk{background:none;border:none;border-radius:0;padding:0;box-shadow:none;}
   .spk-plot{position:relative;}
   .spk-hit{cursor:pointer;}
   .spk-tip{position:absolute;transform:translate(-50%,calc(-100% - 12px));background:var(--e3);color:var(--txt);font-size:11px;font-family:var(--mono);white-space:nowrap;padding:5px 9px;border-radius:8px;box-shadow:var(--sh-1);border:1px solid var(--hair);pointer-events:none;z-index:6;}
   .muted2{color:var(--txt-3);font-size:11px;line-height:1.5;}
-  .leaves .lr{display:flex;justify-content:space-between;align-items:center;gap:var(--s3);padding:var(--s2) 0;box-shadow:0 1px 0 var(--hair);font-size:12px;}
-  .leaves .lr:last-child{box-shadow:none;}
-  .ltag{display:inline-flex;align-items:center;gap:5px;font-size:10px;color:var(--txt-2);white-space:nowrap;}
+  .leaves .lr{display:flex;align-items:center;gap:9px;padding:7px 0;border-top:1px solid rgba(255,255,255,.07);box-shadow:none;font-size:12.5px;color:rgba(255,255,255,.78);}
+  .leaves .lr>span:first-child{flex:1;min-width:0;}
+  .ltag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;color:rgba(255,255,255,.35);white-space:nowrap;}
   /* recent activity checks (last 4 weekly status snapshots) */
-  .chkrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:6px;}
-  .chk{background:var(--e2);border-radius:11px;padding:9px 11px;box-shadow:var(--hi),var(--sh-1);display:flex;flex-direction:column;gap:7px;align-items:flex-start;animation:rise .28s var(--ease) both;}
-  .chk-wk{font-size:var(--f1);font-weight:400;color:var(--txt-2);text-transform:none;letter-spacing:0;}
+  .chkrow{display:grid;grid-template-columns:repeat(4,1fr);gap:1px;background:rgba(255,255,255,.07);border-radius:7px;overflow:hidden;}
+  .chk{background:#232325;border-radius:0;padding:9px 11px 10px;box-shadow:none;display:flex;flex-direction:column;gap:6px;align-items:flex-start;animation:rise .28s var(--ease) both;}
+  .chk-wk{font-size:10.5px;font-weight:500;color:rgba(255,255,255,.42);text-transform:uppercase;letter-spacing:.05em;}
   .chk-top{display:flex;align-items:center;justify-content:space-between;width:100%;gap:6px;}
-  .chk-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
-  .chk-big{font-size:var(--f4);font-weight:600;font-family:var(--mono);font-variant-numeric:tabular-nums;}
-  .chk-big em{font-style:normal;font-size:10px;font-weight:700;color:var(--txt-3);margin-left:3px;}
-  .chk-st{font-size:10px;color:var(--txt-2);font-weight:650;}
+  .chk-dot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;}
+  .chk-big{font-size:15px;font-weight:600;color:rgba(255,255,255,.9);font-family:var(--mono);font-variant-numeric:tabular-nums;display:flex;align-items:baseline;gap:4px;}
+  .chk-big em{font-style:normal;font-size:10.5px;font-weight:400;font-family:'Inter',Arial,sans-serif;color:rgba(255,255,255,.4);}
+  .chk-st{font-size:10.5px;color:rgba(255,255,255,.5);font-weight:400;}
 
   /* profile hero + two-column layout */
-  .pc-hero{display:flex;align-items:center;gap:var(--s4);padding:var(--s4);}
-  .pav{width:64px;height:64px;border-radius:18px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;letter-spacing:.02em;color:var(--txt);overflow:hidden;background:color-mix(in srgb,var(--rank,#8a929e) 16%,var(--e3));}
-  .pav.mav-has{background:var(--e3);padding:3px;}
+  .pc-hero{display:flex;align-items:flex-start;gap:13px;padding:0;margin-bottom:18px;}
+  /* checkbox + triangle live IN the panel header now, where the row's own controls used to be */
+  .pc-toggle{height:52px;flex:0 0 auto;display:flex;align-items:center;gap:8px;}
+  .pc-toggle .chev{cursor:pointer;color:rgba(255,255,255,.62);transform:rotate(90deg);}
+  .pav{width:52px;height:52px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:12px;font-weight:600;color:rgba(255,255,255,.62);overflow:hidden;background:rgba(255,255,255,.07);box-shadow:0 0 0 .5px rgba(255,255,255,.13) inset;}
+  .pav.mav-has{padding:4px;}
   .pav .mav-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:0;} /* same as .mav-img: never round the artwork itself */
-  .pc-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;align-items:flex-start;}
-  .pc-name{font-size:19px;font-weight:800;letter-spacing:.01em;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pc-id{flex:1;min-width:0;display:flex;flex-direction:column;align-items:flex-start;padding-top:2px;}
+  .pc-name{font-size:19px;font-weight:600;line-height:1.2;letter-spacing:-.018em;color:rgba(255,255,255,.94);margin-bottom:6px;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+    /* ONE meta line — rank | slot | status — divided by 1x11px hairlines, not three stacked rows. */
   .pc-rank{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;}
-  .pc-rank .rk{color:var(--txt-2);font-size:var(--f2);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .callchip{background:var(--e2);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);box-shadow:var(--hi);flex:0 0 auto;}
-  .pc-stat{flex:0 0 auto;align-self:stretch;background:var(--e2);border-radius:14px;padding:10px 14px;box-shadow:var(--hi),var(--sh-1);display:flex;flex-direction:column;gap:3px;justify-content:center;min-width:130px;}
-  .ps-k{font-size:var(--f1);font-weight:400;color:var(--txt-2);text-transform:none;letter-spacing:0;}
-  .ps-v{font-size:var(--f5);font-weight:600;color:var(--txt);font-family:var(--mono);font-variant-numeric:tabular-nums;}
-  .ps-v em{font-style:normal;font-size:11px;font-weight:700;color:var(--txt-2);}
-  .pc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--hair);box-shadow:0 -1px 0 var(--hair);}
-  .pc-statusrow{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;}
+  .pc-rank .rk{color:rgba(255,255,255,.6);font-size:13px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pc-rank .vr{width:1px;height:11px;background:rgba(255,255,255,.16);flex:0 0 auto;}
+  .pc-rank .cs{font-family:var(--mono);font-size:12.5px;color:rgba(255,255,255,.55);flex:0 0 auto;}
+  .pc-rank .stt{display:flex;align-items:center;gap:6px;font-size:12.5px;color:rgba(255,255,255,.6);white-space:nowrap;}
+  .pc-rank .stt .pdot{width:7px;height:7px;}
+  .callchip{background:var(--e2);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);flex:0 0 auto;}
+  .pc-stat{flex:0 0 auto;background:none;border-radius:0;padding:2px 0 0;box-shadow:none;display:block;text-align:right;min-width:0;}
+  .ps-k{display:block;font-size:10px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px;}
+  .ps-row{display:flex;align-items:baseline;gap:5px;justify-content:flex-end;}
+  .ps-v{font-size:26px;font-weight:600;line-height:1;letter-spacing:-.02em;color:rgba(255,255,255,.9);font-family:var(--mono);font-variant-numeric:tabular-nums;}
+  /* Amber ONLY when the member is under their rank's requirement - the one place a number earns colour. */
+  .ps-v.under{color:#ff9f0a;}
+  .ps-req{font-size:12px;font-weight:400;color:rgba(255,255,255,.45);}
+  .pc-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:0;background:rgba(255,255,255,.04);border-radius:9px;
+          box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;overflow:hidden;margin-bottom:14px;}
+  .pc-statusrow{display:flex;align-items:center;gap:10px;flex-wrap:wrap;background:none;box-shadow:none;border-radius:0;padding:0;margin-bottom:15px;}
+  .pc-statusrow .rowgap{flex:1;}
+  .seg-note{font-size:11.5px;color:rgba(255,255,255,.35);}
   .pc-statusrow .segmented{margin-bottom:0;}
-  .pc-cols{display:grid;grid-template-columns:290px 1fr;gap:1px;background:var(--hair);align-items:stretch;}
-  .pc-col{display:flex;flex-direction:column;min-width:0;background:rgba(18,22,29,.4);}
-  .pc-col .pc-sec{background:transparent;box-shadow:none;}
-  .pc-col .pc-sec+.pc-sec{box-shadow:0 -1px 0 var(--hair);}
+  .pc-cols{display:grid;grid-template-columns:288px minmax(0,1fr);gap:14px;background:none;align-items:start;}
+  .pc-col{display:flex;flex-direction:column;gap:14px;min-width:0;background:none;}
   @media (max-width:900px){.pc-cols{grid-template-columns:1fr;}}
 
   /* buttons + tools */
@@ -758,15 +806,15 @@
     </div>
     <div class="tabs">
       <div class="ngroup">Roster</div>
-      <button class="tab active" data-tab="members"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Members</button>
-      <button class="tab" data-tab="add"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
-      <button class="tab" data-tab="signups"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups</button>
-      <button class="tab" data-tab="dividers"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>Dividers</button>
+      <button class="tab active" data-tab="members" data-title="Members"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Members</button>
+      <button class="tab" data-tab="add" data-title="Add member"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
+      <button class="tab" data-tab="signups" data-title="Signups"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups<span class="cnt" id="navSignupCount"></span></button>
+      <button class="tab" data-tab="dividers" data-title="Dividers"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>Dividers</button>
       <div class="ngroup">Operations</div>
-      <button class="tab" data-tab="tools"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</button>
-      <button class="tab" data-tab="columns"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></span>Columns</button>
+      <button class="tab" data-tab="tools" data-title="Tools"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</button>
+      <button class="tab" data-tab="columns" data-title="Columns"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></span>Columns</button>
       <div class="ngroup">System</div>
-      <button class="tab" data-tab="system"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>System</button>
+      <button class="tab" data-tab="system" data-title="System"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>System</button>
     </div>
     <div class="sfoot">
       <button class="hpill2" id="healthPill" hidden aria-label="System health"></button>
@@ -1033,9 +1081,11 @@
     if(cls==='p-none'){ var c=cfgColor(st); if(c) return '<span class="pill" style="background:'+c+'22;border-color:'+c+'55;color:'+c+'"><span class="pdot" style="background:'+c+'"></span>'+esc(st||'—')+'</span>'; }
     return '<span class="pill '+cls+'"><span class="pdot"></span>'+esc(st||'—')+'</span>';
   }
-  function statusDot(st){ var m={Active:'#57b85a',SemiActive:'#e0a52c',Inactive:'#e0574f',LOA:'#4ea7d6',ROA:'#e0a52c',Reserve:'#9d8cf2'}; return m[String(st||'').replace(/[^A-Za-z]/g,'')]||cfgColor(st)||'#8a929e'; }
+  /* Apple's system palette, matching the capsules exactly — Inactive is grey (the resting state of a real roster),
+     and both leave kinds read as the same blue "on leave" the reference groups them under. */
+  function statusDot(st){ var m={Active:'#30d158',SemiActive:'#ff9f0a',Inactive:'#8e8e93',LOA:'#0a84ff',ROA:'#0a84ff',Reserve:'#bf5af2'}; return m[String(st||'').replace(/[^A-Za-z]/g,'')]||cfgColor(st)||'#8e8e93'; }
   function hpill(st){ return '<span class="pill hpill"><span class="pdot" style="background:'+statusDot(st)+'"></span>'+esc(st||'—')+'</span>'; }
-  function leaveDot(s){ s=String(s||'').toLowerCase(); if(s.indexOf('approv')>=0)return '#57b85a'; if(s.indexOf('pend')>=0)return '#e0a52c'; if(s.indexOf('expir')>=0)return '#8a929e'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0)return '#e0574f'; return '#8a929e'; }
+  function leaveDot(s){ s=String(s||'').toLowerCase(); if(s.indexOf('approv')>=0)return '#30d158'; if(s.indexOf('pend')>=0)return '#ff9f0a'; if(s.indexOf('expir')>=0)return '#8e8e93'; if(s.indexOf('den')>=0||s.indexOf('reject')>=0)return '#ff453a'; return '#8e8e93'; }
   function stripe(c){ var h=String(c||'').toLowerCase(); return (!h||h==='#ffffff'||h==='#fff')?'#43434d':h; }
   // A member's accent: the rank's explicit colour (Settings ▸ Rank icons & colours) wins, else the roster
   // rank-cell's background, else neutral — so both ways of colouring a rank work.
@@ -1068,6 +1118,10 @@
       STATE.rankColors=cmap;
       if(Object.keys(map).length||Object.keys(cmap).length){ STATE.rankIcons=map; renderMembers(); renderSlots(); }
     }, function(){}, "cpRankIcons");
+    // Same idea for the signup queue: after first paint, so the sidebar can report how many applicants are
+    // waiting without you opening the tab — and the tab then opens instantly. Failure is silent (an operator
+    // without admin-file access simply gets no count).
+    if(!SU.loaded) loadSignups(true);
   }
   function boot(){
     if(EMBED_BOOT){ applyBoot(EMBED_BOOT); return; } // PERF: server-embedded payload — the panel paints with data, zero extra round trips
@@ -1130,12 +1184,12 @@
     renderBulk();
     if(!list.length){ host.innerHTML='<div class="empty"><span class="ei">'+IEMPTY+'</span><div><b>No members match</b><br>Try clearing the search or filters above.</div></div>'; return; }
     host.innerHTML=list.map(function(m){
-      var open=(m.row===STATE.openRow), c=rankColor(m);
+      var open=(m.row===STATE.openRow);
       var ic=(STATE.rankIcons&&STATE.rankIcons[m.rank])||'';
       var avin=ic?('<img class="mav-img" src="'+esc(ic)+'" alt="'+esc(m.rank)+'" loading="lazy">'):esc(mInitials(m.name));
       // Columnar row: rank, slot and hours get their own cells instead of being run together into a subtitle,
       // so the eye can scan DOWN a column. The grid template lives on .mhead and .thead together.
-      return '<div class="mrow'+(open?' exp':'')+'" data-row="'+m.row+'" style="--rank:'+c+'">'
+      return '<div class="mrow'+(open?' exp':'')+'" data-row="'+m.row+'">'
         +'<div class="mhead"><input type="checkbox" class="mcheck" data-sel="'+m.row+'"'+(STATE.selected[m.row]?' checked':'')+' aria-label="Select member"><span class="chev">'+SVG.chev+'</span>'
           +'<span class="mav'+(ic?' mav-has':'')+'">'+avin+'</span>'
           +'<span class="c-name">'+esc(m.name)+'</span>'
@@ -1148,29 +1202,43 @@
     if(STATE.openRow!=null){ var m=memberByRow(STATE.openRow); if(m && list.indexOf(m)>=0) loadProfile(m); }
   }
   function renderCard(m){
-    var c=rankColor(m);
     var segs=STATE.statuses.map(function(s){ return '<button class="seg'+(s===m.status?' cur':'')+'" data-st="'+esc(s)+'">'+esc(s)+'</button>'; }).join('');
     var idv=m.discord?('<span class="mono">'+esc(m.discord)+'</span><button class="copybtn" data-copy="'+esc(m.discord)+'" title="Copy ID" aria-label="Copy Discord ID">'+SVG.copy+'</button>'):'<span class="mono">—</span>';
     var ic=(STATE.rankIcons&&STATE.rankIcons[m.rank])||'';
     var avin=ic?('<img class="mav-img" src="'+esc(ic)+'" alt="'+esc(m.rank)+'">'):esc(mInitials(m.name));
-    return '<div class="pc" style="border-top:2px solid '+c+'">'
+    // The hours REQUIREMENT for this member's rank (cpBootstrap sends the top tier's MinHours off whichever
+    // ladder applies). 0 = this department has no requirement, and the qualifier simply does not appear.
+    var req=Number(m.req)||0, hrs=parseFloat(m.hours)||0, under=(req>0 && hrs<req);
+    return '<div class="pc">'
+      // HERO — the checkbox and disclosure triangle live here, left of the insignia, so the collapsed row above
+      // does not have to survive as a stub that repeats the name.
       +'<div class="pc-hero">'
-        +'<span class="pav'+(ic?' mav-has':'')+'" style="box-shadow:var(--hi),var(--sh-1),0 0 18px -6px '+c+'">'+avin+'</span>'
-        +'<div class="pc-id"><b class="pc-name">'+esc(m.name)+'</b>'
-          +'<div class="pc-rank"><span class="rk">'+esc(m.rank)+'</span>'+(m.callsign?('<span class="callchip">'+esc(m.callsign)+'</span>'):'')+'</div>'
-          +'<div>'+pill(m.status)+'</div></div>'
-        +'<div class="pc-stat"><span class="ps-k">Current hours</span><span class="ps-v">'+esc(m.hours||'0')+' <em>hrs</em></span></div>'
+        +'<div class="pc-toggle"><input type="checkbox" class="mcheck" data-sel="'+m.row+'"'+(STATE.selected[m.row]?' checked':'')+' aria-label="Select member">'
+          +'<span class="chev" data-collapse="'+m.row+'" role="button" tabindex="0" aria-label="Collapse">'+SVG.chev+'</span></div>'
+        +'<span class="pav'+(ic?' mav-has':'')+'">'+avin+'</span>'
+        +'<div class="pc-id"><div class="pc-name">'+esc(m.name)+'</div>'
+          // ONE meta line, split by hairlines: rank │ slot │ status. Three stacked rows said the same thing.
+          +'<div class="pc-rank"><span class="rk">'+esc(m.rank)+'</span>'
+            +(m.callsign?('<i class="vr"></i><span class="cs">'+esc(m.callsign)+'</span>'):'')
+            +'<i class="vr"></i><span class="stt"><span class="pdot" style="background:'+statusDot(m.status)+'"></span>'+esc(m.status||'—')+'</span>'
+          +'</div></div>'
+        +'<div class="pc-stat"><span class="ps-k">Current hours</span><div class="ps-row">'
+          +'<span class="ps-v'+(under?' under':'')+'">'+esc(m.hours||'0')+'</span>'
+          +(req?('<span class="ps-req">of '+req+' req.</span>'):'<span class="ps-req">hrs</span>')+'</div></div>'
       +'</div>'
       +'<div class="pc-meta">'
-        +'<div class="kvc"><span class="k">'+PIC.cal+'Joined</span><span class="v">'+esc(m.joinDate||'—')+'</span></div>'
-        +'<div class="kvc"><span class="k">'+PIC.promo+'Last promotion</span><span class="v">'+esc(m.lastPromo||'—')+'</span></div>'
-        +'<div class="kvc idcell"><span class="k">'+PIC.id+'Discord ID</span><span class="v">'+idv+'</span></div>'
+        +'<div class="kvc"><span class="k">Joined</span><span class="v">'+esc(m.joinDate||'—')+'</span></div>'
+        +'<div class="kvc"><span class="k">Last promotion</span><span class="v">'+esc(m.lastPromo||'—')+'</span></div>'
+        +'<div class="kvc idcell"><span class="k">Discord ID</span><span class="v">'+idv+'</span></div>'
       +'</div>'
-      +'<div class="pc-sec pc-statusrow"><div class="segmented">'+segs+'</div><button class="linkbtn" data-jump="'+m.row+'">'+SVG.jump+' View on roster</button></div>'
-      +'<div class="pc-cols"><div class="pc-col">'
+      +'<div class="pc-sec pc-statusrow"><div class="segmented">'+segs+'</div>'
+        +'<span class="seg-note">Status change is logged</span><span class="rowgap"></span>'
+        +'<button class="linkbtn" data-jump="'+m.row+'">View on roster'+SVG.jump+'</button></div>'
+      +'<div class="pc-cols">'
+      +'<div class="pc-col">'
       +(function(){ // Move / transfer — relocate this member into an open slot (of any rank), styled like the Add-member picker
         var open=STATE.members.filter(function(s){ return !s.filled && s.row!==m.row; });
-        if(!open.length){ return '<div class="pc-sec"><div class="pc-lbl">'+PIC.move+'Move / transfer</div><span class="muted2">No open slots to move into. Add a row under the target rank first (Add member ▸ Add rows, or the sheet).</span></div>'; }
+        if(!open.length){ return '<div class="pc-sec"><div class="pc-lbl">Move / transfer</div><span class="muted2">No open slots to move into. Add a row under the target rank first (Add member ▸ Add rows, or the sheet).</span></div>'; }
         var groups={},order=[];
         open.forEach(function(s){ if(!groups[s.rank]){ groups[s.rank]=[]; order.push(s.rank); } groups[s.rank].push(s); });
         var sel=(STATE.moveTo!=null)?slotByRow(STATE.moveTo):null; if(sel && (sel.filled || sel.row===m.row)) sel=null; // drop a stale selection
@@ -1180,45 +1248,46 @@
             +'</div>';
         }).join('');
         var cur=sel?(rankAvatar(sel.rank)+'<span>'+esc(sel.callsign||('Row '+sel.row))+' · '+esc(sel.rank)+'</span>'):'<span>Select slot</span>';
-        return '<div class="pc-sec"><div class="pc-lbl">'+PIC.move+'Move / transfer</div>'
+        return '<div class="pc-sec"><div class="pc-lbl">Move / transfer</div>'
           +'<div class="mvrow"><button type="button" class="sdrop-btn mv-trigger" data-mvbtn="1" aria-haspopup="listbox" aria-expanded="false"><span class="sdrop-cur'+(sel?'':' ph')+'" id="mvCur">'+cur+'</span>'
             +'<svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>'
-          +'<button class="btn mv-go" data-movego="'+m.row+'">Move</button></div>'
+          // Move stays inert-looking until a slot is picked — it cannot do anything before that.
+          +'<button class="btn mv-go'+(sel?' armed':'')+'" data-movego="'+m.row+'">Move</button></div>'
           +'<div class="mvmenu" id="mvMenu" role="listbox" hidden>'+menu+'</div></div>';
       })()
+      // ONE Leave panel: the scheduler button sits on the label row and the history lists underneath it, rather
+      // than a "Schedule leave" box and a separate "Leave history" box saying the same word twice.
       +(function(){
         var fd=STATE.formData[m.row]||{}; // F-026: rehydrate typed values so a re-render (status change / refresh) never wipes an open form
         var op=function(v,cur){ return '<option value="'+esc(v)+'"'+(cur===v?' selected':'')+'>'+esc(v)+'</option>'; };
-        return '<div class="pc-sec"><div class="pc-lbl">'+PIC.leave+'Schedule leave</div>'
-        +'<button class="linkbtn" data-sched="'+m.row+'">+ New LOA</button>'
+        return '<div class="pc-sec"><div class="pc-lbl">Leave'
+        +'<button class="linkbtn lv-add" data-sched="'+m.row+'">+ New LOA</button></div>'
         +'<div class="sform" id="sf'+m.row+'"'+(STATE.formOpen===m.row?'':' hidden')+'>'
           +'<div class="srow"><select class="field sf-mini" id="sft'+m.row+'">'+STATE.leaveTypes.map(function(t){return op(t,fd.t);}).join('')+'</select>'
             +'<select class="field sf-mini" id="sfs'+m.row+'">'+op('Pending',fd.s)+op('Approved',fd.s)+'</select></div>'
           +'<div class="srow"><input type="date" class="field sf-mini" id="sfst'+m.row+'" value="'+esc(fd.st||'')+'" aria-label="Start date"><input type="date" class="field sf-mini" id="sfen'+m.row+'" value="'+esc(fd.en||'')+'" aria-label="End date"></div>'
           +'<input class="field" id="sfn'+m.row+'" value="'+esc(fd.n||'')+'" placeholder="Notes (optional)" autocomplete="off">'
           +'<button class="btn" data-schedgo="'+m.row+'">Schedule leave</button>'
-        +'</div></div>';
+        +'</div>'
+        +'<div id="lv'+m.row+'" class="leaves"><span class="muted2">Loading…</span></div></div>';
       })()
       +'</div>'
-      // Leave history moves into the LEFT column, under Move/Transfer. It was stacked third on the right, which
-      // left ~400px of dead space beside it — not generous whitespace, just a gap.
-      +'<div class="pc-sec"><div class="pc-lbl">'+PIC.history+'Leave history</div>'
-        +'<div id="lv'+m.row+'" class="leaves"><span class="muted2">Loading…</span></div></div>'
-      +'</div>'
       +'<div class="pc-col">'
-      +'<div class="pc-sec"><div class="pc-lbl">'+PIC.checks+'Recent activity checks<span class="lbl-note" id="chkn'+m.row+'"></span></div><div id="chk'+m.row+'" class="checks"><span class="muted2">Loading…</span></div></div>'
-      +'<div class="pc-sec"><div class="pc-lbl">'+PIC.trend+'Hours trend'
-        +'<span class="lbl-note lgnd"><span class="lg lg-line"></span>Logged<span class="lg lg-dash"></span>Average</span></div>'
+      +'<div class="pc-sec"><div class="pc-lbl">Recent activity checks<span class="lbl-note" id="chkn'+m.row+'"></span></div><div id="chk'+m.row+'" class="checks"><span class="muted2">Loading…</span></div></div>'
+      +'<div class="pc-sec"><div class="pc-lbl">Hours trend'
+        +'<span class="lbl-note lgnd"><span class="lg lg-line"></span>Logged<span class="lg lg-dash"></span>'+(req?'Requirement':'Average')+'</span></div>'
         +'<div id="spk'+m.row+'" class="spk"><span class="muted2">Loading…</span></div>'
         +'<div class="spk-foot" id="spf'+m.row+'"></div></div>'
-      +'</div></div>'
+      +'</div>'
+      +'</div>'
     +'</div>';
   }
   function toggleDetail(row){ STATE.moveTo=null; STATE.openRow=(STATE.openRow===row?null:row); renderMembers(); }
   function loadProfile(m){
+    var req=Number(m.req)||0; // this rank's top-tier MinHours — colours the checks and draws the requirement line
     api(function(p){
-      var chk=$('chk'+m.row); if(chk) chk.innerHTML=activityChecks(p.history);
-      var spk=$('spk'+m.row); if(spk) spk.innerHTML=sparkline(p.history);
+      var chk=$('chk'+m.row); if(chk) chk.innerHTML=activityChecks(p.history,req);
+      var spk=$('spk'+m.row); if(spk) spk.innerHTML=sparkline(p.history,req);
       // Trend footer + check count — computed from the SAME series the chart draws, so the numbers can never
       // disagree with the line above them.
       var h=(p.history||[]).filter(function(c){ return c && isFinite(Number(c.hours)); });
@@ -1234,7 +1303,15 @@
             +'<span>Trend <b class="'+(d<0?'dn':'up')+'">'+(d>0?'+':'')+d+'%</b> vs. avg</span>';
         }
       }
-      var cn=$('chkn'+m.row); if(cn) cn.textContent=h.length?('last '+Math.min(4,h.length)+' of '+h.length+' checks'):'';
+      // With a requirement in hand the note can say something useful — how many of the shown checks CLEARED it —
+      // instead of restating how many are on screen.
+      var cn=$('chkn'+m.row);
+      if(cn){
+        var shown=h.slice(-4);
+        cn.textContent=!h.length?''
+          :(req>0 ? (shown.filter(function(c){ return (Number(c.hours)||0)>=req; }).length+' of '+shown.length+' passed')
+                  : ('last '+shown.length+' of '+h.length+' checks'));
+      }
       var lv=$('lv'+m.row);
       if(lv){ if(!p.leaves||!p.leaves.length){ lv.innerHTML='<span class="muted2">No leave records.</span>'; }
         else lv.innerHTML=p.leaves.map(function(l){ return '<div class="lr"><span><b>'+esc(l.type||'—')+'</b> &nbsp;'+esc(l.start||'?')+' → '+esc(l.end||'?')+'</span><span class="ltag"><span class="pdot" style="background:'+leaveDot(l.status)+'"></span>'+esc(l.status||'')+'</span></div>'; }).join(''); }
@@ -1301,47 +1378,59 @@
     $('admCreate').addEventListener('click',function(){ go({},this); });
     $('admLinkBtn').addEventListener('click',function(){ var u=$('admUrl').value.trim(); if(!u){ toast('Paste the admin sheet link or ID first.','err'); return; } go({url:u},this); });
   }
-  function sparkline(series){
-    series=(series||[]).slice(-3); // the latest activity check + the previous two (checks run fortnightly)
+  function sparkline(series,req){
+    series=(series||[]).slice(-4); // the last four activity checks — the same set the check cells above show
     if(series.length<2) return '<span class="muted2">Not enough history yet'+(series.length?(' ('+series.length+' check)'):'')+'. It builds up from the fortnightly activity checks.</span>';
+    req=Number(req)||0;
     var vals=series.map(function(p){return Number(p.hours)||0;});
     var avg=vals.reduce(function(a,b){return a+b;},0)/vals.length;
-    var max=Math.max(5,Math.ceil(Math.max.apply(null,vals.concat([avg]))/5)*5); // 0-based axis, headroom rounded to 5s
-    var w=520,h=132,L=30,R=10,T=10,B=20,iw=w-L-R,ih=h-T-B,step=iw/(series.length-1);
+    // The dashed line is the REQUIREMENT when the department has one — a threshold you can be under is worth
+    // drawing; the mean of four points is not. Falls back to the average when no ladder threshold exists.
+    var refV=req>0?req:avg;
+    var max=Math.max(5,Math.ceil(Math.max.apply(null,vals.concat([refV]))/5)*5); // 0-based axis, headroom rounded to 5s
+    var w=560,h=132,L=34,R=4,T=8,B=22,iw=w-L-R,ih=h-T-B,step=iw/(series.length-1);
     var X=function(i){return L+i*step;}, Y=function(v){return T+ih-(v/max)*ih;};
     var pts=series.map(function(p,i){ return [X(i),Y(Number(p.hours)||0)]; });
     var poly=pts.map(function(p){return p[0].toFixed(1)+','+p[1].toFixed(1);}).join(' ');
     var area=L+','+(T+ih)+' '+poly+' '+pts[pts.length-1][0].toFixed(1)+','+(T+ih);
     var grid='';
-    for(var g=0;g<=4;g++){ var gv=max*g/4, gy=Y(gv);
+    for(var g=1;g<=4;g++){ var gv=max*g/4, gy=Y(gv);
       grid+='<line x1="'+L+'" y1="'+gy.toFixed(1)+'" x2="'+(w-R)+'" y2="'+gy.toFixed(1)+'" stroke="rgba(255,255,255,.06)"/>'
-        +'<text x="'+(L-6)+'" y="'+(gy+3).toFixed(1)+'" text-anchor="end" font-size="8.5" fill="#727b89" font-family="monospace">'+gv.toFixed(0)+'</text>'; }
+        +'<text x="'+(L-8)+'" y="'+(gy+3).toFixed(1)+'" text-anchor="end" font-size="9.5" fill="rgba(255,255,255,.35)" font-family="ui-monospace,Menlo,monospace">'+gv.toFixed(0)+'</text>'; }
     var xl='';
-    series.forEach(function(p,i){ xl+='<text x="'+X(i).toFixed(1)+'" y="'+(h-6)+'" text-anchor="middle" font-size="8.5" fill="#727b89" font-family="monospace">'+esc(shortWeek(p.week))+'</text>'; });
+    series.forEach(function(p,i){ var anc=i===0?'start':(i===series.length-1?'end':'middle');
+      xl+='<text x="'+X(i).toFixed(1)+'" y="'+(h-2)+'" text-anchor="'+anc+'" font-size="9.5" fill="rgba(255,255,255,.32)" font-family="ui-monospace,Menlo,monospace">'+esc(shortWeek(p.week))+'</text>'; });
     var dots=pts.map(function(p,i){ var lastP=(i===pts.length-1);
-      return '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="'+(lastP?3.5:2.2)+'" fill="'+(lastP?'#8db7f2':'#4f8ee8')+'"'+(lastP?' stroke="rgba(141,183,242,.3)" stroke-width="5"':'')+'/>'; }).join('');
+      return lastP
+        ? '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="4" fill="#0a84ff" stroke="#1e1e1e" stroke-width="2"/>'
+        : '<circle cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="3" fill="#1e1e1e" stroke="#0a84ff" stroke-width="2"/>'; }).join('');
     var hits=pts.map(function(p,i){ var c=series[i]; // generous transparent hit target per point → hover shows the tooltip
       var tip=esc(shortWeek(c.week))+' · '+esc(String(c.hours))+' hrs'+(c.status?(' · '+esc(c.status)):'');
       return '<circle class="spk-hit" cx="'+p[0].toFixed(1)+'" cy="'+p[1].toFixed(1)+'" r="16" fill="transparent" data-tip="'+tip+'"/>'; }).join('');
+    var gid='spkArea'+Math.round(X(0))+'_'+series.length;
     return '<div class="spk-plot">'
-      +'<svg width="100%" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Hours trend">'
+      +'<svg width="100%" height="'+h+'" viewBox="0 0 '+w+' '+h+'" role="img" aria-label="Hours trend">'
+      +'<defs><linearGradient id="'+gid+'" x1="0" y1="0" x2="0" y2="1">'
+        +'<stop offset="0%" stop-color="#0a84ff" stop-opacity="0.34"/><stop offset="100%" stop-color="#0a84ff" stop-opacity="0.02"/></linearGradient></defs>'
       +grid+xl
-      +'<polygon points="'+area+'" fill="rgba(79,142,232,.10)"/>'
-      +'<line x1="'+L+'" y1="'+Y(avg).toFixed(1)+'" x2="'+(w-R)+'" y2="'+Y(avg).toFixed(1)+'" stroke="rgba(224,165,44,.55)" stroke-dasharray="4 4"/>'
-      +'<polyline points="'+poly+'" fill="none" stroke="#4f8ee8" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
-      +dots+hits+'</svg><div class="spk-tip" hidden></div></div>'
-      +'<div class="spk-meta"><span>avg '+avg.toFixed(2)+' hrs</span><span>now '+vals[vals.length-1].toFixed(2)+' hrs</span><span>'+series.length+' checks</span></div>';
+      +'<polygon points="'+area+'" fill="url(#'+gid+')"/>'
+      +'<line x1="'+L+'" y1="'+Y(refV).toFixed(1)+'" x2="'+(w-R)+'" y2="'+Y(refV).toFixed(1)+'" stroke="#ff9f0a" stroke-width="1.5" stroke-dasharray="4 4" opacity="0.75"/>'
+      +'<polyline points="'+poly+'" fill="none" stroke="#0a84ff" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>'
+      +dots+hits+'</svg><div class="spk-tip" hidden></div></div>';
   }
   function shortWeek(w){ var m=String(w||'').match(/^(\d{4})-(\d{2})-(\d{2})$/); if(!m) return String(w||''); return String(Number(m[3]))+' '+['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][Number(m[2])-1]; }
   function isLeaveSt(st){ var k=String(st||'').replace(/[^A-Za-z]/g,''); return k==='LOA'||k==='ROA'||k==='Reserve'; }
-  function activityChecks(series){
+  function activityChecks(series,req){
     if(!series||!series.length) return '<span class="muted2">No activity checks yet — they build up from the fortnightly activity checks.</span>';
     var last=series.slice(-4);
+    req=Number(req)||0;
     // Hours carry the chip; status shrinks to a coloured dot (full status in the tooltip). Only the exceptional
     // case — a leave-kind week — earns a text label, so four "Active" pills never repeat side by side.
+    // With a requirement set, the dot reports PASS/FAIL against it, which is the question the panel is asked.
     var chips=last.map(function(c){ var lv=isLeaveSt(c.status);
+      var dot=(req>0 && !lv) ? ((Number(c.hours)||0)>=req?'#30d158':'#ff9f0a') : statusDot(c.status);
       return '<div class="chk" title="'+esc(shortWeek(c.week))+' · '+esc(c.status||'—')+' · '+esc(String(c.hours))+' hrs">'
-        +'<span class="chk-top"><span class="chk-wk">'+esc(shortWeek(c.week))+'</span><span class="chk-dot" style="background:'+statusDot(c.status)+'"></span></span>'
+        +'<span class="chk-top"><span class="chk-wk">'+esc(shortWeek(c.week))+'</span><span class="chk-dot" style="background:'+dot+'"></span></span>'
         +'<span class="chk-big">'+esc(String(c.hours))+'<em>hrs</em></span>'
         +(lv?('<span class="chk-st">'+esc(c.status)+'</span>'):'')
         +'</div>'; }).join('');
@@ -1509,6 +1598,7 @@
   function renderSignups(){
     var el=$('suBody'); if(!el) return;
     var list=SU.signups||[];
+    var badge=$('navSignupCount'); if(badge) badge.textContent=(SU.linked&&SU.ready&&list.length)?String(list.length):''; // :empty hides it
     if(!SU.linked){ el.innerHTML=suEmpty('No admin file linked','Link the admin roster under the System tab first.'); return; }
     if(!SU.ready){ el.innerHTML=suEmpty('No signup review tab','Set it under Engine Settings ▸ Sheets &amp; layout ▸ SIGNUPS.'); return; }
     if(!list.length){ el.innerHTML=suEmpty('Nothing to review','Every signup has been processed.'); return; }
@@ -1603,7 +1693,8 @@
     var p=$('healthPill'); if(!h||!h.checks){ p.hidden=true; return; }
     var bad=h.checks.filter(function(c){return !c.ok;}).length;
     p.hidden=false; p.className='hpill2 '+(bad?'bad':'ok');
-    p.innerHTML='<span class="pdot"></span>'+(bad?(bad+' issue'+(bad===1?'':'s')):'Healthy');
+    // A sentence, not a count: "2 issues" is a label, "2 issues need review" tells you it is your move.
+    p.innerHTML='<span class="pdot"></span>'+(bad?(bad+' issue'+(bad===1?'':'s')+' need'+(bad===1?'s':'')+' review'):'All systems healthy');
   }
   function setAutoBtn(on){ STATE.autoSnap=!!on; var b=$('autoSnap'); b.textContent='Auto-weekly: '+(on?'On':'Off'); b.classList.toggle('on',!!on); }
   function loadSystem(silent){
@@ -1816,7 +1907,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('tbTitle').textContent=(t.textContent||'').trim(); tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('rediv').addEventListener('click',function(){ loadDividers(); });
   $('divBody').addEventListener('click',function(e){
@@ -1917,6 +2008,7 @@
     var mvg=e.target.closest('[data-movego]'); if(mvg){ moveMember(Number(mvg.dataset.movego),mvg); return; }
     var jump=e.target.closest('[data-jump]'); if(jump){ var jr=jump.dataset.jump; api(function(){ toast('Jumped to row '+jr+'.'); }, onError, "cpJumpTo", Number(jr)); return; }
     var st=e.target.closest('[data-st]'); if(st){ setStatus(Number(st.closest('.mrow').dataset.row),st.dataset.st); return; }
+    var col=e.target.closest('[data-collapse]'); if(col){ toggleDetail(Number(col.dataset.collapse)); return; } /* the triangle inside the panel header — the collapsed row is gone */
     var head=e.target.closest('.mhead'); if(head){ toggleDetail(Number(head.closest('.mrow').dataset.row)); }
   });
   document.querySelectorAll('.runbtn[data-act]').forEach(function(b){ b.addEventListener('click',function(){ runAction(b.dataset.act,b); }); });
