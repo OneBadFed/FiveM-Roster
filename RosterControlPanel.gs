@@ -2165,6 +2165,48 @@ function publishFitRows_(src, dest, dataEnd, allowTrim) {
  * published row is right. Deliberately excludes dashboards and any other tab: a Welcome Page's rows are bespoke
  * (KPI boxes, promotion tables), and pushing row N-2's format onto row N there would wreck the design.
  */
+/**
+ * Keep the PERIOD (archive) hours headers in step on the public copy — header-matched path only.
+ * 📸 Capture & Reset rolls those columns left here and REWRITES their labels (MAY HOURS → JUN HOURS, the
+ * rightmost taking the period just closed). The header-matched publish never writes the public header row, so
+ * after a capture the two files drift apart: the public's oldest month stops matching anything and freezes at
+ * whatever it last held, and the newest period has no column to publish into — one month further out of step
+ * every capture. Mirroring the labels positionally makes name-matching realign, so every month lands correctly.
+ *
+ * Deliberately conservative — it acts only when BOTH tabs expose the SAME NUMBER of period columns. A public
+ * copy that intentionally shows fewer months is left alone: stale labels are recoverable, labels shuffled onto
+ * the wrong data are not. The live HOURS column is excluded (its header never moves, so it always matched).
+ * @param {Array<string>} dHdr the destination header row — updated IN PLACE so the caller pairs off the new names.
+ * @return {number} labels rewritten.
+ */
+function publishSyncPeriodHeaders_(src, dest, dh, sHdr, dHdr, deep) {
+  try {
+    let liveHours = '';
+    try { const RC = rosterCols_(src); if (RC.hours && sHdr[RC.hours - 1]) liveHours = norm_(sHdr[RC.hours - 1]); } catch (e) { /* not a roster-shaped tab */ }
+    const periodsOf = (hdr) => {
+      const out = [];
+      hdr.forEach((h, i) => { const k = norm_(h); if (k && k.indexOf('HOURS') !== -1 && k !== liveHours) out.push(i); });
+      return out;
+    };
+    const sp = periodsOf(sHdr), dp = periodsOf(dHdr);
+    if (!sp.length || !dp.length) return 0;              // one side keeps no month columns → nothing to keep in step
+    if (sp.length !== dp.length) {
+      // Only on an explicit publish: the background pass runs every few seconds and would flood the SYS Log.
+      if (deep) logWarn_('publishSyncPeriodHeaders_', `${dest.getName()}: ${sp.length} period column(s) here vs ${dp.length} on the public copy — month labels left alone. Match the counts and they will track each capture.`);
+      return 0;
+    }
+    let changed = 0;
+    for (let i = 0; i < sp.length; i++) {
+      const want = String(sHdr[sp[i]] == null ? '' : sHdr[sp[i]]);
+      if (String(dHdr[dp[i]] == null ? '' : dHdr[dp[i]]) === want) continue;
+      dest.getRange(dh, dp[i] + 1).setValue(want);
+      dHdr[dp[i]] = want;                                 // in place: the caller's pairing reads this array
+      changed++;
+    }
+    return changed;
+  } catch (e) { logWarn_('publishSyncPeriodHeaders_', 'period header sync skipped: ' + ((e && e.message) ? e.message : e)); return 0; }
+}
+
 function publishStyleableTab_(name) {
   try {
     const n = norm_(name), C = cfg_().legacy.sheets;
@@ -2249,6 +2291,9 @@ function publishMirrorTab_(src, dest, deep) {
   if (!sh || !dh) return 0;
   const sHdr = src.getRange(sh, 1, 1, Math.max(src.getLastColumn(), 1)).getDisplayValues()[0];
   const dHdr = dest.getRange(dh, 1, 1, Math.max(dest.getLastColumn(), 1)).getDisplayValues()[0];
+  // A capture renamed the month columns here (MAY HOURS → JUN HOURS…). Re-label the public's period columns to
+  // match BEFORE pairing, or the newest month has nowhere to land and the oldest one freezes. Updates dHdr in place.
+  publishSyncPeriodHeaders_(src, dest, dh, sHdr, dHdr, deep);
   const byName = {};
   sHdr.forEach((h, i) => { const k = norm_(h); if (k && !(k in byName)) byName[k] = i + 1; }); // first wins on duplicates
   const pairs = [], scrub = [];

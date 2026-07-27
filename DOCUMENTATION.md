@@ -413,6 +413,17 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
   buffer, like the roster's validation rows or a dashboard's canvas, keeps that room publicly), only when
   everything from the target row down is empty (one `getLastRow` check, no block read), and never removes the
   final row.
+- **Period-column labels stay in step** (`publishSyncPeriodHeaders_`, header-matched path only): 📸 Capture &
+  Reset rolls the archive hours columns left here and **rewrites their headers** (`MAY HOURS` → `JUN HOURS`, the
+  rightmost taking the period just closed — `shiftArchiveColumns_`). The header-matched publish never writes the
+  public header row, so without this the two files drifted one month per capture: the public's oldest column
+  stopped matching anything and froze, and the newest period had no column to publish into. The labels are now
+  mirrored positionally before pairing, so name-matching realigns and every month lands. Conservative by design —
+  it acts only when both tabs expose the **same number** of period columns (a public copy deliberately showing
+  fewer months is left alone; shuffled labels would be worse than stale ones), the live HOURS column is excluded
+  (its header never moves), and the count-mismatch warning is raised only on an explicit publish so the
+  every-few-seconds background pass can't flood the SYS Log. Same-width wholesale mirrors need none of this —
+  they copy the header row along with everything else.
 - **Row heights are mirrored** (`publishMirrorHeights_`): height is a sheet property that no value write, format
   paste or row insert carries, so a published row could sit at the wrong height with the right skin. This
   workbook is the source of truth. Apps Script has no bulk height API, so cost is bounded by scope: an explicit
