@@ -60,6 +60,27 @@ function isValidId_(id) {
 }
 
 /** Human label for the accepted ID length, e.g. "17-19" or "8" (used in operator-facing messages). */
+/**
+ * Header keywords for the shift / assignment / district column, from [ROSTER_LAYOUT].SHIFT_HEADER.
+ * ONE list for the roster AND the tracker — they used to hardcode different ones (the roster knew SHIFT and
+ * ASSIGNMENT, the tracker also knew DISTRICT and DIVISION), so a department on "DISTRICT" had a tracker column
+ * the roster could never resolve and every sync wrote it blank.
+ * @return {string[]} normalized keywords; [] = this department has no such column.
+ */
+function shiftHeaderKeywords_() {
+  // An EMPTY configured list means "this department has no such column" and must stay empty — only a missing
+  // CONFIG (pre-config, or an AuthMode.LIMITED context) falls back to the built-in names.
+  try { if (CONFIG && CONFIG.shiftKeywords) return CONFIG.shiftKeywords; } catch (e) { /* pre-config / LIMITED */ }
+  return ['SHIFT', 'ASSIGNMENT', 'DISTRICT', 'DIVISION', 'WATCH'];
+}
+
+/** True when a resolved header is the shift/assignment column. `h` must already be uppercased+trimmed. */
+function isShiftHeader_(h) {
+  const keys = shiftHeaderKeywords_();
+  for (let i = 0; i < keys.length; i++) { if (h.indexOf(keys[i]) !== -1) return true; }
+  return false;
+}
+
 function idDigitsLabel_() {
   let lo = 17, hi = 19;
   try { if (CONFIG.idMinDigits) lo = CONFIG.idMinDigits; if (CONFIG.idMaxDigits) hi = CONFIG.idMaxDigits; } catch (e) {}
@@ -106,7 +127,7 @@ function rosterCols_(sheet) {
         activity: (h) => h.indexOf('ACTIVITY') !== -1 || h.indexOf('STATUS') !== -1, // "STATUS" is the new label for the activity tier
         hours: (h) => h.indexOf('HOURS') !== -1,
         ooc: (h) => h.indexOf('OOC') !== -1,
-        shift: (h) => h.indexOf('SHIFT') !== -1 || h.indexOf('ASSIGNMENT') !== -1, // departments that renamed SHIFT → ASSIGNMENT keep the role
+        shift: (h) => isShiftHeader_(h), // config-driven: [ROSTER_LAYOUT].SHIFT_HEADER — same list the tracker uses
         mayHours: (h) => h.indexOf('MAY') !== -1 && h.indexOf('HOUR') !== -1,
         junHours: (h) => h.indexOf('JUN') !== -1 && h.indexOf('HOUR') !== -1,
         timeInRank: (h) => h.indexOf('TIME') !== -1 && h.indexOf('RANK') !== -1,
@@ -149,7 +170,17 @@ function colKey_(h) { return String(h == null ? '' : h).toUpperCase().trim(); }
 function defaultColumnClass_(keyUpper) {
   const isRank = keyUpper.indexOf('RANK') !== -1;
   const isUnit = /^UNIT\b/.test(keyUpper) || keyUpper.indexOf('CALLSIGN') !== -1; // not "COMMUNITY" — needs the word boundary
-  return (isRank || isUnit) ? 'SLOT' : 'MEMBER';
+  if (isRank || isUnit) return 'SLOT';
+  // The shift / assignment / district column is the one whose ownership is a genuine departmental choice, so it
+  // is NAMED in config rather than guessed: RANK = the value belongs to the slot and stays put when a member
+  // transfers out, MEMBER = it belongs to the person and travels with them. An explicit [COLUMNS] row (or the
+  // Control Panel ▸ Columns tab) still overrides this — this only decides the default.
+  if (isShiftHeader_(keyUpper)) {
+    let by = 'MEMBER';
+    try { if (CONFIG.shiftAssignedBy) by = CONFIG.shiftAssignedBy; } catch (e) { /* pre-config / LIMITED */ }
+    return by === 'RANK' ? 'SLOT' : 'MEMBER';
+  }
+  return 'MEMBER';
 }
 
 /**
@@ -2294,7 +2325,7 @@ function trackerCols_(tracker) {
       out.ooc = find((h) => h.indexOf('OOC') !== -1);
       out.name = find((h) => h === 'NAME' || (h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1));
       out.discord = find((h) => h.indexOf('UNIQUE') !== -1 || h.indexOf('DISCORD') !== -1 || h.indexOf('CID') !== -1 || h.indexOf('COMMUNITY ID') !== -1);
-      out.shift = find((h) => h.indexOf('SHIFT') !== -1 || h.indexOf('DIVISION') !== -1 || h.indexOf('DISTRICT') !== -1 || h.indexOf('ASSIGNMENT') !== -1);
+      out.shift = find((h) => isShiftHeader_(h)); // same config list as the roster — these two used to disagree
       out.start = find((h) => h.indexOf('START') !== -1);
       out.end = find((h) => h.indexOf('END') !== -1);
       out.length = find((h) => h.indexOf('LENGTH') !== -1 || h === 'LEN');

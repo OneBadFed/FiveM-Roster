@@ -301,6 +301,8 @@ const BLOCK_SPECS_ = Object.freeze({
     ID_TYPE: { t: 'enum', d: 'DISCORD', req: true, enum: ['DISCORD', 'COMMUNITY', 'CUSTOM'], help: 'THE Unique-ID switch for this department. DISCORD = a 17-19 digit Discord ID (default). COMMUNITY = a short 1-8 digit Community ID / CID. CUSTOM = use the ID_MIN_DIGITS…ID_MAX_DIGITS range below. NOTE: Discord @mention pings only fire for a real 17-19 digit ID, so a COMMUNITY department simply gets no pings.' },
     ID_MIN_DIGITS: { t: 'int', d: 17, req: true, min: 1, max: 30, help: 'Shortest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 17, COMMUNITY forces 1).' },
     ID_MAX_DIGITS: { t: 'int', d: 19, req: true, min: 1, max: 30, help: 'Longest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 19, COMMUNITY forces 8).' },
+    SHIFT_HEADER: { t: 'list', d: 'SHIFT, ASSIGNMENT, DISTRICT, DIVISION, WATCH', req: false, help: 'Header keyword(s) for the shift / assignment / district column — a header MATCHES if it CONTAINS any one of them (case/space-proof). Every department names this column differently, so put yours first. ONE list drives both the roster and the LOA Tracker: they used to carry separate hardcoded lists, and a department on "DISTRICT" got a tracker column the roster could never fill, so the value synced across blank. BLANK = this department has no such column.' },
+    SHIFT_ASSIGNED_BY: { t: 'enum', d: 'MEMBER', req: false, enum: ['MEMBER', 'RANK'], help: 'How that column is filled, and what happens to it on a transfer. MEMBER = it belongs to the PERSON: blank on an empty slot, set when someone is seated, and it FOLLOWS them when they move rank. RANK = it belongs to the SLOT: pre-filled on the rank row and it STAYS with the position when the member moves out. This sets the column\'s default SLOT/MEMBER class — an explicit per-header row in [COLUMNS] (or Control Panel ▸ Columns) still wins over it.' },
   } },
   COLUMNS: { type: 'table', cols: ['Role', 'Match', 'Class', 'Required'],
     seed: [
@@ -977,6 +979,10 @@ function materialize_(c, fromTab) {
     webhookProp: 'DISCORD_WEBHOOK_URL', // engine constant (brief A6) — secrets live in Script Properties
     // v1.0 — configurable logic (unit-number format, date formats, embed appearance, retention limits).
     unitFormat: kv.ROSTER_LAYOUT.UNIT_FORMAT || 'S-{00}',
+    // The shift / assignment / district column: what it is CALLED, and who it belongs to. Normalized once here
+    // so every resolver reads the same list instead of keeping its own.
+    shiftKeywords: (kv.ROSTER_LAYOUT.SHIFT_HEADER || []).map((k) => norm_(k)).filter(Boolean),
+    shiftAssignedBy: norm_(kv.ROSTER_LAYOUT.SHIFT_ASSIGNED_BY) === 'RANK' ? 'RANK' : 'MEMBER',
     lastActivityStyle: kv.ACTIVITY.LAST_ACTIVITY_STYLE || 'MATCH', // v1.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
     lastActivityCols: (kv.ACTIVITY.LAST_ACTIVITY_COLS || []).slice(0, 3), // newest-first previous-activity chain; blank = auto-detect one by header
     formats: { date: kv.FORMATS.DATE_DISPLAY || 'd MMM. yyyy', timestamp: kv.FORMATS.TIMESTAMP_DISPLAY || 'd MMM yyyy, h:mm a' },
