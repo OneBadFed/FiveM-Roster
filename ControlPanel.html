@@ -32,7 +32,8 @@
     /* THE control surface. Every box you can type in, pick from or press — field, pop-up, segmented track,
        recessed button — is this fill and this hairline ring. It was written out by hand in a dozen places and
        had already drifted; naming it is what keeps the next control from inventing its own grey. */
-    --ctl:rgba(255,255,255,.08); --ctl-hi:rgba(255,255,255,.12);
+    --ctl:#1e1e1e; --ctl-hi:#252528;
+    --btn:rgba(255,255,255,.08); --btn-hi:rgba(255,255,255,.13);
     --ctl-ring:0 0 0 .5px rgba(255,255,255,.1) inset;
     /* No glass, no inner highlight, no glow. Kept as no-ops so older rules still parse while sections migrate. */
     --glass:none; --glass-2:none;
@@ -106,14 +107,14 @@
   .icon-btn{width:26px;height:24px;border-radius:5px;background:none;border:none;color:rgba(255,255,255,.6);
             display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;
             transition:background var(--t) var(--ease),color var(--t) var(--ease);}
-  .icon-btn:hover{background:var(--ctl);color:var(--txt);}
+  .icon-btn:hover{background:var(--btn);color:var(--txt);}
   /* In the brand row it is a recessed square, sized to the title block rather than to the toolbar. */
   .brand .icon-btn{width:22px;height:22px;border-radius:5px;background:rgba(255,255,255,.07);
                    box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;color:rgba(255,255,255,.6);}
   .brand .icon-btn:hover{background:var(--ctl-hi);color:rgba(255,255,255,.9);}
   .brand .icon-btn:disabled{opacity:.4;cursor:default;}
   .brand .icon-btn svg{width:13px;height:13px;stroke-width:1.9;}
-  .icon-btn:active{background:var(--ctl-hi);}
+  .icon-btn:active{background:var(--btn-hi);}
   .icon-btn svg{width:15px;height:15px;stroke-width:1.7;}
   .spin{animation:sp .8s linear infinite;}
   @keyframes sp{to{transform:rotate(360deg);}}
@@ -144,7 +145,7 @@
   .hpill2{display:flex;align-items:center;justify-content:flex-start;gap:7px;border:none;background:rgba(255,255,255,.05);color:var(--txt-2);
        border-radius:6px;padding:0 8px;height:26px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;text-align:left;
        box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;transition:background var(--t) var(--ease);}
-  .hpill2:hover{background:var(--ctl-hi);}
+  .hpill2:hover{background:var(--btn-hi);}
   .hpill2[hidden]{display:none;}
   .hpill2 .pdot{width:6px;height:6px;} /* the capsules took .pdot to 5px; this one is 6 */
   .hpill2.ok{color:var(--txt-2);background:var(--e1);} .hpill2.ok .pdot{background:var(--green);}
@@ -260,10 +261,10 @@
   /* The panel that currently owns an open menu stacks above the ones below it. */
   .fpanel:has(.sdrop.open){z-index:5;}
   .fgroup{position:relative;}
-  .frow{display:grid;grid-template-columns:112px minmax(0,1fr);align-items:center;gap:12px;padding:8px 14px;min-height:38px;}
+  .frow{display:grid;grid-template-columns:88px minmax(0,1fr);align-items:center;gap:10px;padding:8px 14px;min-height:38px;}
   .frow+.frow{box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .flbl{font-size:12.5px;color:rgba(255,255,255,.6);text-align:right;white-space:nowrap;}
-  .fctl{display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden;}
+  .fctl{display:flex;align-items:center;gap:9px;min-width:0;}
   .fnote{font-size:11.5px;color:rgba(255,255,255,.35);white-space:nowrap;flex:0 0 auto;}
   /* A value the operator cannot change here reads as TEXT, not as a disabled input — a greyed-out box invites
      a click that will never do anything. */
@@ -273,7 +274,7 @@
   /* A row that is all explanation spans both columns — a hint has no label to sit beside. */
   .fspan{grid-template-columns:1fr;padding-top:9px;padding-bottom:10px;}
   .fhint{margin:0;font-size:11.5px;color:rgba(255,255,255,.42);line-height:1.5;}
-  .fin{width:auto;flex:1 1 120px;max-width:240px;min-width:0;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
+  .fin{width:auto;flex:1 1 140px;max-width:300px;min-width:0;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
        background:var(--ctl);box-shadow:var(--ctl-ring);}
   .fin:focus{background:rgba(255,255,255,.11);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
   .fdate{flex:0 0 auto;} /* the date picker is drawn dark by color-scheme on :root */
@@ -307,7 +308,7 @@
   .pv-empty{padding:20px 14px;text-align:center;font-size:12px;color:rgba(255,255,255,.35);line-height:1.5;}
   /* The slot picker as a macOS POP-UP button: 24px, with the accent chevron chip that distinguishes a pop-up
      (choose one of N) from a plain push button. */
-  .fctl .sdrop{flex:0 1 268px;min-width:0;}
+  .fctl .sdrop{flex:1 1 auto;min-width:0;max-width:none;}
   .fctl .sdrop-btn{height:24px;padding:0 3px 0 9px;border-radius:6px;font-size:12.5px;gap:8px;
                    background:var(--ctl);box-shadow:var(--ctl-ring);}
   .fctl .sdrop-btn:hover{background:var(--ctl-hi);}
@@ -353,13 +354,13 @@
   .promo-r{display:flex;align-items:center;gap:12px;background:var(--e2);border-radius:10px;padding:8px 12px;margin-bottom:6px;font-size:12.5px;box-shadow:var(--hi);}
   .promo-d{color:var(--txt-3);min-width:96px;} .promo-n{flex:1;font-weight:700;} .promo-k{color:var(--txt-2);}
   .promo-x{background:none;border:none;color:var(--red,#e0574f);cursor:pointer;font-size:13px;font-weight:700;padding:3px 8px;border-radius:7px;transition:background var(--t);}
-  .promo-x:hover{background:var(--ctl-hi);} .promo-x:disabled{opacity:.45;cursor:default;}
+  .promo-x:hover{background:var(--btn-hi);} .promo-x:disabled{opacity:.45;cursor:default;}
   .sdrop-ghead{display:flex;align-items:center;gap:8px;padding:6px 8px 5px;}
   .sg-rank{flex:1;min-width:0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--txt-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sg-cnt{font-size:10.5px;color:var(--txt-3);font-weight:700;flex:0 0 auto;}
   .sdrop-opt{width:100%;display:flex;align-items:center;gap:9px;background:none;border:none;color:var(--txt);
     padding:8px 10px 8px 32px;border-radius:9px;cursor:pointer;font-size:13px;text-align:left;transition:background var(--t);}
-  .sdrop-opt:hover{background:var(--ctl-hi);}
+  .sdrop-opt:hover{background:var(--btn-hi);}
   .sdrop-opt.sel{background:var(--accent-soft);}
   .so-call{flex:1;font-family:var(--mono);font-size:12.5px;}
   .so-rank{font-size:11px;color:var(--txt-3);white-space:nowrap;}
@@ -458,8 +459,8 @@
   .ro.mono{font-family:var(--mono);font-size:12.5px;} .ro.empty{color:var(--txt-3);}
   .ro.blank{color:var(--txt-3);font-style:italic;font-size:12px;background:transparent;box-shadow:inset 0 0 0 1px var(--hair);} /* optional field the applicant left empty — same 39px rhythm as a filled one */
   .apps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:var(--s4);}
-  .appchip{display:inline-flex;align-items:center;gap:9px;background:var(--ctl);border:none;color:var(--txt-2);border-radius:12px;padding:8px 13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t);}
-  .appchip:hover{background:var(--ctl-hi);color:var(--txt);transform:translateY(-1px);}
+  .appchip{display:inline-flex;align-items:center;gap:9px;background:var(--btn);border:none;color:var(--txt-2);border-radius:12px;padding:8px 13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t);}
+  .appchip:hover{background:var(--btn-hi);color:var(--txt);transform:translateY(-1px);}
   .appchip.on{color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 14px -6px var(--accent);}
   .appchip .ci{width:26px;height:26px;border-radius:8px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#c4dbff;background:linear-gradient(155deg,rgba(79,142,232,.34),rgba(79,142,232,.08));box-shadow:var(--hi);}
   .appchip .cn{font-size:12.5px;font-weight:700;white-space:nowrap;} .appchip .cs{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--amber-f);}
@@ -473,7 +474,7 @@
   .search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:none;background:none;color:var(--txt-3);
                 border-radius:8px;cursor:pointer;display:none;align-items:center;justify-content:center;transition:color var(--t),background var(--t);}
   .search-clear svg{width:15px;height:15px;}
-  .search-clear:hover{color:var(--txt);background:var(--ctl-hi);}
+  .search-clear:hover{color:var(--txt);background:var(--btn-hi);}
   .search-wrap.has-text .search-clear{display:flex;}
 
   /* Loading rows breathe instead of sweeping — a travelling highlight draws the eye to a placeholder, which is
@@ -526,9 +527,9 @@
      recessed-button treatment instead of the segmented track the profile's status picker uses. */
   .bulkbar .seg{border-radius:6px;background:rgba(255,255,255,.08);color:rgba(255,255,255,.88);
                 box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
-  .bulkbar .seg:hover{background:rgba(255,255,255,.13);color:#fff;}
+  .bulkbar .seg:hover{background:var(--btn-hi);color:#fff;}
   .bulkbar .bclear{background:none;border:none;color:var(--accent);border-radius:var(--r-sm);padding:var(--s1) var(--s2);font-size:12.5px;font-weight:400;cursor:pointer;transition:color var(--t),background var(--t);}
-  .bulkbar .bclear:hover{color:var(--txt);background:var(--ctl-hi);}
+  .bulkbar .bclear:hover{color:var(--txt);background:var(--btn-hi);}
   /* The leave form sits in a 288px sub-panel, so its controls take the same 24px metrics as everything else in
      the inspector. They were the last fields on the old sizing — a 32px select next to a 20px "New LOA" button
      read as two different toolkits stacked in one box. */
@@ -609,7 +610,7 @@
   .colrow .ch small{display:block;color:var(--txt-3);font-size:11px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .colrow .ch small .sv{color:var(--txt-2);}
   .colrow .cnt{flex:0 0 auto;font-family:var(--mono);font-size:10px;color:var(--txt-3);white-space:nowrap;}
-  .coltog{display:inline-flex;flex:0 0 auto;background:var(--ctl);border:none;border-radius:999px;padding:2px;box-shadow:var(--hi);}
+  .coltog{display:inline-flex;flex:0 0 auto;background:var(--btn);border:none;border-radius:999px;padding:2px;box-shadow:var(--hi);}
   .cseg{background:none;border:none;color:var(--txt-3);font-size:11px;font-weight:650;padding:4px 12px;border-radius:999px;cursor:pointer;transition:background var(--t),color var(--t);}
   .cseg:hover{color:var(--txt-2);}
   .cseg.on[data-k="MEMBER"]{background:var(--blue-t);color:var(--blue-f);box-shadow:0 0 10px -4px var(--blue);}
@@ -647,14 +648,14 @@
   /* per-divider style editor */
   .dedit{background:none;border:none;color:var(--txt-3);cursor:pointer;padding:5px;border-radius:8px;display:flex;align-items:center;transition:color var(--t),background var(--t);}
   .dedit svg{width:14px;height:14px;}
-  .dedit:hover{color:var(--txt);background:var(--ctl-hi);}
+  .dedit:hover{color:var(--txt);background:var(--btn-hi);}
   .divgroup.custom .dedit{color:var(--rc-f,var(--accent-2));}
   .diveditor{background:var(--e2);border-radius:0 0 14px 14px;padding:14px 16px;margin-top:-6px;box-shadow:inset 0 1px 0 var(--hair);display:flex;flex-direction:column;gap:13px;}
   .diveditor[hidden]{display:none;} /* the author display:flex above beats the UA [hidden] rule — restore it so the Edit toggle works */
   .divgroup.open .diveditor{margin-top:0;border-radius:14px;margin-bottom:6px;}
   .de-fld{display:flex;align-items:flex-start;gap:13px;}
   .de-fld>label{flex:0 0 54px;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--txt-3);font-weight:800;padding-top:8px;}
-  .de-pill{flex:1;min-width:0;background:var(--ctl);border:none;color:var(--txt);border-radius:9px;padding:8px 12px;font-size:12.5px;font-family:inherit;outline:none;box-shadow:var(--hi);}
+  .de-pill{flex:1;min-width:0;background:var(--btn);border:none;color:var(--txt);border-radius:9px;padding:8px 12px;font-size:12.5px;font-family:inherit;outline:none;box-shadow:var(--hi);}
   .de-pill::placeholder{color:var(--txt-3);}
   .de-pill:focus{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft);}
   .de-tones{display:flex;flex-wrap:wrap;gap:8px;flex:1;padding-top:2px;}
@@ -671,7 +672,7 @@
   .de-save{background:linear-gradient(155deg,#5a97ec,#3d7cd9);color:#fff;box-shadow:var(--hi),var(--sh-1);}
   .de-save:hover{filter:brightness(1.07);}
   .de-reset{background:transparent;color:var(--txt-3);}
-  .de-reset:hover{color:var(--txt);background:var(--ctl-hi);}
+  .de-reset:hover{color:var(--txt);background:var(--btn-hi);}
   .de-ic{width:32px;height:32px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:var(--rc-t,var(--e3));color:var(--rc-f,var(--txt-3));border:none;box-shadow:var(--hi);}
   .de-ic svg{width:16px;height:16px;}
   .de-tx b{display:block;color:var(--txt-2);font-size:12px;font-weight:650;}
@@ -681,9 +682,9 @@
   .snap-row{display:flex;align-items:center;gap:var(--s3);background:var(--glass),var(--e1);border:none;border-radius:14px;padding:10px 13px;font-size:12px;box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),box-shadow var(--t);}
   .snap-row:hover{transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
   .snap-row .si2{flex:1;} .snap-row .si2 b{font-weight:650;} .snap-row .si2 small{display:block;color:var(--txt-3);font-size:11px;}
-  .snap-restore{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;background:var(--ctl);border:none;color:var(--txt-2);border-radius:10px;padding:7px 13px;font-size:12px;font-weight:650;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease),box-shadow var(--t);}
+  .snap-restore{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;background:var(--btn);border:none;color:var(--txt-2);border-radius:10px;padding:7px 13px;font-size:12px;font-weight:650;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease),box-shadow var(--t);}
   .snap-restore svg{width:14px;height:14px;}
-  .snap-restore:hover{color:var(--accent-2);background:var(--ctl-hi);transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
+  .snap-restore:hover{color:var(--accent-2);background:var(--btn-hi);transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
   .snap-restore:active{transform:scale(.97);}
   .snap-restore.armed{background:linear-gradient(155deg,var(--amber-t),transparent),var(--e2);color:var(--amber-f);box-shadow:var(--hi),0 0 14px -6px var(--amber);}
   .aud-feed{display:flex;flex-direction:column;}
@@ -831,7 +832,7 @@
   .kvc .k svg{width:13px;height:13px;flex:0 0 auto;}
   .kvc .v{font-size:13px;font-weight:400;color:rgba(255,255,255,.88);}
   .kvc.idcell .v{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);font-family:var(--mono);font-variant-numeric:tabular-nums;font-size:var(--f2);font-weight:400;word-break:break-all;}
-  .copybtn{flex:0 0 auto;background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.6);border-radius:5px;width:20px;height:20px;
+  .copybtn{flex:0 0 auto;background:var(--btn);border:none;color:rgba(255,255,255,.6);border-radius:5px;width:20px;height:20px;
            display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;transition:all var(--t);}
   .copybtn svg{width:11px;height:11px;} .copybtn:hover{color:#fff;background:rgba(255,255,255,.14);transform:none;}
   .copybtn.ok{color:var(--green-f);background:var(--green-t);box-shadow:var(--hi),0 0 10px -4px var(--green);}
@@ -862,10 +863,10 @@
   .seg.cur{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;font-weight:500;box-shadow:0 .5px 0 rgba(255,255,255,.22) inset;}
   .seg:active{transform:none;background:var(--e4);}
   .seg:disabled{opacity:.5;cursor:default;}
-  .linkbtn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.88);
+  .linkbtn{display:inline-flex;align-items:center;gap:6px;background:var(--btn);border:none;color:rgba(255,255,255,.88);
            border-radius:6px;padding:0 10px;height:24px;font-size:12.5px;font-weight:400;cursor:pointer;
            box-shadow:var(--ctl-ring),0 1px 1.5px rgba(0,0,0,.2);transition:background var(--t) var(--ease);}
-  .linkbtn svg{width:11px;height:11px;} .linkbtn:hover{color:#fff;background:rgba(255,255,255,.13);transform:none;}
+  .linkbtn svg{width:11px;height:11px;} .linkbtn:hover{color:#fff;background:var(--btn-hi);transform:none;}
   .lv-add{margin-left:auto;text-transform:none;height:20px;padding:0 8px;border-radius:5px;font-size:11.5px;font-weight:500;}
   .lv-add svg{width:10px;height:10px;}
   .linkbtn.on{color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 12px -5px var(--accent);}
@@ -905,7 +906,7 @@
   .pc-rank .sh{font-size:12.5px;color:rgba(255,255,255,.6);white-space:nowrap;flex:0 0 auto;}
   .pc-rank .stt{display:flex;align-items:center;gap:6px;font-size:12.5px;color:rgba(255,255,255,.6);white-space:nowrap;}
   .pc-rank .stt .pdot{width:7px;height:7px;}
-  .callchip{background:var(--ctl);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);flex:0 0 auto;}
+  .callchip{background:var(--btn);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);flex:0 0 auto;}
   .pc-stat{flex:0 0 auto;background:none;border-radius:0;padding:2px 0 0;box-shadow:none;display:block;text-align:right;min-width:0;}
   .ps-k{display:block;font-size:10px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px;}
   .ps-row{display:flex;align-items:baseline;gap:5px;justify-content:flex-end;}
@@ -934,7 +935,7 @@
   .tsec-h b{font-size:14px;font-weight:800;letter-spacing:-.01em;}
   .tsec-h small{color:var(--txt-3);font-size:11px;font-weight:500;}
   .tstat{display:flex;flex-wrap:wrap;gap:var(--s2);}
-  .hchip{display:inline-flex;align-items:center;gap:8px;background:var(--ctl);border-radius:11px;padding:8px 12px;font-size:11.5px;font-weight:650;box-shadow:var(--hi),var(--sh-1);}
+  .hchip{display:inline-flex;align-items:center;gap:8px;background:var(--btn);border-radius:11px;padding:8px 12px;font-size:11.5px;font-weight:650;box-shadow:var(--hi),var(--sh-1);}
   /* System tab: chips are direct grid children — two equal columns filling the full pane width */
   #healthBody .hchip{width:100%;}
   .hchip small{color:var(--amber-f);font-weight:600;}
@@ -947,8 +948,8 @@
   .tcard .tt{flex:1;min-width:0;}
   .tcard .tt b{display:block;font-size:13px;font-weight:700;}
   .tcard .tt small{display:block;color:var(--txt-3);font-size:11px;font-weight:450;margin-top:2px;line-height:1.4;}
-  .runbtn{flex:0 0 auto;position:relative;background:var(--ctl);border:none;color:var(--txt);border-radius:10px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease);}
-  .runbtn:hover{background:var(--ctl-hi);color:var(--accent-2);transform:translateY(-1px);}
+  .runbtn{flex:0 0 auto;position:relative;background:var(--btn);border:none;color:var(--txt);border-radius:10px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease);}
+  .runbtn:hover{background:var(--btn-hi);color:var(--accent-2);transform:translateY(-1px);}
   .runbtn:active{transform:scale(.96);}
   .runbtn:disabled{opacity:.55;cursor:default;}
   .runbtn.busy{color:transparent;}
@@ -968,8 +969,8 @@
   .crow-v .dot{width:8px;height:8px;}
   .conn .hint{margin-top:var(--s2);}
   .whchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:var(--s3);}
-  .whchip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:650;color:var(--txt-2);background:var(--ctl);border-radius:999px;padding:6px 13px 6px 11px;cursor:pointer;box-shadow:var(--hi);user-select:none;transition:background var(--t),color var(--t);}
-  .whchip:hover{background:var(--ctl-hi);color:var(--txt);}
+  .whchip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:650;color:var(--txt-2);background:var(--btn);border-radius:999px;padding:6px 13px 6px 11px;cursor:pointer;box-shadow:var(--hi);user-select:none;transition:background var(--t),color var(--t);}
+  .whchip:hover{background:var(--btn-hi);color:var(--txt);}
   .whchip:has(input:checked){color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 12px -6px var(--accent);}
   .whchip input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;margin:0;}
   .toolbtn{display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;background:var(--glass),var(--e1);border:none;
@@ -2099,7 +2100,7 @@
     // Recently resolved — what was decided, so the queue does not look like it silently ate them.
     var done=(SU.recent||[]).slice(0,5);
     if(done.length){
-      out+='<div class="suq-head">Earlier</div>'
+      out+='<div class="suq-head">Earlier this week</div>'
         +done.map(function(a){
           return '<div class="suq-done"><span class="suq-av" style="--av:'+avColor(a.discord||a.name)+'">'+esc(mInitials(a.name))+'</span>'
             +'<b>'+esc(a.name||'(no name)')+'</b><span>Seated</span></div>';
