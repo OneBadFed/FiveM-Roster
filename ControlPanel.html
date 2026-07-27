@@ -645,6 +645,12 @@
      used to, so the checkbox/triangle/insignia cluster stays as tight as it was. */
   .thead,.mhead{display:grid;grid-template-columns:24px 14px 26px minmax(0,1fr) 168px 66px 66px 104px;
                 align-items:center;column-gap:12px;padding:0 10px;}
+  /* The shift / assignment / district column exists only when the ROSTER has one, so the template gains a
+     ninth track only then — an always-present column would leave an empty gutter on every other department.
+     The header cell is display:none in that case, and a hidden grid item is not placed, so the two stay in
+     step without a second markup path. */
+  .has-shift .thead,.has-shift .mhead{grid-template-columns:24px 14px 26px minmax(0,1fr) 150px 62px 96px 62px 104px;}
+  .c-shift{font-size:12.5px;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .thead{height:24px;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.32);box-shadow:0 1px 0 rgba(255,255,255,.09);margin-top:14px;}
   .thead .num{text-align:right;} .thead .st{text-align:right;}
   /* Sortable header — the reference asks for a "sortable header … it scans like Mail". Clicking a column drives
@@ -955,7 +961,7 @@
 
   <div class="pane active" id="pane-members">
     <div class="bulkbar" id="bulkbar" hidden></div>
-    <div class="thead"><span></span><span></span><span></span><span class="sortcol" data-sort="name">Name</span><span>Rank</span><span class="sortcol" data-sort="roster">Slot</span><span class="num sortcol" data-sort="hours">Hours</span><span class="st sortcol" data-sort="status">Status</span></div>
+    <div class="thead"><span></span><span></span><span></span><span class="sortcol" data-sort="name">Name</span><span>Rank</span><span class="sortcol" data-sort="roster">Slot</span><span class="sortcol" id="thShift" data-sort="shift" hidden></span><span class="num sortcol" data-sort="hours">Hours</span><span class="st sortcol" data-sort="status">Status</span></div>
     <div class="mlist" id="mlist"><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div></div>
   </div>
 
@@ -1128,7 +1134,7 @@
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
   var INIT_TAB = "<?= initialTab ?>"; // deep-link target tab (e.g. 'signups' from 🧾 Review Roster Signups); '' = default
-  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null};
+  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null,shiftLabel:''};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
   var SVG={
@@ -1216,6 +1222,7 @@
     if(b.statuses) STATE.statuses=b.statuses;
     if(b.leaveTypes&&b.leaveTypes.length) STATE.leaveTypes=b.leaveTypes;
     if(b.protectedStatuses) STATE.protected=b.protectedStatuses;
+    STATE.shiftLabel=String(b.shiftLabel||'').trim(); applyShiftCol(); // the roster's OWN word for that column
     if(b.idDigits) STATE.idDigits=b.idDigits; // configured Unique-ID length — the form validates against THIS, not a hardcoded 17-19
     if(b.statusColors) STATE.statusColors=b.statusColors; // [STATUSES] Color column — custom statuses keep coloured pills
     if(b.addCols){ if($('addOocWrap')) $('addOocWrap').hidden=!b.addCols.ooc; if($('addShiftWrap')) $('addShiftWrap').hidden=!b.addCols.shift; } // show OOC/Shift inputs only when the roster has those columns
@@ -1256,6 +1263,7 @@
     var s=STATE.sort;
     if(s==='name') return list.slice().sort(function(a,b){return a.name.localeCompare(b.name);});
     if(s==='hours') return list.slice().sort(function(a,b){return (parseFloat(b.hours)||0)-(parseFloat(a.hours)||0);});
+    if(s==='shift') return list.slice().sort(function(a,b){return String(a.shift||'').localeCompare(String(b.shift||''));});
     if(s==='status'){ var o={Active:0,'Semi-Active':1,Inactive:2,LOA:3,ROA:4,Reserve:5}; return list.slice().sort(function(a,b){return (o[a.status]==null?9:o[a.status])-(o[b.status]==null?9:o[b.status]);}); }
     return list;
   }
@@ -1274,7 +1282,7 @@
       if(!m.filled) return false;
       if(fs!=='all'){ if(fs==='leave'){ if(STATE.leaveTypes.concat(STATE.protected||[]).indexOf(m.status)<0) return false; } else if(m.status!==fs) return false; }
       if(fr!=='all' && m.rank!==fr) return false;
-      if(q && (m.name+' '+m.callsign+' '+m.rank+' '+m.discord).toLowerCase().indexOf(q)<0) return false;
+      if(q && (m.name+' '+m.callsign+' '+m.rank+' '+m.discord+' '+(m.shift||'')).toLowerCase().indexOf(q)<0) return false;
       return true;
     });
   }
@@ -1310,6 +1318,7 @@
           +'<span class="c-name">'+esc(m.name)+'</span>'
           +'<span class="c-rank">'+esc(m.rank)+'</span>'
           +'<span class="c-slot">'+esc(m.callsign||'—')+'</span>'
+          +(STATE.shiftLabel?('<span class="c-shift">'+esc(m.shift||'—')+'</span>'):'')
           +'<span class="c-hrs">'+esc(m.hours||'0')+'</span>'
           +'<span class="c-st">'+pill(m.status)+'</span></div>'
         +'<div class="mdetail">'+(open?renderCard(m):'')+'</div></div>';
@@ -1635,6 +1644,31 @@
   function rankInitials(r){ var p=String(r||'').replace(/[^A-Za-z0-9 ]/g,'').split(/\s+/).filter(Boolean); if(!p.length) return '—'; return ((p[0][0]||'')+(p.length>1?(p[p.length-1][0]||''):'')).toUpperCase(); }
   function rankAvatar(rank){ var ic=(STATE.rankIcons&&STATE.rankIcons[rank])||''; return ic?('<span class="rava"><img src="'+esc(ic)+'" alt=""></span>'):('<span class="rava rava-txt">'+esc(rankInitials(rank))+'</span>'); }
   function slotByRow(row){ for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===row) return STATE.members[i]; } return null; }
+  /* A sheet header is usually SHOUTED ("PATROL DISTRICT"); the other column headings here are title case, so an
+     all-caps label would be the one thing yelling. Mixed-case headers are left exactly as typed. */
+  function titleish(s){
+    s=String(s||'').trim(); if(!s) return '';
+    if(s!==s.toUpperCase()) return s; // they already chose a case — respect it
+    return s.toLowerCase().replace(/(^|[\s/&-])([a-z])/g,function(_,p,c){ return p+c.toUpperCase(); });
+  }
+  /* Show the shift column only when the roster actually has one. The heading, the row cells and the grid track
+     are switched together — a column with no data behind it is worse than no column. */
+  function applyShiftCol(){
+    var on=!!STATE.shiftLabel, th=$('thShift'), pane=$('pane-members');
+    if(pane) pane.classList.toggle('has-shift', on);
+    if(th){ th.hidden=!on; th.textContent=on?titleish(STATE.shiftLabel):''; }
+    var lab=document.querySelector('#addShiftWrap .flbl');   // the Add-member field takes the same word
+    if(lab && on) lab.textContent=titleish(STATE.shiftLabel);
+    var inp=$('addShift');
+    if(inp && on) inp.placeholder='e.g. '+titleish(STATE.shiftLabel).split(/[\s/]/)[0];
+    // The sort pop-up gains the same option, so the header and the pop-up still offer the same set — the header
+    // drives the select, and a header sorting by something the select cannot name would leave it blank.
+    var sel=$('sortBy'); if(!sel) return;
+    var opt=sel.querySelector('option[value="shift"]');
+    if(on && !opt){ opt=document.createElement('option'); opt.value='shift'; sel.appendChild(opt); }
+    if(on){ opt.textContent=titleish(STATE.shiftLabel)+' A–Z'; }
+    else if(opt){ if(sel.value==='shift'){ sel.value='roster'; STATE.sort='roster'; } opt.remove(); }
+  }
   function renderSlots(){
     var open=STATE.members.filter(function(m){return !m.filled;}), menu=$('slotMenu'); if(!menu) return;
     if(STATE.addSlot!=null && !open.some(function(m){return m.row===STATE.addSlot;})) STATE.addSlot=null; // dropped slot got filled
@@ -2123,7 +2157,10 @@
      so the header arrow and the pop-up always agree. */
   document.querySelector('.thead').addEventListener('click',function(e){
     var h=e.target.closest('.sortcol'); if(!h) return;
-    $('sortBy').value=h.dataset.sort; markSortCol(); renderMembers();
+    // STATE.sort as well as the select: assigning .value programmatically does NOT fire `change`, and that
+    // listener is the only thing that used to set STATE.sort — so the arrow and the pop-up both moved while
+    // sortList() went on reading the OLD value and the order never changed.
+    STATE.sort=h.dataset.sort; $('sortBy').value=h.dataset.sort; markSortCol(); renderMembers();
   });
   function markSortCol(){
     var v=$('sortBy').value;

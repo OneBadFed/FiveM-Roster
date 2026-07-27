@@ -451,6 +451,9 @@ function cpBootstrap() {
     protectedStatuses: (CONFIG.protectedStatuses || []).slice(),                 // PROTECTED kinds (e.g. Reserve) — the "On leave" filter includes them
     leaveTypes: CONFIG.leaveTypes.slice(),                                       // the [LEAVE].LEAVE_TYPES list — drives the schedule-leave dropdown
     addCols: { ooc: !!RCadd.ooc, shift: !!RCadd.shift },                         // which optional columns the Add-member form should offer
+    // What THIS department calls its shift column, read from the sheet's own header rather than assumed. Drives
+    // the member-list column heading and the Add-member field label; '' = no such column, and both disappear.
+    shiftLabel: cpShiftLabel_(rosterSheet, RCadd),
     // The CONFIGURED Unique-ID length. The panel used to hardcode 17-19 (Discord) in both its validator and its
     // label, so a COMMUNITY department on 1-8 digit CIDs could not seat anyone — the form rejected every valid
     // ID before the request left the browser. Same numbers the server validates with.
@@ -463,6 +466,21 @@ function cpBootstrap() {
     adminRoster: cpAdminStatus_(),                                              // { linked, access, url } — access is per-USER (Google ACL), so each opener sees their own answer
     health: (typeof cpHealthCheck_ === 'function') ? cpHealthCheck_() : null, // null if RosterTrust.gs not pasted
   };
+}
+
+/**
+ * The roster's OWN header text for the shift / assignment / district column — "District", "Assignment",
+ * "Patrol District", whatever they typed. Returned verbatim so the panel labels the column the way the
+ * department already names it, rather than calling it "Shift" at a department that never uses that word.
+ * @return {string} '' when the roster has no such column.
+ */
+function cpShiftLabel_(roster, RC) {
+  try {
+    if (!roster || !RC || !RC.shift) return '';
+    const hr = RC.headerRow || ROSTER_HEADER_ROW;
+    if (!hr) return '';
+    return String(roster.getRange(hr, RC.shift).getDisplayValue()).trim();
+  } catch (e) { log_('cpShiftLabel_', e); return ''; }
 }
 
 /** Re-pull members + stats (used by the refresh button and after writes). */
@@ -528,6 +546,7 @@ function cpSnapshot_() {
           hours: String(block[i][RC.hours - 1]).trim(),
           req: reqFor(rank),                        // top-tier MinHours for THIS rank's ladder (0 = no requirement)
           section,                                  // the divider band this row sits under ('' = above the first one)
+          shift: RC.shift ? String(block[i][RC.shift - 1]).trim() : '', // shift / assignment / district — '' when the roster has no such column
           color: String(rankBg[i][0] || '').trim(), // exact rank-cell color from the sheet
           filled,
         });
