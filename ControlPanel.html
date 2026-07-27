@@ -357,6 +357,29 @@
   .so-call{flex:1;font-family:var(--mono);font-size:12.5px;}
   .so-rank{font-size:11px;color:var(--txt-3);white-space:nowrap;}
   .sdrop-empty{padding:18px;text-align:center;color:var(--txt-3);font-size:12.5px;}
+  /* ── The Add-member slot picker, to the reference: a pinned search, compact rows, a tick on the selected one
+     and a running count at the foot. Scoped to #slotMenu so the Move/transfer and Signups pickers, which have
+     not been reworked, keep the shape they already have. ── */
+  #slotMenu{padding:0;}
+  #slotMenu .sdrop-search,#slotMenu .sdrop-foot{position:sticky;background:var(--e2);z-index:1;}
+  #slotMenu .sdrop-search{top:0;display:flex;align-items:center;gap:7px;margin:0;padding:7px 9px;
+    border-bottom:1px solid var(--hair);}
+  #slotMenu .sdrop-search svg{width:12px;height:12px;color:rgba(255,255,255,.45);flex:0 0 auto;}
+  #slotMenu .sdrop-search .in{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--txt);
+    font-family:inherit;font-size:12.5px;padding:0;}
+  #slotMenu .sdrop-search .in::placeholder{color:rgba(255,255,255,.38);}
+  #slotMenu .sdrop-body{padding:6px;}
+  #slotMenu .sdrop-ghead{padding:7px 8px 4px;}
+  #slotMenu .sg-rank{font-weight:600;color:rgba(255,255,255,.5);}
+  #slotMenu .sg-cnt{font-weight:400;color:rgba(255,255,255,.3);}
+  #slotMenu .sdrop-opt{height:26px;padding:0 10px;border-radius:6px;font-size:12.5px;gap:8px;}
+  #slotMenu .so-check{width:11px;height:11px;flex:0 0 auto;opacity:0;color:#fff;}
+  #slotMenu .sdrop-opt.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;
+    box-shadow:0 .5px 0 rgba(255,255,255,.22) inset;}
+  #slotMenu .sdrop-opt.sel .so-check{opacity:1;}
+  #slotMenu .sdrop-opt.sel .so-rank{color:rgba(255,255,255,.85);}
+  #slotMenu .sdrop-foot{bottom:0;padding:7px 10px;border-top:1px solid var(--hair);
+    font-size:11.5px;color:rgba(255,255,255,.35);}
   .rava{width:22px;height:22px;border-radius:7px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
     overflow:hidden;background:var(--e3);box-shadow:var(--hi);}
   .rava img{width:100%;height:100%;object-fit:contain;display:block;}
@@ -1159,6 +1182,7 @@
     chev:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg>',
     copy:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>',
     check:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 13l4 4L19 7"/></svg>',
+    search:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>',
     jump:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17L17 7M9 7h8v8"/></svg>'
   };
   /* division / role icons — keyed by CONFIG.sectionCategories tone (exec/admin/super/patrol/training/cadet/aux) */
@@ -1773,13 +1797,40 @@
     if(!open.length){ menu.innerHTML='<div class="sdrop-empty">No open slots right now — every rank row is filled.</div>'; var r0=$('slotRemain'); if(r0) r0.textContent='none open'; setSlot(null); return; }
     var groups={},order=[];
     open.forEach(function(m){ if(!groups[m.rank]){groups[m.rank]=[];order.push(m.rank);} groups[m.rank].push(m); });
-    menu.innerHTML=order.map(function(r){
-      return '<div class="sdrop-group"><div class="sdrop-ghead">'+rankAvatar(r)+'<span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
-        +groups[r].map(function(m){ var sv=STATE.shiftLabel?String(m.shift||'').trim():''; return '<button type="button" class="sdrop-opt" data-slotrow="'+m.row+'" role="option"><span class="so-call">'+esc(m.callsign||('Row '+m.row))+'</span><span class="so-rank">'+esc(sv||r)+'</span></button>'; }).join('')
+    menu.innerHTML='<div class="sdrop-search">'+SVG.search
+        +'<input type="text" class="in" id="slotQ" placeholder="Callsign or rank" autocomplete="off" spellcheck="false"></div>'
+      +'<div class="sdrop-body">'+order.map(function(r){
+        return '<div class="sdrop-group"><div class="sdrop-ghead"><span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
+          +groups[r].map(function(m){
+            var sv=STATE.shiftLabel?String(m.shift||'').trim():'';
+            // data-q carries what the search matches against, so filtering never depends on rendered markup.
+            return '<button type="button" class="sdrop-opt" data-slotrow="'+m.row+'" role="option" data-q="'+esc(((m.callsign||('Row '+m.row))+' '+r+' '+sv).toLowerCase())+'">'
+              +'<span class="so-check">'+SVG.check+'</span>'
+              +'<span class="so-call">'+esc(m.callsign||('Row '+m.row))+'</span>'
+              +'<span class="so-rank">'+esc(sv||r)+'</span></button>';
+          }).join('')
         +'</div>';
-    }).join('');
+      }).join('')+'</div>'
+      +'<div class="sdrop-foot" id="slotFoot"></div>';
     var rem=$('slotRemain'); if(rem) rem.textContent=open.length+' remaining';
+    filterSlotMenu();
     setSlot(STATE.addSlot); // refresh trigger + preview + selected mark (tolerates null)
+  }
+  /* Type-to-narrow, matching the Signups picker: options are hidden rather than re-rendered, so the caret and
+     the typed text survive every keystroke. A rank group with nothing left to show hides with them. */
+  function filterSlotMenu(){
+    var menu=$('slotMenu'); if(!menu) return;
+    var qi=$('slotQ'), q=qi?qi.value.trim().toLowerCase():'', shown=0, ranks=0;
+    menu.querySelectorAll('.sdrop-group').forEach(function(g){
+      var any=0;
+      g.querySelectorAll('.sdrop-opt').forEach(function(o){
+        var hit=!q||(o.dataset.q||'').indexOf(q)!==-1;
+        o.style.display=hit?'':'none'; if(hit){ any++; shown++; }
+      });
+      g.style.display=any?'':'none'; if(any) ranks++;
+    });
+    var foot=$('slotFoot');
+    if(foot) foot.textContent=shown?(shown+' open across '+ranks+' rank'+(ranks===1?'':'s')):'Nothing matches “'+(qi?qi.value.trim():'')+'”';
   }
   function setSlot(row){
     STATE.addSlot=(row==null?null:Number(row));
@@ -1792,7 +1843,8 @@
     if(addShiftMode()==='rank') renderAddShift();
     updateAddPreview();
   }
-  function openSlotMenu(on){ var d=$('slotDrop'),menu=$('slotMenu'),btn=$('slotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false'); }
+  function openSlotMenu(on){ var d=$('slotDrop'),menu=$('slotMenu'),btn=$('slotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false');
+    if(show){ var qi=$('slotQ'); if(qi){ qi.value=''; filterSlotMenu(); setTimeout(function(){ try{ qi.focus(); }catch(ig){} },0); } } } // open → fresh list, and you can just type
   /* The configured Unique-ID length, from cpBootstrap. Never hardcode 17-19 here: a COMMUNITY department runs
      1-8 digit CIDs, and a hardcoded Discord range rejects every valid ID before the request is even sent. */
   function idRange(){ var d=STATE.idDigits||{}; return {min:Number(d.min)||17,max:Number(d.max)||19}; }
@@ -1945,7 +1997,7 @@
       g.style.display=any?'':'none';
     });
   }
-  document.addEventListener('input',function(e){ if(e.target&&e.target.id==='suSlotQ') suFilterSlots(); });
+  document.addEventListener('input',function(e){ if(e.target&&e.target.id==='suSlotQ') suFilterSlots(); if(e.target&&e.target.id==='slotQ') filterSlotMenu(); });
 
   /* ── Promotions feed manager (Tools tab): list the RE_PROMOS entries, remove one → every table repaints ── */
   function loadPromos(){
