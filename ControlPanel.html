@@ -12,47 +12,57 @@
      Borders are replaced by elevation, inner highlights and shadows. 180ms motion.
      ════════════════════════════════════════════════════════════════════ */
   :root{
-    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px;
-    --r-sm:10px; --r-md:12px; --r-lg:18px;
-    --bg:#0d1016; --e1:#151922; --e2:#1c212c; --e3:#242b37; --e4:#293446;
-    --surface:#151922; --surface-2:#1c212c; --surface-3:#242b37;
-    --card:#151922; --card-2:#1c212c;
-    --hair:rgba(255,255,255,.055); --hair-2:rgba(255,255,255,.09);
-    --glass:linear-gradient(180deg,rgba(255,255,255,.022),rgba(255,255,255,0) 46%);
-    --glass-2:linear-gradient(180deg,rgba(255,255,255,.045),rgba(255,255,255,.008));
-    --ring:inset 0 1px 0 rgba(255,255,255,.07); --hi:inset 0 1px 0 rgba(255,255,255,.07);
-    --sh-1:0 1px 2px rgba(0,0,0,.35);
-    --sh-2:0 2px 6px rgba(0,0,0,.35),0 8px 24px -12px rgba(0,0,0,.6);
-    --sh-3:0 4px 12px rgba(0,0,0,.4),0 18px 48px -16px rgba(0,0,0,.7);
+    --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:40px;
+    --r-sm:8px; --r-md:10px; --r-lg:14px; --r-pill:980px;
+    /* SURFACES — Apple's dark system greys, neutral. The old palette was blue-tinted navy, which reads as
+       "a dark theme"; Apple's greys have no hue at all, which is most of why their dark mode looks expensive. */
+    --bg:#000000; --e1:#1c1c1e; --e2:#2c2c2e; --e3:#3a3a3c; --e4:#48484a;
+    --surface:#1c1c1e; --surface-2:#2c2c2e; --surface-3:#3a3a3c;
+    --card:#1c1c1e; --card-2:#2c2c2e;
+    /* SEPARATORS — Apple separates with a hairline, not a border or a shadow. */
+    --hair:rgba(255,255,255,.08); --hair-2:rgba(255,255,255,.13);
+    /* No glass, no inner highlight, no glow. Kept as no-ops so older rules still parse while sections migrate. */
+    --glass:none; --glass-2:none;
+    --ring:none; --hi:none;
+    /* Depth is for things that FLOAT (menus, toasts, sheets) — never for a card sitting on the page. */
+    --sh-1:none;
+    --sh-2:0 4px 16px rgba(0,0,0,.5);
+    --sh-3:0 12px 40px rgba(0,0,0,.65);
     --elev-1:var(--sh-1); --elev-2:var(--sh-2); --elev-3:var(--sh-3);
-    --ease:cubic-bezier(.2,.7,.2,1); --t:180ms;
-    --txt:#eef1f6; --txt-2:#a9b1bd; --txt-3:#7f8894;
-    --accent:#4f8ee8; --accent-2:#6aa3f2; --accent-soft:rgba(79,142,232,.16);
-    --green:#5fbd77; --green-t:rgba(95,189,119,.13); --green-b:rgba(95,189,119,.3); --green-f:#9adfad;
-    --amber:#d9ab52; --amber-t:rgba(217,171,82,.12); --amber-b:rgba(217,171,82,.3); --amber-f:#ecca85;
-    --red:#e0685f; --red-t:rgba(224,104,95,.12); --red-b:rgba(224,104,95,.3); --red-f:#f0a49d;
-    --blue:#5fa8d9; --blue-t:rgba(95,168,217,.13); --blue-b:rgba(95,168,217,.3); --blue-f:#a3d1f0;
-    --purple:#a08df0; --purple-t:rgba(160,141,240,.13); --purple-b:rgba(160,141,240,.3); --purple-f:#c9bcf8;
-    --orange:#d99257; --orange-t:rgba(217,146,87,.13); --orange-b:rgba(217,146,87,.3); --orange-f:#eab88d;
-    --gray:#8a929e; --gray-t:rgba(138,146,158,.11); --gray-b:rgba(138,146,158,.26); --gray-f:#b9bfc8;
-    /* role / division accents — softened to the new language */
-    --exec:#d95666; --exec-t:rgba(217,86,102,.13); --exec-b:rgba(217,86,102,.32); --exec-f:#f0a6b0;
-    --admin:#5f9bef; --admin-t:rgba(95,155,239,.13); --admin-b:rgba(95,155,239,.32); --admin-f:#accdf8;
-    --super:#dcb254; --super-t:rgba(220,178,84,.13); --super-b:rgba(220,178,84,.34); --super-f:#eed08b;
-    --patrol:#43b585; --patrol-t:rgba(67,181,133,.13); --patrol-b:rgba(67,181,133,.32); --patrol-f:#8fd8b7;
-    --training:#a78bfa; --training-t:rgba(167,139,250,.14); --training-b:rgba(167,139,250,.34); --training-f:#cbb9fd;
-    --cadet:#d98a57; --cadet-t:rgba(217,138,87,.14); --cadet-b:rgba(217,138,87,.34); --cadet-f:#ecb890;
-    --aux:#8a929e; --aux-t:rgba(138,146,158,.12); --aux-b:rgba(138,146,158,.28); --aux-f:#b9bfc8;
+    --ease:cubic-bezier(.32,.72,0,1); --t:180ms;
+    /* TYPE — SF's macOS ramp. Six steps, nothing between them. */
+    --f1:11px; --f2:13px; --f3:15px; --f4:17px; --f5:22px; --f6:28px;
+    /* Apple's label hierarchy: white at falling opacity, never a different hue. */
+    --txt:#f5f5f7; --txt-2:rgba(235,235,245,.62); --txt-3:rgba(235,235,245,.38);
+    /* THE accent. systemBlue (dark). One colour carries every interactive state in the panel. */
+    --accent:#0A84FF; --accent-2:#409CFF; --accent-soft:rgba(10,132,255,.18);
+    /* Apple's system palette (dark variants). These stay defined so every existing rule keeps working —
+       but on this tab colour is reserved for MEANING (status, destructive), never for decoration. */
+    --green:#30D158; --green-t:rgba(48,209,88,.16); --green-b:rgba(48,209,88,.3); --green-f:#30D158;
+    --amber:#FF9F0A; --amber-t:rgba(255,159,10,.16); --amber-b:rgba(255,159,10,.3); --amber-f:#FF9F0A;
+    --red:#FF453A; --red-t:rgba(255,69,58,.16); --red-b:rgba(255,69,58,.3); --red-f:#FF453A;
+    --blue:#0A84FF; --blue-t:rgba(10,132,255,.16); --blue-b:rgba(10,132,255,.3); --blue-f:#409CFF;
+    --purple:#BF5AF2; --purple-t:rgba(191,90,242,.16); --purple-b:rgba(191,90,242,.3); --purple-f:#BF5AF2;
+    --orange:#FF9F0A; --orange-t:rgba(255,159,10,.16); --orange-b:rgba(255,159,10,.3); --orange-f:#FF9F0A;
+    --gray:#8E8E93; --gray-t:rgba(142,142,147,.16); --gray-b:rgba(142,142,147,.28); --gray-f:#AEAEB2;
+    /* role / division accents — Apple system hues */
+    --exec:#FF453A; --exec-t:rgba(255,69,58,.16); --exec-b:rgba(255,69,58,.3); --exec-f:#FF6961;
+    --admin:#0A84FF; --admin-t:rgba(10,132,255,.16); --admin-b:rgba(10,132,255,.3); --admin-f:#409CFF;
+    --super:#FFD60A; --super-t:rgba(255,214,10,.16); --super-b:rgba(255,214,10,.3); --super-f:#FFD60A;
+    --patrol:#30D158; --patrol-t:rgba(48,209,88,.16); --patrol-b:rgba(48,209,88,.3); --patrol-f:#30D158;
+    --training:#5E5CE6; --training-t:rgba(94,92,230,.16); --training-b:rgba(94,92,230,.3); --training-f:#7D7AFF;
+    --cadet:#FF9F0A; --cadet-t:rgba(255,159,10,.16); --cadet-b:rgba(255,159,10,.3); --cadet-f:#FF9F0A;
+    --aux:#8E8E93; --aux-t:rgba(142,142,147,.16); --aux-b:rgba(142,142,147,.28); --aux-f:#AEAEB2;
     --mono:'Roboto Mono',monospace;
   }
   *{box-sizing:border-box;}
   html,body{margin:0;padding:0;height:100%;}
-  body{color:var(--txt);font-family:'Inter',Arial,sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden;
-       background:
-         radial-gradient(1100px 560px at 16% -12%, rgba(79,142,232,.10), transparent 58%),
-         radial-gradient(900px 560px at 104% -4%, rgba(160,141,240,.07), transparent 55%),
-         radial-gradient(700px 500px at -4% 104%, rgba(67,181,133,.05), transparent 55%),
-         var(--bg);}
+  /* Flat. The three coloured radial washes that used to sit here were the loudest decoration in the panel and
+     carried no information — the first thing to go. Depth now comes from the surface ladder alone. */
+  body{color:var(--txt);font-family:'Inter',Arial,sans-serif;font-size:var(--f2);line-height:1.47;
+       -webkit-font-smoothing:antialiased;overflow:hidden;background:var(--bg);
+       font-feature-settings:'cv02','cv03','cv04','cv11'; /* Inter's SF-like alternates: single-storey a/g, straighter l */
+       letter-spacing:-.01em;}
   .mono{font-family:var(--mono);}
   ::-webkit-scrollbar{width:10px;height:10px;}
   ::-webkit-scrollbar-thumb{background:var(--e3);border-radius:8px;border:3px solid transparent;background-clip:padding-box;}
@@ -63,79 +73,71 @@
   svg{display:block;}
 
   /* ─── app shell: sidebar + content (Studio pattern) ─── */
-  .app{display:grid;grid-template-columns:246px 1fr;height:100vh;}
-  .side{display:flex;flex-direction:column;background:linear-gradient(180deg,rgba(255,255,255,.028),rgba(255,255,255,.006)),rgba(13,16,22,.6);
-        backdrop-filter:blur(18px) saturate(1.25);-webkit-backdrop-filter:blur(18px) saturate(1.25);box-shadow:1px 0 0 var(--hair);}
-  .brand{display:flex;align-items:center;gap:11px;padding:20px 18px 14px;}
-  .badge{width:38px;height:38px;border-radius:12px;background:linear-gradient(155deg,rgba(79,142,232,.34),rgba(79,142,232,.08));
-        color:#c4dbff;display:flex;align-items:center;justify-content:center;flex:0 0 auto;box-shadow:var(--hi),0 8px 20px -10px rgba(79,142,232,.7);}
-  .badge svg{width:19px;height:19px;}
+  .app{display:grid;grid-template-columns:240px 1fr;height:100vh;}
+  /* Sidebar and content share the same black; a hairline is the only thing that divides them. */
+  .side{display:flex;flex-direction:column;background:var(--bg);box-shadow:1px 0 0 var(--hair);}
+  .brand{display:flex;align-items:center;gap:var(--s3);padding:var(--s5) var(--s4) var(--s4);}
+  .badge{width:30px;height:30px;border-radius:var(--r-sm);background:var(--e2);
+        color:var(--txt);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
+  .badge svg{width:16px;height:16px;}
   .ttl{flex:1;min-width:0;}
-  .ttl .r1{display:flex;align-items:center;gap:7px;flex-wrap:wrap;}
-  .ttl b{font-size:13px;font-weight:800;letter-spacing:-.01em;max-width:132px;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
-  .ver{font-size:9px;font-weight:700;color:var(--txt-3);background:var(--e2);padding:2px 7px;border-radius:999px;letter-spacing:.04em;box-shadow:var(--hi);}
-  .ttl .sub{font-size:9px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.13em;margin-top:2px;font-weight:600;}
-  .icon-btn{width:36px;height:36px;border-radius:12px;background:var(--e2);border:none;color:var(--txt-2);
-            display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;box-shadow:var(--hi),var(--sh-1);
-            transition:background var(--t),color var(--t),transform var(--t) var(--ease),box-shadow var(--t);}
-  .icon-btn:hover{background:var(--e3);color:var(--txt);transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
-  .icon-btn:active{transform:scale(.93);}
+  .ttl .r1{display:flex;align-items:center;gap:var(--s2);flex-wrap:wrap;}
+  .ttl b{font-size:var(--f2);font-weight:600;letter-spacing:-.01em;max-width:132px;line-height:1.3;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  .ver{font-size:var(--f1);font-weight:500;color:var(--txt-3);background:none;padding:0;border-radius:0;letter-spacing:0;}
+  .ttl .sub{font-size:var(--f1);color:var(--txt-3);text-transform:none;letter-spacing:0;margin-top:1px;font-weight:400;}
+  .icon-btn{width:28px;height:28px;border-radius:var(--r-sm);background:none;border:none;color:var(--txt-2);
+            display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;
+            transition:background var(--t) var(--ease),color var(--t) var(--ease);}
+  .icon-btn:hover{background:var(--e2);color:var(--txt);}
+  .icon-btn:active{background:var(--e3);}
   .icon-btn svg{width:17px;height:17px;}
   .spin{animation:sp .8s linear infinite;}
   @keyframes sp{to{transform:rotate(360deg);}}
 
   /* sidebar nav — the old .tab class, reborn as grouped pills */
-  .tabs{flex:1;overflow-y:auto;padding:4px 10px 8px;display:flex;flex-direction:column;}
-  .ngroup{font-size:9.5px;font-weight:700;color:var(--txt-3);text-transform:uppercase;letter-spacing:.14em;padding:14px 10px 6px;}
-  .tab{display:flex;align-items:center;gap:10px;width:100%;text-align:left;background:none;border:none;color:var(--txt-2);
-       border-radius:12px;padding:8px 10px;margin-bottom:2px;font-size:12.5px;font-weight:600;cursor:pointer;position:relative;white-space:nowrap;
-       transition:background var(--t),color var(--t),transform var(--t) var(--ease);}
-  .tab::before{content:"";position:absolute;left:-1px;top:50%;transform:translateY(-50%) scaleY(0);width:3px;height:18px;border-radius:3px;
-       background:var(--a,var(--accent));box-shadow:0 0 10px 0 var(--a,var(--accent));transition:transform var(--t) var(--ease);}
-  .tab:hover{background:var(--e2);color:var(--txt);}
-  .tab:active{transform:scale(.985);}
-  .tab.active{background:linear-gradient(155deg,color-mix(in srgb,var(--a,var(--accent)) 16%,transparent),color-mix(in srgb,var(--a,var(--accent)) 5%,transparent)),var(--e2);
-       color:var(--txt);box-shadow:var(--hi),var(--sh-1);}
-  .tab.active::before{transform:translateY(-50%) scaleY(1);}
-  .tab .nico{width:27px;height:27px;border-radius:9px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:var(--txt-3);
-       background:var(--e2);box-shadow:var(--hi);transition:color var(--t),background var(--t),box-shadow var(--t);}
-  .tab.active .nico{color:color-mix(in srgb,var(--a,var(--accent)) 65%,#fff);background:color-mix(in srgb,var(--a,var(--accent)) 20%,var(--e2));
-       box-shadow:var(--hi),0 0 14px -4px var(--a,var(--accent));}
-  .tab .nico svg{width:14px;height:14px;}
-  .sfoot{padding:12px 14px 14px;display:flex;flex-direction:column;gap:8px;box-shadow:0 -1px 0 var(--hair);}
-  .hpill2{display:inline-flex;align-items:center;justify-content:center;gap:6px;border:none;background:var(--e2);color:var(--txt-2);border-radius:999px;
-       padding:7px 11px;font-size:11px;font-weight:650;cursor:pointer;font-family:inherit;box-shadow:var(--hi),var(--sh-1);
-       transition:transform var(--t) var(--ease),box-shadow var(--t);}
-  .hpill2:hover{transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
+  /* Sidebar nav — macOS System Settings: the selected row is a SOLID accent rectangle with white content.
+     One accent for the whole list; identity comes from the icon and the label, never from a per-tab hue. */
+  .tabs{flex:1;overflow-y:auto;padding:0 var(--s2) var(--s2);display:flex;flex-direction:column;}
+  .ngroup{font-size:var(--f1);font-weight:600;color:var(--txt-3);text-transform:none;letter-spacing:0;padding:var(--s4) var(--s2) var(--s1);}
+  .tab{display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;background:none;border:none;color:var(--txt);
+       border-radius:var(--r-sm);padding:var(--s1) var(--s2);margin-bottom:1px;min-height:30px;font-size:var(--f2);font-weight:400;
+       cursor:pointer;position:relative;white-space:nowrap;transition:background var(--t) var(--ease),color var(--t) var(--ease);}
+  .tab:hover{background:var(--e1);}
+  .tab:active{background:var(--e2);}
+  .tab.active{background:var(--accent);color:#fff;font-weight:500;}
+  .tab .nico{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:var(--txt-2);
+       background:none;border-radius:0;transition:color var(--t) var(--ease);}
+  .tab.active .nico{color:#fff;}
+  .tab .nico svg{width:15px;height:15px;stroke-width:1.8;}
+  .sfoot{padding:var(--s3) var(--s4) var(--s4);display:flex;flex-direction:column;gap:var(--s2);box-shadow:0 -1px 0 var(--hair);}
+  .hpill2{display:inline-flex;align-items:center;justify-content:center;gap:var(--s2);border:none;background:var(--e1);color:var(--txt-2);
+       border-radius:var(--r-pill);padding:5px var(--s3);font-size:var(--f1);font-weight:500;cursor:pointer;font-family:inherit;
+       transition:background var(--t) var(--ease);}
+  .hpill2:hover{background:var(--e2);}
   .hpill2[hidden]{display:none;}
-  .hpill2.ok{color:var(--green-f);background:linear-gradient(155deg,var(--green-t),transparent),var(--e2);} .hpill2.ok .pdot{background:var(--green);box-shadow:0 0 8px 0 var(--green);}
-  .hpill2.bad{color:var(--amber-f);background:linear-gradient(155deg,var(--amber-t),transparent),var(--e2);} .hpill2.bad .pdot{background:var(--amber);box-shadow:0 0 8px 0 var(--amber);}
+  .hpill2.ok{color:var(--txt-2);background:var(--e1);} .hpill2.ok .pdot{background:var(--green);}
+  .hpill2.bad{color:var(--amber);background:var(--amber-t);} .hpill2.bad .pdot{background:var(--amber);}
 
   /* content column */
   /* min-height:0 + a definite height let the flex child (.content) bound itself and scroll, instead of .main
      growing to its content and spilling past the 100vh grid row (which body{overflow:hidden} then clips). */
   .main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;position:relative;}
   .progress{height:2px;overflow:hidden;position:relative;background:transparent;flex:0 0 auto;}
-  .progress.on::before{content:"";position:absolute;top:0;bottom:0;width:38%;background:linear-gradient(90deg,transparent,var(--accent),transparent);border-radius:2px;animation:prog 1.05s ease-in-out infinite;}
+  .progress.on::before{content:"";position:absolute;top:0;bottom:0;width:38%;background:var(--accent);border-radius:2px;animation:prog 1.05s var(--ease) infinite;}
   @keyframes prog{0%{left:-38%;}100%{left:100%;}}
-  .content{flex:1;overflow-y:auto;padding:18px 22px 40px;}
+  .content{flex:1;overflow-y:auto;padding:var(--s5) var(--s6) var(--s7);}
 
-  /* KPI stats — glowing cards */
-  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(128px,1fr));gap:10px;margin-bottom:16px;}
-  .stat{display:flex;align-items:center;gap:11px;border-radius:14px;padding:12px 13px;box-shadow:var(--hi),var(--sh-1);
-        background:linear-gradient(155deg,var(--st,transparent),transparent 65%),var(--e1);
-        transition:transform var(--t) var(--ease),box-shadow var(--t);animation:rise .3s var(--ease) both;}
-  .stat:hover{transform:translateY(-2px);box-shadow:var(--hi),var(--sh-2);}
-  .stat .sdot{width:9px;height:9px;border-radius:50%;flex:0 0 auto;background:var(--sc,var(--gray));box-shadow:0 0 10px 0 var(--sc,transparent);}
-  .stat b{font-family:var(--mono);font-size:21px;font-weight:700;line-height:1;letter-spacing:-.02em;}
-  .stat span{display:block;font-size:9.5px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;margin-top:4px;white-space:nowrap;font-weight:650;}
-  .s-active{--st:var(--green-t);--sc:var(--green);} .s-active .sdot{animation:livedot 2.6s ease-in-out infinite;color:var(--green);}
-  .s-semi{--st:var(--amber-t);--sc:var(--amber);}
-  .s-inact{--st:var(--red-t);--sc:var(--red);}
-  .s-leave{--st:var(--blue-t);--sc:var(--blue);}
-  .s-open{--st:var(--gray-t);--sc:var(--gray);}
-  .s-exp{--st:var(--orange-t);--sc:var(--orange);}
-  @keyframes livedot{0%,100%{box-shadow:0 0 0 0 currentColor;}50%{box-shadow:0 0 12px 1px currentColor;}}
+  /* KPI stats — six peers, so none of them shouts. Tinted cards, coloured dots and a pulsing "live" glow all
+     competed for a glance none of them deserved; the number carries the weight now and colour is gone.
+     Numerals are tabular so the row doesn't shuffle as counts change. */
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;margin-bottom:var(--s6);
+         background:var(--hair);border-radius:var(--r-lg);overflow:hidden;}
+  .stat{display:block;padding:var(--s4);background:var(--e1);transition:background var(--t) var(--ease);}
+  .stat .sdot{display:none;}
+  .stat b{display:block;font-family:inherit;font-size:var(--f5);font-weight:600;line-height:1.1;letter-spacing:-.02em;
+          font-variant-numeric:tabular-nums;}
+  .stat span{display:block;font-size:var(--f1);color:var(--txt-2);text-transform:none;letter-spacing:0;margin-top:var(--s1);
+             white-space:nowrap;font-weight:400;}
   @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
 
   .pane{display:none;}
@@ -144,12 +146,14 @@
   @keyframes paneIn{from{opacity:0;transform:translateY(7px);}to{opacity:1;transform:none;}}
 
   /* fields — elevation, no borders */
-  .field{width:100%;background:var(--e2);border:none;color:var(--txt);border-radius:var(--r-md);padding:10px 13px;
-         font-size:13px;font-family:inherit;outline:none;box-shadow:var(--hi),var(--sh-1);
-         transition:background var(--t),box-shadow var(--t);}
+  /* Fields hold still. The old one changed background on hover AND again on focus, and grew a shadow — three
+     states for one text box. Now: one resting fill, and a focus ring in the accent. That ring is the only
+     blue on the tab until you select something. */
+  .field{width:100%;background:var(--e1);border:none;color:var(--txt);border-radius:var(--r-sm);padding:var(--s2) var(--s3);
+         min-height:32px;font-size:var(--f2);font-family:inherit;outline:none;
+         transition:box-shadow var(--t) var(--ease);}
   .field::placeholder{color:var(--txt-3);}
-  .field:hover{background:var(--e3);}
-  .field:focus{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
+  .field:focus{background:var(--e1);box-shadow:0 0 0 3px var(--accent-soft);}
   select.field,select.fselect{cursor:pointer;appearance:none;-webkit-appearance:none;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237f8894' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;}
@@ -235,44 +239,55 @@
   .skblk{height:150px;border-radius:16px;background:linear-gradient(90deg,var(--e1) 25%,var(--e2) 50%,var(--e1) 75%);background-size:200% 100%;animation:shk 1.25s infinite;}
   @keyframes shk{0%{background-position:200% 0}100%{background-position:-200% 0}}
 
-  .search-wrap{position:relative;}
-  .search-wrap .si{position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--txt-3);width:15px;height:15px;pointer-events:none;transition:color var(--t),transform var(--t) var(--ease);}
-  .search-wrap:focus-within .si{color:var(--accent-2);transform:translateY(-50%) scale(1.1);}
-  input.search{padding-left:37px;padding-right:38px;}
+  .search-wrap{position:relative;max-width:420px;}
+  .search-wrap .si{position:absolute;left:var(--s3);top:50%;transform:translateY(-50%);color:var(--txt-3);width:14px;height:14px;pointer-events:none;transition:color var(--t) var(--ease);}
+  .search-wrap:focus-within .si{color:var(--txt-2);} /* the glyph brightens; it does not scale — nothing on this tab moves without cause */
+  input.search{padding-left:34px;padding-right:34px;}
   .search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:none;background:none;color:var(--txt-3);
                 border-radius:8px;cursor:pointer;display:none;align-items:center;justify-content:center;transition:color var(--t),background var(--t);}
   .search-clear svg{width:15px;height:15px;}
   .search-clear:hover{color:var(--txt);background:var(--e3);}
   .search-wrap.has-text .search-clear{display:flex;}
 
-  .skel-row{height:56px;border-radius:14px;background:var(--e1);position:relative;overflow:hidden;box-shadow:var(--hi),var(--sh-1);}
-  .skel-row+.skel-row{margin-top:var(--s2);}
-  .skel-row::after{content:"";position:absolute;inset:0;transform:translateX(-100%);background:linear-gradient(90deg,transparent,rgba(255,255,255,.045),transparent);animation:shim 1.4s infinite;}
-  @keyframes shim{100%{transform:translateX(100%);}}
+  /* Loading rows breathe instead of sweeping — a travelling highlight draws the eye to a placeholder, which is
+     the one thing on screen with nothing to say. Same rhythm as the list it becomes. */
+  .skel-row{height:52px;border-radius:0;background:var(--e1);position:relative;overflow:hidden;box-shadow:0 1px 0 var(--hair);
+            animation:skelPulse 1.6s var(--ease) infinite;}
+  .skel-row:first-child{border-radius:var(--r-lg) var(--r-lg) 0 0;}
+  .skel-row:last-child{border-radius:0 0 var(--r-lg) var(--r-lg);box-shadow:none;}
+  .skel-row+.skel-row{margin-top:0;}
+  @keyframes skelPulse{0%,100%{opacity:1;}50%{opacity:.55;}}
 
   /* filters */
-  .filters{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;margin-top:var(--s3);}
-  .fchips{display:flex;gap:6px;flex-wrap:wrap;flex:1;}
-  .fchip{background:var(--e2);border:none;color:var(--txt-2);border-radius:999px;padding:7px 14px;font-size:11.5px;font-weight:650;cursor:pointer;
-         box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease),box-shadow var(--t);}
-  .fchip:hover{color:var(--txt);background:var(--e3);transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
-  .fchip.active{background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);color:#cfe1ff;box-shadow:var(--hi),0 0 14px -6px var(--accent);}
-  .fselect{background:var(--e2);border:none;color:var(--txt);border-radius:999px;padding:8px 11px;font-size:12px;font-family:inherit;cursor:pointer;outline:none;
-           box-shadow:var(--hi),var(--sh-1);transition:background var(--t),box-shadow var(--t);}
-  .fselect:hover{background:var(--e3);}
-  .fselect:focus{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft);}
-  .rescount{font-size:11px;color:var(--txt-3);margin-top:var(--s3);letter-spacing:.02em;}
-  .mcheck{appearance:none;-webkit-appearance:none;width:18px;height:18px;border:none;border-radius:6px;background:var(--e3);cursor:pointer;flex:0 0 auto;
-          box-shadow:var(--hi),inset 0 0 0 1.5px rgba(255,255,255,.1);transition:background var(--t),box-shadow var(--t);}
-  .mcheck:hover{box-shadow:var(--hi),inset 0 0 0 1.5px var(--accent);}
-  .mcheck:checked{background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E") center/12px no-repeat;box-shadow:var(--hi),0 0 10px -3px var(--accent);}
+  /* Filters — the five status chips are mutually exclusive, so they become one SEGMENTED CONTROL: a single
+     recessed track with a raised selected segment. That is Apple's control for exactly this choice, and it
+     states the exclusivity that five separate pills only implied. Selection is grey, not blue: in macOS the
+     accent is spent on the primary action, not on a filter. */
+  .filters{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;margin-top:var(--s4);}
+  .fchips{display:inline-flex;gap:2px;flex-wrap:nowrap;flex:0 0 auto;background:var(--e1);border-radius:var(--r-sm);padding:2px;}
+  .fchip{background:none;border:none;color:var(--txt-2);border-radius:6px;padding:var(--s1) var(--s3);min-height:26px;
+         font-size:var(--f2);font-weight:400;cursor:pointer;white-space:nowrap;
+         transition:background var(--t) var(--ease),color var(--t) var(--ease);}
+  .fchip:hover{color:var(--txt);background:var(--e2);}
+  .fchip.active{background:var(--e3);color:var(--txt);font-weight:500;}
+  .fselect{background:var(--e1);border:none;color:var(--txt);border-radius:var(--r-sm);padding:var(--s1) var(--s3);min-height:30px;
+           font-size:var(--f2);font-family:inherit;cursor:pointer;outline:none;transition:background var(--t) var(--ease);}
+  .fselect:hover{background:var(--e2);}
+  .fselect:focus{background:var(--e2);box-shadow:0 0 0 3px var(--accent-soft);}
+  .rescount{font-size:var(--f1);color:var(--txt-3);margin-top:var(--s4);letter-spacing:0;}
+  /* Apple's checkbox: a filled accent square with a white tick. Round, no glow, no inset ring. */
+  .mcheck{appearance:none;-webkit-appearance:none;width:16px;height:16px;border:none;border-radius:4px;background:var(--e3);cursor:pointer;flex:0 0 auto;
+          box-shadow:none;transition:background var(--t) var(--ease);}
+  .mcheck:hover{background:var(--e4);}
+  .mcheck:checked{background:var(--accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E") center/11px no-repeat;box-shadow:none;}
   .mcheck:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
-  .bulkbar{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.04)),var(--e1);
-           border:none;border-radius:14px;padding:10px 13px;margin-top:var(--s3);box-shadow:var(--hi),var(--sh-2),0 0 22px -8px var(--accent);animation:rise .24s var(--ease) both;}
+  /* The selection bar is the one place the accent fills a surface — it IS the active task. */
+  .bulkbar{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;background:var(--e1);
+           border:none;border-radius:var(--r-lg);padding:var(--s2) var(--s3);margin-top:var(--s3);box-shadow:none;}
   .bulkbar[hidden]{display:none;}
-  .bulkbar .bsel{font-size:12px;font-weight:650;color:#cfe1ff;white-space:nowrap;}
-  .bulkbar .bbtns{display:flex;gap:6px;flex-wrap:wrap;flex:1;}
-  .bulkbar .bclear{background:none;border:none;color:var(--txt-2);border-radius:8px;padding:6px 11px;font-size:11px;font-weight:600;cursor:pointer;transition:color var(--t),background var(--t);}
+  .bulkbar .bsel{font-size:var(--f2);font-weight:500;color:var(--txt);white-space:nowrap;}
+  .bulkbar .bbtns{display:flex;gap:var(--s1);flex-wrap:wrap;flex:1;}
+  .bulkbar .bclear{background:none;border:none;color:var(--accent);border-radius:var(--r-sm);padding:var(--s1) var(--s2);font-size:var(--f2);font-weight:400;cursor:pointer;transition:color var(--t),background var(--t);}
   .bulkbar .bclear:hover{color:var(--txt);background:var(--e3);}
   .sform{margin-top:var(--s2);}
   .srow{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s2);}
@@ -442,27 +457,34 @@
   .ai-gray .aud-node{background:var(--gray-t);color:var(--gray-f);box-shadow:var(--hi);}
 
   /* member list */
-  .mlist{margin-top:var(--s3);display:flex;flex-direction:column;gap:var(--s2);}
-  .mrow{background:var(--glass),var(--e1);border:none;border-left:3px solid var(--rank,var(--gray));border-radius:14px;
-        overflow:hidden;box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),background var(--t),box-shadow var(--t);animation:rise .28s var(--ease) both;}
-  .mrow:hover{transform:translateY(-2px);background:var(--glass-2),var(--e2);box-shadow:var(--hi),var(--sh-2);}
-  .mrow.exp{transform:none;background:var(--glass-2),var(--e2);box-shadow:var(--hi),0 0 30px -12px var(--rank,var(--accent)),var(--sh-3);}
-  .mhead{display:flex;align-items:center;gap:var(--s3);padding:var(--s3);cursor:pointer;}
+  /* Member list — one grouped container with hairline separators, the way a macOS list is built, instead of
+     N floating cards. Each row was previously its own card that lifted 2px on hover and lit a coloured glow
+     when open; twenty of those made the page restless. Now the list is a single object and hover is a fill. */
+  .mlist{margin-top:var(--s4);display:flex;flex-direction:column;gap:0;background:var(--e1);border-radius:var(--r-lg);overflow:hidden;}
+  .mrow{background:none;border:none;border-radius:0;overflow:hidden;box-shadow:0 1px 0 var(--hair);
+        transition:background var(--t) var(--ease);}
+  .mrow:last-child{box-shadow:none;}
+  .mrow:hover{transform:none;background:var(--e2);box-shadow:0 1px 0 var(--hair);}
+  .mrow.exp{transform:none;background:var(--e2);box-shadow:0 1px 0 var(--hair);}
+  .mhead{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);cursor:pointer;min-height:52px;}
   .chev{color:var(--txt-3);width:15px;height:15px;flex:0 0 auto;transition:transform .2s var(--ease),color var(--t);}
   .mrow.exp .chev{transform:rotate(90deg);color:var(--accent-2);}
-  .mav{width:36px;height:36px;border-radius:11px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;letter-spacing:.02em;
-       background:color-mix(in srgb,var(--rank,#8a929e) 16%,var(--e3));color:var(--txt);border:none;box-shadow:var(--hi),var(--sh-1);overflow:hidden;}
+  /* The avatar is the only place rank colour appears now — the 3px left stripe on every row was a second
+     encoding of the same fact, doubled twenty times down the page. */
+  .mav{width:32px;height:32px;border-radius:var(--r-pill);flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+       font-size:var(--f1);font-weight:600;letter-spacing:0;
+       background:color-mix(in srgb,var(--rank,#8E8E93) 22%,var(--e3));color:var(--txt);border:none;overflow:hidden;}
   .mav.mav-has{background:var(--e3);padding:2px;}
   .mav .mav-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:inherit;} /* contain = the whole badge fits inside, never cropped */
   .mname{flex:1;min-width:0;}
-  .mname b{display:block;font-size:14.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.01em;}
-  .mname>span{display:block;font-size:12px;color:var(--txt-2);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .mname b{display:block;font-size:var(--f2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;}
+  .mname>span{display:block;font-size:var(--f1);color:var(--txt-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
-  /* pills */
-  .pill{display:inline-flex;align-items:center;gap:6px;padding:4px 11px;border-radius:999px;font-size:11px;font-weight:650;
-        border:1px solid transparent;white-space:nowrap;box-shadow:var(--hi);}
+  /* Status pills — flat tint + coloured label, no ring, no glow. Colour here is information, so it stays. */
+  .pill{display:inline-flex;align-items:center;gap:5px;padding:2px var(--s2);border-radius:var(--r-pill);font-size:var(--f1);font-weight:500;
+        border:none;white-space:nowrap;box-shadow:none;}
   .pdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;}
-  .p-Active{background:var(--green-t);color:var(--green-f);} .p-Active .pdot{background:var(--green);box-shadow:0 0 7px 0 var(--green);}
+  .p-Active{background:var(--green-t);color:var(--green-f);} .p-Active .pdot{background:var(--green);}
   .p-SemiActive{background:var(--amber-t);color:var(--amber-f);} .p-SemiActive .pdot{background:var(--amber);}
   .p-Inactive{background:var(--red-t);color:var(--red-f);} .p-Inactive .pdot{background:var(--red);}
   .p-LOA{background:var(--blue-t);color:var(--blue-f);} .p-LOA .pdot{background:var(--blue);}
@@ -620,18 +642,21 @@
   .dot{width:9px;height:9px;border-radius:50%;background:var(--gray);box-shadow:0 0 0 3px rgba(255,255,255,.03);}
   .dot.on{background:var(--green);box-shadow:0 0 0 3px rgba(255,255,255,.03),0 0 9px 0 var(--green);} .dot.off{background:var(--red);}
 
-  .empty{display:flex;flex-direction:column;align-items:center;gap:var(--s2);color:var(--txt-3);font-size:12px;text-align:center;padding:var(--s6) var(--s4);
-         background:none;border:1.5px dashed rgba(255,255,255,.12);border-radius:16px;}
-  .empty .ei{width:42px;height:42px;border-radius:13px;display:flex;align-items:center;justify-content:center;background:var(--e2);color:var(--txt-3);border:none;box-shadow:var(--hi);}
-  .empty .ei svg{width:21px;height:21px;}
+  /* Empty state — Apple states the fact and stops. No dashed box drawing a border around nothing. */
+  .empty{display:flex;flex-direction:column;align-items:center;gap:var(--s3);color:var(--txt-2);font-size:var(--f2);text-align:center;padding:var(--s7) var(--s4);
+         background:none;border:none;border-radius:0;}
+  .empty .ei{width:36px;height:36px;border-radius:0;display:flex;align-items:center;justify-content:center;background:none;color:var(--txt-3);border:none;box-shadow:none;}
+  .empty .ei svg{width:26px;height:26px;stroke-width:1.5;}
   .foot{font-size:9px;color:var(--txt-3);letter-spacing:.02em;line-height:1.4;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 
-  #toast{position:fixed;left:50%;transform:translate(-50%,180%);bottom:20px;max-width:560px;background:rgba(16,20,27,.95);border:none;
-         border-left:3px solid var(--accent);color:var(--txt);border-radius:14px;padding:11px 17px;font-size:12px;font-weight:550;backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);
-         box-shadow:var(--hi),0 14px 36px rgba(0,0,0,.66);transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .26s,visibility 0s linear .26s;
+  /* A toast genuinely floats, so this is one of the few things that keeps a shadow. */
+  #toast{position:fixed;left:50%;transform:translate(-50%,180%);bottom:var(--s5);max-width:560px;background:var(--e2);border:none;
+         border-left:none;color:var(--txt);border-radius:var(--r-md);padding:var(--s3) var(--s4);font-size:var(--f2);font-weight:400;
+         backdrop-filter:blur(20px);-webkit-backdrop-filter:blur(20px);
+         box-shadow:var(--sh-3);transition:transform .26s var(--ease),opacity .26s,visibility 0s linear .26s;
          opacity:0;pointer-events:none;visibility:hidden;z-index:40;}
-  #toast.show{transform:translate(-50%,0);opacity:1;visibility:visible;transition:transform .26s cubic-bezier(.2,.8,.2,1),opacity .26s,visibility 0s;}
-  #toast.err{border-left-color:var(--red);} #toast.ok{border-left-color:var(--green);}
+  #toast.show{transform:translate(-50%,0);opacity:1;visibility:visible;transition:transform .26s var(--ease),opacity .26s,visibility 0s;}
+  #toast.err{color:var(--red);} #toast.ok{color:var(--txt);}
 
 </style>
 </head>
@@ -645,15 +670,15 @@
     </div>
     <div class="tabs">
       <div class="ngroup">Roster</div>
-      <button class="tab active" data-tab="members" style="--a:var(--accent)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Members</button>
-      <button class="tab" data-tab="add" style="--a:var(--patrol)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
-      <button class="tab" data-tab="signups" style="--a:var(--green)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups</button>
-      <button class="tab" data-tab="dividers" style="--a:var(--purple)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>Dividers</button>
+      <button class="tab active" data-tab="members"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Members</button>
+      <button class="tab" data-tab="add"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
+      <button class="tab" data-tab="signups"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups</button>
+      <button class="tab" data-tab="dividers"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>Dividers</button>
       <div class="ngroup">Operations</div>
-      <button class="tab" data-tab="tools" style="--a:var(--amber)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</button>
-      <button class="tab" data-tab="columns" style="--a:var(--blue)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></span>Columns</button>
+      <button class="tab" data-tab="tools"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</button>
+      <button class="tab" data-tab="columns"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></span>Columns</button>
       <div class="ngroup">System</div>
-      <button class="tab" data-tab="system" style="--a:var(--red)"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>System</button>
+      <button class="tab" data-tab="system"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>System</button>
     </div>
     <div class="sfoot">
       <button class="hpill2" id="healthPill" hidden aria-label="System health"></button>
@@ -749,11 +774,11 @@
     <div class="tsec">
       <div class="tsec-h"><b>Maintenance</b><small>one-click engine actions — each reports what it changed</small></div>
       <div class="tgrid">
-        <div class="tcard" style="--a:var(--blue)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 21V11M12 21V5M19 21v-7"/></svg></span><span class="tt"><b>Update all statuses</b><small>Recompute every member from hours</small></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
-        <div class="tcard" style="--a:var(--green)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span><span class="tt"><b>Run schedule check</b><small>Start due leaves, expire ended ones</small></span><button class="runbtn" data-act="processLeaves">Run</button></div>
-        <div class="tcard" style="--a:var(--green)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66L11 6"/><path d="M14 11a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66L13 18"/></svg></span><span class="tt"><b>Sync leave forms</b><small>Pull new form responses to the tracker</small></span><button class="runbtn" data-act="syncForms">Run</button></div>
-        <div class="tcard" style="--a:var(--blue)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/></svg></span><span class="tt"><b>Fix callsign numbers</b><small>Renumber S-01, S-02, …</small></span><button class="runbtn" data-act="fixUnits">Run</button></div>
-        <div class="tcard" style="--a:var(--amber)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></span><span class="tt"><b>Check duplicate IDs</b><small>Find repeated or malformed IDs</small></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
+        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 21V11M12 21V5M19 21v-7"/></svg></span><span class="tt"><b>Update all statuses</b><small>Recompute every member from hours</small></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
+        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span><span class="tt"><b>Run schedule check</b><small>Start due leaves, expire ended ones</small></span><button class="runbtn" data-act="processLeaves">Run</button></div>
+        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66L11 6"/><path d="M14 11a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66L13 18"/></svg></span><span class="tt"><b>Sync leave forms</b><small>Pull new form responses to the tracker</small></span><button class="runbtn" data-act="syncForms">Run</button></div>
+        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/></svg></span><span class="tt"><b>Fix callsign numbers</b><small>Renumber S-01, S-02, …</small></span><button class="runbtn" data-act="fixUnits">Run</button></div>
+        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></span><span class="tt"><b>Check duplicate IDs</b><small>Find repeated or malformed IDs</small></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
         <div class="tcard" style="--a:var(--gray)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></span><span class="tt"><b>Engine settings</b><small>Open the Settings Studio (replaces this dialog)</small></span><button class="runbtn" id="openSettingsBtn">Open</button></div>
       </div>
     </div>
@@ -766,7 +791,7 @@
     <div class="tsec">
       <div class="tsec-h"><b>Connections</b><small>services and data sources</small></div>
       <div class="tconns">
-        <div class="conn" style="--a:var(--purple)">
+        <div class="conn">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><b>Discord integration</b></div>
           <div class="crow"><span class="crow-k">Audit log</span><span class="crow-v" id="whAUDIT"><span class="dot"></span>checking…</span></div>
           <div class="crow"><span class="crow-k">LOAs</span><span class="crow-v" id="whLOA"><span class="dot"></span>checking…</span></div>
@@ -789,7 +814,7 @@
           </div>
           <p class="hint">Tick one or more channels, paste a webhook URL, and <b>Save</b> — the <b>same webhook can serve several notifications</b>. URLs live in the <b>admin roster</b>; only accounts with access can view, change or post through them. Save with the field empty to clear the ticked channels; <b>Remove all</b> is the kill switch.</p>
         </div>
-        <div class="conn" style="--a:var(--accent)">
+        <div class="conn">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><b>Admin roster</b></div>
           <div id="admSetup"><span class="muted2">Loading…</span></div>
           <p class="hint">A separate spreadsheet that stores your Discord webhook URLs. <b>Google file sharing is the access control</b> — only accounts the file is shared with can view, change or post through them.</p>
