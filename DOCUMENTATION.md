@@ -99,13 +99,15 @@ division tabs are engine-built exceptions.) An existing STATUS dropdown is **nev
 read per-value chip colours, so any `setDataValidation` on a live dropdown wipes them — the engine only creates
 a dropdown where none exists and WARNs when an engine status is missing from the operator's list.
 
-**Auto-rows** (`tidyTailRows_`, `[LIMITS].BLANK_TAIL_ROWS`, default 1, 0 = OFF): the LOA Tracker, Patrol Log,
-and Signup review tabs keep exactly N blank styled rows between the last entry and the tab's **closing row** —
-the sanctioned exception to the no-row-surgery rule, scoped to these three tabs' data regions. That spare is
-where the next submission lands; when it is consumed, a replacement is inserted **inside** the styled band, so
-the operator's formatting, STATUS dropdowns and chip colours inherit natively — the engine still paints
-nothing; surplus blanks are deleted in one contiguous run, so a legacy tab's thousand empty rows disappear on
-the first pass and nobody ever adds rows by hand.
+**Auto-rows** (`tidyTailRows_`, `[LIMITS].BLANK_TAIL_ROWS`, default **0**, -1 = OFF): the LOA Tracker, Patrol
+Log, and Signup review tabs keep exactly N blank rows between the last entry and the tab's **closing row** — the
+sanctioned exception to the no-row-surgery rule, scoped to these three tabs' data regions. At the default 0 the
+data runs right up to the operator's end-bar with no gap, and **each arriving submission grows the sheet by
+exactly one row**: `ensureRoomAboveCap_` inserts it *inside* the styled band before the write, so formatting,
+STATUS dropdowns and chip colours inherit natively — the engine still paints nothing. It guards every append
+path (patrol/signup form syncs) and both grow paths (the tracker and patrol sorts). Surplus blanks are deleted
+in one contiguous run, so a legacy tab's thousand empty rows disappear on the first pass and nobody ever adds
+rows by hand.
 
 **The sheet's final row is the operator's closing row** (themed tabs end in a deliberate black end-bar): it is
 never written, styled, deleted, or counted as a spare — inserts go *above* it. If a multi-row batch consumes it,
@@ -393,9 +395,17 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
   trimmed so it ends as neatly. The old check only grew when the internal's *content* passed the public's whole
   *grid* — a public copy sitting on 1000 default rows never grew — and appended past the operator's closing bar.
   Growth now inserts **above the public tab's final row**, so new rows inherit that tab's own banding, formatting
-  and row height, and its end-bar stays last. The tail mirrored is the internal's own (spare rows + closing bar).
-  Shrinking runs after the write, only when everything from the target row down is empty (one `getLastRow` check,
-  no block read), and never removes the final row.
+  and row height, and its end-bar stays last. The target is **data + one closing row**: the public copy never
+  receives submissions, so mirroring this workbook's spare row would just leave a stray blank there. Shrinking
+  runs after the write, only when this tab is itself tight (`srcTail <= 3` — a tab that deliberately keeps a
+  buffer, like the roster's validation rows or a dashboard's canvas, keeps that room publicly), only when
+  everything from the target row down is empty (one `getLastRow` check, no block read), and never removes the
+  final row.
+- **Published rows are styled** (`publishStyleableTab_` → `styleTailRows_`): a row landing where the public tab
+  was never styled came out raw. The publish now propagates the **public tab's own** look onto it, exactly as the
+  internal side does. Restricted to the banded data tabs (roster · LOA Tracker · Patrol Log), where every row is
+  a peer of the one above it — dashboards are deliberately excluded, since a Welcome Page's rows are bespoke and
+  copying a neighbour's format there would wreck the design.
 - **All block writes are merge-safe** (`writeValuesSafe_` — plain `setValues` across merged cells throws), and
   in-cell images/chips (CellImage values, which `setValues` can never overwrite) are detected by
   `publishKeepMask_` and kept cleanly — an image always wins the mask, even over a FORCE range.

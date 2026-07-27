@@ -620,7 +620,7 @@
     'SCHEDULE.RESET_CADENCE':'RESET FREQUENCY','SCHEDULE.WEEKLY_HOURS_RESET':'RESET DAY','SCHEDULE.WEEKLY_RESET_HOUR':'RESET TIME','SCHEDULE.RESET_DOM':'DAY OF MONTH',
     'SCHEDULE.NIGHTLY_HOUR':'NIGHTLY LEAVE CHECK','LOGGING.LOG_LEVEL':'LOG DETAIL','LOGGING.LOG_MAX_ROWS':'LOG SIZE (ROWS)','LOGGING.PERF_TIMING':'TIMING LOG',
     'FORMATS.DATE_DISPLAY':'DATE FORMAT','FORMATS.TIMESTAMP_DISPLAY':'DATE + TIME FORMAT',
-    'LIMITS.SNAPSHOT_KEEP':'SNAPSHOTS KEPT','LIMITS.BLANK_TAIL_ROWS':'AUTO-ROWS · BLANK TAIL'};
+    'LIMITS.SNAPSHOT_KEEP':'SNAPSHOTS KEPT','LIMITS.BLANK_TAIL_ROWS':'AUTO-ROWS · SPARE ROWS'};
   // Display-only overrides for table cards (title / help), same idea as LABELS/HELPS for kv settings.
   var TBLTITLE={'DASHBOARD_GROUPS':'Headcount groups · priority order'};
   var TBLHELP={
@@ -682,7 +682,7 @@
     'FORMATS.DATE_DISPLAY':'How dates are shown in embeds, the panel and coverage.',
     'FORMATS.TIMESTAMP_DISPLAY':'How date + time stamps are shown.',
     'LIMITS.SNAPSHOT_KEEP':'Older snapshots are deleted past this.',
-    'LIMITS.BLANK_TAIL_ROWS':'LOA Tracker / Patrol Log / Signups: keep this many blank styled rows below the last entry — rows are auto-added per submission (your formatting and dropdowns carry over) and surplus blanks are removed. 0 = off.',
+    'LIMITS.BLANK_TAIL_ROWS':'LOA Tracker / Patrol Log / Signups: blank rows kept between the last entry and your closing row. 0 = none — data runs right up to your end-bar and each submission adds exactly one styled row. -1 = off.',
     'LIMITS.LOG_ROW_CAP':'Edit, integrity and history logs trim their oldest rows past this.',
     'LIMITS.VALIDATION_BUFFER':'Spare rows below the roster that keep dropdowns working — re-run First-Run Setup after big growth.'};
   var SECTIONS=[

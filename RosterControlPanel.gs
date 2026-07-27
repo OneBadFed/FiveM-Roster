@@ -1469,7 +1469,8 @@ function syncSignupForm_(formSheet, signupSheet) {
       roles.forEach((role) => { if (fSC[role] && sSC[role]) rowVals[sSC[role] - 1] = frow[fSC[role] - 1]; });
       rowVals[sSC.status - 1] = SIGNUP_STATUSES_[0];         // new submission → Pending
       const at = freeRows.length ? freeRows.shift() : nextAppend++;
-      if (at > signupSheet.getMaxRows()) signupSheet.insertRowsAfter(signupSheet.getMaxRows(), at - signupSheet.getMaxRows());
+      if (typeof ensureRoomAboveCap_ === 'function') ensureRoomAboveCap_(signupSheet, at); // grow inside the band, never onto the closing bar
+      else if (at > signupSheet.getMaxRows()) signupSheet.insertRowsAfter(signupSheet.getMaxRows(), at - signupSheet.getMaxRows());
       writeValuesSafe_(signupSheet, at, 1, [rowVals], null); // merge-safe row write
       signupSheet.getRange(at, sSC.discord).setNumberFormat('@'); // keep the Unique ID exact
       formSheet.getRange(i + 2, 1, 1, width).setBackground(CONFIG.bg.done); // mark this form row synced
@@ -2136,8 +2137,10 @@ function writeValuesSafe_(dest, top, left, values, keep) {
 function publishFitRows_(src, dest, dataEnd, allowTrim) {
   try {
     if (!(dataEnd > 0)) return;
-    const keepTail = Math.max(1, src.getMaxRows() - src.getLastRow()); // this tab's spare rows + its closing bar
-    const target = dataEnd + keepTail;
+    // The public copy needs ONE row below its data — its own closing bar. It never receives submissions, so
+    // mirroring this tab's SPARE row too just left an extra blank row down there.
+    const target = dataEnd + 1;
+    const srcTail = src.getMaxRows() - src.getLastRow();
     const M = dest.getMaxRows();
     if (M < target) {
       const need = target - M;
@@ -2148,10 +2151,25 @@ function publishFitRows_(src, dest, dataEnd, allowTrim) {
         dest.insertRowsAfter(M, need);
         try { dest.setRowHeights(M + 1, need, dest.getRowHeight(M)); } catch (e) { /* default height */ }
       }
-    } else if (allowTrim && M > target && dest.getLastRow() < target) {
+    } else if (allowTrim && srcTail <= 3 && M > target && dest.getLastRow() < target) {
+      // Trim ONLY when this tab is itself tight (auto-rows keeps a spare + a bar). A tab that deliberately holds a
+      // buffer here — the roster's validation rows, a dashboard's canvas — keeps that same room on the public copy.
       dest.deleteRows(target, M - target);                 // rows target..M-1; the old final row survives as the last
     }
   } catch (e) { logWarn_('publishFitRows_', 'row fit skipped for ' + dest.getName() + ': ' + ((e && e.message) ? e.message : e)); }
+}
+
+/**
+ * May the publish propagate row STYLING on this tab? Only the banded data tabs — the roster, the LOA Tracker and
+ * the Patrol Log — where every row is a peer of the one above it, so copying a neighbour's look onto a freshly
+ * published row is right. Deliberately excludes dashboards and any other tab: a Welcome Page's rows are bespoke
+ * (KPI boxes, promotion tables), and pushing row N-2's format onto row N there would wreck the design.
+ */
+function publishStyleableTab_(name) {
+  try {
+    const n = norm_(name), C = cfg_().legacy.sheets;
+    return [C.roster, C.tracker, C.patrolLog].some((t) => t && norm_(t) === n);
+  } catch (e) { return false; }
 }
 
 function publishMirrorTab_(src, dest) {
@@ -2194,7 +2212,12 @@ function publishMirrorTab_(src, dest) {
     catch (e) { log_('publishMirrorTab_.formats', e); }
     const dLast = dest.getLastRow();
     if (dLast > sRows) step('clear trailing ' + (dLast - sRows), () => dest.getRange(sRows + 1, 1, dLast - sRows, sCols).clearContent());
-    publishFitRows_(src, dest, sRows, true); // now the trailing rows are empty, shrink to mirror this tab's tail
+    publishFitRows_(src, dest, sRows, true); // now the trailing rows are empty, shrink to data + the closing bar
+    // A published row landing where the public tab was never styled came out raw (reported: the newest patrol row
+    // was black on the public copy). Propagate the PUBLIC tab's own look onto it, banded data tabs only.
+    if (dh > 0 && publishStyleableTab_(dest.getName()) && typeof styleTailRows_ === 'function') {
+      styleTailRows_(dest, dh + 1, sRows, Math.max(0, dest.getMaxRows() - 1 - sRows), sCols);
+    }
     return sRows;
   }
 
@@ -2234,7 +2257,10 @@ function publishMirrorTab_(src, dest) {
     const widest = Math.max.apply(null, pairs.map((p) => p.dc).concat(scrub).concat([1]));
     dest.getRange(destStart + n, 1, dLast - (destStart + n) + 1, widest).clearContent();
   }
-  publishFitRows_(src, dest, need, true); // shrink to mirror this tab's tail now the leftovers are cleared
+  publishFitRows_(src, dest, need, true); // shrink to data + the closing bar now the leftovers are cleared
+  if (publishStyleableTab_(dest.getName()) && typeof styleTailRows_ === 'function') { // see the same-width path
+    styleTailRows_(dest, destStart, need, Math.max(0, dest.getMaxRows() - 1 - need), Math.max(1, dest.getLastColumn()));
+  }
   return n;
 }
 

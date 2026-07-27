@@ -2330,6 +2330,7 @@ function styleTailRows_(sheet, dataStart, lastData, keep, width) {
     let first = tail;                                       // first row still wearing the unstyled look
     for (let r = lastData; r >= from; r--) { if (sig(r) !== tailSig) break; first = r; } // bounded by the read window
     if (first - 1 < dataStart) return;                      // nothing styled above to copy from
+    const hRef = sheet.getRowHeight(first - 1);             // the last row that IS styled sets the house height
     for (let r = first; r <= lastTail; r++) {
       const src = (r - 2 >= dataStart) ? r - 2 : r - 1;     // ascending, so r-2 is already correct when we reach r
       if (src < dataStart) break;
@@ -2340,9 +2341,25 @@ function styleTailRows_(sheet, dataStart, lastData, keep, width) {
       // to prevent. Fills, borders, number formats, wrap/alignment and the STATUS dropdown (with its chip
       // colours) all travel on these two pastes anyway.
       srcR.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-      srcR.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false); // heights are handled above
+      srcR.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+      if (sheet.getRowHeight(r) !== hRef) sheet.setRowHeight(r, hRef); // a healed row was never sized either
     }
   } catch (e) { logWarn_('styleTailRows_', 'tail styling skipped: ' + ((e && e.message) ? e.message : e)); }
+}
+
+/**
+ * Make row `needRow` writable WITHOUT consuming the sheet's final row — the operator's closing bar. With no spare
+ * rows kept (the default), an arriving submission would otherwise land straight on that bar; this grows the sheet
+ * INSIDE the band instead, so the new row inherits the styled row above it and the bar stays last. Only acts when
+ * a write would actually reach the bar, so it costs nothing on the normal path.
+ */
+function ensureRoomAboveCap_(sheet, needRow) {
+  try {
+    const cap = sheet.getMaxRows();
+    if (needRow < cap) return;                            // room already; the closing row is untouched
+    if (cap > sheet.getLastRow()) sheet.insertRowsBefore(cap, needRow - cap + 1); // blank final row = the bar
+    else if (needRow > cap) sheet.insertRowsAfter(cap, needRow - cap);            // grid ends at data → plain append
+  } catch (e) { /* best-effort: the write still lands, at worst on the last row */ }
 }
 
 /**
@@ -2361,7 +2378,7 @@ function styleTailRows_(sheet, dataStart, lastData, keep, width) {
 function tidyTailRows_(sheet, dataStart) {
   try {
     const keep = Number(CONFIG.limits.blankTailRows || 0);
-    if (!(keep > 0) || !sheet || String(sheet.getName()).indexOf('🧪') === 0) return;
+    if (keep < 0 || !sheet || String(sheet.getName()).indexOf('🧪') === 0) return; // negative = feature off
     const maxR = sheet.getMaxRows();
     const width = Math.max(1, sheet.getLastColumn());
     if (maxR < dataStart) return;
@@ -2386,10 +2403,10 @@ function tidyTailRows_(sheet, dataStart) {
     const hasCap = maxR > lastData;
     const capRow = hasCap ? maxR : 0;
     const room = hasCap ? (capRow - 1 - lastData) : 0; // blank rows BETWEEN the data and the closing row
-    if (room < keep) {
+    const need = (keep - room) + (hasCap ? 0 : 1);     // no closing row left (a batch consumed it) → restore one
+    if (need > 0) {
       // Insert ABOVE the closing row — strictly inside every band range (validation, formats, banding all
-      // stretch) and the operator's bar stays last. If a big batch consumed the closing row, restore one.
-      const need = keep - room + (hasCap ? 0 : 1);
+      // stretch) and the operator's bar stays last.
       const at = hasCap ? capRow : maxR + 1;
       if (hasCap) sheet.insertRowsBefore(capRow, need); else sheet.insertRowsAfter(maxR, need);
       // Row height is a SHEET property — it rides along with neither an insert nor a format paste, so the new
@@ -2464,10 +2481,7 @@ function sortTracker_(prepend, trackerSheet) {
     const sorted = dec.map((d) => d.row);
 
     // Write reordered VALUES back into the SAME physical rows. '@' the ID column BEFORE writing so long IDs stay exact.
-    const shortT = start + sorted.length - 1 - tracker.getMaxRows();
-    if (shortT > 0) { // grow INSIDE the styled band when blank tail rows exist (formats + dropdowns inherit), else append
-      if (tracker.getMaxRows() > last) tracker.insertRowsBefore(tracker.getMaxRows(), shortT); else tracker.insertRowsAfter(tracker.getMaxRows(), shortT);
-    }
+    ensureRoomAboveCap_(tracker, start + sorted.length - 1); // grow inside the band; never write onto the closing row
     if (RC.discord) tracker.getRange(start, RC.discord, sorted.length, 1).setNumberFormat('@');
     // Merge-safe: a merged cell anywhere in the tracker's data rows would make a full-width setValues throw, and this
     // whole function is wrapped in a catch — so sorting would silently stop working.
@@ -2831,7 +2845,7 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
       formSheet.getRange(rowIndex, markCol).setValue('✓ ' + Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm') + ' → ' + logSheet.getName());
       SpreadsheetApp.flush();
       const at = free.length ? free.shift() : append++;
-      if (at > logSheet.getMaxRows()) logSheet.insertRowsAfter(logSheet.getMaxRows(), at - logSheet.getMaxRows());
+      ensureRoomAboveCap_(logSheet, at); // a submission grows the log INSIDE the band — never onto the closing bar
       logSheet.getRange(at, PC.discord).setNumberFormat('@').setValue(id);
       if (PC.name && nm) logSheet.getRange(at, PC.name).setValue(nm);     // identity breadcrumbs: the log's failsafe
       if (PC.unit && unit) logSheet.getRange(at, PC.unit).setValue(unit); // resolves name+unit rows on refresh
@@ -3269,10 +3283,7 @@ function sortPatrolLog_(patrolSheet) {
     dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
 
-    const shortP = start + sorted.length - 1 - sheet.getMaxRows();
-    if (shortP > 0) { // grow INSIDE the styled band when blank tail rows exist (formats + dropdowns inherit), else append
-      if (sheet.getMaxRows() > last) sheet.insertRowsBefore(sheet.getMaxRows(), shortP); else sheet.insertRowsAfter(sheet.getMaxRows(), shortP);
-    }
+    ensureRoomAboveCap_(sheet, start + sorted.length - 1); // grow inside the band; never write onto the closing row
     if (PC.discord) sheet.getRange(start, PC.discord, sorted.length, 1).setNumberFormat('@');
     writeValuesSafe_(sheet, start, 1, sorted, null); // merge-safe (see sortTracker_)
     if (last > start + sorted.length - 1) sheet.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent();
