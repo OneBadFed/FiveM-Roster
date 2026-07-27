@@ -645,6 +645,7 @@
     'ROSTER_LAYOUT.UNIT_FORMAT':'How callsigns are numbered — {00} becomes the slot number, so "S-{00}" gives S-01.',
     'ROSTER_LAYOUT.SHIFT_HEADER':'What YOUR department calls this column — Shift, Assignment, District, Division, Watch. Put yours first.',
     'ROSTER_LAYOUT.SHIFT_ASSIGNED_BY':'Does the value belong to the slot (stays put when someone transfers) or to the person (moves with them)?',
+    'ROSTER_LAYOUT.SHIFT_VALUES':'The shifts you actually use — Add member then offers exactly these instead of a free-text box.',
     'ACTIVITY.LAST_ACTIVITY_COLS':'Up to 3 columns holding previous activity, NEWEST FIRST — column letters ("AB, AC, AD") or header names. Each capture shifts them one period older and puts the closing status in the first. Blank = the single column found by its "LAST ACTIVITY" header. Header row and first member row come from the two settings above.',
     'ACTIVITY.LAST_ACTIVITY_STYLE':'MATCH = coloured like the current status; NEUTRAL = plain grey.',
     'PATROL.MODE':'START_END = hours from start and end times. DURATION = one "hours patrolled" number.',
@@ -714,7 +715,7 @@
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.PATROL_LOG','SHEETS.SIGNUPS','LIMITS.BLANK_TAIL_ROWS']},
              {t:'Google Form links — responses tab → tracker', keys:['SHEETS.LEAVE_FORM_RESPONSES','SHEETS.PATROL_FORM_RESPONSES','SHEETS.SIGNUP_FORM_RESPONSES']},
              {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT']}, // previous-activity columns live in the Activity section
-             {t:'Shift / assignment column', keys:['ROSTER_LAYOUT.SHIFT_HEADER','ROSTER_LAYOUT.SHIFT_ASSIGNED_BY']},
+             {t:'Shift / assignment column', keys:['ROSTER_LAYOUT.SHIFT_HEADER','ROSTER_LAYOUT.SHIFT_ASSIGNED_BY','ROSTER_LAYOUT.SHIFT_VALUES']},
              {t:'Patrol logs → hours', keys:['PATROL.MODE','PATROL.MAX_HOURS','PATROL.FUTURE_GRACE_HOURS','PATROL.OVERNIGHT','PATROL.RECOMPUTE','PATROL.COL_DISCORD','PATROL.COL_CALLSIGN','PATROL.COL_START','PATROL.COL_END','PATROL.COL_DURATION']},
              {t:'Public roster', keys:['SHEETS.WELCOME','PUBLISH.NEVER_PUBLISH','PUBLISH.KEEP_RANGES','PUBLISH.FORCE_RANGES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']}]},

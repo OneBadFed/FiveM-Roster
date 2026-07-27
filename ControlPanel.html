@@ -246,12 +246,23 @@
   .fmain{min-width:0;}
   .fgroup{margin-bottom:14px;}
   .fglbl{font-size:11px;font-weight:600;color:rgba(255,255,255,.38);padding:0 2px 6px;}
-  .fpanel{background:rgba(255,255,255,.035);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;overflow:hidden;}
+  /* NOT overflow:hidden — the slot pop-up is absolutely positioned inside a row, and clipping it to the panel
+     cut the menu off after the first group. The rows draw their separators with box-shadow and nothing else
+     paints outside the radius, so there was never anything to clip. */
+  .fpanel{background:rgba(255,255,255,.035);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;position:relative;}
+  /* The panel that currently owns an open menu stacks above the ones below it. */
+  .fpanel:has(.sdrop.open){z-index:5;}
+  .fgroup{position:relative;}
   .frow{display:grid;grid-template-columns:112px minmax(0,1fr);align-items:center;gap:12px;padding:8px 14px;min-height:38px;}
   .frow+.frow{box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .flbl{font-size:12.5px;color:rgba(255,255,255,.6);text-align:right;white-space:nowrap;}
   .fctl{display:flex;align-items:center;gap:9px;min-width:0;}
   .fnote{font-size:11.5px;color:rgba(255,255,255,.35);white-space:nowrap;}
+  /* A value the operator cannot change here reads as TEXT, not as a disabled input — a greyed-out box invites
+     a click that will never do anything. */
+  .fro{font-size:12.5px;color:rgba(255,255,255,.88);white-space:nowrap;}
+  .fseg{flex:0 0 auto;}
+  .fseg .seg{padding:0 10px;}
   /* A row that is all explanation spans both columns — a hint has no label to sit beside. */
   .fspan{grid-template-columns:1fr;padding-top:9px;padding-bottom:10px;}
   .fhint{margin:0;font-size:11.5px;color:rgba(255,255,255,.42);line-height:1.5;}
@@ -1000,8 +1011,8 @@
                 <span class="fnote" id="addIdCount"></span></div></div>
             <div class="frow" id="addOocWrap" hidden><label class="flbl" for="addOoc">OOC name</label>
               <div class="fctl"><input class="field fin" id="addOoc" placeholder="e.g. Devin M." autocomplete="off"><span class="fnote">Optional</span></div></div>
-            <div class="frow" id="addShiftWrap" hidden><label class="flbl" for="addShift">Shift</label>
-              <div class="fctl"><input class="field fin" id="addShift" placeholder="e.g. Day" autocomplete="off"><span class="fnote">Optional &middot; free text, written as typed</span></div></div>
+            <div class="frow" id="addShiftWrap" hidden><label class="flbl" id="addShiftLbl" for="addShift">Shift</label>
+              <div class="fctl" id="addShiftCtl"></div></div>
           </div>
         </div>
 
@@ -1010,12 +1021,15 @@
           <div class="fpanel">
             <div class="frow"><label class="flbl" for="addJoin">Join date</label>
               <div class="fctl"><input class="field fin fdate" id="addJoin" type="date"><span class="fnote">Defaults to today</span></div></div>
-            <div class="frow fspan"><p class="fhint">Seating always starts at the lowest tier with 0 hours &mdash; the next activity check computes the real status from what they log.</p></div>
+            <div class="frow"><label class="flbl" for="addStartStatus">Starting status</label>
+              <div class="fctl"><select class="field fin" id="addStartStatus"></select><span class="fnote" id="addStartNote"></span></div></div>
+            <div class="frow fspan"><p class="fhint">They are seated with 0 hours. A tier status here is a starting point &mdash; the next activity check recomputes it from what they actually log. A leave status (LOA, Reserve) is left alone.</p></div>
           </div>
         </div>
       </div>
 
       <aside class="fside">
+        <div class="fglbl">Preview</div>
         <div class="pvcard" id="prevBody"></div>
       </aside>
     </div>
@@ -1138,7 +1152,7 @@
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
   var INIT_TAB = "<?= initialTab ?>"; // deep-link target tab (e.g. 'signups' from 🧾 Review Roster Signups); '' = default
-  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',filterShift:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null,shiftLabel:''};
+  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',filterShift:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null,shiftLabel:'',shiftAssignedBy:'MEMBER',shiftValues:[],addShift:'',addStatus:'',defaultStatus:''};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
   var SVG={
@@ -1226,10 +1240,14 @@
     if(b.statuses) STATE.statuses=b.statuses;
     if(b.leaveTypes&&b.leaveTypes.length) STATE.leaveTypes=b.leaveTypes;
     if(b.protectedStatuses) STATE.protected=b.protectedStatuses;
-    STATE.shiftLabel=String(b.shiftLabel||'').trim(); applyShiftCol(); // the roster's OWN word for that column
+    STATE.shiftLabel=String(b.shiftLabel||'').trim();
+    STATE.shiftAssignedBy=(b.shiftAssignedBy==='RANK')?'RANK':'MEMBER';
+    STATE.shiftValues=(b.shiftValues||[]).slice();
+    STATE.defaultStatus=String(b.defaultStatus||'').trim();
+    applyShiftCol(); renderStartStatus(); // the roster's OWN word for that column
     if(b.idDigits) STATE.idDigits=b.idDigits; // configured Unique-ID length — the form validates against THIS, not a hardcoded 17-19
     if(b.statusColors) STATE.statusColors=b.statusColors; // [STATUSES] Color column — custom statuses keep coloured pills
-    if(b.addCols){ if($('addOocWrap')) $('addOocWrap').hidden=!b.addCols.ooc; if($('addShiftWrap')) $('addShiftWrap').hidden=!b.addCols.shift; } // show OOC/Shift inputs only when the roster has those columns
+    if(b.addCols){ if($('addOocWrap')) $('addOocWrap').hidden=!b.addCols.ooc; } /* addShiftWrap is owned by renderAddShift — it hides the row when there is no such column AND picks the control shape */ // show OOC/Shift inputs only when the roster has those columns
     STATE.rankIcons=b.rankIcons||{}; // bootstrap ships {} — icons lazy-load below so the panel paints immediately
     STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
     addIdPlaceholder();
@@ -1689,10 +1707,9 @@
     var on=!!STATE.shiftLabel, th=$('thShift'), pane=$('pane-members');
     if(pane) pane.classList.toggle('has-shift', on);
     if(th){ th.hidden=!on; th.textContent=on?titleish(STATE.shiftLabel):''; }
-    var lab=document.querySelector('#addShiftWrap .flbl');   // the Add-member field takes the same word
+    var lab=$('addShiftLbl');                                 // the Add-member field takes the same word
     if(lab && on) lab.textContent=titleish(STATE.shiftLabel);
-    var inp=$('addShift');
-    if(inp && on) inp.placeholder='e.g. '+titleish(STATE.shiftLabel).split(/[\s/]/)[0];
+    renderAddShift();
     // The sort pop-up gains the same option, so the header and the pop-up still offer the same set — the header
     // drives the select, and a header sorting by something the select cannot name would leave it blank.
     var sel=$('sortBy'); if(!sel) return;
@@ -1700,6 +1717,55 @@
     if(on && !opt){ opt=document.createElement('option'); opt.value='shift'; sel.appendChild(opt); }
     if(on){ opt.textContent=titleish(STATE.shiftLabel)+' A–Z'; }
     else if(opt){ if(sel.value==='shift'){ sel.value='roster'; STATE.sort='roster'; } opt.remove(); }
+  }
+  /* The Shift control takes THREE shapes, because the answer to "who decides this?" is a real configuration:
+       RANK              — the value belongs to the slot, so it is READ-ONLY here and simply reported.
+       MEMBER + a list   — a segmented control of exactly the department's shifts, so nobody types "day",
+                           "Day Shift" and "DAYS" into what is supposed to be one value.
+       MEMBER, no list   — free text, the original behaviour, for a department that has not listed theirs. */
+  function addShiftMode(){
+    if(!STATE.shiftLabel) return 'off';
+    if(STATE.shiftAssignedBy==='RANK') return 'rank';
+    return (STATE.shiftValues&&STATE.shiftValues.length)?'pick':'free';
+  }
+  function renderAddShift(){
+    var host=$('addShiftCtl'); if(!host) return;
+    var mode=addShiftMode(), word=titleish(STATE.shiftLabel||'shift'), wrap=$('addShiftWrap');
+    // Authoritative over addCols.shift: if there is no such column there is no row, so the form can never show
+    // a labelled row with nothing in it.
+    if(wrap && mode==='off') wrap.hidden=true;
+    if(mode==='off'){ host.innerHTML=''; return; }
+    if(wrap) wrap.hidden=false;
+    if(mode==='rank'){
+      var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null;
+      var v=m?String(m.shift||'').trim():'';
+      host.innerHTML='<span class="fro">'+(m?(v?esc(v):'—'):'Pick a slot first')+'</span>'
+        +'<span class="fnote">Comes with the slot &middot; set on the roster row</span>';
+      return;
+    }
+    if(mode==='pick'){
+      host.innerHTML='<div class="segmented fseg" id="addShiftSeg">'
+        +STATE.shiftValues.map(function(v){ return '<button type="button" class="seg'+(STATE.addShift===v?' cur':'')+'" data-shiftv="'+esc(v)+'">'+esc(v)+'</button>'; }).join('')
+        +'<button type="button" class="seg'+(STATE.addShift?'':' cur')+'" data-shiftv="">Unset</button></div>';
+      return;
+    }
+    host.innerHTML='<input class="field fin" id="addShift" placeholder="e.g. '+esc(word.split(/[\s/]/)[0])+'" autocomplete="off">'
+      +'<span class="fnote">Optional &middot; free text, written as typed</span>';
+  }
+  /* Whatever shape it took, this is the value that gets written. */
+  function addShiftValue(){
+    var mode=addShiftMode();
+    if(mode==='free'){ var i=$('addShift'); return i?i.value.trim():''; }
+    if(mode==='pick') return STATE.addShift||'';
+    return ''; // RANK: the roster row already holds it — never write it from here
+  }
+  function renderStartStatus(){
+    var sel=$('addStartStatus'); if(!sel) return;
+    var list=STATE.statuses||[], def=STATE.defaultStatus||(list.length?list[list.length-1]:'');
+    if(!STATE.addStatus || list.indexOf(STATE.addStatus)<0) STATE.addStatus=def;
+    sel.innerHTML=list.map(function(s){ return '<option value="'+esc(s)+'"'+(s===STATE.addStatus?' selected':'')+'>'+esc(s)+'</option>'; }).join('');
+    var note=$('addStartNote');
+    if(note) note.textContent=(STATE.addStatus===def)?'Default':'';
   }
   function renderSlots(){
     var open=STATE.members.filter(function(m){return !m.filled;}), menu=$('slotMenu'); if(!menu) return;
@@ -1709,7 +1775,7 @@
     open.forEach(function(m){ if(!groups[m.rank]){groups[m.rank]=[];order.push(m.rank);} groups[m.rank].push(m); });
     menu.innerHTML=order.map(function(r){
       return '<div class="sdrop-group"><div class="sdrop-ghead">'+rankAvatar(r)+'<span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
-        +groups[r].map(function(m){ return '<button type="button" class="sdrop-opt" data-slotrow="'+m.row+'" role="option"><span class="so-call">'+esc(m.callsign||('Row '+m.row))+'</span><span class="so-rank">'+esc(r)+'</span></button>'; }).join('')
+        +groups[r].map(function(m){ var sv=STATE.shiftLabel?String(m.shift||'').trim():''; return '<button type="button" class="sdrop-opt" data-slotrow="'+m.row+'" role="option"><span class="so-call">'+esc(m.callsign||('Row '+m.row))+'</span><span class="so-rank">'+esc(sv||r)+'</span></button>'; }).join('')
         +'</div>';
     }).join('');
     var rem=$('slotRemain'); if(rem) rem.textContent=open.length+' remaining';
@@ -1723,6 +1789,7 @@
       else { cur.className='sdrop-cur ph'; cur.textContent='Select slot'; }
     }
     var menu=$('slotMenu'); if(menu) menu.querySelectorAll('.sdrop-opt').forEach(function(b){ b.classList.toggle('sel', Number(b.dataset.slotrow)===STATE.addSlot); });
+    if(addShiftMode()==='rank') renderAddShift();
     updateAddPreview();
   }
   function openSlotMenu(on){ var d=$('slotDrop'),menu=$('slotMenu'),btn=$('slotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false'); }
@@ -1784,19 +1851,20 @@
   function addReset(){
     $('addName').value=''; $('addId').value=''; $('addJoin').value='';
     if($('addOoc'))$('addOoc').value=''; if($('addShift'))$('addShift').value='';
-    STATE.addSlot=null; updateAddId(); setSlot(null);
+    STATE.addSlot=null; STATE.addShift=''; STATE.addStatus='';
+    renderAddShift(); renderStartStatus(); updateAddId(); setSlot(null);
   }
   function addMember(){
     var row=STATE.addSlot; if(row==null){ toast('Pick an open slot first.','err'); openSlotMenu(true); return; }
     var name=$('addName').value.trim(), discord=$('addId').value.trim();
-    var ooc=($('addOoc')?$('addOoc').value.trim():''), shift=($('addShift')?$('addShift').value.trim():'');
+    var ooc=($('addOoc')?$('addOoc').value.trim():''), shift=addShiftValue();
     if(!name){ toast('Name is required.','err'); $('addName').focus(); return; }
     if(!idValid(discord)){ toast('Unique ID must be '+idLabel()+' digits.','err'); $('addId').focus(); return; }
     $('addBtn').disabled=true;
     api(function(m){
       $('addBtn').disabled=false; addReset();
       toast('Seated '+m.name+' as '+m.rank+'.','ok'); refresh(); document.querySelector('.tab[data-tab="members"]').click();
-    }, function(e){ $('addBtn').disabled=false; onError(e); }, "cpAssignMember", {row:row,name:name,discord:discord,joinDate:$('addJoin').value,ooc:ooc,shift:shift});
+    }, function(e){ $('addBtn').disabled=false; onError(e); }, "cpAssignMember", {row:row,name:name,discord:discord,joinDate:$('addJoin').value,ooc:ooc,shift:shift,status:($('addStartStatus')?$('addStartStatus').value:'')});
   }
 
   /* ── Signups pane: approve a pending applicant into an open slot (mirrors Add member) ── */
@@ -2237,6 +2305,8 @@
   $('slotMenu').addEventListener('click',function(e){ var o=e.target.closest('[data-slotrow]'); if(!o) return; setSlot(Number(o.dataset.slotrow)); openSlotMenu(false); });
   $('addName').addEventListener('input',updateAddPreview);
   $('addId').addEventListener('input',function(){ updateAddId(); addStatusLine(); });
+  $('addShiftCtl').addEventListener('click',function(e){ var b=e.target.closest('[data-shiftv]'); if(!b) return; STATE.addShift=b.dataset.shiftv; renderAddShift(); });
+  $('addStartStatus').addEventListener('change',function(){ STATE.addStatus=this.value; renderStartStatus(); updateAddPreview(); });
   $('addCancel').addEventListener('click',function(){ addReset(); toast('Cleared.','ok'); });
   document.addEventListener('click',function(e){ if(!e.target.closest('#slotDrop')) openSlotMenu(false); });
   document.addEventListener('click',function(e){ if(!e.target.closest('.mv-trigger') && !e.target.closest('#mvMenu')) openMvMenu(false); });

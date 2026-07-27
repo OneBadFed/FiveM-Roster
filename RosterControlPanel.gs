@@ -454,6 +454,10 @@ function cpBootstrap() {
     // What THIS department calls its shift column, read from the sheet's own header rather than assumed. Drives
     // the member-list column heading and the Add-member field label; '' = no such column, and both disappear.
     shiftLabel: cpShiftLabel_(rosterSheet, RCadd),
+    shiftAssignedBy: CONFIG.shiftAssignedBy || 'MEMBER',   // MEMBER = the person picks it; RANK = it comes with the slot
+    shiftValues: (CONFIG.shiftValues || []).slice(),       // the department's own list ([] = free text)
+    // The status the server WOULD write if none is chosen, so the form can mark its default honestly.
+    defaultStatus: (CONFIG.tierNames && CONFIG.tierNames.length) ? CONFIG.tierNames[CONFIG.tierNames.length - 1] : 'Inactive',
     // The CONFIGURED Unique-ID length. The panel used to hardcode 17-19 (Discord) in both its validator and its
     // label, so a COMMUNITY department on 1-8 digit CIDs could not seat anyone — the form rejected every valid
     // ID before the request left the browser. Same numbers the server validates with.
@@ -1009,6 +1013,15 @@ function cpAssignMember_(roster, payload) {
   const joinRaw = String((payload && payload.joinDate) || '').trim();
   const ooc = String((payload && payload.ooc) || '').trim();     // optional OOC name (written only if the roster has that column)
   const shift = String((payload && payload.shift) || '').trim(); // optional shift (written only if the roster has that column)
+  // Optional starting status. Whitelisted against the CONFIGURED vocabulary — this value is written straight
+  // into the activity column, so an unrecognised one would poison every count that groups by status.
+  const statusReq = String((payload && payload.status) || '').trim();
+  let startStatus = '';
+  if (statusReq) {
+    const known = (CONFIG.statusNames || []).filter((s) => norm_(s) === norm_(statusReq));
+    if (!known.length) throw new Error(`"${statusReq}" is not one of this department's statuses.`);
+    startStatus = known[0]; // the configured spelling, not whatever case the client sent
+  }
 
   if (!name) throw new Error('Name is required.');
   if (!isValidId_(discord)) throw new Error('Unique ID must be ' + idDigitsLabel_() + ' digits.');
@@ -1029,7 +1042,11 @@ function cpAssignMember_(roster, payload) {
   if (RC.ooc && ooc) roster.getRange(row, RC.ooc).setValue(ooc);       // optional display columns — only when the roster has them
   if (RC.shift && shift) roster.getRange(row, RC.shift).setValue(shift);
   roster.getRange(row, RC.join).setValue(joinDate);   // Join Date
-  roster.getRange(row, RC.activity).setValue(CONFIG.tierNames.length ? CONFIG.tierNames[CONFIG.tierNames.length - 1] : 'Inactive'); // seat at the lowest tier
+  // Seat at the lowest tier unless a starting status was chosen. NOTE for anyone reading a surprising roster:
+  // a TIER status here is advisory — the next activity check recomputes it from hours, so "Active" with 0 hours
+  // reverts. A LEAVE/PROTECTED status (LOA, Reserve) is preserved by resolveStatus_ and does stick.
+  roster.getRange(row, RC.activity).setValue(startStatus
+    || (CONFIG.tierNames.length ? CONFIG.tierNames[CONFIG.tierNames.length - 1] : 'Inactive'));
   roster.getRange(row, RC.hours).setValue(0);
   return cpMemberAt_(roster, row);
 }

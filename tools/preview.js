@@ -151,7 +151,9 @@ function buildRoster() {
       joinDate: `${(i % 27) + 1} Apr 202${i % 5}`, lastPromo: `${(i % 26) + 2} Jan 2026`,
       status: filled ? status : '', hours, req, color: '', filled,
       section: ['Alpha Watch','Bravo Watch','Charlie Watch'][Math.floor(i/9)%3],
-      shift: filled ? ['1st District','2nd District','3rd District'][i%3] : '',
+      // open slots carry one too — under SHIFT_ASSIGNED_BY=RANK the value belongs to the SLOT, so an
+      // unfilled row still has one and the picker must be able to show it.
+      shift: ['1st District','2nd District','3rd District'][i%3],
     });
     if (!filled) { stats.openSlots++; continue; }
     stats.total++;
@@ -171,7 +173,10 @@ function bootstrapPayload(X) {
     statuses: STATUSES.slice(), statusColors: {}, protectedStatuses: ['Reserve'], leaveTypes: ['LOA', 'ROA'],
     addCols: { ooc: true, shift: true },
     idDigits: { min: 17, max: 19 },
-    shiftLabel: 'PATROL DISTRICT', // shouted, as a real sheet header usually is — the panel title-cases it // same shape cpBootstrap sends; the Add form validates against THIS
+    shiftLabel: 'PATROL DISTRICT',
+    shiftAssignedBy: 'MEMBER',
+    shiftValues: ['Days', 'Swings', 'Mids'],
+    defaultStatus: 'Inactive', // shouted, as a real sheet header usually is — the panel title-cases it // same shape cpBootstrap sends; the Add form validates against THIS
     members: snap.members, stats: snap.stats, updatedAt: snap.updatedAt,
     rankIcons: {}, adminRoster: { linked: true, access: true, url: '#' },
     health: { ok: false, problems: [{ sev: 'WARN', msg: 'preview' }, { sev: 'WARN', msg: 'preview' }] },

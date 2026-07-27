@@ -302,6 +302,7 @@ const BLOCK_SPECS_ = Object.freeze({
     ID_MIN_DIGITS: { t: 'int', d: 17, req: true, min: 1, max: 30, help: 'Shortest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 17, COMMUNITY forces 1).' },
     ID_MAX_DIGITS: { t: 'int', d: 19, req: true, min: 1, max: 30, help: 'Longest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 19, COMMUNITY forces 8).' },
     SHIFT_HEADER: { t: 'list', d: 'SHIFT, ASSIGNMENT, DISTRICT, DIVISION, WATCH', req: false, help: 'Header keyword(s) for the shift / assignment / district column — a header MATCHES if it CONTAINS any one of them (case/space-proof). Every department names this column differently, so put yours first. ONE list drives both the roster and the LOA Tracker: they used to carry separate hardcoded lists, and a department on "DISTRICT" got a tracker column the roster could never fill, so the value synced across blank. BLANK = this department has no such column.' },
+    SHIFT_VALUES: { t: 'list', d: '', req: false, help: 'The shifts/assignments this department actually uses — e.g. "Days, Swings, Mids" or "Alpha Watch, Bravo Watch, Charlie Watch, Traffic". ONLY used when SHIFT_ASSIGNED_BY = MEMBER: the Add-member form offers exactly these instead of a free-text box, so nobody invents "day"/"Day Shift"/"DAYS" as three different values. BLANK = free text (type anything). Ignored under SHIFT_ASSIGNED_BY = RANK, where the value belongs to the slot and is read off the roster row.' },
     SHIFT_ASSIGNED_BY: { t: 'enum', d: 'MEMBER', req: false, enum: ['MEMBER', 'RANK'], help: 'How that column is filled, and what happens to it on a transfer. MEMBER = it belongs to the PERSON: blank on an empty slot, set when someone is seated, and it FOLLOWS them when they move rank. RANK = it belongs to the SLOT: pre-filled on the rank row and it STAYS with the position when the member moves out. This sets the column\'s default SLOT/MEMBER class — an explicit per-header row in [COLUMNS] (or Control Panel ▸ Columns) still wins over it.' },
   } },
   COLUMNS: { type: 'table', cols: ['Role', 'Match', 'Class', 'Required'],
@@ -983,6 +984,8 @@ function materialize_(c, fromTab) {
     // so every resolver reads the same list instead of keeping its own.
     shiftKeywords: (kv.ROSTER_LAYOUT.SHIFT_HEADER || []).map((k) => norm_(k)).filter(Boolean),
     shiftAssignedBy: norm_(kv.ROSTER_LAYOUT.SHIFT_ASSIGNED_BY) === 'RANK' ? 'RANK' : 'MEMBER',
+    // Kept AS TYPED (not normalized) — these are written into the sheet, so their casing is the department's.
+    shiftValues: (kv.ROSTER_LAYOUT.SHIFT_VALUES || []).map((v) => String(v).trim()).filter(Boolean),
     lastActivityStyle: kv.ACTIVITY.LAST_ACTIVITY_STYLE || 'MATCH', // v1.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
     lastActivityCols: (kv.ACTIVITY.LAST_ACTIVITY_COLS || []).slice(0, 3), // newest-first previous-activity chain; blank = auto-detect one by header
     formats: { date: kv.FORMATS.DATE_DISPLAY || 'd MMM. yyyy', timestamp: kv.FORMATS.TIMESTAMP_DISPLAY || 'd MMM yyyy, h:mm a' },
