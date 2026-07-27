@@ -23,6 +23,8 @@
        (Pure black is iOS on OLED — it was the main reason this looked more iPhone than Mac.) Neutral greys with
        no hue at all, which is most of why Apple's dark mode looks expensive. */
     --bg:#1e1e1e; --sidebar:rgba(48,48,52,.78);
+    /* The review queue reads as its own region, one step up from the page it sits beside. */
+    --queue:#232325;
     --e1:#2c2c2e; --e2:#3a3a3c; --e3:#48484a; --e4:#545456;
     --surface:#2c2c2e; --surface-2:#3a3a3c; --surface-3:#48484a;
     --card:#2c2c2e; --card-2:#3a3a3c;
@@ -50,6 +52,8 @@
     --txt:rgba(255,255,255,.85); --txt-2:rgba(255,255,255,.55); --txt-3:rgba(255,255,255,.25);
     /* THE accent. systemBlue (dark). One colour carries every interactive state in the panel. */
     --accent:#0A84FF; --accent-2:#409CFF; --accent-soft:rgba(10,132,255,.18);
+    /* The focus OUTLINE — thinner than the old halo, so a little more opaque to stay as visible. */
+    --accent-ring:rgba(10,132,255,.45);
     /* Apple's system palette (dark variants). These stay defined so every existing rule keeps working —
        but on this tab colour is reserved for MEANING (status, destructive), never for decoration. */
     --green:#30D158; --green-t:rgba(48,209,88,.12); --green-b:rgba(48,209,88,.3); --green-f:#30D158;
@@ -175,7 +179,7 @@
   .toolbar .search-clear svg{width:12px;height:12px;}
   .toolbar .search-wrap .field{height:24px;min-height:24px;padding-top:0;padding-bottom:0;font-size:12.5px;border-radius:6px;
                                background:rgba(255,255,255,.06);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
-  .toolbar .search-wrap .field:focus{background:rgba(255,255,255,.09);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
+  .toolbar .search-wrap .field:focus{background:rgba(255,255,255,.09);box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
   .btn-primary{flex:0 0 auto;background:linear-gradient(180deg,#0f8cff,#0a7ae8);border:none;color:#fff;border-radius:6px;
                padding:0 9px;height:24px;min-height:24px;font-size:12.5px;font-weight:500;font-family:inherit;
                box-shadow:0 .5px 0 rgba(255,255,255,.25) inset,0 1px 2px rgba(0,0,0,.3);
@@ -233,7 +237,7 @@
          min-height:32px;font-size:var(--f2);font-family:inherit;outline:none;
          transition:box-shadow var(--t) var(--ease);}
   .field::placeholder{color:var(--txt-3);}
-  .field:focus{background:var(--ctl-hi);box-shadow:0 0 0 3px var(--accent-soft);}
+  .field:focus{background:var(--ctl-hi);box-shadow:0 0 0 2px var(--accent-ring);}
   select.field,select.fselect{cursor:pointer;appearance:none;-webkit-appearance:none;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237f8894' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;}
@@ -274,12 +278,12 @@
   /* A row that is all explanation spans both columns — a hint has no label to sit beside. */
   .fspan{grid-template-columns:1fr;padding-top:9px;padding-bottom:10px;}
   .fhint{margin:0;font-size:11.5px;color:rgba(255,255,255,.42);line-height:1.5;}
-  .fin{width:auto;flex:1 1 140px;max-width:300px;min-width:0;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
+  .fin{width:auto;flex:1 1 140px;max-width:240px;min-width:0;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
        background:var(--ctl);box-shadow:var(--ctl-ring);}
-  .fin:focus{background:rgba(255,255,255,.11);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
+  .fin:focus{background:rgba(255,255,255,.11);box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
   .fdate{flex:0 0 auto;} /* the date picker is drawn dark by color-scheme on :root */
   /* The tick sits INSIDE the field, so validity reads as a property of the value rather than a separate widget. */
-  .idwrap{position:relative;display:flex;flex:0 1 240px;min-width:0;}
+  .idwrap{position:relative;display:flex;flex:1 1 140px;max-width:240px;min-width:0;}
   .idwrap .fin{flex:1;padding-right:26px;}
   .idtick{position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#30d158;font-size:12px;line-height:1;pointer-events:none;}
   .idtick[hidden]{display:none;}
@@ -312,7 +316,7 @@
   .fctl .sdrop-btn{height:24px;padding:0 3px 0 9px;border-radius:6px;font-size:12.5px;gap:8px;
                    background:var(--ctl);box-shadow:var(--ctl-ring);}
   .fctl .sdrop-btn:hover{background:var(--ctl-hi);}
-  .fctl .sdrop.open .sdrop-btn{background:var(--ctl-hi);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
+  .fctl .sdrop.open .sdrop-btn{background:var(--ctl-hi);box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
   .sdrop-chev-box{width:18px;height:18px;border-radius:4px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
                   background:linear-gradient(180deg,#0f8cff,#0a7ae8);box-shadow:0 .5px 0 rgba(255,255,255,.25) inset;}
   .sdrop-chev-box .sdrop-chev{width:10px;height:10px;color:#fff;}
@@ -337,7 +341,7 @@
     border-radius:var(--r-md);padding:9px 12px;font-size:13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);
     transition:background var(--t),box-shadow var(--t);text-align:left;}
   .sdrop-btn:hover{background:var(--ctl-hi);}
-  .sdrop.open .sdrop-btn{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
+  .sdrop.open .sdrop-btn{background:var(--e4);box-shadow:var(--hi),0 0 0 2px var(--accent-ring),var(--sh-2);}
   .sdrop-cur{flex:1;min-width:0;display:flex;align-items:center;gap:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sdrop-cur span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sdrop-cur.ph{color:var(--txt-3);}
@@ -405,16 +409,20 @@
   /* ══ SIGNUPS — a QUEUE, not a form. The old pane was one applicant on a page with no sense of what else was
      waiting; this is the three-pane review shape: who is in line, what you are deciding, and what they sent. ══ */
   #pane-signups.pane.active{display:flex;flex-direction:column;min-height:100%;}
-  .sucols{display:grid;grid-template-columns:222px minmax(0,1fr);gap:0;align-items:start;flex:1;min-height:0;}
-  .suqueue{min-width:0;padding-right:14px;box-shadow:1px 0 0 var(--hair);align-self:stretch;}
+  .sucols{display:grid;grid-template-columns:222px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
+  .suqueue{min-width:0;margin-left:-14px;padding:12px 14px;background:var(--queue);
+           box-shadow:1px 0 0 var(--hair);align-self:stretch;}
   /* In the toolbar the scope control sits OVER the column it filters, and the rule between them continues the
      column divide below — the header is split the same way the body is. */
   /* order:-1 puts it ahead of the sidebar toggle WITHOUT reordering the DOM for every other tab — the toggle's
      26px would otherwise push the control 36px right of the column it belongs to, and the rule under it would
      miss the column divide it is meant to continue. */
-  .toolbar .suq-tabs{order:-1;flex:0 0 222px;margin:0;box-shadow:1px 0 0 var(--hair);padding-right:14px;}
+  .toolbar .suq-tabs{order:-1;flex:0 0 222px;margin:0 0 0 -14px;padding:0 14px;height:100%;align-self:stretch;
+    display:flex;align-items:center;background:var(--queue);box-shadow:1px 0 0 var(--hair);}
+  .toolbar .suq-tabs .fchips,.toolbar .suq-tabs{border-radius:0;}
+  .toolbar .suq-tabs.fchips{gap:0;overflow:visible;}
   .toolbar .suq-tabs[hidden]{display:none;}
-  .suq-tabs .fchip{flex:1;justify-content:center;display:flex;align-items:center;gap:6px;}
+  .suq-tabs .fchip{flex:1 1 0;min-width:0;justify-content:center;display:flex;align-items:center;gap:6px;}
   .suq-n{font-family:var(--mono);font-size:11px;opacity:.75;}
   .suq-list{display:flex;flex-direction:column;gap:2px;}
   .suq-row{display:flex;align-items:center;gap:9px;padding:0 8px;height:44px;border-radius:7px;cursor:pointer;
@@ -515,7 +523,7 @@
            font-size:12px;font-family:inherit;cursor:pointer;outline:none;transition:background var(--t) var(--ease);}
   select.fselect{background-position:right 8px center;}
   .fselect:hover{background-color:var(--ctl-hi);}
-  .fselect:focus{background-color:var(--ctl-hi);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
+  .fselect:focus{background-color:var(--ctl-hi);box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
   .rescount{font-size:11.5px;color:rgba(255,255,255,.4);margin-top:0;letter-spacing:0;}
   /* Apple's checkbox: a filled accent square with a white tick. Round, no glow, no inset ring. */
   .mcheck{appearance:none;-webkit-appearance:none;width:14px;height:14px;border:none;border-radius:3.5px;background:rgba(255,255,255,.09);cursor:pointer;flex:0 0 auto;
@@ -546,7 +554,7 @@
   .sform .field{height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
                 background:var(--ctl);box-shadow:var(--ctl-ring);}
   .sform .field:focus{background:rgba(255,255,255,.11);
-                box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
+                box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
   .sform select.field{padding-right:24px;background-position:right 8px center;}
   .sf-mini{flex:1 1 0;min-width:0;}
   /* Submit takes the SAME primary treatment as + Add in the toolbar, at the same 24px — one primary button in
@@ -581,7 +589,7 @@
                      background:var(--ctl);box-shadow:var(--ctl-ring);}
   .mvrow .mv-trigger:hover{background:var(--ctl-hi);}
   .mv-trigger .sdrop-chev{transition:transform var(--t) var(--ease);}
-  .mv-trigger.open{background:var(--e4);border-color:transparent;box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
+  .mv-trigger.open{background:var(--e4);border-color:transparent;box-shadow:var(--hi),0 0 0 2px var(--accent-ring),var(--sh-2);}
   .mv-trigger.open .sdrop-chev{transform:rotate(180deg);}
     /* Move stays visibly INERT until a slot is chosen — a live blue button invites a click that cannot work. */
   .mvrow .mv-go{flex:0 0 auto;width:auto;margin-top:0;padding:0 13px;height:24px;border-radius:6px;font-size:12.5px;font-weight:500;
@@ -663,7 +671,7 @@
   .de-fld>label{flex:0 0 54px;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--txt-3);font-weight:800;padding-top:8px;}
   .de-pill{flex:1;min-width:0;background:var(--btn);border:none;color:var(--txt);border-radius:9px;padding:8px 12px;font-size:12.5px;font-family:inherit;outline:none;box-shadow:var(--hi);}
   .de-pill::placeholder{color:var(--txt-3);}
-  .de-pill:focus{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft);}
+  .de-pill:focus{background:var(--e4);box-shadow:var(--hi),0 0 0 2px var(--accent-ring);}
   .de-tones{display:flex;flex-wrap:wrap;gap:8px;flex:1;padding-top:2px;}
   .de-tone{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;transition:transform .12s var(--ease);box-shadow:var(--hi);}
   .de-tone:hover{transform:scale(1.14);}
@@ -1317,6 +1325,19 @@
   function $(id){ return document.getElementById(id); }
   function esc(s){ return String(s==null?'':s).replace(/[&<>"]/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
   /* single server entry point — every backend call funnels through dispatch(name, args) */
+  /* ONE copy behaviour for every [data-copy] in the panel: copy, flip to a green tick, and fall back after
+     1.5s. It used to live inside the member-list click handler alone, so the identical-looking buttons on the
+     Signups tab did nothing at all when pressed.
+     @return {boolean} true when the click WAS a copy button, so a caller can stop the event going further. */
+  function copyClick(e){
+    var cp=e.target.closest('[data-copy]'); if(!cp) return false;
+    if(copyText(cp.getAttribute('data-copy'))){
+      cp.classList.add('ok'); cp.innerHTML=SVG.check;
+      clearTimeout(cp._ct);
+      cp._ct=setTimeout(function(){ cp.classList.remove('ok'); cp.innerHTML=SVG.copy; },1500);
+    }
+    return true;
+  }
   function api(success, failure, name){ var args=Array.prototype.slice.call(arguments,3); google.script.run.withSuccessHandler(success).withFailureHandler(failure||onError).dispatch(name, args); }
   function skel(n){ var o=''; for(var i=0;i<n;i++) o+='<div class="skel-row"></div>'; return o; }
   function mInitials(n){ var p=String(n||'').replace(/[^A-Za-z0-9 .'-]/g,'').split(/[ .]+/).filter(Boolean); if(!p.length) return '—'; var a=(p[0][0]||''); var b=p.length>1?(p[p.length-1][0]||''):''; return (a+b).toUpperCase()||'—'; }
@@ -1342,7 +1363,7 @@
   function toast(msg,kind){ var t=$('toast'); t.textContent=msg; t.className='show'+(kind?(' '+kind):''); clearTimeout(toastT); toastT=setTimeout(function(){t.className='';},4200); }
   function onError(e){ toast((e&&e.message)?e.message:'Something went wrong.','err'); setLoading(false); }
   function setLoading(on){ $('progress').className='progress'+(on?' on':''); $('refreshBtn').disabled=!!on; }
-  function copyText(t){ try{ var ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast('Discord ID copied.','ok'); return true; }catch(e){ toast('Copy failed — select it manually.','err'); return false; } }
+  function copyText(t){ try{ var ta=document.createElement('textarea'); ta.value=t; ta.style.position='fixed'; ta.style.opacity='0'; document.body.appendChild(ta); ta.focus(); ta.select(); document.execCommand('copy'); document.body.removeChild(ta); toast('Copied.','ok'); return true; }catch(e){ toast('Copy failed — select it manually.','err'); return false; } }
 
   function applyBoot(b){
     $('sysName').textContent=b.systemName||'Roster System';
@@ -2301,6 +2322,7 @@
         function(e){ b.disabled=false; onError(e); }, 'cpSignupFlag', {row:a.row, id:a.discord||''});
   });
   document.addEventListener('click',function(e){
+    if(copyClick(e)) return; /* the Signups read-only fields carry the same copy buttons */
     var chip=e.target.closest('[data-suapp]'); if(chip){ SU.cur=Number(chip.dataset.suapp); SU.slot=null; SU.shift=''; renderSignups(); return; } /* a shift chosen for one applicant must not carry to the next */
     var opt=e.target.closest('[data-suslot]'); if(opt){ suSetSlot(Number(opt.dataset.suslot)); suOpenMenu(false); return; }
     if(e.target.closest('#suSlotBtn')){ e.stopPropagation(); suOpenMenu(); return; }
@@ -2639,7 +2661,7 @@
   });
   $('mlist').addEventListener('click',function(e){
     var sel=e.target.closest('[data-sel]'); if(sel){ var rw=sel.dataset.sel; if(sel.checked) STATE.selected[rw]=true; else delete STATE.selected[rw]; renderBulk(); return; }
-    var cp=e.target.closest('[data-copy]'); if(cp){ e.stopPropagation(); if(copyText(cp.getAttribute('data-copy'))){ cp.classList.add('ok'); cp.innerHTML=SVG.check; clearTimeout(cp._ct); cp._ct=setTimeout(function(){ cp.classList.remove('ok'); cp.innerHTML=SVG.copy; },1500); } return; }
+    if(copyClick(e)){ e.stopPropagation(); return; } /* stop here too, or copying an ID would collapse the row */
     var sc=e.target.closest('[data-sched]'); if(sc){ var scr=Number(sc.dataset.sched); STATE.formOpen=(STATE.formOpen===scr?null:scr); renderMembers(); return; } // F-026: drive open-state off STATE so a re-render preserves it
     var sg=e.target.closest('[data-schedgo]'); if(sg){ scheduleLeave(Number(sg.dataset.schedgo),sg); return; }
     var adc=e.target.closest('[data-admdisc]'); if(adc){ addDiscipline(Number(adc.dataset.admdisc),adc); return; }

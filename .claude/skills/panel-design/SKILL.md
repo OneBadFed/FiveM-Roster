@@ -32,8 +32,10 @@ then read that element back:
 
 `--user-data-dir` is required or the dump comes back empty. Two traps, both of which have already cost a
 debugging round: headless reports **`prefers-reduced-motion: reduce`**, so anything branching on it takes the
-reduced path; and **animations do not tick under `--virtual-time-budget`** (no compositor frames), so sampled
-heights and opacities stay frozen at their start value. Timers and clicks *do* run. Use this to prove state
+reduced path; and **neither animations NOR CSS transitions tick under `--virtual-time-budget`** (no compositor frames),
+so sampled heights, colours and shadows stay frozen at their START value — a focus ring reads as transparent
+and a just-clicked button reads as its resting colour. Inject
+`*{transition:none !important;animation:none !important}` in the probe to read settled values. Timers and clicks *do* run. Use this to prove state
 transitions, handler wiring and settle logic — never to judge whether motion looks right.
 
 The same command runs two consistency checks and exits non-zero on the first:
