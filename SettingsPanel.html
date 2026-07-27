@@ -617,7 +617,7 @@
     'THEME.TEXT':'BODY TEXT','THEME.TEXT_STRONG':'HEADING TEXT','THEME.SUBHEAD':'TABLE HEADER FILL','THEME.SUBHEAD_TEXT':'TABLE HEADER TEXT',
     'THEME.PASS':'SUCCESS','THEME.FAIL':'ERROR','THEME.INFO':'INFO','THEME.PROCESSING':'PROCESSING',
     'DASHBOARD.ENABLE':'LIVE DASHBOARD',
-    'SCHEDULE.RESET_CADENCE':'RESET FREQUENCY','SCHEDULE.WEEKLY_HOURS_RESET':'RESET DAY','SCHEDULE.WEEKLY_RESET_HOUR':'RESET TIME','SCHEDULE.RESET_DOM':'DAY OF MONTH',
+    'SCHEDULE.AUTO_RESET':'AUTO-RESET ACTIVITY','SCHEDULE.RESET_CADENCE':'RESET FREQUENCY','SCHEDULE.WEEKLY_HOURS_RESET':'RESET DAY','SCHEDULE.WEEKLY_RESET_HOUR':'RESET TIME','SCHEDULE.RESET_DOM':'DAY OF MONTH',
     'SCHEDULE.NIGHTLY_HOUR':'NIGHTLY LEAVE CHECK','LOGGING.LOG_LEVEL':'LOG DETAIL','LOGGING.LOG_MAX_ROWS':'LOG SIZE (ROWS)','LOGGING.PERF_TIMING':'TIMING LOG',
     'FORMATS.DATE_DISPLAY':'DATE FORMAT','FORMATS.TIMESTAMP_DISPLAY':'DATE + TIME FORMAT',
     'LIMITS.SNAPSHOT_KEEP':'SNAPSHOTS KEPT','LIMITS.BLANK_TAIL_ROWS':'AUTO-ROWS · SPARE ROWS'};
@@ -671,6 +671,7 @@
     'THEME.INFO':'Blue — informational rows.',
     'THEME.PROCESSING':'Tint for form rows still being processed.',
     'DASHBOARD.ENABLE':'Master switch — when off, #tags stop updating everywhere.',
+    'SCHEDULE.AUTO_RESET':'Master switch. Off = hours are never zeroed on a schedule; the period closes only when you run 📸 Capture & Reset Activity yourself. Takes effect straight away.',
     'SCHEDULE.RESET_CADENCE':'How often hours reset to zero. MANUAL = only when you run it yourself.',
     'SCHEDULE.WEEKLY_HOURS_RESET':'Which day the reset runs — history is saved first. OFF disables the reset.',
     'SCHEDULE.WEEKLY_RESET_HOUR':'What time the reset fires.',
@@ -723,7 +724,7 @@
       cards:[{t:'Live dashboard', keys:['DASHBOARD.ENABLE']}],
       tablesMulti:['SECTION_TAGS','DASHBOARD_GROUPS']},
     {id:'automation', a:'var(--amber)', title:'Automation & logging', desc:'When the hours reset and the nightly leave check run, and what the engine writes to its diagnostics log.',
-      cards:[{t:'Hours reset', keys:['SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR']},
+      cards:[{t:'Hours reset', keys:['SCHEDULE.AUTO_RESET','SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR']},
              {t:'Nightly leave check', keys:['SCHEDULE.NIGHTLY_HOUR']},
              {t:'Logging', keys:['LOGGING.LOG_LEVEL','LOGGING.LOG_MAX_ROWS','LOGGING.PERF_TIMING']},
              {t:'Formats', keys:['FORMATS.DATE_DISPLAY','FORMATS.TIMESTAMP_DISPLAY']}]},
@@ -1170,7 +1171,8 @@
     var DAYN={SUN:'Sunday',MON:'Monday',TUE:'Tuesday',WED:'Wednesday',THU:'Thursday',FRI:'Friday',SAT:'Saturday'};
     var t12=function(h){ return h===0?'midnight':(h===12?'noon':(h<12?h+' AM':(h-12)+' PM')); };
     var reset;
-    if(cad==='MANUAL') reset='Hours never reset automatically (manual mode)';
+    if(KV['SCHEDULE.AUTO_RESET'] && !boolOn(KV['SCHEDULE.AUTO_RESET'].value)) reset='Auto-reset is <b>OFF</b> — hours are never zeroed on a schedule; run <b>📸 Capture &amp; Reset Activity</b> when you want to close a period';
+    else if(cad==='MANUAL') reset='Hours never reset automatically (manual mode)';
     else if(day==='OFF' && cad!=='MONTHLY') reset='The hours reset is <b>OFF</b> (reset day is OFF)';
     else if(cad==='MONTHLY') reset='Hours reset <b>monthly on day '+esc(dom)+'</b> at <b>'+t12(hr)+'</b> — history is saved first';
     else reset='Hours reset <b>'+(cad==='BIWEEKLY'?'every second ':'every ')+esc(DAYN[day]||day)+'</b> at <b>'+t12(hr)+'</b> — history is saved first';
@@ -1180,7 +1182,10 @@
   function applySchedVis(){
     var c=KV['SCHEDULE.RESET_CADENCE']; if(!c) return;
     var v=String(c.value).trim().toUpperCase(), man=(v==='MANUAL'), mon=(v==='MONTHLY');
-    [['SCHEDULE.WEEKLY_HOURS_RESET',!man&&!mon],['SCHEDULE.RESET_DOM',mon],['SCHEDULE.WEEKLY_RESET_HOUR',!man]].forEach(function(p){
+    // Auto-reset OFF = nothing below it applies, so the schedule fields hide entirely rather than sit there implying they still run.
+    var auto=!KV['SCHEDULE.AUTO_RESET'] || boolOn(KV['SCHEDULE.AUTO_RESET'].value);
+    if(!auto) man=mon=false;
+    [['SCHEDULE.WEEKLY_HOURS_RESET',auto&&!man&&!mon],['SCHEDULE.RESET_DOM',auto&&mon],['SCHEDULE.WEEKLY_RESET_HOUR',auto&&!man],['SCHEDULE.RESET_CADENCE',auto]].forEach(function(p){
       document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(el.dataset.row===p[0]) el.classList.toggle('modehide',!p[1]); });
     });
   }

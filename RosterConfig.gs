@@ -424,6 +424,7 @@ const BLOCK_SPECS_ = Object.freeze({
   SCHEDULE: { type: 'kv', keys: {
     NIGHTLY_HOUR: { t: 'int', d: 0, req: true, min: 0, max: 23, help: 'Hour for the daily schedule check trigger (0 = midnight, the live default).' },
     TIMEZONE: { t: 'enum', d: 'SPREADSHEET', req: true, enum: ['SPREADSHEET'], help: 'Phase 1 supports the spreadsheet timezone.' },
+    AUTO_RESET: { t: 'bool', d: true, req: false, help: 'Master switch for the automatic activity reset. OFF = hours are NEVER zeroed on a schedule — the period only closes when you run 👥 Roster ▸ 📸 Capture & Reset Activity yourself. Everything else (hours crediting, statuses, history) is unaffected. Takes effect immediately; no need to re-run Install Triggers.' },
     RESET_CADENCE: { t: 'enum', d: 'WEEKLY', req: true, enum: ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'MANUAL'], help: 'How often the hours reset runs. WEEKLY = the classic behavior. BIWEEKLY = every 14 days. MONTHLY = on RESET_DOM. MANUAL = no auto-reset trigger.' },
     WEEKLY_HOURS_RESET: { t: 'enum', d: 'SUN', req: true, enum: ['OFF', 'SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], help: 'Weekday for WEEKLY/BIWEEKLY reset (captures history BEFORE zeroing — resolved G1). OFF disables the reset regardless of cadence.' },
     WEEKLY_RESET_HOUR: { t: 'int', d: 23, req: true, min: 0, max: 23, help: 'Hour of day for the reset trigger.' },

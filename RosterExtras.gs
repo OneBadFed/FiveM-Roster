@@ -57,16 +57,16 @@ function installExtrasTriggers_() {
   });
   // Reset cadence/day/hour come from [SCHEDULE] on ⚙️ Config (defaults WEEKLY · SUN · 23 — the classic schedule).
   // Resolved G1: the reset captures the hours-history tab BEFORE zeroing, so the panel sparkline survives.
-  let day = 'SUN', hour = 23, cadence = 'WEEKLY', dom = 1;
-  try { const sc = cfg_().kv.SCHEDULE; day = sc.WEEKLY_HOURS_RESET; hour = sc.WEEKLY_RESET_HOUR; cadence = sc.RESET_CADENCE; dom = sc.RESET_DOM; } catch (e) { /* config broken — classic weekly schedule */ }
+  let day = 'SUN', hour = 23, cadence = 'WEEKLY', dom = 1, autoReset = true;
+  try { const sc = cfg_().kv.SCHEDULE; day = sc.WEEKLY_HOURS_RESET; hour = sc.WEEKLY_RESET_HOUR; cadence = sc.RESET_CADENCE; dom = sc.RESET_DOM; autoReset = (sc.AUTO_RESET !== false); } catch (e) { /* config broken — classic weekly schedule */ }
   const weekDays = { SUN: ScriptApp.WeekDay.SUNDAY, MON: ScriptApp.WeekDay.MONDAY, TUE: ScriptApp.WeekDay.TUESDAY, WED: ScriptApp.WeekDay.WEDNESDAY, THU: ScriptApp.WeekDay.THURSDAY, FRI: ScriptApp.WeekDay.FRIDAY, SAT: ScriptApp.WeekDay.SATURDAY };
   ScriptApp.newTrigger('scanIntegrity').timeBased().atHour(7).everyDays(1).create();
   ScriptApp.newTrigger('buildCoverage').timeBased().atHour(6).everyDays(1).create();
   // v1.0 — cadence-aware reset trigger. MANUAL (or WEEKLY_HOURS_RESET=OFF) installs no trigger. MONTHLY fires on
   // RESET_DOM. WEEKLY/BIWEEKLY fire weekly on the chosen weekday; the handler (resetDue_) gates BIWEEKLY to ~14 days
   // apart via the LAST_RESET marker, so Apps Script's lack of a native bi-weekly trigger doesn't matter.
-  let resetDesc = 'OFF (no auto-reset)';
-  if (cadence !== 'MANUAL' && day !== 'OFF') {
+  let resetDesc = autoReset ? 'OFF (no auto-reset)' : 'OFF (auto-reset switched off in Settings)';
+  if (autoReset && cadence !== 'MANUAL' && day !== 'OFF') {
     if (cadence === 'MONTHLY') {
       ScriptApp.newTrigger('weeklyResetScheduled').timeBased().onMonthDay(dom).atHour(hour).create();
       resetDesc = `MONTHLY (day ${dom}, ${hour}:00)`;
@@ -347,7 +347,8 @@ function resetDue_() {
     // OFF is authoritative regardless of cadence (matches installExtras + the [SCHEDULE] contract). Enforced HERE at
     // run time too, so setting WEEKLY_HOURS_RESET=OFF via Settings takes effect immediately even if the operator
     // didn't re-run Install Extras Triggers — the live CONFIG bridge makes that the expected behavior everywhere else.
-    if (sc.WEEKLY_HOURS_RESET === 'OFF') return false;
+    if (sc.AUTO_RESET === false) return false; // the master switch — checked FIRST, and at run time so flipping it
+    if (sc.WEEKLY_HOURS_RESET === 'OFF') return false; // takes effect without re-installing triggers
     const cad = sc.RESET_CADENCE;
     if (cad === 'MANUAL') return false;
     if (cad === 'WEEKLY') return true;

@@ -97,6 +97,10 @@ treat it as read-only: statuses are managed on the Patrol Log, and hand edits on
 **👥 Roster ▸ 📸 Capture & Reset Activity** archives everyone's hours to history and zeroes the week (cadence —
 weekly, biweekly, monthly — is configurable in Settings, and can run itself on schedule).
 
+Prefer to close periods by hand? ⚙️ Engine Settings ▸ Automation & logging ▸ Hours reset ▸ **Auto-reset
+activity** turns the scheduled reset off entirely — nothing is ever zeroed until you run the menu item yourself.
+It applies immediately; the rest of the schedule fields hide while it's off.
+
 ---
 
 ## 🎨 Make it yours

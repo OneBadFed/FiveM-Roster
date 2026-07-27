@@ -76,7 +76,8 @@ per-rank overrides, fixed-point transition rules)* · RANKS *(table)* · LEAVE �
 NOTIFICATIONS (opt-in event embeds) · EMBEDS *(table — per-event embed overrides from the Settings builder)* ·
 PATROL (mode, max hours, statuses, form column keywords, `FUTURE_GRACE_HOURS` — §5) ·
 PUBLISH (`NEVER_PUBLISH`, `KEEP_RANGES`, `FORCE_RANGES`) · FORMATS ·
-SCHEDULE · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
+SCHEDULE (incl. `AUTO_RESET` — the master switch for the scheduled activity reset) · LOGGING · LIMITS · THEME ·
+DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
 
 ---
 
