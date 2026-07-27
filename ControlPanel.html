@@ -628,9 +628,21 @@
   .mrow.exp .pc-hero>:nth-child(3){animation-delay:.12s;}
 
   /* profile card */
-  .mdetail{display:none;}
+  .mdetail{display:none;overflow:hidden;}
   .mrow.exp .mdetail{display:block;animation:slide .24s var(--ease);}
   @keyframes slide{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
+  /* CLOSING. Opening could animate because the panel is created; closing could not, because toggleDetail
+     re-rendered the list and the panel was simply gone by the next frame. So the close is now played FIRST and
+     the re-render happens after it: the panel's measured height is pinned and driven to 0 while the collapsed
+     row fades back in over it. The row is restored by that re-render, in its normal resting state. */
+  .mrow.closing .mdetail{animation:none;opacity:0;
+        transition:height .24s var(--ease),opacity .16s var(--ease);}
+  .mrow.exp.closing .mhead{display:grid;animation:headIn .24s var(--ease) both;}
+  @keyframes headIn{from{opacity:0;}to{opacity:1;}}
+  @media (prefers-reduced-motion:reduce){
+    .mrow.exp .mdetail,.mrow.exp.closing .mhead{animation:none;}
+    .mrow.closing .mdetail{transition:none;}
+  }
   .pc{background:rgba(255,255,255,.05);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;
       padding:18px 20px 20px;margin:2px 0 6px;}
   .pc-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s3) var(--s4);}
@@ -1298,7 +1310,28 @@
       +'</div>'
     +'</div>';
   }
-  function toggleDetail(row){ STATE.moveTo=null; STATE.openRow=(STATE.openRow===row?null:row); renderMembers(); }
+  function toggleDetail(row){
+    STATE.moveTo=null;
+    if(STATE.openRow!==row){ STATE.openRow=row; renderMembers(); return; } // opening animates on arrival (@slide)
+    // CLOSING — play it, then re-render. A re-render alone destroys the panel, so there is nothing left to
+    // animate; height cannot be transitioned from `auto` either, so the measured height is pinned first.
+    var mrow=document.querySelector('.mrow[data-row="'+row+'"]');
+    if(mrow && mrow.classList.contains('closing')) return; // already folding — a second click must not restart it
+    var det=mrow?mrow.querySelector('.mdetail'):null;
+    // Guarded by row: open a DIFFERENT member mid-fold and this one's pending timer must not then close THAT one.
+    var settle=function(){ if(STATE.openRow!==row) return; STATE.openRow=null; renderMembers(); };
+    var reduced=window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
+    if(!det || reduced || !det.offsetHeight){ settle(); return; }
+    var list=$('mlist'); if(list) list.classList.remove('focused'); // the other rows brighten AS it folds, not after
+    det.style.height=det.offsetHeight+'px';
+    mrow.classList.add('closing');
+    void det.offsetHeight; /* commit the start height, or the browser coalesces both values and skips the transition */
+    det.style.height='0px';
+    var fired=false;
+    var end=function(e){ if(fired) return; if(e && (e.target!==det || e.propertyName!=='height')) return; fired=true; settle(); };
+    det.addEventListener('transitionend',end);
+    setTimeout(function(){ end(); },320); // transitionend is lost if anything else re-renders the list mid-fold
+  }
   function loadProfile(m){
     var req=Number(m.req)||0; // this rank's top-tier MinHours — colours the checks and draws the requirement line
     api(function(p){
