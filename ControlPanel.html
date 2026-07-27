@@ -549,9 +549,12 @@
      when open; twenty of those made the page restless. Now the list is a single object and hover is a fill. */
   .mlist{margin-top:0;display:flex;flex-direction:column;gap:0;background:none;border-radius:0;}
   .mrow{background:none;border:none;border-radius:6px;overflow:hidden;box-shadow:none;
-        transition:background var(--t) var(--ease);}
+        transition:background var(--t) var(--ease),opacity var(--t) var(--ease);}
   /* No per-row rule. Separation comes from an alternating 1.8% tint — at 32px a border every row is a grid. */
   .mrow:nth-child(odd){background:rgba(255,255,255,.018);}
+  /* With a member open, every other row steps back to 55%. The inspector is the subject; the rows around it are
+     context. They stay legible and clickable — they just stop competing with the panel for the same glance. */
+  .mlist.focused .mrow:not(.exp){opacity:.55;}
   /* No hover fill. A Mac list highlights what is SELECTED, not what the pointer happens to be over — the
      travelling highlight is a web habit, and with 90 rows it made the list twitch as the cursor crossed it. */
   .mrow:hover{transform:none;box-shadow:none;}
@@ -1194,7 +1197,8 @@
     $('rescount').textContent='Showing '+list.length+' of '+total;
     tbSub();
     renderBulk();
-    if(!list.length){ host.innerHTML='<div class="empty"><span class="ei">'+IEMPTY+'</span><div><b>No members match</b><br>Try clearing the search or filters above.</div></div>'; return; }
+    if(!list.length){ host.innerHTML='<div class="empty"><span class="ei">'+IEMPTY+'</span><div><b>No members match</b><br>Try clearing the search or filters above.</div></div>'; host.classList.remove('focused'); return; }
+    host.classList.toggle('focused', STATE.openRow!=null); /* dims every unopened row while a profile is open */
     host.innerHTML=list.map(function(m){
       var open=(m.row===STATE.openRow);
       var ic=(STATE.rankIcons&&STATE.rankIcons[m.rank])||'';
