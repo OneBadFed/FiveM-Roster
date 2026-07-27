@@ -228,17 +228,69 @@
   label.lbl{display:block;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;margin:var(--s4) 0 var(--s2);font-weight:700;}
   .hint{font-size:11px;color:var(--txt-3);margin:var(--s3) 2px 0;line-height:1.6;}
 
-  /* ── add member ── */
-  .addhead{margin-bottom:var(--s4);}
-  .addtitle{font-size:17px;font-weight:800;letter-spacing:-.01em;margin:0 0 3px;}
-  .addsub{font-size:12px;color:var(--txt-3);margin:0;line-height:1.55;}
+  /* ══ FORM SYSTEM — macOS System Settings: right-aligned label, control on the left of a shared column,
+     rows stacked in a grouped panel with hairlines between them and a small label ABOVE the panel.
+     The numbered step cards this replaced implied an order the form does not actually have. ══ */
   .lopt{color:var(--txt-3);font-weight:600;text-transform:none;letter-spacing:0;}
-  .addcols{display:grid;grid-template-columns:minmax(0,1fr) 330px;gap:var(--s4);align-items:start;}
-  @media (max-width:760px){ .addcols{grid-template-columns:1fr;} }
-  .stepcard{background:var(--glass),var(--e1);border-radius:14px;padding:var(--s3) var(--s4) var(--s4);box-shadow:var(--hi),var(--sh-1);margin-bottom:var(--s3);}
-  .step-h{display:flex;align-items:center;gap:9px;font-size:13px;font-weight:700;}
-  .stepn{width:22px;height:22px;border-radius:7px;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05));color:#c4dbff;display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:800;box-shadow:var(--hi);flex:0 0 auto;}
-  .stephint{font-size:11px;color:var(--txt-3);margin:var(--s2) 2px 0;line-height:1.5;}
+  #pane-add.pane.active{display:flex;flex-direction:column;min-height:100%;}
+  .fcols{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:14px;align-items:start;flex:1;}
+  @media (max-width:820px){ .fcols{grid-template-columns:1fr;} }
+  .fmain{min-width:0;}
+  .fgroup{margin-bottom:14px;}
+  .fglbl{font-size:11px;font-weight:600;color:rgba(255,255,255,.38);padding:0 2px 6px;}
+  .fpanel{background:rgba(255,255,255,.035);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;overflow:hidden;}
+  .frow{display:grid;grid-template-columns:112px minmax(0,1fr);align-items:center;gap:12px;padding:8px 14px;min-height:38px;}
+  .frow+.frow{box-shadow:0 -1px 0 rgba(255,255,255,.07);}
+  .flbl{font-size:12.5px;color:rgba(255,255,255,.6);text-align:right;white-space:nowrap;}
+  .fctl{display:flex;align-items:center;gap:9px;min-width:0;}
+  .fnote{font-size:11.5px;color:rgba(255,255,255,.35);white-space:nowrap;}
+  /* A row that is all explanation spans both columns — a hint has no label to sit beside. */
+  .fspan{grid-template-columns:1fr;padding-top:9px;padding-bottom:10px;}
+  .fhint{margin:0;font-size:11.5px;color:rgba(255,255,255,.42);line-height:1.5;}
+  .fin{width:auto;flex:0 1 240px;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
+       background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
+  .fin:focus{background:rgba(255,255,255,.11);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+  .fdate{flex:0 0 auto;color-scheme:dark;}
+  /* The tick sits INSIDE the field, so validity reads as a property of the value rather than a separate widget. */
+  .idwrap{position:relative;display:flex;flex:0 1 240px;min-width:0;}
+  .idwrap .fin{flex:1;padding-right:26px;}
+  .idtick{position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#30d158;font-size:12px;line-height:1;pointer-events:none;}
+  .idtick[hidden]{display:none;}
+  /* Footer bar — the commit point, pinned to the bottom of the pane the way a sheet's buttons are. */
+  .fbar{display:flex;align-items:center;gap:10px;height:52px;flex:0 0 auto;margin:14px -14px -28px;padding:0 14px;
+        position:sticky;bottom:-28px;background:var(--bg);box-shadow:0 -1px 0 var(--hair);}
+  .fbar-gap{flex:1;}
+  .fstatus{display:flex;align-items:center;gap:7px;font-size:11.5px;color:rgba(255,255,255,.42);min-width:0;}
+  .fstatus .pdot{width:6px;height:6px;}
+  /* Preview card — same grouped-box vocabulary as the inspector's sub-panels. */
+  .pvcard{background:rgba(255,255,255,.035);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;overflow:hidden;}
+  .pv-hero{display:flex;align-items:center;gap:11px;padding:13px 14px;}
+  .pv-av{width:40px;height:40px;border-radius:9px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+         font-family:var(--mono);font-size:10px;font-weight:600;color:rgba(255,255,255,.55);overflow:hidden;
+         background:rgba(255,255,255,.07);box-shadow:0 0 0 .5px rgba(255,255,255,.12) inset;}
+  .pv-av img{width:100%;height:100%;object-fit:contain;display:block;}
+  .pv-id{min-width:0;flex:1;}
+  .pv-nm{font-size:15px;font-weight:600;letter-spacing:-.01em;color:rgba(255,255,255,.92);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pv-sub{font-size:12px;color:rgba(255,255,255,.5);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pv-r{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 14px;
+        box-shadow:0 -1px 0 rgba(255,255,255,.07);font-size:12.5px;}
+  .pv-k{color:rgba(255,255,255,.5);white-space:nowrap;}
+  .pv-v{color:rgba(255,255,255,.88);text-align:right;min-width:0;overflow:hidden;text-overflow:ellipsis;}
+  .pv-foot{padding:11px 14px 13px;box-shadow:0 -1px 0 rgba(255,255,255,.07);
+           font-size:11.5px;color:rgba(255,255,255,.42);line-height:1.5;}
+  .pv-empty{padding:20px 14px;text-align:center;font-size:12px;color:rgba(255,255,255,.35);line-height:1.5;}
+  /* The slot picker as a macOS POP-UP button: 24px, with the accent chevron chip that distinguishes a pop-up
+     (choose one of N) from a plain push button. */
+  .fctl .sdrop{flex:0 1 268px;min-width:0;}
+  .fctl .sdrop-btn{height:24px;padding:0 3px 0 9px;border-radius:6px;font-size:12.5px;gap:8px;
+                   background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
+  .fctl .sdrop-btn:hover{background:rgba(255,255,255,.12);}
+  .fctl .sdrop.open .sdrop-btn{background:rgba(255,255,255,.12);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+  .sdrop-chev-box{width:18px;height:18px;border-radius:4px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+                  background:linear-gradient(180deg,#0f8cff,#0a7ae8);box-shadow:0 .5px 0 rgba(255,255,255,.25) inset;}
+  .sdrop-chev-box .sdrop-chev{width:10px;height:10px;color:#fff;}
+  .fctl .sdrop-cur{font-size:12.5px;}
+  .fctl .sdrop-cur .mav{width:16px;height:16px;border-radius:4px;}
   .prevcard{background:var(--glass),var(--e1);border-radius:16px;padding:var(--s4);box-shadow:var(--hi),var(--sh-1);}
   .prev-hero{display:flex;align-items:flex-start;gap:12px;}
   .prev-hero .mav{width:52px;height:52px;font-size:15px;border-radius:14px;}
@@ -828,7 +880,7 @@
     <div class="tabs">
       <div class="ngroup">Roster</div>
       <button class="tab active" data-tab="members" data-title="Members"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Members</button>
-      <button class="tab" data-tab="add" data-title="Add member"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
+      <button class="tab" data-tab="add" data-title="Add member" data-sub="Seats a person into an existing open slot — never inserts a row"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
       <button class="tab" data-tab="signups" data-title="Signups"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups<span class="cnt" id="navSignupCount"></span></button>
       <button class="tab" data-tab="dividers" data-title="Dividers"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>Dividers</button>
       <div class="ngroup">Operations</div>
@@ -883,47 +935,61 @@
   </div>
 
   <div class="pane" id="pane-add">
-    <div class="addhead"><h2 class="addtitle">Seat a member</h2>
-      <p class="addsub">Fill an existing open slot — this never inserts a row or disturbs your section layout.</p></div>
+    <div class="fcols">
+      <div class="fmain">
+        <div class="fgroup">
+          <div class="fglbl">Assignment</div>
+          <div class="fpanel">
+            <div class="frow"><label class="flbl" for="slotBtn">Open slot</label>
+              <div class="fctl">
+                <div class="sdrop" id="slotDrop">
+                  <button type="button" class="sdrop-btn" id="slotBtn" aria-haspopup="listbox" aria-expanded="false">
+                    <span class="sdrop-cur ph" id="slotCur">Select slot</span>
+                    <span class="sdrop-chev-box"><svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
+                  </button>
+                  <div class="sdrop-menu" id="slotMenu" role="listbox" hidden></div>
+                </div>
+                <span class="fnote" id="slotRemain"></span>
+              </div></div>
+            <div class="frow fspan"><p class="fhint">The member inherits this slot&rsquo;s rank and callsign. Section layout is never disturbed.</p></div>
+          </div>
+        </div>
 
-    <div class="addcols">
-      <div class="addform">
-        <div class="stepcard">
-          <div class="step-h"><span class="stepn">1</span>Assignment</div>
-          <label class="lbl" for="slotBtn">Open slot</label>
-          <div class="sdrop" id="slotDrop">
-            <button type="button" class="sdrop-btn" id="slotBtn" aria-haspopup="listbox" aria-expanded="false">
-              <span class="sdrop-cur ph" id="slotCur">Select slot</span>
-              <svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg>
-            </button>
-            <div class="sdrop-menu" id="slotMenu" role="listbox" hidden></div>
-          </div>
-          <p class="stephint">The member inherits this slot&rsquo;s rank and callsign.</p>
-        </div>
-        <div class="stepcard">
-          <div class="step-h"><span class="stepn">2</span>Member details</div>
-          <div class="addgrid">
-            <div><label class="lbl" for="addName">Name</label>
-              <input class="field" id="addName" placeholder="e.g. J. Smith" autocomplete="off"></div>
-            <div><label class="lbl" for="addId">Unique ID <span class="lopt">· 17-19 digits</span></label>
-              <input class="field mono" id="addId" placeholder="123456789012345678" inputmode="numeric" autocomplete="off"></div>
-            <div id="addOocWrap" hidden><label class="lbl" for="addOoc">OOC name <span class="lopt">· optional</span></label>
-              <input class="field" id="addOoc" placeholder="e.g. Devin M." autocomplete="off"></div>
-            <div id="addShiftWrap" hidden><label class="lbl" for="addShift">Shift <span class="lopt">· optional</span></label>
-              <input class="field" id="addShift" placeholder="e.g. Day" autocomplete="off"></div>
+        <div class="fgroup">
+          <div class="fglbl">Member details</div>
+          <div class="fpanel">
+            <div class="frow"><label class="flbl" for="addName">Name</label>
+              <div class="fctl"><input class="field fin" id="addName" placeholder="e.g. J. Smith" autocomplete="off"></div></div>
+            <div class="frow"><label class="flbl" for="addId">Unique ID</label>
+              <div class="fctl"><span class="idwrap"><input class="field fin mono" id="addId" inputmode="numeric" autocomplete="off"><span class="idtick" id="addIdTick" hidden>&#10003;</span></span>
+                <span class="fnote" id="addIdCount"></span></div></div>
+            <div class="frow" id="addOocWrap" hidden><label class="flbl" for="addOoc">OOC name</label>
+              <div class="fctl"><input class="field fin" id="addOoc" placeholder="e.g. Devin M." autocomplete="off"><span class="fnote">Optional</span></div></div>
+            <div class="frow" id="addShiftWrap" hidden><label class="flbl" for="addShift">Shift</label>
+              <div class="fctl"><input class="field fin" id="addShift" placeholder="e.g. Day" autocomplete="off"><span class="fnote">Optional &middot; free text, written as typed</span></div></div>
           </div>
         </div>
-        <div class="stepcard">
-          <div class="step-h"><span class="stepn">3</span>Employment</div>
-          <label class="lbl" for="addJoin">Join date <span class="lopt">· optional</span></label>
-          <input class="field" id="addJoin" type="date">
+
+        <div class="fgroup">
+          <div class="fglbl">Employment</div>
+          <div class="fpanel">
+            <div class="frow"><label class="flbl" for="addJoin">Join date</label>
+              <div class="fctl"><input class="field fin fdate" id="addJoin" type="date"><span class="fnote">Defaults to today</span></div></div>
+            <div class="frow fspan"><p class="fhint">Seating always starts at the lowest tier with 0 hours &mdash; the next activity check computes the real status from what they log.</p></div>
+          </div>
         </div>
-        <button class="btn addbtn" id="addBtn">Seat member in slot</button>
       </div>
-      <div class="addprev">
-        <div class="prevcard"><div class="pc-lbl">Slot preview</div><div id="prevBody"></div></div>
-        <div class="nextbox"><b>What happens next</b>The member is seated into this slot and appears on the roster immediately. Set their status or schedule leave from their profile on the Members tab.</div>
-      </div>
+
+      <aside class="fside">
+        <div class="pvcard" id="prevBody"></div>
+      </aside>
+    </div>
+
+    <div class="fbar">
+      <span class="fstatus" id="addStatus"></span>
+      <span class="fbar-gap"></span>
+      <button class="linkbtn" id="addCancel">Cancel</button>
+      <button class="btn-primary" id="addBtn">Seat member</button>
     </div>
   </div>
 
@@ -1037,7 +1103,7 @@
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
   var INIT_TAB = "<?= initialTab ?>"; // deep-link target tab (e.g. 'signups' from 🧾 Review Roster Signups); '' = default
-  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{}};
+  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
   var SVG={
@@ -1125,10 +1191,12 @@
     if(b.statuses) STATE.statuses=b.statuses;
     if(b.leaveTypes&&b.leaveTypes.length) STATE.leaveTypes=b.leaveTypes;
     if(b.protectedStatuses) STATE.protected=b.protectedStatuses;
+    if(b.idDigits) STATE.idDigits=b.idDigits; // configured Unique-ID length — the form validates against THIS, not a hardcoded 17-19
     if(b.statusColors) STATE.statusColors=b.statusColors; // [STATUSES] Color column — custom statuses keep coloured pills
     if(b.addCols){ if($('addOocWrap')) $('addOocWrap').hidden=!b.addCols.ooc; if($('addShiftWrap')) $('addShiftWrap').hidden=!b.addCols.shift; } // show OOC/Shift inputs only when the roster has those columns
     STATE.rankIcons=b.rankIcons||{}; // bootstrap ships {} — icons lazy-load below so the panel paints immediately
     STATE.admin=b.adminRoster||{linked:false,access:false,url:''}; // per-USER access (Google ACL) — gates the profile Admin section
+    addIdPlaceholder();
     renderAdminSetup();
     whStatus(b.webhooks||{});
     apply(b); setHealthPill(b.health); setLoading(false);
@@ -1189,6 +1257,7 @@
      what is selected, which is where a Mac reports that state rather than in a banner over the content. */
   function tbSub(){
     var el=$('tbSub'); if(!el) return;
+    var at=document.querySelector('.tab.active'); if(at && at.dataset.sub){ el.textContent=at.dataset.sub; return; } // a tab that describes itself
     var sel=Object.keys(STATE.selected||{}).filter(function(k){return STATE.selected[k];}).length;
     if(sel){ el.textContent=sel+' selected'; return; }
     if(!STATE.members || !STATE.members.length){ el.textContent=''; return; }
@@ -1423,7 +1492,8 @@
     var go=function(payload,btn){
       btn.disabled=true;
       api(function(r){ btn.disabled=false; STATE.admin={linked:true,access:true,url:r.url,linkedBy:'you',linkedAt:''};
-        renderAdminSetup(); renderMembers(); // profile cards gain the Admin section
+        addIdPlaceholder();
+    renderAdminSetup(); renderMembers(); // profile cards gain the Admin section
         var msg=r.created?'Admin roster created — share it with your admin team only.':'Admin roster linked.';
         if(r.relinked) msg+=' (Replaced the previously linked file — this change is logged.)';
         if(r.badIds) msg+=' ⚠️ '+r.badIds+' row(s) in it have invalid Discord IDs — fix them in the admin file.';
@@ -1543,7 +1613,7 @@
   function renderSlots(){
     var open=STATE.members.filter(function(m){return !m.filled;}), menu=$('slotMenu'); if(!menu) return;
     if(STATE.addSlot!=null && !open.some(function(m){return m.row===STATE.addSlot;})) STATE.addSlot=null; // dropped slot got filled
-    if(!open.length){ menu.innerHTML='<div class="sdrop-empty">No open slots right now — every rank row is filled.</div>'; setSlot(null); return; }
+    if(!open.length){ menu.innerHTML='<div class="sdrop-empty">No open slots right now — every rank row is filled.</div>'; var r0=$('slotRemain'); if(r0) r0.textContent='none open'; setSlot(null); return; }
     var groups={},order=[];
     open.forEach(function(m){ if(!groups[m.rank]){groups[m.rank]=[];order.push(m.rank);} groups[m.rank].push(m); });
     menu.innerHTML=order.map(function(r){
@@ -1551,6 +1621,7 @@
         +groups[r].map(function(m){ return '<button type="button" class="sdrop-opt" data-slotrow="'+m.row+'" role="option"><span class="so-call">'+esc(m.callsign||('Row '+m.row))+'</span><span class="so-rank">'+esc(r)+'</span></button>'; }).join('')
         +'</div>';
     }).join('');
+    var rem=$('slotRemain'); if(rem) rem.textContent=open.length+' remaining';
     setSlot(STATE.addSlot); // refresh trigger + preview + selected mark (tolerates null)
   }
   function setSlot(row){
@@ -1564,36 +1635,75 @@
     updateAddPreview();
   }
   function openSlotMenu(on){ var d=$('slotDrop'),menu=$('slotMenu'),btn=$('slotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false'); }
+  /* The configured Unique-ID length, from cpBootstrap. Never hardcode 17-19 here: a COMMUNITY department runs
+     1-8 digit CIDs, and a hardcoded Discord range rejects every valid ID before the request is even sent. */
+  function idRange(){ var d=STATE.idDigits||{}; return {min:Number(d.min)||17,max:Number(d.max)||19}; }
+  function idLabel(){ var r=idRange(); return r.min===r.max?String(r.min):(r.min+'–'+r.max); }
+  function idValid(v){ var r=idRange(); return new RegExp('^\\d{'+r.min+','+r.max+'}$').test(String(v||'').trim()); }
+  /* An example of the RIGHT length, so the placeholder teaches the format instead of showing a Discord ID to a
+     department that uses 4-digit CIDs. */
+  function addIdPlaceholder(){
+    var el=$('addId'); if(!el) return;
+    var n=idRange().max, digits='';
+    for(var i=0;i<n;i++) digits+=String((i%9)+1);
+    el.placeholder=digits;
+    updateAddId();
+  }
+  function updateAddId(){
+    var el=$('addId'); if(!el) return;
+    var v=el.value.trim(), ok=idValid(v), c=$('addIdCount'), t=$('addIdTick');
+    if(c) c.textContent=(v?v.replace(/\D/g,'').length:0)+' / '+idLabel();
+    if(t) t.hidden=!ok;
+    if(el.placeholder==='') el.placeholder='';
+  }
   function updateAddPreview(){
     var host=$('prevBody'); if(!host) return;
     var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null;
     var name=($('addName')&&$('addName').value.trim())||'';
-    if(!m){ host.innerHTML='<div class="empty" style="margin-top:var(--s2)"><span class="ei">'+IEMPTY+'</span><div><b>No slot selected</b><br>Pick an open slot to preview the assignment.</div></div>'; return; }
+    addStatusLine();
+    if(!m){ host.innerHTML='<div class="pv-empty"><b>No slot selected</b><br>Pick an open slot to preview the assignment.</div>'; return; }
     var ic=(STATE.rankIcons&&STATE.rankIcons[m.rank])||'';
-    var av=ic?('<span class="mav mav-has"><img class="mav-img" src="'+esc(ic)+'" alt=""></span>')
-             :('<span class="mav">'+esc(name?mInitials(name):rankInitials(m.rank))+'</span>');
-    var kv=function(k,v){ return '<div class="pkv-r"><span class="pkv-k">'+k+'</span><span class="pkv-v">'+v+'</span></div>'; };
-    host.innerHTML='<div class="prev-hero">'+av
-      +'<div class="prev-id"><b class="prev-nm">'+(name?esc(name):'New member')+'</b>'
-      +'<div class="prev-line"><span class="prev-rk">'+esc(m.rank)+'</span>'+(m.callsign?('<span class="callchip">'+esc(m.callsign)+'</span>'):'')+'</div></div></div>'
-      +'<div class="pkv">'
-      +kv('Rank',esc(m.rank))
-      +kv('Callsign','<span class="mono">'+esc(m.callsign||'—')+'</span>')
-      +kv('Sheet row','<span class="mono">'+m.row+'</span>')
-      +kv('Status after seating',pill('Inactive'))
-      +kv('Starting hours','<span class="mono">0.00</span>')
-      +'</div>';
+    var av=ic?('<span class="pv-av mav-has"><img src="'+esc(ic)+'" alt=""></span>')
+             :('<span class="pv-av">'+esc(name?mInitials(name):rankInitials(m.rank))+'</span>');
+    var r=function(k,v){ return '<div class="pv-r"><span class="pv-k">'+k+'</span><span class="pv-v">'+v+'</span></div>'; };
+    var req=Number(m.req)||0;
+    host.innerHTML='<div class="pv-hero">'+av
+      +'<div class="pv-id"><div class="pv-nm">'+(name?esc(name):'New member')+'</div>'
+      +'<div class="pv-sub">'+esc(m.rank)+(m.callsign?(' &middot; '+esc(m.callsign)):'')+'</div></div></div>'
+      +(m.section?r('Section',esc(m.section)):'')
+      +r('Sheet row','<span class="mono">'+m.row+'</span>')
+      +(req?r('Hours requirement','<span class="mono">'+req.toFixed(1)+'</span>'):'')
+      +r('Status after seating',pill(STATE.statuses.length?STATE.statuses[STATE.statuses.length-1]:'Inactive'))
+      +'<div class="pv-foot">They appear on the roster immediately. Status and leave are managed from their profile on the Members tab.</div>';
+  }
+  /* The footer reports whether the form can be submitted and why not — the button never explains itself. */
+  function addStatusLine(){
+    var el=$('addStatus'), btn=$('addBtn'); if(!el) return;
+    var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null;
+    var name=($('addName')&&$('addName').value.trim())||'';
+    var id=($('addId')&&$('addId').value.trim())||'';
+    var msg,tone;
+    if(!m){ msg='Pick an open slot to begin.'; tone='#8e8e93'; }
+    else if(!name){ msg='Name is required.'; tone='#ff9f0a'; }
+    else if(!idValid(id)){ msg='Unique ID must be '+idLabel()+' digits.'; tone='#ff9f0a'; }
+    else { msg='Ready — '+(m.callsign||('row '+m.row))+' is still open.'; tone='#30d158'; }
+    el.innerHTML='<span class="pdot" style="background:'+tone+'"></span>'+esc(msg);
+    if(btn) btn.disabled=!(m&&name&&idValid(id));
+  }
+  function addReset(){
+    $('addName').value=''; $('addId').value=''; $('addJoin').value='';
+    if($('addOoc'))$('addOoc').value=''; if($('addShift'))$('addShift').value='';
+    STATE.addSlot=null; updateAddId(); setSlot(null);
   }
   function addMember(){
     var row=STATE.addSlot; if(row==null){ toast('Pick an open slot first.','err'); openSlotMenu(true); return; }
     var name=$('addName').value.trim(), discord=$('addId').value.trim();
     var ooc=($('addOoc')?$('addOoc').value.trim():''), shift=($('addShift')?$('addShift').value.trim():'');
     if(!name){ toast('Name is required.','err'); $('addName').focus(); return; }
-    if(!/^\d{17,19}$/.test(discord)){ toast('Unique ID must be 17-19 digits.','err'); $('addId').focus(); return; }
+    if(!idValid(discord)){ toast('Unique ID must be '+idLabel()+' digits.','err'); $('addId').focus(); return; }
     $('addBtn').disabled=true;
     api(function(m){
-      $('addBtn').disabled=false; $('addName').value=''; $('addId').value=''; $('addJoin').value='';
-      if($('addOoc'))$('addOoc').value=''; if($('addShift'))$('addShift').value=''; STATE.addSlot=null;
+      $('addBtn').disabled=false; addReset();
       toast('Seated '+m.name+' as '+m.rank+'.','ok'); refresh(); document.querySelector('.tab[data-tab="members"]').click();
     }, function(e){ $('addBtn').disabled=false; onError(e); }, "cpAssignMember", {row:row,name:name,discord:discord,joinDate:$('addJoin').value,ooc:ooc,shift:shift});
   }
@@ -2031,6 +2141,8 @@
   $('slotBtn').addEventListener('click',function(e){ e.stopPropagation(); openSlotMenu(); });
   $('slotMenu').addEventListener('click',function(e){ var o=e.target.closest('[data-slotrow]'); if(!o) return; setSlot(Number(o.dataset.slotrow)); openSlotMenu(false); });
   $('addName').addEventListener('input',updateAddPreview);
+  $('addId').addEventListener('input',function(){ updateAddId(); addStatusLine(); });
+  $('addCancel').addEventListener('click',function(){ addReset(); toast('Cleared.','ok'); });
   document.addEventListener('click',function(e){ if(!e.target.closest('#slotDrop')) openSlotMenu(false); });
   document.addEventListener('click',function(e){ if(!e.target.closest('.mv-trigger') && !e.target.closest('#mvMenu')) openMvMenu(false); });
   document.addEventListener('keydown',function(e){ if(e.key==='Escape'){ openSlotMenu(false); openMvMenu(false); } });

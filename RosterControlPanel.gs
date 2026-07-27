@@ -451,6 +451,10 @@ function cpBootstrap() {
     protectedStatuses: (CONFIG.protectedStatuses || []).slice(),                 // PROTECTED kinds (e.g. Reserve) — the "On leave" filter includes them
     leaveTypes: CONFIG.leaveTypes.slice(),                                       // the [LEAVE].LEAVE_TYPES list — drives the schedule-leave dropdown
     addCols: { ooc: !!RCadd.ooc, shift: !!RCadd.shift },                         // which optional columns the Add-member form should offer
+    // The CONFIGURED Unique-ID length. The panel used to hardcode 17-19 (Discord) in both its validator and its
+    // label, so a COMMUNITY department on 1-8 digit CIDs could not seat anyone — the form rejected every valid
+    // ID before the request left the browser. Same numbers the server validates with.
+    idDigits: { min: (CONFIG.idMinDigits || 17), max: (CONFIG.idMaxDigits || 19) },
 
     members: snap.members,
     stats: snap.stats,
@@ -501,8 +505,13 @@ function cpSnapshot_() {
       const RC = rosterCols_(roster);
       const block = roster.getRange(CONFIG.rosterStartRow, 1, n, roster.getLastColumn()).getDisplayValues(); // full width; index by RC (col-1)
       const rankBg = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getBackgrounds(); // real rank colors
+      // The band a row sits under, tracked as we walk. Free — the divider rows are already in this block, we were
+      // just skipping them. NOTE: a divider ABOVE rosterStartRow is outside this read, so the rows before the
+      // first in-range divider report ''. Consumers must treat '' as unknown, not as "no section".
+      let section = '';
       for (let i = 0; i < n; i++) {
         const rank = String(block[i][RC.rank - 1]).trim();
+        if (isDividerValue_(rank)) { section = rank; continue; }
         if (!isMemberSlot_(rank) || rank === '' || rank === 'Rank') continue;
         const name = String(block[i][RC.name - 1]).trim();
         const filled = name !== '';
@@ -518,6 +527,7 @@ function cpSnapshot_() {
           status,
           hours: String(block[i][RC.hours - 1]).trim(),
           req: reqFor(rank),                        // top-tier MinHours for THIS rank's ladder (0 = no requirement)
+          section,                                  // the divider band this row sits under ('' = above the first one)
           color: String(rankBg[i][0] || '').trim(), // exact rank-cell color from the sheet
           filled,
         });
