@@ -433,7 +433,9 @@
   /* The leave form sits in a 288px sub-panel, so its controls take the same 24px metrics as everything else in
      the inspector. They were the last fields on the old sizing — a 32px select next to a 20px "New LOA" button
      read as two different toolkits stacked in one box. */
-  .sform{margin-top:11px;}
+  /* margin-bottom keeps the leave HISTORY off the form; the submit gets its own gap above so it does not sit
+     flush against the notes field. Both collapse with the form, which is [hidden] until + New LOA is pressed. */
+  .sform{margin-top:11px;margin-bottom:13px;}
   .srow{display:flex;flex-wrap:nowrap;gap:8px;margin-bottom:8px;}
   .sform .field{height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
                 background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
@@ -444,7 +446,7 @@
   /* Submit takes the SAME primary treatment as + Add in the toolbar, at the same 24px — one primary button in
      the panel, and it looks like the others. It was a full-width 13.5px/700 slab with a coloured glow, which
      made scheduling leave look like the most important action on a member's profile. */
-  .btn.sf-go{width:auto;margin-top:2px;height:24px;padding:0 12px;border-radius:6px;font-size:12.5px;font-weight:500;
+  .btn.sf-go{width:auto;margin-top:11px;height:24px;padding:0 12px;border-radius:6px;font-size:12.5px;font-weight:500;
          background:linear-gradient(180deg,#0f8cff,#0a7ae8);
          box-shadow:0 .5px 0 rgba(255,255,255,.25) inset,0 1px 2px rgba(0,0,0,.3);}
   .btn.sf-go:hover{filter:brightness(1.07);transform:none;
@@ -801,6 +803,7 @@
   .pc-rank .rk{color:rgba(255,255,255,.6);font-size:13px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .pc-rank .vr{width:1px;height:11px;background:rgba(255,255,255,.16);flex:0 0 auto;}
   .pc-rank .cs{font-family:var(--mono);font-size:12.5px;color:rgba(255,255,255,.55);flex:0 0 auto;}
+  .pc-rank .sh{font-size:12.5px;color:rgba(255,255,255,.6);white-space:nowrap;flex:0 0 auto;}
   .pc-rank .stt{display:flex;align-items:center;gap:6px;font-size:12.5px;color:rgba(255,255,255,.6);white-space:nowrap;}
   .pc-rank .stt .pdot{width:7px;height:7px;}
   .callchip{background:var(--e2);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);flex:0 0 auto;}
@@ -946,6 +949,7 @@
         <button class="fchip" data-fs="leave">On leave</button>
       </div>
       <select class="fselect" id="rankFilter" aria-label="Filter by rank"><option value="all">All ranks</option></select>
+      <select class="fselect" id="shiftFilter" hidden aria-label="Filter by shift"></select>
       <select class="fselect" id="sortBy" aria-label="Sort members"><option value="roster">Roster order</option><option value="name">Name A–Z</option><option value="hours">Hours (high→low)</option><option value="status">Status</option></select>
       <div class="rescount" id="rescount"></div>
     </div>
@@ -1134,7 +1138,7 @@
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
   var INIT_TAB = "<?= initialTab ?>"; // deep-link target tab (e.g. 'signups' from 🧾 Review Roster Signups); '' = default
-  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null,shiftLabel:''};
+  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',filterShift:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null,shiftLabel:''};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
   var SVG={
@@ -1249,7 +1253,32 @@
     api(applyBoot, onError, "cpBootstrap");
   }
   function refresh(){ setLoading(true); api(function(s){ apply(s); if(STATE.systemLoaded) loadSystem(true); setLoading(false); toast('Refreshed.','ok'); }, onError, "cpRefresh"); }
-  function apply(s){ STATE.members=s.members||[]; STATE.selected={}; renderStats(s.stats||{}); renderRankFilter(); renderMembers(); renderSlots(); if(s.updatedAt) $('foot').textContent='Updated '+s.updatedAt; } // version lives in the #verLbl pill — don't repeat it here // F-027: clear stale selections on refresh (rows may have shifted)
+  function apply(s){ STATE.members=s.members||[]; STATE.selected={}; renderStats(s.stats||{}); renderRankFilter(); renderShiftFilter(); renderMembers(); renderSlots(); if(s.updatedAt) $('foot').textContent='Updated '+s.updatedAt; } // version lives in the #verLbl pill — don't repeat it here // F-027: clear stale selections on refresh (rows may have shifted)
+  /* "All shifts" / "All districts" / "All watches" — the department's own word, lowered and pluralised, so the
+     control reads as a sentence rather than echoing a shouted sheet header. */
+  function pluralLower(s){
+    s=String(s||'').trim().toLowerCase(); if(!s) return '';
+    return s+(/(s|x|z|ch|sh)$/.test(s)?'es':'s');
+  }
+  /* The shift filter exists only when the roster HAS that column and more than one value is actually in use —
+     a pop-up whose only choice is "all" is furniture. */
+  function renderShiftFilter(){
+    var sel=$('shiftFilter'); if(!sel) return;
+    var vals=[], seen={};
+    if(STATE.shiftLabel){
+      STATE.members.forEach(function(m){
+        var v=String(m.shift||'').trim();
+        if(m.filled && v && !seen[v]){ seen[v]=1; vals.push(v); }
+      });
+      vals.sort(function(a,b){ return a.localeCompare(b); });
+    }
+    var on=vals.length>1;
+    sel.hidden=!on;
+    if(!on){ STATE.filterShift='all'; sel.innerHTML=''; return; }
+    if(STATE.filterShift!=='all' && vals.indexOf(STATE.filterShift)<0) STATE.filterShift='all';
+    sel.innerHTML='<option value="all">All '+esc(pluralLower(STATE.shiftLabel))+'</option>'
+      +vals.map(function(v){ return '<option value="'+esc(v)+'"'+(v===STATE.filterShift?' selected':'')+'>'+esc(v)+'</option>'; }).join('');
+  }
   function renderRankFilter(){
     var sel=$('rankFilter'), ranks=[], seen={};
     STATE.members.forEach(function(m){ if(m.filled && !seen[m.rank]){ seen[m.rank]=1; ranks.push(m.rank); } });
@@ -1282,6 +1311,7 @@
       if(!m.filled) return false;
       if(fs!=='all'){ if(fs==='leave'){ if(STATE.leaveTypes.concat(STATE.protected||[]).indexOf(m.status)<0) return false; } else if(m.status!==fs) return false; }
       if(fr!=='all' && m.rank!==fr) return false;
+      if(STATE.filterShift!=='all' && String(m.shift||'').trim()!==STATE.filterShift) return false;
       if(q && (m.name+' '+m.callsign+' '+m.rank+' '+m.discord+' '+(m.shift||'')).toLowerCase().indexOf(q)<0) return false;
       return true;
     });
@@ -1341,9 +1371,11 @@
           +'<span class="chev" data-collapse="'+m.row+'" role="button" tabindex="0" aria-label="Collapse">'+SVG.chev+'</span></div>'
         +'<span class="pav'+(ic?' mav-has':'')+'">'+avin+'</span>'
         +'<div class="pc-id"><div class="pc-name">'+esc(m.name)+'</div>'
-          // ONE meta line, split by hairlines: rank │ slot │ status. Three stacked rows said the same thing.
+          // ONE meta line, split by hairlines: rank │ slot │ shift │ status. Three stacked rows said the same
+          // thing. The shift segment appears only where that column exists AND this member has a value.
           +'<div class="pc-rank"><span class="rk">'+esc(m.rank)+'</span>'
             +(m.callsign?('<i class="vr"></i><span class="cs">'+esc(m.callsign)+'</span>'):'')
+            +((STATE.shiftLabel&&m.shift)?('<i class="vr"></i><span class="sh">'+esc(m.shift)+'</span>'):'')
             +'<i class="vr"></i><span class="stt"><span class="pdot" style="background:'+statusDot(m.status)+'"></span>'+esc(m.status||'—')+'</span>'
           +'</div></div>'
         +'<div class="pc-stat"><span class="ps-k">Current hours</span><div class="ps-row">'
@@ -2173,6 +2205,7 @@
   $('searchClear').addEventListener('click',function(){ var s=$('search'); s.value=''; $('searchWrap').classList.remove('has-text'); s.focus(); renderMembers(); });
   $('statusChips').addEventListener('click',function(e){ var c=e.target.closest('[data-fs]'); if(!c) return; STATE.filterStatus=c.dataset.fs; document.querySelectorAll('#statusChips .fchip').forEach(function(x){ x.classList.toggle('active',x===c); }); renderMembers(); });
   $('rankFilter').addEventListener('change',function(){ STATE.filterRank=this.value; renderMembers(); });
+  $('shiftFilter').addEventListener('change',function(){ STATE.filterShift=this.value; renderMembers(); });
   $('sortBy').addEventListener('change',function(){ STATE.sort=this.value; renderMembers(); });
   $('bulkbar').addEventListener('click',function(e){
     if(e.target.closest('.bclear')){ STATE.selected={}; renderMembers(); return; }
