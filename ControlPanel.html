@@ -477,11 +477,17 @@
   .mrow.exp .chev{transform:rotate(90deg);color:var(--accent-2);}
   /* The avatar is the only place rank colour appears now — the 3px left stripe on every row was a second
      encoding of the same fact, doubled twenty times down the page. */
-  .mav{width:32px;height:32px;border-radius:var(--r-pill);flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  /* A ROUNDED SQUARE, not a circle. Apple reserves circles for people's photos and uses the squircle for
+     symbols — and these are rank insignia, which have meaningful shape. A circular mask with overflow:hidden
+     cut the top and bottom off any TALL badge (a Captain's or Lieutenant's bars), because object-fit sizes the
+     image to the 32px box and the inscribed circle is narrow at its vertical extremes. The star badges survived
+     only because they happen to be square. The image itself keeps square corners — inheriting the tile's radius
+     was rounding the artwork a second time. */
+  .mav{width:32px;height:32px;border-radius:var(--r-sm);flex:0 0 auto;display:flex;align-items:center;justify-content:center;
        font-size:var(--f1);font-weight:600;letter-spacing:0;
        background:color-mix(in srgb,var(--rank,#8E8E93) 22%,var(--e3));color:var(--txt);border:none;overflow:hidden;}
-  .mav.mav-has{background:var(--e3);padding:2px;}
-  .mav .mav-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:inherit;} /* contain = the whole badge fits inside, never cropped */
+  .mav.mav-has{background:var(--e3);padding:3px;}
+  .mav .mav-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:0;} /* contain = the whole badge fits inside, never cropped */
   .mname{flex:1;min-width:0;}
   .mname b{display:block;font-size:var(--f2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:-.01em;}
   .mname>span{display:block;font-size:var(--f1);color:var(--txt-2);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -572,7 +578,7 @@
   .pc-hero{display:flex;align-items:center;gap:var(--s4);padding:var(--s4);}
   .pav{width:64px;height:64px;border-radius:18px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:20px;font-weight:800;letter-spacing:.02em;color:var(--txt);overflow:hidden;background:color-mix(in srgb,var(--rank,#8a929e) 16%,var(--e3));}
   .pav.mav-has{background:var(--e3);padding:3px;}
-  .pav .mav-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:inherit;}
+  .pav .mav-img{width:100%;height:100%;object-fit:contain;display:block;border-radius:0;} /* same as .mav-img: never round the artwork itself */
   .pc-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;align-items:flex-start;}
   .pc-name{font-size:19px;font-weight:800;letter-spacing:.01em;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .pc-rank{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;}
