@@ -12,6 +12,10 @@
      Borders are replaced by elevation, inner highlights and shadows. 180ms motion.
      ════════════════════════════════════════════════════════════════════ */
   :root{
+    /* Tells the browser this UI is dark, so the controls IT draws — <select> popups, the date picker, native
+       scrollbars — are drawn dark too. Without it a styled select keeps its white text when the popup opens on
+       the browser's default WHITE list: white on white, every option invisible except the highlighted one. */
+    color-scheme:dark;
     --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:40px;
     --r-sm:8px; --r-md:10px; --r-lg:14px; --r-pill:980px;
     /* SURFACES — a macOS WINDOW, not an iPhone at night. Apple's desktop dark mode is not black: the window
@@ -225,6 +229,10 @@
   select.field,select.fselect{cursor:pointer;appearance:none;-webkit-appearance:none;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237f8894' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;}
+  /* Belt and braces with color-scheme above: the OPTIONS carry their own colours, because the popup is an OS
+     surface and inherits the select's `color` but not its background. Stating both is what makes it readable
+     on every Chromium build rather than only the ones that honour color-scheme in the popup. */
+  select.field option,select.fselect option{background-color:#2c2c2e;color:rgba(255,255,255,.9);}
   label.lbl{display:block;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;margin:var(--s4) 0 var(--s2);font-weight:700;}
   .hint{font-size:11px;color:var(--txt-3);margin:var(--s3) 2px 0;line-height:1.6;}
 
@@ -250,7 +258,7 @@
   .fin{width:auto;flex:0 1 240px;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
        background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
   .fin:focus{background:rgba(255,255,255,.11);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
-  .fdate{flex:0 0 auto;color-scheme:dark;}
+  .fdate{flex:0 0 auto;} /* the date picker is drawn dark by color-scheme on :root */
   /* The tick sits INSIDE the field, so validity reads as a property of the value rather than a separate widget. */
   .idwrap{position:relative;display:flex;flex:0 1 240px;min-width:0;}
   .idwrap .fin{flex:1;padding-right:26px;}
