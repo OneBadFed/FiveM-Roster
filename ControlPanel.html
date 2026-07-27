@@ -405,9 +405,15 @@
   /* ══ SIGNUPS — a QUEUE, not a form. The old pane was one applicant on a page with no sense of what else was
      waiting; this is the three-pane review shape: who is in line, what you are deciding, and what they sent. ══ */
   #pane-signups.pane.active{display:flex;flex-direction:column;min-height:100%;}
-  .sucols{display:grid;grid-template-columns:236px minmax(0,1fr);gap:14px;align-items:start;flex:1;min-height:0;}
-  .suqueue{min-width:0;}
-  .suq-tabs{width:100%;margin-bottom:10px;}
+  .sucols{display:grid;grid-template-columns:222px minmax(0,1fr);gap:0;align-items:start;flex:1;min-height:0;}
+  .suqueue{min-width:0;padding-right:14px;box-shadow:1px 0 0 var(--hair);align-self:stretch;}
+  /* In the toolbar the scope control sits OVER the column it filters, and the rule between them continues the
+     column divide below — the header is split the same way the body is. */
+  /* order:-1 puts it ahead of the sidebar toggle WITHOUT reordering the DOM for every other tab — the toggle's
+     26px would otherwise push the control 36px right of the column it belongs to, and the rule under it would
+     miss the column divide it is meant to continue. */
+  .toolbar .suq-tabs{order:-1;flex:0 0 222px;margin:0;box-shadow:1px 0 0 var(--hair);padding-right:14px;}
+  .toolbar .suq-tabs[hidden]{display:none;}
   .suq-tabs .fchip{flex:1;justify-content:center;display:flex;align-items:center;gap:6px;}
   .suq-n{font-family:var(--mono);font-size:11px;opacity:.75;}
   .suq-list{display:flex;flex-direction:column;gap:2px;}
@@ -432,7 +438,7 @@
   .suq-done b{flex:1;min-width:0;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .suq-done span{font-size:11px;color:rgba(255,255,255,.3);}
   /* the decision surface: two columns of grouped panels, same vocabulary as Add member */
-  .sudetail{min-width:0;}
+  .sudetail{min-width:0;padding-left:14px;}
   .su-hero{display:flex;align-items:center;gap:11px;margin-bottom:16px;}
   .su-hero .suq-av{width:38px;height:38px;font-size:13px;}
   .su-hero-t{flex:1;min-width:0;}
@@ -447,7 +453,7 @@
   .su-ro-v{font-size:12.5px;color:rgba(255,255,255,.88);text-align:right;min-width:0;display:flex;align-items:center;gap:7px;justify-content:flex-end;}
   .su-ro-v.blank{color:rgba(255,255,255,.3);}
   .su-slot{display:flex;align-items:center;gap:10px;padding:11px 14px;box-shadow:0 -1px 0 rgba(255,255,255,.07);}
-  .su-slot .rava{width:30px;height:30px;border-radius:8px;}
+  .su-slot .rava{width:30px;height:30px;border-radius:0;background:none;box-shadow:none;}
   .su-slot-t b{display:block;font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);}
   .su-slot-t span{display:block;font-size:11.5px;color:rgba(255,255,255,.42);margin-top:2px;}
   .su-lblnote{margin-left:auto;font-size:11px;font-weight:400;color:rgba(255,255,255,.3);text-transform:none;letter-spacing:0;}
@@ -1032,6 +1038,10 @@
     <div class="progress" id="progress"></div>
     <div class="toolbar">
       <button class="icon-btn" id="sideToggle" title="Hide sidebar" aria-label="Toggle sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+      <div class="fchips suq-tabs" id="suScope" hidden>
+        <button class="fchip active" data-suscope="open">Pending <span class="suq-n" id="suScopeN"></span></button>
+        <button class="fchip" data-suscope="all">All</button>
+      </div>
       <div class="tb-tt"><h1 class="tb-title" id="tbTitle">Members</h1><div class="tb-sub" id="tbSub"></div></div>
       <div class="search-wrap" id="searchWrap">
         <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
@@ -1135,10 +1145,6 @@
   <div class="pane" id="pane-signups">
     <div class="sucols">
       <div class="suqueue">
-        <div class="fchips suq-tabs" id="suScope">
-          <button class="fchip active" data-suscope="open">Pending <span class="suq-n" id="suScopeN"></span></button>
-          <button class="fchip" data-suscope="all">All</button>
-        </div>
         <div class="suq-list" id="suQueue"></div>
       </div>
       <div class="sudetail" id="suBody"><div class="skblk"></div></div>
@@ -1529,7 +1535,7 @@
             +groups[r].map(function(s){ return '<button type="button" class="sdrop-opt'+(sel&&sel.row===s.row?' sel':'')+'" data-mvrow="'+s.row+'" role="option"><span class="so-call">'+esc(s.callsign||('Row '+s.row))+'</span><span class="so-rank">'+esc(r)+'</span></button>'; }).join('')
             +'</div>';
         }).join('');
-        var cur=sel?(rankAvatar(sel.rank)+'<span>'+esc(sel.callsign||('Row '+sel.row))+' · '+esc(sel.rank)+'</span>'):'<span>Select slot</span>';
+        var cur=sel?('<span>'+esc(sel.callsign||('Row '+sel.row))+' · '+esc(sel.rank)+'</span>'):'<span>Select slot</span>';
         return '<div class="pc-sec"><div class="pc-lbl">Move / transfer</div>'
           +'<div class="mvrow"><button type="button" class="sdrop-btn mv-trigger" data-mvbtn="1" aria-haspopup="listbox" aria-expanded="false"><span class="sdrop-cur'+(sel?'':' ph')+'" id="mvCur">'+cur+'</span>'
             +'<svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></button>'
@@ -1782,7 +1788,7 @@
     STATE.moveTo=(row==null?null:Number(row));
     var m=(STATE.moveTo!=null)?slotByRow(STATE.moveTo):null, cur=$('mvCur');
     if(cur){
-      if(m){ cur.className='sdrop-cur'; cur.innerHTML=rankAvatar(m.rank)+'<span>'+esc(m.callsign||('Row '+m.row))+' · '+esc(m.rank)+'</span>'; }
+      if(m){ cur.className='sdrop-cur'; cur.innerHTML='<span>'+esc(m.callsign||('Row '+m.row))+' · '+esc(m.rank)+'</span>'; }
       else { cur.className='sdrop-cur ph'; cur.innerHTML='<span>Select slot</span>'; }
     }
     var menu=$('mvMenu'); if(menu) menu.querySelectorAll('.sdrop-opt').forEach(function(b){ b.classList.toggle('sel', Number(b.dataset.mvrow)===STATE.moveTo); });
@@ -1836,29 +1842,32 @@
     if(STATE.shiftAssignedBy==='RANK') return 'rank';
     return (STATE.shiftValues&&STATE.shiftValues.length)?'pick':'free';
   }
-  function renderAddShift(){
-    var host=$('addShiftCtl'); if(!host) return;
-    var mode=addShiftMode(), word=titleish(STATE.shiftLabel||'shift'), wrap=$('addShiftWrap');
-    // Authoritative over addCols.shift: if there is no such column there is no row, so the form can never show
-    // a labelled row with nothing in it.
-    if(wrap && mode==='off') wrap.hidden=true;
-    if(mode==='off'){ host.innerHTML=''; return; }
-    if(wrap) wrap.hidden=false;
+  /* ONE shift control, rendered for BOTH Add member and Signups. Same three shapes, same rules — the only
+     difference is which element it lands in and which state holds the choice. */
+  function shiftCtlHtml(mode, chosen, slotShift, inputId){
+    var word=titleish(STATE.shiftLabel||'shift');
+    if(mode==='off') return '';
     if(mode==='rank'){
-      var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null;
-      var v=m?String(m.shift||'').trim():'';
-      host.innerHTML='<span class="fro">'+(m?(v?esc(v):'—'):'Pick a slot first')+'</span>'
+      var v=String(slotShift==null?'':slotShift).trim();
+      return '<span class="fro">'+(slotShift==null?'Pick a slot first':(v?esc(v):'—'))+'</span>'
         +'<span class="fnote">Comes with the slot &middot; set on the roster row</span>';
-      return;
     }
     if(mode==='pick'){
-      host.innerHTML='<div class="segmented fseg" id="addShiftSeg">'
-        +STATE.shiftValues.map(function(v){ return '<button type="button" class="seg'+(STATE.addShift===v?' cur':'')+'" data-shiftv="'+esc(v)+'">'+esc(v)+'</button>'; }).join('')
-        +'<button type="button" class="seg'+(STATE.addShift?'':' cur')+'" data-shiftv="">Unset</button></div>';
-      return;
+      return '<div class="segmented fseg">'
+        +STATE.shiftValues.map(function(v){ return '<button type="button" class="seg'+(chosen===v?' cur':'')+'" data-shiftv="'+esc(v)+'">'+esc(v)+'</button>'; }).join('')
+        +'<button type="button" class="seg'+(chosen?'':' cur')+'" data-shiftv="">Unset</button></div>';
     }
-    host.innerHTML='<input class="field fin" id="addShift" placeholder="e.g. '+esc(word.split(/[\s/]/)[0])+'" autocomplete="off">'
+    return '<input class="field fin" id="'+inputId+'" value="'+esc(chosen||'')+'" placeholder="e.g. '+esc(word.split(/[\s/]/)[0])+'" autocomplete="off">'
       +'<span class="fnote">Optional &middot; free text, written as typed</span>';
+  }
+  function renderAddShift(){
+    var host=$('addShiftCtl'); if(!host) return;
+    var mode=addShiftMode(), wrap=$('addShiftWrap');
+    // Authoritative over addCols.shift: if there is no such column there is no row, so the form can never show
+    // a labelled row with nothing in it.
+    if(wrap) wrap.hidden=(mode==='off');
+    var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null;
+    host.innerHTML=shiftCtlHtml(mode, STATE.addShift, (mode==='rank'?(m?m.shift:null):null), 'addShift');
   }
   /* Whatever shape it took, this is the value that gets written. */
   function addShiftValue(){
@@ -1932,7 +1941,7 @@
     STATE.addSlot=(row==null?null:Number(row));
     var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null, cur=$('slotCur');
     if(cur){
-      if(m){ cur.className='sdrop-cur'; cur.innerHTML=rankAvatar(m.rank)+'<span>'+esc(m.callsign||('Row '+m.row))+' · '+esc(m.rank)+'</span>'; }
+      if(m){ cur.className='sdrop-cur'; cur.innerHTML='<span>'+esc(m.callsign||('Row '+m.row))+' · '+esc(m.rank)+'</span>'; }
       else { cur.className='sdrop-cur ph'; cur.textContent='Select slot'; }
     }
     var menu=$('slotMenu'); if(menu) menu.querySelectorAll('.sdrop-opt').forEach(function(b){ b.classList.toggle('sel', Number(b.dataset.slotrow)===STATE.addSlot); });
@@ -2019,7 +2028,7 @@
 
   /* ── Signups pane: approve a pending applicant into an open slot (mirrors Add member) ── */
   var SU={signups:[],recent:[],slots:[],linked:false,ready:false,loaded:false,cur:null,slot:null,
-          scope:'open',statuses:null,status:'',oocCol:false,shiftLabel:'',flagged:'Flagged'};
+          scope:'open',statuses:null,status:'',oocCol:false,shiftLabel:'',flagged:'Flagged',shift:'',avMap:null};
   function suApp(row){ for(var i=0;i<SU.signups.length;i++){ if(String(SU.signups[i].row)===String(row)) return SU.signups[i]; } return null; }
   function suSlotObj(row){ for(var i=0;i<SU.slots.length;i++){ if(String(SU.slots[i].row)===String(row)) return SU.slots[i]; } return null; }
   function suRo(v,mono){ return v?'<div class="ro'+(mono?' mono':'')+'">'+esc(v)+'</div>':'<div class="ro blank">Not provided</div>'; } // .blank, NOT .empty — the global empty-STATE class turned these into giant dashed boxes
@@ -2073,6 +2082,25 @@
   /* FNV-1a with an avalanche finish. A plain h*31 hash barely moves for inputs that differ only in their last
      character — which is exactly what sequential signup IDs are — so consecutive applicants kept landing on the
      same colour. This spreads them. */
+  /* Colour the WHOLE list at once so no two neighbours match. The base colour is still derived from the
+     applicant (so it is stable while the list is), but a clash with the row above steps to the next free tint —
+     back-to-back repeats are exactly what makes a queue hard to scan. */
+  function avAssign(rows){
+    var map={}, prev=null;
+    (rows||[]).forEach(function(a){
+      var i=avIndex(a.discord||a.name||String(a.row)), tries=0;
+      while(AVCOL[i%AVCOL.length]===prev && tries<AVCOL.length){ i++; tries++; }
+      var c=AVCOL[i%AVCOL.length]; map[a.row]=c; prev=c;
+    });
+    return map;
+  }
+  function avOf(a){ return (SU.avMap&&SU.avMap[a.row])||avColor(a.discord||a.name); }
+  function avIndex(k){
+    var t=String(k||''),h=2166136261;
+    for(var i=0;i<t.length;i++){ h^=t.charCodeAt(i); h=Math.imul(h,16777619)>>>0; }
+    h^=h>>>13; h=Math.imul(h,2246822507)>>>0; h^=h>>>16;
+    return (h>>>0)%AVCOL.length;
+  }
   function avColor(k){
     var t=String(k||''),h=2166136261;
     for(var i=0;i<t.length;i++){ h^=t.charCodeAt(i); h=Math.imul(h,16777619)>>>0; }
@@ -2089,10 +2117,11 @@
   }
   function suQueueHtml(){
     var list=suScopeList(), out='';
+    SU.avMap=avAssign(list.concat((SU.recent||[]).slice(0,5))); /* colour the queue AND the resolved tail as one run */
     out+=list.map(function(a){
       var age=suAgo(a.submitted), sub=[age,a.status].filter(Boolean).join(' · ');
       return '<button type="button" class="suq-row'+(String(a.row)===String(SU.cur)?' on':'')+'" data-suapp="'+a.row+'">'
-        +'<span class="suq-av" style="--av:'+avColor(a.discord||a.name)+'">'+esc(mInitials(a.name))+'</span>'
+        +'<span class="suq-av" style="--av:'+avOf(a)+'">'+esc(mInitials(a.name))+'</span>'
         +'<span class="suq-t"><b>'+esc(a.name||'(no name)')+'</b><span>'+esc(sub||'—')+'</span></span>'
         +(suIsFlagged(a)?'<span class="suq-dot" title="Flagged for review"></span>':'')+'</button>';
     }).join('');
@@ -2102,7 +2131,7 @@
     if(done.length){
       out+='<div class="suq-head">Earlier this week</div>'
         +done.map(function(a){
-          return '<div class="suq-done"><span class="suq-av" style="--av:'+avColor(a.discord||a.name)+'">'+esc(mInitials(a.name))+'</span>'
+          return '<div class="suq-done"><span class="suq-av" style="--av:'+avOf(a)+'">'+esc(mInitials(a.name))+'</span>'
             +'<b>'+esc(a.name||'(no name)')+'</b><span>Seated</span></div>';
         }).join('');
     }
@@ -2116,7 +2145,7 @@
   function suDetail(){
     var a=suApp(SU.cur); if(!a) return '';
     var s=(SU.slot!=null)?suSlotObj(SU.slot):null;
-    var cur=s?(rankAvatar(s.rank)+'<span>'+esc(s.unit||('Row '+SU.slot))+' &middot; '+esc(s.rank)+'</span>'):'';
+    var cur=s?('<span>'+esc(s.unit||('Row '+SU.slot))+' &middot; '+esc(s.rank)+'</span>'):'';
     var d=suDays(a.submitted);
     var blanks=['email','dob','phone','join'].filter(function(k){ return !String(a[k]||'').trim(); }).length;
     var copy=function(v){ return v?('<button class="copybtn" data-copy="'+esc(v)+'" title="Copy" aria-label="Copy">'+SVG.copy+'</button>'):''; };
@@ -2124,7 +2153,7 @@
     var slotCard=s?('<div class="su-slot">'+rankAvatar(s.rank)
         +'<span class="su-slot-t"><b>'+esc(s.rank)+(s.shift?(' &middot; '+esc(s.shift)):'')+'</b>'
         +'<span>'+[ (s.unit?('Callsign '+s.unit):''), (Number(s.req)?(Number(s.req).toFixed(1)+' hrs required'):'') ].filter(Boolean).join(' &middot; ')+'</span></span></div>'):'';
-    return '<div class="su-hero"><span class="suq-av" style="--av:'+avColor(a.discord||a.name)+'">'+esc(mInitials(a.name))+'</span>'
+    return '<div class="su-hero"><span class="suq-av" style="--av:'+avOf(a)+'">'+esc(mInitials(a.name))+'</span>'
       +'<div class="su-hero-t"><div class="su-hero-n"><b>'+esc(a.name||'(no name)')+'</b>'
         +(suIsFlagged(a)?'<span class="pill p-SemiActive"><span class="pdot"></span>Flagged</span>':'<span class="pill p-none"><span class="pdot"></span>'+esc(a.status)+'</span>')+'</div>'
         +'<div class="su-hero-s">'+[ (a.submitted?('Applied '+esc(suWhen(a.submitted))):''), (d!=null?(d+' day'+(d===1?'':'s')+' in queue'):'') ].filter(Boolean).join(' &middot; ')+'</div></div></div>'
@@ -2142,6 +2171,11 @@
         +'<div class="fgroup"><div class="fglbl">Roster entry</div><div class="fpanel">'
           +'<div class="frow"><label class="flbl" for="suName">Name</label><div class="fctl"><input class="field fin" id="suName" value="'+esc(a.name||'')+'" autocomplete="off"></div></div>'
           +(SU.oocCol?('<div class="frow"><label class="flbl" for="suOoc">OOC name</label><div class="fctl"><input class="field fin" id="suOoc" value="'+esc(a.ooc||'')+'" autocomplete="off"><span class="fnote">Optional</span></div></div>'):'')
+          +(function(){ // the same shift control Add member uses — a seat is a seat, however it is created
+            var mode=addShiftMode(); if(mode==='off') return '';
+            return '<div class="frow" id="suShiftRow"><label class="flbl">'+esc(titleish(STATE.shiftLabel))+'</label>'
+              +'<div class="fctl" id="suShiftCtl">'+shiftCtlHtml(mode, SU.shift, (mode==='rank'?(s?s.shift:null):null), 'suShift')+'</div></div>';
+          })()
           +'<div class="frow"><label class="flbl" for="suStatus2">Status</label><div class="fctl"><select class="field fin" id="suStatus2">'
             +(SU.statuses||STATE.statuses||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(x===(SU.status||STATE.defaultStatus)?' selected':'')+'>'+esc(x)+'</option>'; }).join('')
             +'</select></div></div>'
@@ -2218,7 +2252,7 @@
     SU.slot=(row==null?null:Number(row));
     var det=$('suBody'); if(det){ /* the slot CARD is part of the detail, so re-render it, keeping typed edits */ var nm=$('suName'), oc=$('suOoc'); var keepN=nm?nm.value:null, keepO=oc?oc.value:null; det.innerHTML=suDetail(); if(keepN!=null&&$('suName')) $('suName').value=keepN; if(keepO!=null&&$('suOoc')) $('suOoc').value=keepO; }
     var s=(SU.slot!=null)?suSlotObj(SU.slot):null, cur=$('suSlotCur');
-    if(cur){ if(s){ cur.className='sdrop-cur'; cur.innerHTML=rankAvatar(s.rank)+'<span>'+esc(s.unit||('Row '+s.row))+' · '+esc(s.rank)+'</span>'; } else { cur.className='sdrop-cur ph'; cur.textContent='Select slot'; } }
+    if(cur){ if(s){ cur.className='sdrop-cur'; cur.innerHTML='<span>'+esc(s.unit||('Row '+s.row))+' · '+esc(s.rank)+'</span>'; } else { cur.className='sdrop-cur ph'; cur.textContent='Select slot'; } }
     var menu=$('suSlotMenu'); if(menu) menu.querySelectorAll('.sdrop-opt').forEach(function(b){ b.classList.toggle('sel', Number(b.dataset.suslot)===SU.slot); });
     suBarState();
   }
@@ -2228,14 +2262,15 @@
     var list=suScopeList(); if(list.length<2) return;
     var i=0; for(var k=0;k<list.length;k++){ if(String(list[k].row)===String(SU.cur)){ i=k; break; } }
     var next=list[(i+delta+list.length)%list.length];
-    SU.cur=next.row; SU.slot=null; renderSignups();
+    SU.cur=next.row; SU.slot=null; SU.shift=''; renderSignups();
   }
   function suApprove(){
     if(SU.slot==null){ toast('Pick an open slot first.','err'); suOpenMenu(true); return; }
     if(SU.cur==null){ toast('Pick an applicant first.','err'); return; }
     var app=null; for(var ai=0;ai<SU.signups.length;ai++){ if(SU.signups[ai].row===SU.cur){ app=SU.signups[ai]; break; } }
     var btn=$('suSeat'); if(btn){ btn.disabled=true; btn.textContent='Seating…'; }
-    var edits={ name:($('suName')?$('suName').value.trim():''), ooc:($('suOoc')?$('suOoc').value.trim():null), status:($('suStatus2')?$('suStatus2').value:'') };
+    var edits={ name:($('suName')?$('suName').value.trim():''), ooc:($('suOoc')?$('suOoc').value.trim():null), status:($('suStatus2')?$('suStatus2').value:''),
+                shift:(addShiftMode()==='free'?($('suShift')?$('suShift').value.trim():''):(addShiftMode()==='pick'?(SU.shift||''):'')) };
     var seatedRow=SU.slot; // captured before the reset below — the background refresh needs it
     api(function(r){
       toast('✅ '+(r.name||'Applicant')+' seated'+(r.piiWritten?(' · '+r.piiWritten+' private field'+(r.piiWritten===1?'':'s')+' copied'):'')+'.','ok');
@@ -2266,7 +2301,7 @@
         function(e){ b.disabled=false; onError(e); }, 'cpSignupFlag', {row:a.row, id:a.discord||''});
   });
   document.addEventListener('click',function(e){
-    var chip=e.target.closest('[data-suapp]'); if(chip){ SU.cur=Number(chip.dataset.suapp); SU.slot=null; renderSignups(); return; }
+    var chip=e.target.closest('[data-suapp]'); if(chip){ SU.cur=Number(chip.dataset.suapp); SU.slot=null; SU.shift=''; renderSignups(); return; } /* a shift chosen for one applicant must not carry to the next */
     var opt=e.target.closest('[data-suslot]'); if(opt){ suSetSlot(Number(opt.dataset.suslot)); suOpenMenu(false); return; }
     if(e.target.closest('#suSlotBtn')){ e.stopPropagation(); suOpenMenu(); return; }
     if(e.target.closest('#suSeat')){ suApprove(); return; }
@@ -2502,7 +2537,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScope').hidden=(t.dataset.tab!=='signups'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('rediv').addEventListener('click',function(){ loadDividers(); });
   $('divBody').addEventListener('click',function(e){
@@ -2577,6 +2612,8 @@
   $('addName').addEventListener('input',updateAddPreview);
   $('addId').addEventListener('input',function(){ updateAddId(); addStatusLine(); });
   $('addShiftCtl').addEventListener('click',function(e){ var b=e.target.closest('[data-shiftv]'); if(!b) return; STATE.addShift=b.dataset.shiftv; renderAddShift(); });
+  $('suBody').addEventListener('click',function(e){ var b=e.target.closest('[data-shiftv]'); if(!b) return; SU.shift=b.dataset.shiftv;
+    var h=$('suShiftCtl'); if(h) h.innerHTML=shiftCtlHtml(addShiftMode(), SU.shift, null, 'suShift'); });
   $('addStartStatus').addEventListener('change',function(){ STATE.addStatus=this.value; renderStartStatus(); updateAddPreview(); });
   $('addCancel').addEventListener('click',function(){ addReset(); toast('Cleared.','ok'); });
   document.addEventListener('click',function(e){ if(!e.target.closest('#slotDrop')) openSlotMenu(false); });

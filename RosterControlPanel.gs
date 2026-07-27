@@ -1766,7 +1766,7 @@ function approveSignup_(signups, row, roster, slotRow, edits) {
   if (!name) throw new Error(`Signup row ${row} has no name.`);
   if (cpFindRowById_(roster, id) !== -1) throw new Error(`${name} is already on the roster — mark this signup Processed instead.`);
 
-  cpAssignMember_(roster, { row: slotRow, name: name, discord: id, status: String(ed.status || '').trim() }); // reuses the panel's slot guard + validation (and its status whitelist)
+  cpAssignMember_(roster, { row: slotRow, name: name, discord: id, status: String(ed.status || '').trim(), shift: String(ed.shift || '').trim() }); // reuses the panel's slot guard + validation (and its status whitelist)
   const RC = rosterCols_(roster);
   const oocV = String(ed.ooc != null ? ed.ooc : g(SC.ooc)).trim();
   if (RC.ooc && oocV) roster.getRange(slotRow, RC.ooc).setValue(oocV);
