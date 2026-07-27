@@ -32,6 +32,7 @@
 const EXTRAS = Object.freeze({
   get historySheet() { return cfgSheetName_('hoursHistory', '_Hours History'); }, // hidden record of weekly hours
   get coverageSheet() { return cfgSheetName_('coverage', 'Leave Coverage'); },
+  get activitySheet() { return cfgSheetName_('activity', ''); }, // '' = OFF (config default is 'Activity Panel'; the operator blanks the row to disable)
   get integritySheet() { return cfgSheetName_('integrity', 'Integrity Log'); },
   get auditSheet() { return cfgSheetName_('audit', 'Edit Log'); },
 });
@@ -1136,6 +1137,170 @@ function buildCoverage() {
     try { // manual run only — the 6am trigger has no UI
       SpreadsheetApp.getUi().alert(`🗓️ Leave Coverage rebuilt — ${outNow} out now, ${leaves.length} active/upcoming.\n\nSee the "${EXTRAS.coverageSheet}" tab.`);
     } catch (e) { /* no UI in a time-driven run */ }
+  });
+}
+
+/* ======================================================================
+ * ACTIVITY PANEL (engine-built board tab)
+ * One row per patrol-form submission — member identity, start/end, patrol
+ * length, and the row's CURRENT status pulled live from the Patrol Log —
+ * under a native filter row, so admins search and sort by ANY column
+ * (member, dates, length, status…). The tab is a VIEW: it is rebuilt from
+ * its sources on every patrol sync/refresh, so hand edits don't survive —
+ * statuses are managed on the Patrol Log itself. OFF when [SHEETS].ACTIVITY
+ * is blank. Themed exactly like the form-response tabs (console look).
+ * ====================================================================== */
+
+const ACTIVITY_HEADERS_ = Object.freeze(['SUBMITTED', 'NAME', 'UNIQUE ID', 'RANK', 'CALLSIGN', 'START', 'END', 'HOURS', 'STATUS', 'NOTES']);
+
+/**
+ * Rebuild the Activity Panel from the patrol form responses + the Patrol Log. Silent core — callers wrap it.
+ * Reads each source ONCE (one block read per tab + one roster snapshot); log rows are matched to submissions by
+ * Unique ID + exact start/end datetimes — the same key the patrol sync's backfill uses, so the two always agree.
+ * @return {{rows:number, name:string}|null} null = OFF/unconfigured (no tab touched).
+ */
+function buildActivityPanel_() {
+  const name = EXTRAS.activitySheet;
+  if (!name || !CONFIG.sheets.patrol) return null; // needs a board name AND a patrol form to read
+  const ss = SpreadsheetApp.getActive();
+  const form = ss.getSheetByName(CONFIG.sheets.patrol);
+  if (!form) return null;
+
+  // --- Patrol Log status index: "id|startMs|endMs" → queue of {status, notes} (duplicate identical logs each consume one) ---
+  const log = CONFIG.sheets.patrolLog ? ss.getSheetByName(CONFIG.sheets.patrolLog) : null;
+  const byKey = {};
+  if (log) {
+    try {
+      const PC = patrolLogCols_(log);
+      const startL = CONFIG.patrolStartRow, lastL = log.getLastRow();
+      if (PC.status && PC.discord && PC.startDate && PC.width && lastL >= startL) {
+        const nL = lastL - startL + 1;
+        const lv = log.getRange(startL, 1, nL, PC.width).getValues();
+        const ld = log.getRange(startL, 1, nL, PC.width).getDisplayValues();
+        for (let i = 0; i < nL; i++) {
+          const lid = String(ld[i][PC.discord - 1] || '').trim();
+          const lsd = combineDateTime_(lv[i][PC.startDate - 1], lv[i][PC.startTime - 1]);
+          const led = combineDateTime_(lv[i][PC.endDate - 1], lv[i][PC.endTime - 1]);
+          if (!lid || !lsd || !led) continue;
+          (byKey[lid + '|' + lsd.getTime() + '|' + led.getTime()] = byKey[lid + '|' + lsd.getTime() + '|' + led.getTime()] || []).push({
+            status: String(ld[i][PC.status - 1] || '').trim() || CONFIG.patrol.pendingStatus,
+            notes: PC.notes ? String(ld[i][PC.notes - 1] || '').trim() : '',
+          });
+        }
+      }
+    } catch (e) { log_('buildActivityPanel_.log', e); }
+  }
+
+  // --- One pass over the form: identity (same resolution as the sync), times, length, then the status join ---
+  const rows = [];
+  const lastF = form.getLastRow();
+  if (lastF >= 2) {
+    const cols = patrolCols_(form);
+    const markCol = patrolMarkerCol_(form);
+    const width = form.getLastColumn();
+    // Per-field date+time pairs first, single datetime columns as the fallback — mirrors syncPatrolFormToLog_.
+    const fh = form.getRange(1, 1, 1, width).getDisplayValues()[0].map((h) => norm_(h));
+    const fFind = (...toks) => { for (let c = 0; c < fh.length; c++) { if (fh[c] && toks.every((t) => fh[c].indexOf(t) !== -1)) return c + 1; } return 0; };
+    const F = {
+      sDate: fFind('START', 'DATE'), sTime: fFind('START', 'TIME'), eDate: fFind('END', 'DATE'), eTime: fFind('END', 'TIME'),
+      narrative: fFind('NARRATIVE') || fFind('NOTES') || fFind('NOTE') || fFind('REASON') || fFind('DETAILS'), name: 0,
+    };
+    for (let c = 0; c < fh.length; c++) { if (fh[c].indexOf('NAME') !== -1 && fh[c].indexOf('OOC') === -1) { F.name = c + 1; break; } }
+    const n = lastF - 1;
+    const grid = form.getRange(2, 1, n, width).getValues();
+    const bgs = form.getRange(2, 1, n, 1).getBackgrounds();
+    const errBg = String(CONFIG.bg.error).toLowerCase();
+    const roster = ss.getSheetByName(CONFIG.sheets.roster);
+    const idx = roster ? patrolRosterIndex_(roster) : null; // one snapshot serves every row
+    const rMap = {};
+    if (idx) {
+      for (let i = 0; i < idx.n; i++) {
+        const rid = String(idx.ids[i][0] || '').trim();
+        if (rid && !rMap[rid]) rMap[rid] = { rank: String(idx.ranks[i][0] || ''), name: String(idx.names[i][0] || ''), unit: String(idx.units[i][0] || '') };
+      }
+    }
+    const durationMode = norm_(CONFIG.patrol.mode) === 'DURATION';
+    const asDate = (v) => { const d = (v instanceof Date) ? v : (v === '' || v == null ? null : new Date(v)); return (d && !isNaN(d.getTime())) ? d : null; };
+    for (let i = 0; i < n; i++) {
+      const cell = (c) => (c > 0 && c <= width) ? grid[i][c - 1] : '';
+      const tsv = cell(cols.timestamp);
+      const ts = (tsv instanceof Date && !isNaN(tsv.getTime())) ? tsv : '';
+      // Identity — valid ID passes through; an invalid one gets the same corroborated name+callsign resolution the sync uses.
+      let id = String(cell(cols.discord) == null ? '' : cell(cols.discord)).trim();
+      const csRaw = String(cell(cols.callsign) == null ? '' : cell(cols.callsign)).trim(); // often "2519 | L. Forger"
+      const unit = csRaw.indexOf('|') !== -1 ? csRaw.split('|')[0].trim() : csRaw;
+      const csName = csRaw.indexOf('|') !== -1 ? csRaw.split('|').slice(1).join('|').trim() : '';
+      let nm = String(F.name ? cell(F.name) : '').trim() || csName;
+      if (id && !isValidId_(id) && idx) { const rec = rosterMatchByFields_(idx, { name: nm, rank: '', unit: unit }); if (rec) id = rec.id; }
+      const R = rMap[id] || null; // the roster is the source of truth for rank/callsign (current values)
+      if (R && !nm) nm = R.name;
+      // Times + length. START_END computes hours from the same combined datetimes the sync writes; DURATION reads the hours answer.
+      let sd = null, ed = null, hours = '';
+      if (durationMode) {
+        const h = parseHours_(cell(cols.duration));
+        if (h != null) hours = h;
+      } else {
+        sd = (F.sDate && F.sTime) ? combineDateTime_(cell(F.sDate), cell(F.sTime)) : asDate(cell(cols.start));
+        ed = (F.eDate && F.eTime) ? combineDateTime_(cell(F.eDate), cell(F.eTime)) : asDate(cell(cols.end));
+        if (sd && ed) {
+          let ms = ed.getTime() - sd.getTime();
+          if (ms < 0 && CONFIG.patrol.overnight) ms += 86400000; // crossed midnight
+          hours = Math.round((ms / 3600000) * 100) / 100; // shown even when invalid — the STATUS column explains
+        }
+      }
+      // Status: the live Patrol Log row wins; else the durable form marker (transferred/credited); else Pending.
+      const marker = String(cell(markCol) == null ? '' : cell(markCol)).trim();
+      let notes = String(F.narrative ? cell(F.narrative) : '').trim();
+      let status;
+      const q = (id && sd && ed) ? byKey[id + '|' + sd.getTime() + '|' + ed.getTime()] : null;
+      const hit = (q && q.length) ? q.shift() : null;
+      if (hit) { status = hit.status; if (hit.notes) notes = hit.notes; }
+      else if (String(bgs[i][0] || '').toLowerCase() === errBg) status = 'Error — fix the red form row';
+      else if (marker) status = log ? 'Not on log' : CONFIG.patrol.processedStatus; // transferred but since removed from the log / direct-credited
+      else status = CONFIG.patrol.pendingStatus; // not yet synced — the next patrol sync picks it up
+      rows.push([ts, nm, id, R ? R.rank : '', R ? R.unit : unit, sd || '', ed || '', hours, status, clamp_(notes, 500)]);
+    }
+    // Newest submitted first (the filter re-sorts any way the admin likes); timestamp-less rows keep their order at the bottom.
+    rows.sort((a, b) => ((b[0] instanceof Date ? b[0].getTime() : 0) - (a[0] instanceof Date ? a[0].getTime() : 0)));
+  }
+
+  // --- Write the board: engine-owned tab, auto-created like the coverage board ---
+  const sh = ss.getSheetByName(name) || ss.insertSheet(name);
+  const W = ACTIVITY_HEADERS_.length;
+  if (sh.getMaxColumns() < W) sh.insertColumnsAfter(sh.getMaxColumns(), W - sh.getMaxColumns());
+  if (sh.getMaxRows() < rows.length + 1) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
+  const maxRows = sh.getMaxRows();
+  const band = maxRows - 1;
+  sh.getRange(1, 1, 1, W).setValues([ACTIVITY_HEADERS_.slice()]);
+  sh.getRange(2, 1, band, W).clearContent();
+  // Formats BEFORE values: '@' on every text column (user text never becomes a formula — invariant 3; the ID never
+  // coerces to Number — invariant 1), real date/number formats where sorting must be typed.
+  const DT_FMT = 'd mmm yyyy h:mm am/pm';
+  [[1, DT_FMT], [6, DT_FMT], [7, DT_FMT], [8, '0.00']].forEach((p) => sh.getRange(2, p[0], band, 1).setNumberFormat(p[1]));
+  [2, 3, 4, 5, 9, 10].forEach((c) => sh.getRange(2, c, band, 1).setNumberFormat('@'));
+  if (rows.length) sh.getRange(2, 1, rows.length, W).setValues(rows);
+  // The native filter row — per-column search/sort/date-range from the header dropdowns. The operator's active
+  // filter (its criteria) is KEPT while its range still covers the grid; only a grown grid recreates it.
+  try {
+    let f = sh.getFilter();
+    if (f && (f.getRange().getLastRow() < maxRows || f.getRange().getLastColumn() < W || f.getRange().getRow() !== 1)) { f.remove(); f = null; }
+    if (!f) sh.getRange(1, 1, maxRows, W).createFilter();
+  } catch (e) { log_('buildActivityPanel_.filter', e); }
+  try { if (typeof styleFormResponses_ === 'function') styleFormResponses_(sh); } catch (e) { log_('buildActivityPanel_.style', e); } // the form-response console theme, verbatim
+  try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (e) { /* best-effort */ } // script writes fire no publish trigger — the sweep carries a public copy of this tab
+  return { rows: rows.length, name: name };
+}
+
+/** Menu action: build/refresh the Activity Panel board tab. */
+function buildActivityPanel() {
+  runAction_('Build Activity Panel', () => {
+    const ui = SpreadsheetApp.getUi();
+    const r = buildActivityPanel_();
+    if (!r) {
+      ui.alert('📊 Activity Panel', 'The Activity Panel is OFF.\n\nIt needs [SHEETS].ACTIVITY (the board tab name — default "Activity Panel") and [SHEETS].PATROL_FORM_RESPONSES (your patrol form\'s responses tab). Both live in ⚙️ Engine Settings ▸ Sheets & layout.', ui.ButtonSet.OK);
+      return;
+    }
+    ui.alert('📊 Activity Panel', `✅ "${r.name}" rebuilt — ${r.rows} patrol${r.rows === 1 ? '' : 's'} listed.\n\nUse the filter row to search and sort by any column (member, dates, patrol length, status). Statuses are managed on the Patrol Log — this board is a live view and rebuilds itself on every patrol sync.`, ui.ButtonSet.OK);
   });
 }
 

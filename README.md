@@ -87,6 +87,11 @@ row *Processed* to approve an over-length session anyway. Totals always reconcil
 sum of their valid logs, no matter how much you edit, re-edit, or delete.
 *(Don't touch the narrow hidden first column on that tab — it's the bookkeeping that makes un-crediting work.)*
 
+The **Activity Panel** tab is the searchable view of all of it: one row per submitted patrol — member, start,
+end, length, and its current status from the Patrol Log — with a filter button on every column, so you can
+search members or dates and sort by patrol length (or anything else). It rebuilds itself after every sync, so
+treat it as read-only: statuses are managed on the Patrol Log, and hand edits on the panel won't survive.
+
 ## 📸 Activity cycles
 
 **👥 Roster ▸ 📸 Capture & Reset Activity** archives everyone's hours to history and zeroes the week (cadence —

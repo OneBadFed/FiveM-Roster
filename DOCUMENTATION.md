@@ -25,7 +25,7 @@ ever flows back. There is no separate "admin file" — `adminFile_()` resolves t
 | `RosterSystem.gs` | The engine: CONFIG bridge, header-resolved columns, status engine, transfers, leave lifecycle, Patrol Log crediting, dashboard + #tags, promotions feed, derived-tab rebuilds, menus, First-Run wizard |
 | `RosterControlPanel.gs` | Control Panel server: the D5 `dispatch()` whitelist gateway and every `cp*` endpoint; signup sync + approval; the public-roster publish pipeline; webhooks; rank-icon + divider-style storage |
 | `RosterTrust.gs` | Snapshots/restore, the always-on Edit Log audit (with editor-name resolution), health & schema checks |
-| `RosterExtras.gs` | Integrity scan, leave coverage board, hours history + cadence-aware reset, helper-column tools, full-lifecycle demo seeder |
+| `RosterExtras.gs` | Integrity scan, leave coverage board, the Activity Panel board (§5a), hours history + cadence-aware reset, helper-column tools, full-lifecycle demo seeder |
 | `RosterDevQA.gs` | The QA suite — 23 sections, sandbox-only, run in three parts (or all / per-section) from the 🧪 menu |
 | `ControlPanel.html` | Control Panel UI (single HtmlService dialog, Studio design system, deep-linkable tabs) |
 | `SettingsPanel.html` | Settings Studio UI (full-screen config editor incl. the per-channel Discord embed builder) |
@@ -67,7 +67,8 @@ new-name row wins), and re-seeding migrates the old row's value into the new-nam
 so renaming a key never breaks an existing sheet.
 
 **Blocks (inventory):** SYSTEM · SHEETS (tab names for every role incl. `PATROL_LOG`, `SIGNUPS`,
-`SIGNUP_FORM_RESPONSES`, and `WELCOME` — the Welcome/dashboard tab the publish keep/force ranges resolve
+`SIGNUP_FORM_RESPONSES`, `ACTIVITY` — the Activity Panel board (§5a), and `WELCOME` — the Welcome/dashboard tab
+the publish keep/force ranges resolve
 against; roles must resolve to distinct tabs) · ROSTER_LAYOUT (header/data rows, divider mode,
 `UNIT_FORMAT` callsign template, last-activity style) · COLUMNS *(table — SLOT vs MEMBER classes)* ·
 SECTIONS / SECTION_TAGS *(tables)* · STATUSES / STATUS_OVERRIDES / STATUS_RULES *(tables — tier ladder,
@@ -231,6 +232,22 @@ The nightly `refreshPatrolLog_` sweep re-processes every row (maturing once-futu
 of the whole log — cached row data and markers thread through processing, and per-row format churn is skipped
 because the closing `sortPatrolLog_` re-applies formats and formulas batched. A legacy form-based intake
 (`[SHEETS].PATROL_FORM_RESPONSES` + `[PATROL]` column keywords) still syncs submissions into the same crediting path.
+
+**§5a · The Activity Panel.** An engine-built board tab (`[SHEETS].ACTIVITY`, default "Activity Panel", blank =
+OFF; auto-created like the coverage board) showing **one row per patrol form submission** — SUBMITTED · NAME ·
+UNIQUE ID · RANK · CALLSIGN · START · END · HOURS · STATUS · NOTES — under a **native filter row**, so admins
+search and sort by any column (member, dates, patrol length, status…). Identity resolves exactly like the sync
+(valid ID → the roster's current rank/callsign; invalid → the corroborated name+callsign failsafe); STATUS and
+NOTES join **live from the Patrol Log** by Unique ID + exact start/end datetimes (the sync backfill's own match
+key, duplicate identical logs each consume one). Unmatched rows show Pending (not yet synced), "Not on log"
+(transferred but since removed), or an error hint for red form rows; DURATION-mode forms list the submitted hours
+with marker-derived status (no start/end to join on). Default order: newest submitted first — the filter re-sorts
+any way. The tab is a **VIEW**: rebuilt immediately on every patrol sync, within a minute of Patrol Log edits and
+sweep/nightly passes (deferred-queue key `activity`), and from 📊 Build / Refresh Activity Panel or 🔄 Refresh &
+Update All — hand edits don't survive, and statuses are managed on the Patrol Log itself. Themed by
+`styleFormResponses_` (the form-response console look; column widths stay the operator's), text columns
+`'@'`-formatted, dates/hours typed so filter sorting is real. Rebuilds mark the publish-dirty flag, so a copy of
+the tab on the public roster stays live.
 
 ---
 
@@ -433,7 +450,8 @@ Patrol Log — marker-deduped on the form — and credit through the log's own p
 the classic direct credit) · 🧾 Review Roster Signups (deep-links Control Panel ▸ Signups) · 📸 Capture & Reset
 Activity · 🔍 Run Integrity Scan · 🌐 Publish
 Public Roster │ ➕ Add Member Rows… · 🎙️ Fix All Callsign Numbers · 🗂️ Build / Refresh Group Sheets · 🎓 Build /
-Refresh Police Academy │ 🌐 Set Up Public Roster · 🆔 Unique ID Type ▸ (Discord / Community) · 🧩 Sync Column
+Refresh Police Academy · 📊 Build / Refresh Activity Panel │ 🌐 Set Up Public Roster · 🆔 Unique ID Type ▸
+(Discord / Community) · 🧩 Sync Column
 Config · 🚀 First-Run Setup · 🔌 Install Triggers.
 
 **🧪 Dev / QA:** 🎬 Load Demo Roster · 🎲/🚔/🧾 Add Random LOA / Patrol Log / Signup │ ▶️ Run Tests Part 1

@@ -319,6 +319,7 @@ function buildMenus_(prefix) {
       .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
       .addItem('🗂️ Build / Refresh Group Sheets', p + 'buildGroupSheets')
       .addItem('🎓 Build / Refresh Police Academy', p + 'buildAcademySheets')
+      .addItem('📊 Build / Refresh Activity Panel', p + 'buildActivityPanel')
       .addSeparator()
       // Setup & wiring (run rarely)
       .addItem('🌐 Set Up Public Roster', p + 'setupPublicRoster')
@@ -1108,6 +1109,7 @@ function refreshDashboard() {
     try { renderPromotions_(true); } catch (e) { log_('refreshDashboard.promos', e); } // full rescan — rediscovers newly-added promo tables
     try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e) { log_('refreshDashboard.groups', e); } // refresh any #group division tabs
     try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('refreshDashboard.academy', e); } // sync the editable Police Academy tab(s)
+    try { if (typeof buildActivityPanel_ === 'function') buildActivityPanel_(); } catch (e) { log_('refreshDashboard.activity', e); } // rebuild the Activity Panel board (3c already re-processed the log it reads)
 
     // 5) Integrity scan — duplicate/malformed IDs, status-vs-hours mismatches, orphaned/mis-targeted leaves.
     //    Guarded (the checks live in RosterExtras.gs); logs to the Integrity Log + posts a Discord summary.
@@ -1169,6 +1171,7 @@ function runDeferredWork_() {
   if (has('academy')) { try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); done.push('academy'); } catch (e) { log_('deferred.academy', e); } }
   if (has('groups')) { try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); done.push('groups'); } catch (e) { log_('deferred.groups', e); } }
   if (has('dashboard')) { try { refreshDashboard_(); done.push('dashboard'); } catch (e) { log_('deferred.dashboard', e); } }
+  if (has('activity')) { try { if (typeof buildActivityPanel_ === 'function') buildActivityPanel_(); done.push('activity'); } catch (e) { log_('deferred.activity', e); } }
   try { // clear ONLY the flags whose rebuild actually completed (a throw/timeout leaves it queued for the sweep)
     const p = PropertiesService.getDocumentProperties();
     let cur = String(p.getProperty(DEFER_PROP_) || '|');
@@ -1319,6 +1322,7 @@ function onEdit(e) {
         const pIdx = patrolRosterIndex_(rosterSheet); // one roster snapshot for the whole edited span (was one per row)
         for (let rr = Math.max(row, CONFIG.patrolStartRow); rr <= rLast; rr++) { try { processPatrolLog_(sheet, rr, PC, rosterSheet, pIdx); } catch (e2) { log_('onEdit.processPatrol', e2); } }
         try { sortPatrolLog_(sheet); } catch (e2) { log_('onEdit.sortPatrolLog', e2); }
+        deferWork_('activity'); // status/credit changed → the Activity Panel board catches up on the 1-minute sweep (cheap property write; a rebuild here would strain the LIMITED budget)
       }
     }
     // Roster Signups: setting a row's STATUS to Approved on the review tab pops a slot picker + places the applicant on
@@ -2778,6 +2782,7 @@ function syncPatrolFormNow_() {
   const log = CONFIG.sheets.patrolLog ? ss.getSheetByName(CONFIG.sheets.patrolLog) : null;
   if (!log || norm_(CONFIG.patrol.mode) === 'DURATION') {
     const res = syncPatrolHours(); // classic direct credit (takes its own lock) — DURATION carries no times to place
+    try { deferWork_('activity'); if (typeof buildActivityPanel_ === 'function') buildActivityPanel_(); } catch (e) { log_('syncPatrolFormNow_.activity', e); } // board now; queue = backstop
     return { mode: 'credit', logless: !log, res };
   }
   const lock = LockService.getScriptLock();
@@ -2785,6 +2790,7 @@ function syncPatrolFormNow_() {
   let res;
   try { res = syncPatrolFormToLog_(form, log, ss.getSheetByName(CONFIG.sheets.roster)); } finally { lock.releaseLock(); }
   try { refreshPatrolLog_(); } catch (e) { log_('syncPatrolFormNow_.refresh', e); } // autofill + credit + flag + sort, the log's own path
+  try { if (typeof buildActivityPanel_ === 'function') buildActivityPanel_(); } catch (e) { log_('syncPatrolFormNow_.activity', e); } // refreshPatrolLog_ queued it; build now so the board shows the submission immediately (queue stays as the sweep backstop)
   return { mode: 'log', res };
 }
 
@@ -3195,6 +3201,7 @@ function refreshPatrolLog_() {
       processPatrolLog_(sheet, r, PC, roster, idx, rowData);
     }
     sortPatrolLog_(sheet);
+    deferWork_('activity'); // any pass over the log can change statuses/credits → the Activity Panel board follows on the sweep
   } catch (e) { log_('refreshPatrolLog_', e); }
 }
 
