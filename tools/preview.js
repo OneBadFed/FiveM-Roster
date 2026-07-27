@@ -203,11 +203,41 @@ function runtimeStub(configPayload, boot) {
         { week: '2026-07-25', hours: 16.5, status: 'Active' },
       ],
     },
-    cpSignupList: {
-      linked: true, ready: true, rankIcons: {},
-      signups: [1, 2, 3, 4].map((n) => ({ row: 100 + n, name: `${FIRST[n + 9]} ${LAST[n + 5]}`, status: 'Pending', discord: String(880000000000000000 + n) })),
-      slots: [{ row: 13, rank: 'Cadet', unit: 'S-11' }, { row: 22, rank: 'Police Officer I', unit: 'S-20' }],
-    },
+    cpSignupList: (() => {
+      // Anchored to the moment the preview is BUILT, so "2 days ago" is two days ago when you open it.
+      // A fixed instant drifts: the ages the panel computes are relative to the viewer's clock, not the fixture's.
+      const NOW = Date.now();
+      const mk = (n, name, status, daysAgo, blanks) => ({
+        row: 100 + n, status, name,
+        ooc: name.split(' ')[0] + ' ' + name.split(' ')[1][0] + '.',
+        discord: String(880000000000000000 + n),
+        email: blanks ? '' : name.toLowerCase().replace(' ', '.') + '@lspd.example',
+        dob: blanks ? '' : '5 Oct 1995', phone: blanks ? '' : '555-0' + (100 + n),
+        join: blanks ? '' : '12 Jun 2026',
+        // A display string, the way a Sheets timestamp cell actually arrives — not an ISO string.
+        submitted: new Date(NOW - daysAgo * 86400000).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }),
+      });
+      return {
+        linked: true, ready: true, rankIcons: {}, shiftLabel: 'PATROL DISTRICT', oocCol: true,
+        flaggedStatus: 'Flagged',
+        statuses: ['Active', 'Semi-Active', 'Inactive', 'LOA', 'ROA', 'Reserve'],
+        signups: [
+          mk(1, 'Noah Bennett', 'Pending', 2, false),
+          mk(2, 'Elena Sato', 'Pending', 3, true),
+          mk(3, 'Aisha Fischer', 'Flagged', 5, false),
+          mk(4, 'Diego Rossi', 'Pending', 6, true),
+        ],
+        recent: [
+          mk(5, 'Tomas Okonkwo', 'Processed', 8, false),
+          mk(6, 'Hana Moreau', 'Processed', 9, false),
+        ],
+        slots: [
+          { row: 13, rank: 'Master Sergeant', unit: 'S-13', shift: '2nd District', req: 16 },
+          { row: 22, rank: 'Police Officer I', unit: 'S-22', shift: '1st District', req: 10 },
+          { row: 25, rank: 'Cadet', unit: 'S-25', shift: '3rd District', req: 5 },
+        ],
+      };
+    })(),
     cpGetConfig: configPayload,
     cpApplyConfig: { ok: true, written: { kv: 1, tables: 0 }, state: configPayload },
     cpRankIcons: {

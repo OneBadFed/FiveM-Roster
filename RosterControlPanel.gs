@@ -88,6 +88,7 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpAddDiscipline: (p) => cpAddDiscipline(p),
   cpSignupList: () => cpSignupList(),
   cpSignupApprove: (p) => cpSignupApprove(p),
+  cpSignupFlag: (p) => cpSignupFlag(p),
   cpSignupPostSeat: (p) => cpSignupPostSeat(p),
   cpPromoList: () => cpPromoList(),
   cpPromoRemove: (p) => cpPromoRemove(p),
@@ -1432,7 +1433,13 @@ function seedAdminSheet_(file) {
  * only then stamps the row Processed. Rows sort Pending → Approved → Processed.
  * ------------------------------------------------------------------------- */
 
-const SIGNUP_STATUSES_ = Object.freeze(['Pending', 'Approved', 'Processed']);
+// Pending → Approved → Processed is the happy path. FLAGGED is "held for review" — the same meaning the leave
+// tracker's FLAGGED_STATUS carries — so it is NOT terminal: a flagged signup stays in the queue, it just says
+// out loud that somebody parked it. Only Processed leaves the queue.
+const SIGNUP_STATUSES_ = Object.freeze(['Pending', 'Approved', 'Processed', 'Flagged']);
+const SIGNUP_FLAGGED_ = 'Flagged';
+/** True for a signup that no longer needs an admin's attention. Flagged still does — that is the point of it. */
+function signupIsDone_(status) { return norm_(status) === norm_(SIGNUP_STATUSES_[2]); }
 
 /**
  * Header-resolve a signup tab (exact header wins, so a free-text application column can't hijack a role). Works on BOTH
@@ -1699,24 +1706,33 @@ function sortSignups_(sheet) {
   } catch (e) { logWarn_('sortSignups_', 'signup sort failed: ' + ((e && e.message) ? e.message : e)); return 0; }
 }
 
-/** Read the signup rows an admin still has to act on (Pending + Approved), newest submission first. */
-function signupQueue_(sheet, cap) {
-  const out = [];
+/**
+ * Read the signup tab in ONE pass and split it: `queue` = rows an admin still has to act on (Pending, Approved
+ * and Flagged, newest first), `recent` = the most recently RESOLVED ones (Processed) so the panel can show what
+ * was just decided without a second read.
+ * @return {{queue:Array<Object>, recent:Array<Object>}}
+ */
+function signupSplit_(sheet, cap, recentCap) {
+  const queue = [], recent = [];
   const SC = signupCols_(sheet);
   const last = sheet.getLastRow();
-  if (!SC.status || last < SC.dataStart) return out;
+  if (!SC.status || last < SC.dataStart) return { queue, recent };
   const n = last - SC.dataStart + 1;
   const vals = sheet.getRange(SC.dataStart, 1, n, SC.width).getDisplayValues();
-  for (let i = 0; i < n && out.length < (cap || 100); i++) {
+  for (let i = 0; i < n; i++) {
     const g = (c) => c ? String(vals[i][c - 1] || '').trim() : '';
     if (!g(SC.name) && !g(SC.discord)) continue; // blank scaffolding row on a themed tab → not a submission
     const st = g(SC.status) || SIGNUP_STATUSES_[0];
-    if (norm_(st) === norm_(SIGNUP_STATUSES_[2])) continue; // Processed → done
-    out.push({ row: SC.dataStart + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
-      email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), join: g(SC.join), submitted: g(SC.timestamp) });
+    const rec = { row: SC.dataStart + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
+      email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), join: g(SC.join), submitted: g(SC.timestamp) };
+    if (signupIsDone_(st)) { if (recent.length < (recentCap || 12)) recent.push(rec); continue; }
+    if (queue.length < (cap || 100)) queue.push(rec);
   }
-  return out;
+  return { queue, recent };
 }
+
+/** Back-compat wrapper: the review queue alone. */
+function signupQueue_(sheet, cap) { return signupSplit_(sheet, cap, 0).queue; }
 
 /** Resolve the roster's PRIVATE columns (only present on an internal roster). 0 = absent → that detail simply isn't stored. */
 function rosterPiiCols_(roster) {
@@ -1739,18 +1755,21 @@ function rosterPiiCols_(roster) {
  * same roster row, then stamp the signup Processed. Throws with a clear message on any bad input, and only stamps
  * Processed after the roster write succeeds, so a failure leaves the signup actionable. Testable.
  */
-function approveSignup_(signups, row, roster, slotRow) {
+function approveSignup_(signups, row, roster, slotRow, edits) {
   const SC = signupCols_(signups);
+  const ed = edits || {};   // panel overrides — what the reviewer actually typed wins over the raw form answer
   if (!SC.discord || !SC.name) throw new Error('The signup tab has no Unique ID / Name column.');
   const g = (c) => c ? String(signups.getRange(row, c).getDisplayValue()).trim() : '';
-  const id = g(SC.discord), name = g(SC.name);
+  const id = g(SC.discord);
+  const name = String(ed.name != null && String(ed.name).trim() !== '' ? ed.name : g(SC.name)).trim();
   if (!isValidId_(id)) throw new Error(`Signup row ${row} has no valid Unique ID (${idDigitsLabel_()} digits).`);
   if (!name) throw new Error(`Signup row ${row} has no name.`);
   if (cpFindRowById_(roster, id) !== -1) throw new Error(`${name} is already on the roster — mark this signup Processed instead.`);
 
-  cpAssignMember_(roster, { row: slotRow, name: name, discord: id }); // reuses the panel's slot guard + validation
+  cpAssignMember_(roster, { row: slotRow, name: name, discord: id, status: String(ed.status || '').trim() }); // reuses the panel's slot guard + validation (and its status whitelist)
   const RC = rosterCols_(roster);
-  if (RC.ooc && g(SC.ooc)) roster.getRange(slotRow, RC.ooc).setValue(g(SC.ooc));
+  const oocV = String(ed.ooc != null ? ed.ooc : g(SC.ooc)).trim();
+  if (RC.ooc && oocV) roster.getRange(slotRow, RC.ooc).setValue(oocV);
   if (RC.join && SC.join) { const jr = signups.getRange(row, SC.join).getValue(); if (jr !== '' && jr != null) roster.getRange(slotRow, RC.join).setValue(jr); } // department join date carries onto the roster
 
   // Private details go straight onto the member's own roster row — this workbook IS the internal roster.
@@ -2714,26 +2733,68 @@ function cpSignupList() {
   const file = adminFile_();
   const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
   const slots = [];
+  const RCall = roster ? rosterCols_(roster) : null;
   if (roster) {
-    const RC = rosterCols_(roster), start = CONFIG.rosterStartRow, last = roster.getLastRow();
+    const RC = RCall, start = CONFIG.rosterStartRow, last = roster.getLastRow();
     if (last >= start) {
       const n = last - start + 1;
-      const ranks = roster.getRange(start, RC.rank, n, 1).getDisplayValues();
-      const names = roster.getRange(start, RC.name, n, 1).getDisplayValues();
-      const units = RC.unit ? roster.getRange(start, RC.unit, n, 1).getDisplayValues() : null;
+      // One full-width read instead of three column reads — the shift column is optional, and asking for it
+      // separately meant a fourth round trip on a sheet that can be hundreds of rows.
+      const block = roster.getRange(start, 1, n, roster.getLastColumn()).getDisplayValues();
+      const SE = statusEngine_();
+      const reqCache = {};
+      const reqFor = (rank) => {
+        if (reqCache[rank] == null) {
+          const ladder = statusLadderFor_(rank, SE);
+          reqCache[rank] = (ladder && ladder.length) ? (Number(ladder[0].min) || 0) : 0;
+        }
+        return reqCache[rank];
+      };
       for (let i = 0; i < n; i++) {
-        const rank = String(ranks[i][0]).trim();
+        const rank = String(block[i][RC.rank - 1]).trim();
         if (!isMemberSlot_(rank) || rank === '' || rank === 'Rank') continue;
-        if (String(names[i][0]).trim() !== '') continue; // filled → not an open slot
-        slots.push({ row: start + i, rank: rank, unit: units ? String(units[i][0]).trim() : '' });
+        if (String(block[i][RC.name - 1]).trim() !== '') continue; // filled → not an open slot
+        slots.push({
+          row: start + i, rank: rank,
+          unit: RC.unit ? String(block[i][RC.unit - 1]).trim() : '',
+          shift: RC.shift ? String(block[i][RC.shift - 1]).trim() : '', // what this slot carries, if anything
+          req: reqFor(rank),                                           // top-tier MinHours for this rank
+        });
       }
     }
   }
   let rankIcons = {}; try { if (typeof rankIconsMap_ === 'function') rankIcons = rankIconsMap_(); } catch (e) { /* icons optional */ }
-  if (!file) return { linked: false, ready: false, signups: [], slots: slots, rankIcons: rankIcons };
+  const shiftLabel = cpShiftLabel_(roster, RCall || {});
+  const base = { slots: slots, rankIcons: rankIcons, shiftLabel: shiftLabel, statuses: cpStatuses_(),
+    oocCol: !!(RCall && RCall.ooc), flaggedStatus: SIGNUP_FLAGGED_ };
+  if (!file) return Object.assign({ linked: false, ready: false, signups: [], recent: [] }, base);
   const sh = file.getSheetByName(CONFIG.sheets.signups);
-  if (!sh) return { linked: true, ready: false, signups: [], slots: slots, rankIcons: rankIcons };
-  return { linked: true, ready: true, signups: signupQueue_(sh, 100), slots: slots, rankIcons: rankIcons };
+  if (!sh) return Object.assign({ linked: true, ready: false, signups: [], recent: [] }, base);
+  const split = signupSplit_(sh, 100, 12);
+  return Object.assign({ linked: true, ready: true, signups: split.queue, recent: split.recent }, base);
+}
+
+/**
+ * Panel: FLAG a signup for review — "I am not ready to seat this one." Not a rejection and not terminal; the row
+ * stays in the queue wearing the flag so the next admin sees it was parked deliberately rather than missed.
+ * Uses the same row-resolution defence as approval: signup rows shift under an open panel, so the row number the
+ * client saw may hold a different applicant by now.
+ */
+function cpSignupFlag(payload) {
+  const file = adminFile_();
+  if (!file) throw new Error('No admin file is linked yet.');
+  const sh = file.getSheetByName(CONFIG.sheets.signups);
+  if (!sh) throw new Error(`"${CONFIG.sheets.signups}" was not found in the admin file.`);
+  const row = signupResolveRow_(sh, Number((payload && payload.row) || 0), String((payload && payload.id) || ''));
+  const SC = signupCols_(sh);
+  if (!SC.status) throw new Error('That signup tab has no Status column.');
+  const cur = String(sh.getRange(row, SC.status).getDisplayValue()).trim();
+  if (signupIsDone_(cur)) throw new Error('That signup is already processed.');
+  const on = norm_(cur) !== norm_(SIGNUP_FLAGGED_);
+  sh.getRange(row, SC.status).setValue(on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0]); // toggle: flag ⇄ back to Pending
+  const who = String(sh.getRange(row, SC.name || 1).getDisplayValue()).trim();
+  cpAudit_('signup', cur, on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0], sh.getRange(row, SC.status).getA1Notation(), who);
+  return { row: row, status: on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0], flagged: on };
 }
 
 /**
@@ -2783,7 +2844,7 @@ function cpSignupApprove(payload) {
   let res;
   try {
     const vr = signupResolveRow_(sh, row, String((payload && payload.id) || '')); // the queue re-sorts under an open panel — verify identity first
-    res = approveSignup_(sh, vr, roster, slotRow);
+    res = approveSignup_(sh, vr, roster, slotRow, (payload && payload.edits) || null);
     try { sortSignups_(sh); } catch (e) { log_('cpSignupApprove.sort', e); }
   } finally { lock.releaseLock(); }
   // AFTER the lock: the audit mirror can fire a Discord webhook (a network call) — holding the shared lock through it
