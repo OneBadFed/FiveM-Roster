@@ -147,7 +147,7 @@ function buildRoster() {
       row: 6 + i, rank,
       name: filled ? `${FIRST[i % FIRST.length]} ${LAST[i % LAST.length]}` : '',
       callsign: `S-${String(i + 4).padStart(2, '0')}`,
-      discord: filled ? String(770000000000000000 + i * 7) : '',
+      discord: filled ? ('7700000000000000' + String(10 + i)) : '', // string-built: 77e16 is past MAX_SAFE_INTEGER
       joinDate: `${(i % 27) + 1} Apr 202${i % 5}`, lastPromo: `${(i % 26) + 2} Jan 2026`,
       status: filled ? status : '', hours, req, color: '', filled,
       section: ['Alpha Watch','Bravo Watch','Charlie Watch'][Math.floor(i/9)%3],
@@ -210,7 +210,9 @@ function runtimeStub(configPayload, boot) {
       const mk = (n, name, status, daysAgo, blanks) => ({
         row: 100 + n, status, name,
         ooc: name.split(' ')[0] + ' ' + name.split(' ')[1][0] + '.',
-        discord: String(880000000000000000 + n),
+        // Built as a STRING: 88e16 is past Number.MAX_SAFE_INTEGER, so adding to it as a number collapses
+        // every ID to the same value — which is also what a real duplicate ID would look like to the engine.
+        discord: '8800000000000000' + String(10 + n),
         email: blanks ? '' : name.toLowerCase().replace(' ', '.') + '@lspd.example',
         dob: blanks ? '' : '5 Oct 1995', phone: blanks ? '' : '555-0' + (100 + n),
         join: blanks ? '' : '12 Jun 2026',

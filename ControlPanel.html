@@ -29,6 +29,11 @@
     /* SEPARATORS — Apple separates with a hairline, not a border or a shadow. Nearer macOS's separatorColor;
        at .08 they read as faint rather than crisp. */
     --hair:rgba(255,255,255,.08); --hair-2:rgba(255,255,255,.14);
+    /* THE control surface. Every box you can type in, pick from or press — field, pop-up, segmented track,
+       recessed button — is this fill and this hairline ring. It was written out by hand in a dozen places and
+       had already drifted; naming it is what keeps the next control from inventing its own grey. */
+    --ctl:rgba(255,255,255,.08); --ctl-hi:rgba(255,255,255,.12);
+    --ctl-ring:0 0 0 .5px rgba(255,255,255,.1) inset;
     /* No glass, no inner highlight, no glow. Kept as no-ops so older rules still parse while sections migrate. */
     --glass:none; --glass-2:none;
     --ring:none; --hi:none;
@@ -101,14 +106,14 @@
   .icon-btn{width:26px;height:24px;border-radius:5px;background:none;border:none;color:rgba(255,255,255,.6);
             display:flex;align-items:center;justify-content:center;cursor:pointer;flex:0 0 auto;
             transition:background var(--t) var(--ease),color var(--t) var(--ease);}
-  .icon-btn:hover{background:var(--e2);color:var(--txt);}
+  .icon-btn:hover{background:var(--ctl);color:var(--txt);}
   /* In the brand row it is a recessed square, sized to the title block rather than to the toolbar. */
   .brand .icon-btn{width:22px;height:22px;border-radius:5px;background:rgba(255,255,255,.07);
                    box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;color:rgba(255,255,255,.6);}
-  .brand .icon-btn:hover{background:rgba(255,255,255,.12);color:rgba(255,255,255,.9);}
+  .brand .icon-btn:hover{background:var(--ctl-hi);color:rgba(255,255,255,.9);}
   .brand .icon-btn:disabled{opacity:.4;cursor:default;}
   .brand .icon-btn svg{width:13px;height:13px;stroke-width:1.9;}
-  .icon-btn:active{background:var(--e3);}
+  .icon-btn:active{background:var(--ctl-hi);}
   .icon-btn svg{width:15px;height:15px;stroke-width:1.7;}
   .spin{animation:sp .8s linear infinite;}
   @keyframes sp{to{transform:rotate(360deg);}}
@@ -139,7 +144,7 @@
   .hpill2{display:flex;align-items:center;justify-content:flex-start;gap:7px;border:none;background:rgba(255,255,255,.05);color:var(--txt-2);
        border-radius:6px;padding:0 8px;height:26px;font-size:12px;font-weight:500;cursor:pointer;font-family:inherit;text-align:left;
        box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;transition:background var(--t) var(--ease);}
-  .hpill2:hover{background:var(--e2);}
+  .hpill2:hover{background:var(--ctl-hi);}
   .hpill2[hidden]{display:none;}
   .hpill2 .pdot{width:6px;height:6px;} /* the capsules took .pdot to 5px; this one is 6 */
   .hpill2.ok{color:var(--txt-2);background:var(--e1);} .hpill2.ok .pdot{background:var(--green);}
@@ -155,6 +160,8 @@
            background:rgba(38,38,40,.72);-webkit-backdrop-filter:blur(30px);backdrop-filter:blur(30px);
            box-shadow:0 1px 0 var(--hair);}
   .tb-tt{flex:1;min-width:0;}
+  .tb-nav{display:flex;align-items:center;gap:2px;flex:0 0 auto;}
+  .tb-nav[hidden]{display:none;}
   .tb-title{margin:0;font-size:13.5px;font-weight:600;letter-spacing:-.01em;line-height:1.25;color:rgba(255,255,255,.9);
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   /* The subtitle carries the numbers that used to sit in a separate line under the filters — a Mac window puts
@@ -167,7 +174,7 @@
   .toolbar .search-clear svg{width:12px;height:12px;}
   .toolbar .search-wrap .field{height:24px;min-height:24px;padding-top:0;padding-bottom:0;font-size:12.5px;border-radius:6px;
                                background:rgba(255,255,255,.06);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
-  .toolbar .search-wrap .field:focus{background:rgba(255,255,255,.09);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+  .toolbar .search-wrap .field:focus{background:rgba(255,255,255,.09);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
   .btn-primary{flex:0 0 auto;background:linear-gradient(180deg,#0f8cff,#0a7ae8);border:none;color:#fff;border-radius:6px;
                padding:0 9px;height:24px;min-height:24px;font-size:12.5px;font-weight:500;font-family:inherit;
                box-shadow:0 .5px 0 rgba(255,255,255,.25) inset,0 1px 2px rgba(0,0,0,.3);
@@ -221,11 +228,11 @@
   /* Fields hold still. The old one changed background on hover AND again on focus, and grew a shadow — three
      states for one text box. Now: one resting fill, and a focus ring in the accent. That ring is the only
      blue on the tab until you select something. */
-  .field{width:100%;background:var(--e1);border:none;color:var(--txt);border-radius:var(--r-sm);padding:var(--s2) var(--s3);
+  .field{width:100%;background:var(--ctl);border:none;color:var(--txt);border-radius:var(--r-sm);padding:var(--s2) var(--s3);
          min-height:32px;font-size:var(--f2);font-family:inherit;outline:none;
          transition:box-shadow var(--t) var(--ease);}
   .field::placeholder{color:var(--txt-3);}
-  .field:focus{background:var(--e1);box-shadow:0 0 0 3px var(--accent-soft);}
+  .field:focus{background:var(--ctl-hi);box-shadow:0 0 0 3px var(--accent-soft);}
   select.field,select.fselect{cursor:pointer;appearance:none;-webkit-appearance:none;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237f8894' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;}
@@ -245,7 +252,7 @@
   @media (max-width:820px){ .fcols{grid-template-columns:1fr;} }
   .fmain{min-width:0;}
   .fgroup{margin-bottom:14px;}
-  .fglbl{font-size:11px;font-weight:600;color:rgba(255,255,255,.38);padding:0 2px 6px;}
+  .fglbl{display:flex;align-items:baseline;gap:8px;font-size:11px;font-weight:600;color:rgba(255,255,255,.38);padding:0 2px 6px;}
   /* NOT overflow:hidden — the slot pop-up is absolutely positioned inside a row, and clipping it to the panel
      cut the menu off after the first group. The rows draw their separators with box-shadow and nothing else
      paints outside the radius, so there was never anything to clip. */
@@ -256,8 +263,8 @@
   .frow{display:grid;grid-template-columns:112px minmax(0,1fr);align-items:center;gap:12px;padding:8px 14px;min-height:38px;}
   .frow+.frow{box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .flbl{font-size:12.5px;color:rgba(255,255,255,.6);text-align:right;white-space:nowrap;}
-  .fctl{display:flex;align-items:center;gap:9px;min-width:0;}
-  .fnote{font-size:11.5px;color:rgba(255,255,255,.35);white-space:nowrap;}
+  .fctl{display:flex;align-items:center;gap:9px;min-width:0;overflow:hidden;}
+  .fnote{font-size:11.5px;color:rgba(255,255,255,.35);white-space:nowrap;flex:0 0 auto;}
   /* A value the operator cannot change here reads as TEXT, not as a disabled input — a greyed-out box invites
      a click that will never do anything. */
   .fro{font-size:12.5px;color:rgba(255,255,255,.88);white-space:nowrap;}
@@ -266,9 +273,9 @@
   /* A row that is all explanation spans both columns — a hint has no label to sit beside. */
   .fspan{grid-template-columns:1fr;padding-top:9px;padding-bottom:10px;}
   .fhint{margin:0;font-size:11.5px;color:rgba(255,255,255,.42);line-height:1.5;}
-  .fin{width:auto;flex:0 1 240px;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
-       background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
-  .fin:focus{background:rgba(255,255,255,.11);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+  .fin{width:auto;flex:1 1 120px;max-width:240px;min-width:0;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
+       background:var(--ctl);box-shadow:var(--ctl-ring);}
+  .fin:focus{background:rgba(255,255,255,.11);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
   .fdate{flex:0 0 auto;} /* the date picker is drawn dark by color-scheme on :root */
   /* The tick sits INSIDE the field, so validity reads as a property of the value rather than a separate widget. */
   .idwrap{position:relative;display:flex;flex:0 1 240px;min-width:0;}
@@ -302,9 +309,9 @@
      (choose one of N) from a plain push button. */
   .fctl .sdrop{flex:0 1 268px;min-width:0;}
   .fctl .sdrop-btn{height:24px;padding:0 3px 0 9px;border-radius:6px;font-size:12.5px;gap:8px;
-                   background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
-  .fctl .sdrop-btn:hover{background:rgba(255,255,255,.12);}
-  .fctl .sdrop.open .sdrop-btn{background:rgba(255,255,255,.12);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+                   background:var(--ctl);box-shadow:var(--ctl-ring);}
+  .fctl .sdrop-btn:hover{background:var(--ctl-hi);}
+  .fctl .sdrop.open .sdrop-btn{background:var(--ctl-hi);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
   .sdrop-chev-box{width:18px;height:18px;border-radius:4px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
                   background:linear-gradient(180deg,#0f8cff,#0a7ae8);box-shadow:0 .5px 0 rgba(255,255,255,.25) inset;}
   .sdrop-chev-box .sdrop-chev{width:10px;height:10px;color:#fff;}
@@ -325,10 +332,10 @@
   .nextbox{margin-top:var(--s3);background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.03)),var(--e1);border-radius:14px;padding:12px 14px;font-size:11.5px;color:var(--txt-2);line-height:1.55;box-shadow:var(--hi);}
   .nextbox b{color:var(--accent-2);display:block;margin-bottom:3px;font-size:12px;}
   .sdrop{position:relative;}
-  .sdrop-btn{width:100%;display:flex;align-items:center;gap:10px;background:var(--e2);border:none;color:var(--txt);
+  .sdrop-btn{width:100%;display:flex;align-items:center;gap:10px;background:var(--ctl);border:none;color:var(--txt);
     border-radius:var(--r-md);padding:9px 12px;font-size:13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);
     transition:background var(--t),box-shadow var(--t);text-align:left;}
-  .sdrop-btn:hover{background:var(--e3);}
+  .sdrop-btn:hover{background:var(--ctl-hi);}
   .sdrop.open .sdrop-btn{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
   .sdrop-cur{flex:1;min-width:0;display:flex;align-items:center;gap:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sdrop-cur span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -346,13 +353,13 @@
   .promo-r{display:flex;align-items:center;gap:12px;background:var(--e2);border-radius:10px;padding:8px 12px;margin-bottom:6px;font-size:12.5px;box-shadow:var(--hi);}
   .promo-d{color:var(--txt-3);min-width:96px;} .promo-n{flex:1;font-weight:700;} .promo-k{color:var(--txt-2);}
   .promo-x{background:none;border:none;color:var(--red,#e0574f);cursor:pointer;font-size:13px;font-weight:700;padding:3px 8px;border-radius:7px;transition:background var(--t);}
-  .promo-x:hover{background:var(--e3);} .promo-x:disabled{opacity:.45;cursor:default;}
+  .promo-x:hover{background:var(--ctl-hi);} .promo-x:disabled{opacity:.45;cursor:default;}
   .sdrop-ghead{display:flex;align-items:center;gap:8px;padding:6px 8px 5px;}
   .sg-rank{flex:1;min-width:0;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--txt-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sg-cnt{font-size:10.5px;color:var(--txt-3);font-weight:700;flex:0 0 auto;}
   .sdrop-opt{width:100%;display:flex;align-items:center;gap:9px;background:none;border:none;color:var(--txt);
     padding:8px 10px 8px 32px;border-radius:9px;cursor:pointer;font-size:13px;text-align:left;transition:background var(--t);}
-  .sdrop-opt:hover{background:var(--e3);}
+  .sdrop-opt:hover{background:var(--ctl-hi);}
   .sdrop-opt.sel{background:var(--accent-soft);}
   .so-call{flex:1;font-family:var(--mono);font-size:12.5px;}
   .so-rank{font-size:11px;color:var(--txt-3);white-space:nowrap;}
@@ -360,7 +367,9 @@
   /* ── The Add-member slot picker, to the reference: a pinned search, compact rows, a tick on the selected one
      and a running count at the foot. Scoped to #slotMenu so the Move/transfer and Signups pickers, which have
      not been reworked, keep the shape they already have. ── */
-  .slotpick{padding:0;}
+  /* Wider than its trigger: the trigger is narrow in the Signups column, and matching it squeezed the option
+     row until the callsign wrapped onto two lines. */
+  .slotpick{padding:0;left:0;right:auto;min-width:328px;max-width:420px;max-height:400px;}
   .slotpick .sdrop-search,.slotpick .sdrop-foot{position:sticky;background:var(--e2);z-index:1;}
   .slotpick .sdrop-search{top:0;display:flex;align-items:center;gap:7px;margin:0;padding:7px 9px;
     border-bottom:1px solid var(--hair);}
@@ -372,7 +381,11 @@
   .slotpick .sdrop-ghead{padding:7px 8px 4px;}
   .slotpick .sg-rank{font-weight:600;color:rgba(255,255,255,.5);}
   .slotpick .sg-cnt{font-weight:400;color:rgba(255,255,255,.3);}
-  .slotpick .sdrop-opt{height:26px;padding:0 10px;border-radius:6px;font-size:12.5px;gap:8px;}
+  .slotpick .sdrop-opt{height:26px;padding:0 10px;border-radius:6px;font-size:12.5px;gap:10px;}
+  /* The callsign is the identifier — it never wraps and never shrinks. The rank takes what is left and
+     ellipsises, because it is the repeated, guessable half of the pair. */
+  .slotpick .so-call{flex:0 0 auto;white-space:nowrap;}
+  .slotpick .so-rank{flex:1;min-width:0;text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .slotpick .so-check{width:11px;height:11px;flex:0 0 auto;opacity:0;color:#fff;}
   .slotpick .sdrop-opt.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;
     box-shadow:0 .5px 0 rgba(255,255,255,.22) inset;}
@@ -403,7 +416,8 @@
   .suq-row.on{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;
               box-shadow:0 .5px 0 rgba(255,255,255,.22) inset,0 1px 2px rgba(0,0,0,.28);}
   .suq-av{width:26px;height:26px;border-radius:50%;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
-          font-size:10px;font-weight:600;color:#fff;background:var(--e4);}
+          font-size:10px;font-weight:600;color:rgba(255,255,255,.92);background:var(--av,var(--e4));
+          box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
   .suq-row.on .suq-av{background:rgba(255,255,255,.22);}
   .suq-t{flex:1;min-width:0;}
   .suq-t b{display:block;font-size:12.5px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
@@ -440,12 +454,12 @@
   .linkbtn.su-flag:hover{background:rgba(255,159,10,.2);color:#ffc266;}
   .linkbtn.su-flag.on{background:linear-gradient(180deg,#ff9f0a,#e08a00);color:#1a1a1a;font-weight:500;box-shadow:0 .5px 0 rgba(255,255,255,.25) inset;}
   /* ── signups pane ── */
-  .ro{width:100%;background:var(--e2);color:var(--txt);border-radius:var(--r-md);padding:10px 13px;font-size:13px;box-shadow:var(--hi),var(--sh-1);min-height:39px;display:flex;align-items:center;word-break:break-word;}
+  .ro{width:100%;background:var(--ctl);color:var(--txt);border-radius:var(--r-md);padding:10px 13px;font-size:13px;box-shadow:var(--hi),var(--sh-1);min-height:39px;display:flex;align-items:center;word-break:break-word;}
   .ro.mono{font-family:var(--mono);font-size:12.5px;} .ro.empty{color:var(--txt-3);}
   .ro.blank{color:var(--txt-3);font-style:italic;font-size:12px;background:transparent;box-shadow:inset 0 0 0 1px var(--hair);} /* optional field the applicant left empty — same 39px rhythm as a filled one */
   .apps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:var(--s4);}
-  .appchip{display:inline-flex;align-items:center;gap:9px;background:var(--e2);border:none;color:var(--txt-2);border-radius:12px;padding:8px 13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t);}
-  .appchip:hover{background:var(--e3);color:var(--txt);transform:translateY(-1px);}
+  .appchip{display:inline-flex;align-items:center;gap:9px;background:var(--ctl);border:none;color:var(--txt-2);border-radius:12px;padding:8px 13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t);}
+  .appchip:hover{background:var(--ctl-hi);color:var(--txt);transform:translateY(-1px);}
   .appchip.on{color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 14px -6px var(--accent);}
   .appchip .ci{width:26px;height:26px;border-radius:8px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#c4dbff;background:linear-gradient(155deg,rgba(79,142,232,.34),rgba(79,142,232,.08));box-shadow:var(--hi);}
   .appchip .cn{font-size:12.5px;font-weight:700;white-space:nowrap;} .appchip .cs{font-size:9.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--amber-f);}
@@ -459,7 +473,7 @@
   .search-clear{position:absolute;right:7px;top:50%;transform:translateY(-50%);width:26px;height:26px;border:none;background:none;color:var(--txt-3);
                 border-radius:8px;cursor:pointer;display:none;align-items:center;justify-content:center;transition:color var(--t),background var(--t);}
   .search-clear svg{width:15px;height:15px;}
-  .search-clear:hover{color:var(--txt);background:var(--e3);}
+  .search-clear:hover{color:var(--txt);background:var(--ctl-hi);}
   .search-wrap.has-text .search-clear{display:flex;}
 
   /* Loading rows breathe instead of sweeping — a travelling highlight draws the eye to a placeholder, which is
@@ -488,13 +502,13 @@
   /* A native select sizes itself to its WIDEST option, so the rank filter was stretched by "Probationary
      Officer" while displaying "All ranks" — ~250px of box around ten characters. Capped: the closed control now
      fits what it is showing, and the open list is unaffected. */
-  .fselect{background-color:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.85);border-radius:6px;
+  .fselect{background-color:var(--ctl);border:none;color:rgba(255,255,255,.85);border-radius:6px;
            padding:0 24px 0 9px;height:22px;min-height:22px;max-width:168px;text-overflow:ellipsis;
-           box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 1px 1.5px rgba(0,0,0,.2);
+           box-shadow:var(--ctl-ring),0 1px 1.5px rgba(0,0,0,.2);
            font-size:12px;font-family:inherit;cursor:pointer;outline:none;transition:background var(--t) var(--ease);}
   select.fselect{background-position:right 8px center;}
-  .fselect:hover{background-color:rgba(255,255,255,.12);}
-  .fselect:focus{background-color:rgba(255,255,255,.12);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+  .fselect:hover{background-color:var(--ctl-hi);}
+  .fselect:focus{background-color:var(--ctl-hi);box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
   .rescount{font-size:11.5px;color:rgba(255,255,255,.4);margin-top:0;letter-spacing:0;}
   /* Apple's checkbox: a filled accent square with a white tick. Round, no glow, no inset ring. */
   .mcheck{appearance:none;-webkit-appearance:none;width:14px;height:14px;border:none;border-radius:3.5px;background:rgba(255,255,255,.09);cursor:pointer;flex:0 0 auto;
@@ -514,7 +528,7 @@
                 box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
   .bulkbar .seg:hover{background:rgba(255,255,255,.13);color:#fff;}
   .bulkbar .bclear{background:none;border:none;color:var(--accent);border-radius:var(--r-sm);padding:var(--s1) var(--s2);font-size:12.5px;font-weight:400;cursor:pointer;transition:color var(--t),background var(--t);}
-  .bulkbar .bclear:hover{color:var(--txt);background:var(--e3);}
+  .bulkbar .bclear:hover{color:var(--txt);background:var(--ctl-hi);}
   /* The leave form sits in a 288px sub-panel, so its controls take the same 24px metrics as everything else in
      the inspector. They were the last fields on the old sizing — a 32px select next to a 20px "New LOA" button
      read as two different toolkits stacked in one box. */
@@ -523,9 +537,9 @@
   .sform{margin-top:11px;margin-bottom:13px;}
   .srow{display:flex;flex-wrap:nowrap;gap:8px;margin-bottom:8px;}
   .sform .field{height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
-                background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
+                background:var(--ctl);box-shadow:var(--ctl-ring);}
   .sform .field:focus{background:rgba(255,255,255,.11);
-                box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+                box-shadow:var(--ctl-ring),0 0 0 3px var(--accent-soft);}
   .sform select.field{padding-right:24px;background-position:right 8px center;}
   .sf-mini{flex:1 1 0;min-width:0;}
   /* Submit takes the SAME primary treatment as + Add in the toolbar, at the same 24px — one primary button in
@@ -557,8 +571,8 @@
   .adm-ta{resize:vertical;min-height:52px;font-family:inherit;line-height:1.45;}
   .mvrow{display:flex;gap:var(--s2);margin-top:var(--s2);align-items:stretch;}
   .mvrow .mv-trigger{flex:1;min-width:0;width:auto;border:none;border-radius:6px;height:24px;padding:0 4px 0 9px;font-size:12.5px;
-                     background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
-  .mvrow .mv-trigger:hover{background:rgba(255,255,255,.12);}
+                     background:var(--ctl);box-shadow:var(--ctl-ring);}
+  .mvrow .mv-trigger:hover{background:var(--ctl-hi);}
   .mv-trigger .sdrop-chev{transition:transform var(--t) var(--ease);}
   .mv-trigger.open{background:var(--e4);border-color:transparent;box-shadow:var(--hi),0 0 0 3px var(--accent-soft),var(--sh-2);}
   .mv-trigger.open .sdrop-chev{transform:rotate(180deg);}
@@ -595,7 +609,7 @@
   .colrow .ch small{display:block;color:var(--txt-3);font-size:11px;margin-top:1px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
   .colrow .ch small .sv{color:var(--txt-2);}
   .colrow .cnt{flex:0 0 auto;font-family:var(--mono);font-size:10px;color:var(--txt-3);white-space:nowrap;}
-  .coltog{display:inline-flex;flex:0 0 auto;background:var(--e2);border:none;border-radius:999px;padding:2px;box-shadow:var(--hi);}
+  .coltog{display:inline-flex;flex:0 0 auto;background:var(--ctl);border:none;border-radius:999px;padding:2px;box-shadow:var(--hi);}
   .cseg{background:none;border:none;color:var(--txt-3);font-size:11px;font-weight:650;padding:4px 12px;border-radius:999px;cursor:pointer;transition:background var(--t),color var(--t);}
   .cseg:hover{color:var(--txt-2);}
   .cseg.on[data-k="MEMBER"]{background:var(--blue-t);color:var(--blue-f);box-shadow:0 0 10px -4px var(--blue);}
@@ -633,14 +647,14 @@
   /* per-divider style editor */
   .dedit{background:none;border:none;color:var(--txt-3);cursor:pointer;padding:5px;border-radius:8px;display:flex;align-items:center;transition:color var(--t),background var(--t);}
   .dedit svg{width:14px;height:14px;}
-  .dedit:hover{color:var(--txt);background:var(--e3);}
+  .dedit:hover{color:var(--txt);background:var(--ctl-hi);}
   .divgroup.custom .dedit{color:var(--rc-f,var(--accent-2));}
   .diveditor{background:var(--e2);border-radius:0 0 14px 14px;padding:14px 16px;margin-top:-6px;box-shadow:inset 0 1px 0 var(--hair);display:flex;flex-direction:column;gap:13px;}
   .diveditor[hidden]{display:none;} /* the author display:flex above beats the UA [hidden] rule — restore it so the Edit toggle works */
   .divgroup.open .diveditor{margin-top:0;border-radius:14px;margin-bottom:6px;}
   .de-fld{display:flex;align-items:flex-start;gap:13px;}
   .de-fld>label{flex:0 0 54px;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--txt-3);font-weight:800;padding-top:8px;}
-  .de-pill{flex:1;min-width:0;background:var(--e3);border:none;color:var(--txt);border-radius:9px;padding:8px 12px;font-size:12.5px;font-family:inherit;outline:none;box-shadow:var(--hi);}
+  .de-pill{flex:1;min-width:0;background:var(--ctl);border:none;color:var(--txt);border-radius:9px;padding:8px 12px;font-size:12.5px;font-family:inherit;outline:none;box-shadow:var(--hi);}
   .de-pill::placeholder{color:var(--txt-3);}
   .de-pill:focus{background:var(--e4);box-shadow:var(--hi),0 0 0 3px var(--accent-soft);}
   .de-tones{display:flex;flex-wrap:wrap;gap:8px;flex:1;padding-top:2px;}
@@ -657,7 +671,7 @@
   .de-save{background:linear-gradient(155deg,#5a97ec,#3d7cd9);color:#fff;box-shadow:var(--hi),var(--sh-1);}
   .de-save:hover{filter:brightness(1.07);}
   .de-reset{background:transparent;color:var(--txt-3);}
-  .de-reset:hover{color:var(--txt);background:var(--e3);}
+  .de-reset:hover{color:var(--txt);background:var(--ctl-hi);}
   .de-ic{width:32px;height:32px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:var(--rc-t,var(--e3));color:var(--rc-f,var(--txt-3));border:none;box-shadow:var(--hi);}
   .de-ic svg{width:16px;height:16px;}
   .de-tx b{display:block;color:var(--txt-2);font-size:12px;font-weight:650;}
@@ -667,9 +681,9 @@
   .snap-row{display:flex;align-items:center;gap:var(--s3);background:var(--glass),var(--e1);border:none;border-radius:14px;padding:10px 13px;font-size:12px;box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),box-shadow var(--t);}
   .snap-row:hover{transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
   .snap-row .si2{flex:1;} .snap-row .si2 b{font-weight:650;} .snap-row .si2 small{display:block;color:var(--txt-3);font-size:11px;}
-  .snap-restore{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;background:var(--e2);border:none;color:var(--txt-2);border-radius:10px;padding:7px 13px;font-size:12px;font-weight:650;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease),box-shadow var(--t);}
+  .snap-restore{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;background:var(--ctl);border:none;color:var(--txt-2);border-radius:10px;padding:7px 13px;font-size:12px;font-weight:650;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease),box-shadow var(--t);}
   .snap-restore svg{width:14px;height:14px;}
-  .snap-restore:hover{color:var(--accent-2);background:var(--e3);transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
+  .snap-restore:hover{color:var(--accent-2);background:var(--ctl-hi);transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
   .snap-restore:active{transform:scale(.97);}
   .snap-restore.armed{background:linear-gradient(155deg,var(--amber-t),transparent),var(--e2);color:var(--amber-f);box-shadow:var(--hi),0 0 14px -6px var(--amber);}
   .aud-feed{display:flex;flex-direction:column;}
@@ -850,7 +864,7 @@
   .seg:disabled{opacity:.5;cursor:default;}
   .linkbtn{display:inline-flex;align-items:center;gap:6px;background:rgba(255,255,255,.08);border:none;color:rgba(255,255,255,.88);
            border-radius:6px;padding:0 10px;height:24px;font-size:12.5px;font-weight:400;cursor:pointer;
-           box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 1px 1.5px rgba(0,0,0,.2);transition:background var(--t) var(--ease);}
+           box-shadow:var(--ctl-ring),0 1px 1.5px rgba(0,0,0,.2);transition:background var(--t) var(--ease);}
   .linkbtn svg{width:11px;height:11px;} .linkbtn:hover{color:#fff;background:rgba(255,255,255,.13);transform:none;}
   .lv-add{margin-left:auto;text-transform:none;height:20px;padding:0 8px;border-radius:5px;font-size:11.5px;font-weight:500;}
   .lv-add svg{width:10px;height:10px;}
@@ -891,7 +905,7 @@
   .pc-rank .sh{font-size:12.5px;color:rgba(255,255,255,.6);white-space:nowrap;flex:0 0 auto;}
   .pc-rank .stt{display:flex;align-items:center;gap:6px;font-size:12.5px;color:rgba(255,255,255,.6);white-space:nowrap;}
   .pc-rank .stt .pdot{width:7px;height:7px;}
-  .callchip{background:var(--e2);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);flex:0 0 auto;}
+  .callchip{background:var(--ctl);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);flex:0 0 auto;}
   .pc-stat{flex:0 0 auto;background:none;border-radius:0;padding:2px 0 0;box-shadow:none;display:block;text-align:right;min-width:0;}
   .ps-k{display:block;font-size:10px;font-weight:600;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px;}
   .ps-row{display:flex;align-items:baseline;gap:5px;justify-content:flex-end;}
@@ -920,7 +934,7 @@
   .tsec-h b{font-size:14px;font-weight:800;letter-spacing:-.01em;}
   .tsec-h small{color:var(--txt-3);font-size:11px;font-weight:500;}
   .tstat{display:flex;flex-wrap:wrap;gap:var(--s2);}
-  .hchip{display:inline-flex;align-items:center;gap:8px;background:var(--e1);border-radius:11px;padding:8px 12px;font-size:11.5px;font-weight:650;box-shadow:var(--hi),var(--sh-1);}
+  .hchip{display:inline-flex;align-items:center;gap:8px;background:var(--ctl);border-radius:11px;padding:8px 12px;font-size:11.5px;font-weight:650;box-shadow:var(--hi),var(--sh-1);}
   /* System tab: chips are direct grid children — two equal columns filling the full pane width */
   #healthBody .hchip{width:100%;}
   .hchip small{color:var(--amber-f);font-weight:600;}
@@ -933,8 +947,8 @@
   .tcard .tt{flex:1;min-width:0;}
   .tcard .tt b{display:block;font-size:13px;font-weight:700;}
   .tcard .tt small{display:block;color:var(--txt-3);font-size:11px;font-weight:450;margin-top:2px;line-height:1.4;}
-  .runbtn{flex:0 0 auto;position:relative;background:var(--e2);border:none;color:var(--txt);border-radius:10px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease);}
-  .runbtn:hover{background:var(--e3);color:var(--accent-2);transform:translateY(-1px);}
+  .runbtn{flex:0 0 auto;position:relative;background:var(--ctl);border:none;color:var(--txt);border-radius:10px;padding:8px 16px;font-size:12px;font-weight:700;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease);}
+  .runbtn:hover{background:var(--ctl-hi);color:var(--accent-2);transform:translateY(-1px);}
   .runbtn:active{transform:scale(.96);}
   .runbtn:disabled{opacity:.55;cursor:default;}
   .runbtn.busy{color:transparent;}
@@ -954,8 +968,8 @@
   .crow-v .dot{width:8px;height:8px;}
   .conn .hint{margin-top:var(--s2);}
   .whchips{display:flex;gap:8px;flex-wrap:wrap;margin-top:var(--s3);}
-  .whchip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:650;color:var(--txt-2);background:var(--e2);border-radius:999px;padding:6px 13px 6px 11px;cursor:pointer;box-shadow:var(--hi);user-select:none;transition:background var(--t),color var(--t);}
-  .whchip:hover{background:var(--e3);color:var(--txt);}
+  .whchip{display:inline-flex;align-items:center;gap:8px;font-size:12px;font-weight:650;color:var(--txt-2);background:var(--ctl);border-radius:999px;padding:6px 13px 6px 11px;cursor:pointer;box-shadow:var(--hi);user-select:none;transition:background var(--t),color var(--t);}
+  .whchip:hover{background:var(--ctl-hi);color:var(--txt);}
   .whchip:has(input:checked){color:#cfe1ff;background:linear-gradient(155deg,var(--accent-soft),rgba(79,142,232,.05)),var(--e2);box-shadow:var(--hi),0 0 12px -6px var(--accent);}
   .whchip input{accent-color:var(--accent);width:14px;height:14px;cursor:pointer;margin:0;}
   .toolbtn{display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;background:var(--glass),var(--e1);border:none;
@@ -1024,6 +1038,7 @@
         <button class="search-clear" id="searchClear" aria-label="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <button class="btn-primary" id="tbAdd">+ Add</button>
+      <span class="tb-nav" id="suNav" hidden><button class="icon-btn" id="suPrev" title="Previous applicant" aria-label="Previous applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="icon-btn" id="suNext" title="Next applicant" aria-label="Next applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></span>
     </div>
     <div class="filterbar" id="filterbar">
       <div class="fchips" id="statusChips">
@@ -2030,7 +2045,39 @@
      the operator's own string through untouched when it does not — reformatting what we cannot read loses info. */
   function suWhen(ts){ var d=suDate(ts); if(!d) return String(ts||''); 
     try{ return d.toLocaleDateString(undefined,{day:'numeric',month:'short'}); }catch(e){ return String(ts||''); } }
-  function suDate(ts){ var s=String(ts||'').trim(); if(!s) return null; var d=new Date(s); return isNaN(d.getTime())?null:d; }
+  /* A Sheets timestamp arrives as whatever the sheet DISPLAYS, and new Date() rejects the commonest of those:
+     "27/07/2026 16:02" is day-first in most locales and simply fails to parse — which is why the queue showed
+     a status with no age beside it. Native parse first, then a day-first / month-first fallback. */
+  function suDate(ts){
+    var t=String(ts||'').trim(); if(!t) return null;
+    // yyyy-mm-dd FIRST: new Date('2026-07-25') is parsed as UTC midnight and renders as the 24th in any western
+    // zone — the same trap cpParseYMD_ exists for on the server. Build it as a LOCAL date instead.
+    var iso=t.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if(iso) return new Date(Number(iso[1]), Number(iso[2])-1, Number(iso[3]));
+    var d=new Date(t); if(!isNaN(d.getTime())) return d;
+    var m=t.match(/^(\d{1,2})[\/.-](\d{1,2})[\/.-](\d{4})(?:[ ,]+(\d{1,2}):(\d{2}))?/);
+    if(m){
+      var a=Number(m[1]), b=Number(m[2]);
+      // >12 in the first slot can only be a day; otherwise assume DAY-first, the majority default.
+      var day=a, mon=b; if(a<=12 && b>12){ day=b; mon=a; }
+      d=new Date(Number(m[3]), mon-1, day, Number(m[4]||0), Number(m[5]||0));
+      if(!isNaN(d.getTime())) return d;
+    }
+    return null;
+  }
+  /* A muted, deterministic colour per applicant — same person, same colour every load, so the queue becomes
+     scannable by face rather than by reading every name. Desaturated on purpose: these sit beside status dots
+     that must stay the loudest thing in the row. */
+  var AVCOL=['#5b6b86','#6a5f80','#4f6f62','#7b6152','#4d6478','#6e6350','#5f5a7d','#6f555c','#556b5f','#7a6a4e'];
+  /* FNV-1a with an avalanche finish. A plain h*31 hash barely moves for inputs that differ only in their last
+     character — which is exactly what sequential signup IDs are — so consecutive applicants kept landing on the
+     same colour. This spreads them. */
+  function avColor(k){
+    var t=String(k||''),h=2166136261;
+    for(var i=0;i<t.length;i++){ h^=t.charCodeAt(i); h=Math.imul(h,16777619)>>>0; }
+    h^=h>>>13; h=Math.imul(h,2246822507)>>>0; h^=h>>>16;
+    return AVCOL[(h>>>0)%AVCOL.length];
+  }
   function suDays(ts){ var d=suDate(ts); return d?Math.max(0,Math.floor((Date.now()-d.getTime())/86400000)):null; }
   function suIsFlagged(a){ return a && norm2(a.status)===norm2(SU.flagged||'Flagged'); }
   function norm2(s){ return String(s||'').replace(/\s+/g,'').toUpperCase(); }
@@ -2044,17 +2091,17 @@
     out+=list.map(function(a){
       var age=suAgo(a.submitted), sub=[age,a.status].filter(Boolean).join(' · ');
       return '<button type="button" class="suq-row'+(String(a.row)===String(SU.cur)?' on':'')+'" data-suapp="'+a.row+'">'
-        +'<span class="suq-av">'+esc(mInitials(a.name))+'</span>'
+        +'<span class="suq-av" style="--av:'+avColor(a.discord||a.name)+'">'+esc(mInitials(a.name))+'</span>'
         +'<span class="suq-t"><b>'+esc(a.name||'(no name)')+'</b><span>'+esc(sub||'—')+'</span></span>'
         +(suIsFlagged(a)?'<span class="suq-dot" title="Flagged for review"></span>':'')+'</button>';
     }).join('');
     if(!list.length) out+='<div class="suq-done" style="height:auto;padding:14px 8px">Nothing waiting here.</div>';
     // Recently resolved — what was decided, so the queue does not look like it silently ate them.
-    var done=(SU.recent||[]).slice(0,6);
+    var done=(SU.recent||[]).slice(0,5);
     if(done.length){
-      out+='<div class="suq-head">Recently processed</div>'
+      out+='<div class="suq-head">Earlier</div>'
         +done.map(function(a){
-          return '<div class="suq-done"><span class="suq-av">'+esc(mInitials(a.name))+'</span>'
+          return '<div class="suq-done"><span class="suq-av" style="--av:'+avColor(a.discord||a.name)+'">'+esc(mInitials(a.name))+'</span>'
             +'<b>'+esc(a.name||'(no name)')+'</b><span>Seated</span></div>';
         }).join('');
     }
@@ -2076,7 +2123,7 @@
     var slotCard=s?('<div class="su-slot">'+rankAvatar(s.rank)
         +'<span class="su-slot-t"><b>'+esc(s.rank)+(s.shift?(' &middot; '+esc(s.shift)):'')+'</b>'
         +'<span>'+[ (s.unit?('Callsign '+s.unit):''), (Number(s.req)?(Number(s.req).toFixed(1)+' hrs required'):'') ].filter(Boolean).join(' &middot; ')+'</span></span></div>'):'';
-    return '<div class="su-hero"><span class="suq-av">'+esc(mInitials(a.name))+'</span>'
+    return '<div class="su-hero"><span class="suq-av" style="--av:'+avColor(a.discord||a.name)+'">'+esc(mInitials(a.name))+'</span>'
       +'<div class="su-hero-t"><div class="su-hero-n"><b>'+esc(a.name||'(no name)')+'</b>'
         +(suIsFlagged(a)?'<span class="pill p-SemiActive"><span class="pdot"></span>Flagged</span>':'<span class="pill p-none"><span class="pdot"></span>'+esc(a.status)+'</span>')+'</div>'
         +'<div class="su-hero-s">'+[ (a.submitted?('Applied '+esc(suWhen(a.submitted))):''), (d!=null?(d+' day'+(d===1?'':'s')+' in queue'):'') ].filter(Boolean).join(' &middot; ')+'</div></div></div>'
@@ -2209,6 +2256,8 @@
   $('suScope').addEventListener('click',function(e){ var b=e.target.closest('[data-suscope]'); if(!b) return;
     SU.scope=b.dataset.suscope; this.querySelectorAll('.fchip').forEach(function(x){ x.classList.toggle('active',x===b); }); renderSignups(); });
   $('suSkip').addEventListener('click',function(){ suStep(1); });
+  $('suPrev').addEventListener('click',function(){ suStep(-1); });
+  $('suNext').addEventListener('click',function(){ suStep(1); });
   $('suFlag').addEventListener('click',function(){
     var a=suApp(SU.cur); if(!a) return;
     var b=this; b.disabled=true;
@@ -2452,7 +2501,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('rediv').addEventListener('click',function(){ loadDividers(); });
   $('divBody').addEventListener('click',function(e){
