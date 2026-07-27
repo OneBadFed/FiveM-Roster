@@ -2172,7 +2172,28 @@ function publishStyleableTab_(name) {
   } catch (e) { return false; }
 }
 
-function publishMirrorTab_(src, dest) {
+/**
+ * Mirror ROW HEIGHTS from this tab onto the public copy for the block just published. Height is a SHEET property:
+ * no value write, no format paste and no row insert carries it, so a published row could sit at the wrong height
+ * even wearing the right skin. Apps Script has no bulk height API (getRowHeight is one call per row), so the cost
+ * is bounded by scope: `deep` (an explicit menu/setup publish) re-syncs the whole block, while the frequent
+ * background catch-ups only check the last few rows — which is exactly where a new submission lands.
+ * Only rows whose height actually differs are written.
+ */
+function publishMirrorHeights_(src, dest, srcStart, destStart, n, deep) {
+  try {
+    if (!(n > 0) || srcStart < 1 || destStart < 1) return;
+    const from = deep ? 0 : Math.max(0, n - 5); // shallow: just the tail, where published rows are added
+    for (let i = from; i < n; i++) {
+      const sr = srcStart + i, dr = destStart + i;
+      if (sr > src.getMaxRows() || dr > dest.getMaxRows()) break;
+      const h = src.getRowHeight(sr);
+      if (dest.getRowHeight(dr) !== h) dest.setRowHeight(dr, h);
+    }
+  } catch (e) { logWarn_('publishMirrorHeights_', 'row heights skipped for ' + dest.getName() + ': ' + ((e && e.message) ? e.message : e)); }
+}
+
+function publishMirrorTab_(src, dest, deep) {
   const sh = publishHeaderRow_(src), dh = publishHeaderRow_(dest);
   const sRows = src.getLastRow(), sCols = src.getLastColumn();
   if (sRows < 1 || sCols < 1) return 0;
@@ -2218,6 +2239,9 @@ function publishMirrorTab_(src, dest) {
     if (dh > 0 && publishStyleableTab_(dest.getName()) && typeof styleTailRows_ === 'function') {
       styleTailRows_(dest, dh + 1, sRows, Math.max(0, dest.getMaxRows() - 1 - sRows), sCols);
     }
+    // Heights last, so they win over anything the styling pass normalised to the PUBLIC tab's own rows: the
+    // internal is the source of truth for how tall a row is. Data rows only — the banner keeps its own sizing.
+    if (sh > 0 && dh > 0) publishMirrorHeights_(src, dest, sh + 1, dh + 1, sRows - sh, deep);
     return sRows;
   }
 
@@ -2261,6 +2285,7 @@ function publishMirrorTab_(src, dest) {
   if (publishStyleableTab_(dest.getName()) && typeof styleTailRows_ === 'function') { // see the same-width path
     styleTailRows_(dest, destStart, need, Math.max(0, dest.getMaxRows() - 1 - need), Math.max(1, dest.getLastColumn()));
   }
+  publishMirrorHeights_(src, dest, srcStart, destStart, n, deep); // the internal decides how tall a row is
   return n;
 }
 
@@ -2319,7 +2344,7 @@ function publishPublicRoster_(onlyTab, opts) {
       const sg = src.getMaxColumns(), dg = dest.getMaxColumns();
       const mode = (sg === dg) ? 'FULL' : 'match';
       try {
-        const n = publishMirrorTab_(src, dest);
+        const n = publishMirrorTab_(src, dest, !yieldOn); // explicit publish → re-sync every row height; background → tail only
         out.tabs.push(name); out.rows += n;
         out.detail.push(`${name}: ${mode} · ${n} row(s) · grid ${sg}/${dg} · src rows ${src.getLastRow()}`);
       } catch (e) {

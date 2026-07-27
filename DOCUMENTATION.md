@@ -401,6 +401,12 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
   buffer, like the roster's validation rows or a dashboard's canvas, keeps that room publicly), only when
   everything from the target row down is empty (one `getLastRow` check, no block read), and never removes the
   final row.
+- **Row heights are mirrored** (`publishMirrorHeights_`): height is a sheet property that no value write, format
+  paste or row insert carries, so a published row could sit at the wrong height with the right skin. This
+  workbook is the source of truth. Apps Script has no bulk height API, so cost is bounded by scope: an explicit
+  publish (menu / setup) re-syncs every row of the block, while the frequent background catch-ups check only the
+  last few rows — exactly where a new submission lands. Data rows only; the banner keeps its own sizing, and only
+  rows that actually differ are written.
 - **Published rows are styled** (`publishStyleableTab_` → `styleTailRows_`): a row landing where the public tab
   was never styled came out raw. The publish now propagates the **public tab's own** look onto it, exactly as the
   internal side does. Restricted to the banded data tabs (roster · LOA Tracker · Patrol Log), where every row is
