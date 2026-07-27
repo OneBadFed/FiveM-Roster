@@ -1179,10 +1179,15 @@ function buildActivityPanel_() {
         const ld = log.getRange(startL, 1, nL, PC.width).getDisplayValues();
         for (let i = 0; i < nL; i++) {
           const lid = String(ld[i][PC.discord - 1] || '').trim();
+          // A row the sync couldn't resolve lands with a BLANK ID + NAME breadcrumb and is Flagged "unknown
+          // member" — key those by name ('N:' prefix; real IDs are digits, so the spaces never collide) so the
+          // panel still shows their Flagged status + reason instead of "Not on log".
+          const lnm = PC.name ? String(ld[i][PC.name - 1] || '').trim() : '';
           const lsd = combineDateTime_(lv[i][PC.startDate - 1], lv[i][PC.startTime - 1]);
           const led = combineDateTime_(lv[i][PC.endDate - 1], lv[i][PC.endTime - 1]);
-          if (!lid || !lsd || !led) continue;
-          (byKey[lid + '|' + lsd.getTime() + '|' + led.getTime()] = byKey[lid + '|' + lsd.getTime() + '|' + led.getTime()] || []).push({
+          if ((!lid && !lnm) || !lsd || !led) continue;
+          const k = (lid || ('N:' + norm_(lnm))) + '|' + lsd.getTime() + '|' + led.getTime();
+          (byKey[k] = byKey[k] || []).push({
             status: String(ld[i][PC.status - 1] || '').trim() || CONFIG.patrol.pendingStatus,
             notes: PC.notes ? String(ld[i][PC.notes - 1] || '').trim() : '',
           });
@@ -1252,7 +1257,12 @@ function buildActivityPanel_() {
       const marker = String(cell(markCol) == null ? '' : cell(markCol)).trim();
       let notes = String(F.narrative ? cell(F.narrative) : '').trim();
       let status;
-      const q = (id && sd && ed) ? byKey[id + '|' + sd.getTime() + '|' + ed.getTime()] : null;
+      let q = null;
+      if (sd && ed) {
+        const tk = '|' + sd.getTime() + '|' + ed.getTime();
+        if (id) q = byKey[id + tk];
+        if ((!q || !q.length) && nm) q = byKey['N:' + norm_(nm) + tk]; // blank/unresolvable-ID rows match the log's NAME breadcrumb
+      }
       const hit = (q && q.length) ? q.shift() : null;
       if (hit) { status = hit.status; if (hit.notes) notes = hit.notes; }
       else if (String(bgs[i][0] || '').toLowerCase() === errBg) status = 'Error — fix the red form row';

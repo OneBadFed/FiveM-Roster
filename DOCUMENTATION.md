@@ -239,7 +239,9 @@ UNIQUE ID · RANK · CALLSIGN · START · END · HOURS · STATUS · NOTES — un
 search and sort by any column (member, dates, patrol length, status…). Identity resolves exactly like the sync
 (valid ID → the roster's current rank/callsign; invalid → the corroborated name+callsign failsafe); STATUS and
 NOTES join **live from the Patrol Log** by Unique ID + exact start/end datetimes (the sync backfill's own match
-key, duplicate identical logs each consume one). Unmatched rows show Pending (not yet synced), "Not on log"
+key, duplicate identical logs each consume one; blank-ID log rows — the sync's unresolvable-member landings —
+match by their NAME breadcrumb + times, so a Flagged "unknown member" row still shows its status and reason).
+Unmatched rows show Pending (not yet synced), "Not on log"
 (transferred but since removed), or an error hint for red form rows; DURATION-mode forms list the submitted hours
 with marker-derived status (no start/end to join on). Default order: newest submitted first — the filter re-sorts
 any way. The tab is a **VIEW**: rebuilt immediately on every patrol sync, within a minute of Patrol Log edits and
