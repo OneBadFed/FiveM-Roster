@@ -121,6 +121,16 @@ sandbox tabs are exempt. New rows also get the last entry's **row height** set e
 property that neither an insert nor a format paste carries, so without it a correctly-skinned row still sat
 short.
 
+`healUnstyledRows_` repairs rows that already hold data but were never dressed. Background is not a reliable
+tell — a row inserted below the data inherits the fill of the row above, so it can look right while missing its
+STATUS dropdown, borders, font size and number formats (reported on the LOA Tracker: a new leave landed with its
+status as flat text and no chip). The **missing dropdown is the signal**: every real data row on these tabs has
+one. Repair copies a good row's `PASTE_FORMAT` + `PASTE_DATA_VALIDATION` across — the only way chip colours move
+at all — choosing a **same-parity** source so alternating banding survives, and setting row height explicitly
+(no paste carries it; these tabs are fixed-height with long text clipping, so a fresh row left on auto towers
+over its neighbours). With no dropdown anywhere the operator never made one, and the engine invents nothing.
+It runs for all three tabs from `tidyTailRows_`, which now takes the tab's STATUS column.
+
 `styleTailRows_` then makes the tail rows — the ones the next submission lands in — **look like the operator's
 data rows**, and heals any row already holding data that still wears the blank/canvas skin (these tabs' empty
 region was never styled, so the first submission to land there after the blanks were trimmed came out unbanded).

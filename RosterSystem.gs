@@ -2397,6 +2397,47 @@ function styleTailRows_(sheet, dataStart, lastData, keep, width) {
 }
 
 /**
+ * Repair data rows that never got the tab's row treatment.
+ *
+ * Background is NOT a reliable tell. A row inserted below the data inherits the fill of the row above it, so it
+ * can look perfectly dressed while still missing the STATUS dropdown and the row's number formats — reported on
+ * the LOA Tracker, where a new leave landed with its status as flat text and no chip while the rows above it had
+ * proper dropdowns. `styleTailRows_` compares backgrounds and correctly concluded there was nothing to do.
+ *
+ * The DROPDOWN is the reliable signal: every real data row on these tabs carries one, so a row without it was
+ * never dressed, whatever colour it happens to be. Repair copies a good row's FORMAT + DATA VALIDATION across —
+ * borders, fills, font size and number formats ride on the format paste, and a native copy is the only way the
+ * dropdown's chip colours survive at all (Apps Script can neither read nor write them). The source row is chosen
+ * with MATCHING PARITY so an alternating band stays alternating.
+ *
+ * ROW HEIGHT is copied too, and has to be set explicitly because it is a sheet property no paste carries. These
+ * tabs are laid out at a FIXED height with long text clipping (a wrapped REASON on a dressed row is cut off, not
+ * expanded), so a fresh row left on auto grows to fit its text and towers over the rows above it.
+ * @return {number} rows repaired.
+ */
+function healUnstyledRows_(sheet, dataStart, lastData, statusCol, width) {
+  try {
+    if (!statusCol || lastData < dataStart) return 0;
+    const n = lastData - dataStart + 1;
+    if (n < 2) return 0;                                    // need at least one good row to copy from
+    const dvs = sheet.getRange(dataStart, statusCol, n, 1).getDataValidations();
+    const good = [], broken = [];
+    for (let i = 0; i < n; i++) { (dvs[i][0] ? good : broken).push(dataStart + i); }
+    if (!good.length || !broken.length) return 0;           // no dropdown anywhere = the operator never made one
+    const pick = (r) => { for (let i = 0; i < good.length; i++) { if ((good[i] % 2) === (r % 2)) return good[i]; } return good[0]; };
+    broken.forEach((r) => {
+      const tpl = pick(r);
+      const src = sheet.getRange(tpl, 1, 1, width), dst = sheet.getRange(r, 1, 1, width);
+      src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);        // borders, fill, font, number formats
+      src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false); // the dropdown + its chip colours
+      try { const h = sheet.getRowHeight(tpl); if (sheet.getRowHeight(r) !== h) sheet.setRowHeight(r, h); } catch (e2) { /* height is best-effort */ }
+    });
+    logInfo_('healUnstyledRows_', `${sheet.getName()}: dressed ${broken.length} row(s) that had no STATUS dropdown (row ${broken[0]}${broken.length > 1 ? '…' : ''}).`);
+    return broken.length;
+  } catch (e) { logWarn_('healUnstyledRows_', 'row repair skipped: ' + ((e && e.message) ? e.message : e)); return 0; }
+}
+
+/**
  * Make row `needRow` writable WITHOUT consuming the sheet's final row — the operator's closing bar. With no spare
  * rows kept (the default), an arriving submission would otherwise land straight on that bar; this grows the sheet
  * INSIDE the band instead, so the new row inherits the styled row above it and the bar stays last. Only acts when
@@ -2424,7 +2465,7 @@ function ensureRoomAboveCap_(sheet, needRow) {
  * sheet's final row are never touched; 🧪 sandbox tabs are exempt (DevQA fixtures address fixed rows).
  * @param {Sheet} sheet  @param {number} dataStart first data row (banner/header rows above are off-limits)
  */
-function tidyTailRows_(sheet, dataStart) {
+function tidyTailRows_(sheet, dataStart, statusCol) {
   try {
     const keep = Number(CONFIG.limits.blankTailRows || 0);
     if (keep < 0 || !sheet || String(sheet.getName()).indexOf('🧪') === 0) return; // negative = feature off
@@ -2464,8 +2505,11 @@ function tidyTailRows_(sheet, dataStart) {
     } else if (room > keep) {
       sheet.deleteRows(lastData + keep + 1, room - keep); // strictly between the data and the closing row
     }
-    // The tail rows are what the NEXT submission lands in — give them (and any row already sitting on the old
-    // unstyled canvas) the operator's own data-row look, copied down natively.
+    // 1) Rows that are already holding data but were never dressed — caught by their missing STATUS dropdown,
+    //    which is the only signal that survives a row inheriting the right background from an insert.
+    healUnstyledRows_(sheet, dataStart, lastData, statusCol, width);
+    // 2) The tail rows are what the NEXT submission lands in — give them (and any row still sitting on the old
+    //    unstyled canvas) the operator's own data-row look, copied down natively.
     styleTailRows_(sheet, dataStart, lastData, keep, width);
   } catch (e) { logWarn_('tidyTailRows_', 'auto-rows skipped: ' + ((e && e.message) ? e.message : e)); }
 }
@@ -2552,7 +2596,7 @@ function sortTracker_(prepend, trackerSheet) {
       if (RC.timeLeft) tracker.getRange(start, RC.timeLeft, sorted.length, 1).setFormulas(lftF);
       if (RC.returnDate) tracker.getRange(start, RC.returnDate, sorted.length, 1).setFormulas(retF).setNumberFormat('d mmm. yyyy');
     }
-    tidyTailRows_(tracker, start); // auto-rows: re-pad the blank tail submissions consumed / trim surplus blanks
+    tidyTailRows_(tracker, start, RC.status); // auto-rows: re-pad the blank tail submissions consumed / trim surplus blanks
   } catch (e) { logWarn_('sortTracker_', 'tracker sort failed: ' + ((e && e.message) ? e.message : e)); }
 }
 
@@ -3345,7 +3389,7 @@ function sortPatrolLog_(patrolSheet) {
     if (PC.endDate) sheet.getRange(start, PC.endDate, sorted.length, 1).setNumberFormat(PATROL_DATE_FMT_);
     if (PC.startTime) sheet.getRange(start, PC.startTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
     if (PC.endTime) sheet.getRange(start, PC.endTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
-    tidyTailRows_(sheet, start); // auto-rows: re-pad the blank tail submissions consumed / trim surplus blanks
+    tidyTailRows_(sheet, start, PC.status); // auto-rows: re-pad the blank tail submissions consumed / trim surplus blanks
   } catch (e) { logWarn_('sortPatrolLog_', 'patrol sort failed: ' + ((e && e.message) ? e.message : e)); }
 }
 
