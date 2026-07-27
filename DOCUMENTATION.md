@@ -76,8 +76,8 @@ per-rank overrides, fixed-point transition rules)* · RANKS *(table)* · LEAVE �
 NOTIFICATIONS (opt-in event embeds) · EMBEDS *(table — per-event embed overrides from the Settings builder)* ·
 PATROL (mode, max hours, statuses, form column keywords, `FUTURE_GRACE_HOURS` — §5) ·
 PUBLISH (`NEVER_PUBLISH`, `KEEP_RANGES`, `FORCE_RANGES`) · FORMATS ·
-SCHEDULE (incl. `AUTO_RESET` — the master switch for the scheduled activity reset) · LOGGING · LIMITS · THEME ·
-DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
+SCHEDULE (incl. `AUTO_RESET` — the master switch for the scheduled activity reset — and `PERIOD_LABEL_FORMAT`,
+§3a) · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
 
 ---
 
@@ -160,7 +160,7 @@ first thing — before the roster scan and the confirm dialog, giving an in-flig
 to yield — and **clears it once the move and its derived rebuild settle**, so the settled result reaches the
 public copy via the ~8s catch-up instead of waiting out the stamp + sweep. The derived rebuild runs lock-free
 after the transfer's lock releases (transfers are serialized by their confirm dialog, so it can't stampede).
-A move-up records a promotion (§3a).
+A move-up records a promotion (§3b).
 
 **Dashboard & #tags.** `refreshDashboard_` computes stats once and writes plain values into label-matched KPI
 boxes and `#members`-style tags. A Document Property (`RE_DASH_TABS`) remembers which tabs render dashboard
@@ -186,7 +186,18 @@ ACTIVITY dropdown and `[ROSTER_LAYOUT].LAST_ACTIVITY_STYLE` colouring. Add a **L
 each capture also writes the date per member (the engine fills it only when the operator adds it — layout
 ownership as usual).
 
-**§3a · Promotions feed.** `promoRecord_` stores recent promotions (Document Property `RE_PROMOS`);
+**§3a · Period columns & their labels.** `shiftArchiveColumns_` rolls every "… HOURS" column (all but the live
+HOURS) one to the LEFT on each 📸 Capture & Reset — data *and* header — the oldest dropping off the visible set
+and the rightmost receiving the hours just closed under `periodLabel_()`. **How many periods stay visible is
+simply how many such columns the operator laid out.** `periodLabel_()` picks the date by cadence — MONTHLY names
+the month that ended (dates in the first 7 days label the previous month), WEEKLY/BIWEEKLY name the
+period-ending date — and formats it with `[SCHEDULE].PERIOD_LABEL_FORMAT`, a Java date pattern with quoted
+literals (`'WEEK OF' d MMM`). Blank keeps the built-in shapes (`JUL HOURS` / `27 JUL HOURS`). The word **HOURS
+is appended when a custom pattern omits it** — that word is how the roll finds these columns, so a label without
+it would silently drop the column out of the rolling set on the next capture. An invalid pattern WARNs and falls
+back rather than blocking the capture. Renames propagate to the public copy via `publishSyncPeriodHeaders_` (§9).
+
+**§3b · Promotions feed.** `promoRecord_` stores recent promotions (Document Property `RE_PROMOS`);
 `renderPromotions_` fills every "RECENT PROMOTIONS" table. The table-bearing tabs are remembered in
 `RE_PROMO_TABS` (same convention as the dashboard memo) so the per-transfer render doesn't full-scan every tab;
 🔄 Refresh & Update All rediscovers. Entries can be removed from Control Panel ▸ Tools ▸ Promotions feed
@@ -347,7 +358,7 @@ members, `signupResolveRow_` for signups).
 **Tabs:** Members (search/filter/sort, bulk status — one batched read + one RangeList write per selection,
 expandable profile cards with move/transfer, leave scheduling, private-details link, discipline history) ·
 Add member (rank-grouped slot dropdown + live preview) · **Signups** (§6) · Dividers (per-section styling) ·
-Tools (one-click actions, webhook setup, the Promotions-feed manager — §3a) · Columns (SLOT/MEMBER toggles) ·
+Tools (one-click actions, webhook setup, the Promotions-feed manager — §3b) · Columns (SLOT/MEMBER toggles) ·
 System (health checks, snapshots, audit timeline).
 
 **Rank icons & colours:** uploaded/picked in Settings, stored in Document Properties (icons chunked `REICON:`,

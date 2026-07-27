@@ -618,7 +618,7 @@
     'THEME.TEXT':'BODY TEXT','THEME.TEXT_STRONG':'HEADING TEXT','THEME.SUBHEAD':'TABLE HEADER FILL','THEME.SUBHEAD_TEXT':'TABLE HEADER TEXT',
     'THEME.PASS':'SUCCESS','THEME.FAIL':'ERROR','THEME.INFO':'INFO','THEME.PROCESSING':'PROCESSING',
     'DASHBOARD.ENABLE':'LIVE DASHBOARD',
-    'SCHEDULE.AUTO_RESET':'AUTO-RESET ACTIVITY','SCHEDULE.RESET_CADENCE':'RESET FREQUENCY','SCHEDULE.WEEKLY_HOURS_RESET':'RESET DAY','SCHEDULE.WEEKLY_RESET_HOUR':'RESET TIME','SCHEDULE.RESET_DOM':'DAY OF MONTH',
+    'SCHEDULE.AUTO_RESET':'AUTO-RESET ACTIVITY','SCHEDULE.RESET_CADENCE':'RESET FREQUENCY','SCHEDULE.WEEKLY_HOURS_RESET':'RESET DAY','SCHEDULE.WEEKLY_RESET_HOUR':'RESET TIME','SCHEDULE.RESET_DOM':'DAY OF MONTH','SCHEDULE.PERIOD_LABEL_FORMAT':'PERIOD COLUMN LABEL',
     'SCHEDULE.NIGHTLY_HOUR':'NIGHTLY LEAVE CHECK','LOGGING.LOG_LEVEL':'LOG DETAIL','LOGGING.LOG_MAX_ROWS':'LOG SIZE (ROWS)','LOGGING.PERF_TIMING':'TIMING LOG',
     'FORMATS.DATE_DISPLAY':'DATE FORMAT','FORMATS.TIMESTAMP_DISPLAY':'DATE + TIME FORMAT',
     'LIMITS.SNAPSHOT_KEEP':'SNAPSHOTS KEPT','LIMITS.BLANK_TAIL_ROWS':'AUTO-ROWS · SPARE ROWS'};
@@ -678,6 +678,7 @@
     'SCHEDULE.WEEKLY_HOURS_RESET':'Which day the reset runs — history is saved first. OFF disables the reset.',
     'SCHEDULE.WEEKLY_RESET_HOUR':'What time the reset fires.',
     'SCHEDULE.RESET_DOM':'Day of the month the reset runs (monthly frequency).',
+    'SCHEDULE.PERIOD_LABEL_FORMAT':'Header put on the period column each capture closes. Blank = automatic from your frequency (monthly "JUL HOURS", weekly/bi-weekly "27 JUL HOURS"). Date pattern: d, MMM, MMMM, yyyy — quote words like \'WEEK OF\' d MMM. "HOURS" is always appended.',
     'SCHEDULE.NIGHTLY_HOUR':'When the daily check runs — starts due leaves and ends finished ones.',
     'LOGGING.LOG_LEVEL':'How much the engine writes to its SYS Log.',
     'LOGGING.LOG_MAX_ROWS':'Oldest log rows are trimmed past this.',
@@ -726,7 +727,7 @@
       cards:[{t:'Live dashboard', keys:['DASHBOARD.ENABLE']}],
       tablesMulti:['SECTION_TAGS','DASHBOARD_GROUPS']},
     {id:'automation', a:'var(--amber)', title:'Automation & logging', desc:'When the hours reset and the nightly leave check run, and what the engine writes to its diagnostics log.',
-      cards:[{t:'Hours reset', keys:['SCHEDULE.AUTO_RESET','SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR']},
+      cards:[{t:'Hours reset', keys:['SCHEDULE.AUTO_RESET','SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR','SCHEDULE.PERIOD_LABEL_FORMAT']},
              {t:'Nightly leave check', keys:['SCHEDULE.NIGHTLY_HOUR']},
              {t:'Logging', keys:['LOGGING.LOG_LEVEL','LOGGING.LOG_MAX_ROWS','LOGGING.PERF_TIMING']},
              {t:'Formats', keys:['FORMATS.DATE_DISPLAY','FORMATS.TIMESTAMP_DISPLAY']}]},
@@ -1206,12 +1207,20 @@
       .replace(/\u0001/g,ML[mo]).replace(/\u0002/g,MS[mo]);
   }
   function refreshFmtExamples(){
-    [['FORMATS.DATE_DISPLAY'],['FORMATS.TIMESTAMP_DISPLAY']].forEach(function(p){
+    [['FORMATS.DATE_DISPLAY'],['FORMATS.TIMESTAMP_DISPLAY'],['SCHEDULE.PERIOD_LABEL_FORMAT']].forEach(function(p){
       var row=null; document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(!row&&el.dataset.row===p[0]) row=el; });
       if(!row) return;
       var ex=row.querySelector('.fmtex');
       if(!ex){ ex=document.createElement('div'); ex.className='fmtex'; row.appendChild(ex); }
-      var m=KV[p[0]]; ex.textContent='Today → '+fmtExample(m&&m.value);
+      var m=KV[p[0]];
+      if(p[0]==='SCHEDULE.PERIOD_LABEL_FORMAT'){
+        // Mirror periodLabel_: blank falls back to the cadence's own shape, and HOURS is always appended.
+        var cad=String((KV['SCHEDULE.RESET_CADENCE']&&KV['SCHEDULE.RESET_CADENCE'].value)||'MONTHLY').toUpperCase();
+        var pat=String((m&&m.value)||'').trim()||(cad==='MONTHLY'?'MMM':'d MMM');
+        var lbl=fmtExample(pat).toUpperCase().trim();
+        if(!/HOURS/.test(lbl)) lbl+=' HOURS';
+        ex.textContent='This column would be headed → '+lbl;
+      } else ex.textContent='Today → '+fmtExample(m&&m.value);
     });
   }
   function updateBar(){

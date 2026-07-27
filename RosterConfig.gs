@@ -430,6 +430,7 @@ const BLOCK_SPECS_ = Object.freeze({
     WEEKLY_HOURS_RESET: { t: 'enum', d: 'SUN', req: true, enum: ['OFF', 'SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], help: 'Weekday for WEEKLY/BIWEEKLY reset (captures history BEFORE zeroing — resolved G1). OFF disables the reset regardless of cadence.' },
     WEEKLY_RESET_HOUR: { t: 'int', d: 23, req: true, min: 0, max: 23, help: 'Hour of day for the reset trigger.' },
     RESET_DOM: { t: 'int', d: 1, req: true, min: 1, max: 28, help: 'Day of month the reset runs under MONTHLY cadence (1–28, v1.0).' },
+    PERIOD_LABEL_FORMAT: { t: 'string', d: '', req: false, help: 'Header written on the period column each 📸 Capture & Reset closes — a Java date pattern (d=day, MMM=Jul, MMMM=July, yyyy=2026; quote literal words like \'WEEK OF\' d MMM). BLANK = automatic from your reset frequency: MONTHLY gives "JUL HOURS", WEEKLY/BIWEEKLY give the period-ending date, "27 JUL HOURS". The word HOURS is always appended if your pattern omits it — the engine finds these columns by that word, and a header without it would drop out of the rolling set.' },
   } },
   LOGGING: { type: 'kv', keys: {
     LOG_LEVEL: { t: 'enum', d: 'INFO', req: true, enum: ['ERROR', 'WARN', 'INFO', 'DEBUG'], help: 'Minimum severity written to the SYS Log.' },

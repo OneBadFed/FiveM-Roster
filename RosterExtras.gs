@@ -223,15 +223,30 @@ function captureHoursSnapshot_(weekLabel) {
  */
 function periodLabel_() {
   const tz = ssTz_();
-  let cad = 'MONTHLY';
-  try { cad = String(cfg_().kv.SCHEDULE.RESET_CADENCE || 'MONTHLY').toUpperCase(); } catch (e) { /* config broken → monthly */ }
+  let cad = 'MONTHLY', fmt = '';
+  try {
+    const sc = cfg_().kv.SCHEDULE;
+    cad = String(sc.RESET_CADENCE || 'MONTHLY').toUpperCase();
+    fmt = String(sc.PERIOD_LABEL_FORMAT || '').trim();   // operator override; blank = the cadence's own shape
+  } catch (e) { /* config broken → monthly */ }
+  // WHICH date the period is named after is the cadence's call; HOW it reads is the operator's.
   const now = todayInSheetTz_();
+  let when = now, auto = 'd MMM';                        // weekly / bi-weekly → the period-ENDING date
   if (cad === 'MONTHLY') {
     const d = new Date(now);
-    if (d.getDate() <= 7) d.setDate(0); // just after a month boundary → label the month that ended
-    return Utilities.formatDate(d, tz, 'MMM').toUpperCase() + ' HOURS';
+    if (d.getDate() <= 7) d.setDate(0);                  // just after a month boundary → label the month that ended
+    when = d; auto = 'MMM';
   }
-  return Utilities.formatDate(now, tz, 'd MMM').toUpperCase() + ' HOURS'; // weekly / bi-weekly → the period-ending date
+  let text;
+  try { text = Utilities.formatDate(when, tz, fmt || auto); }
+  catch (e) { // a bad pattern must never block a capture — fall back and say so
+    logWarn_('periodLabel_', `[SCHEDULE].PERIOD_LABEL_FORMAT "${fmt}" is not a valid date pattern — using the automatic ${cad} label instead.`);
+    text = Utilities.formatDate(when, tz, auto);
+  }
+  text = String(text).toUpperCase().trim();
+  // shiftArchiveColumns_ finds the period columns by the word HOURS in their header, so a custom label that omits
+  // it would drop that column out of the rolling set on the NEXT capture. Append it rather than let that happen.
+  return /HOURS/.test(text) ? text : (text + ' HOURS');
 }
 
 /**
