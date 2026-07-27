@@ -12,5 +12,7 @@ docs/**
 .gitignore
 .claspignore
 .clasp.json
-# Local Node tooling (config harness etc.) — never an Apps Script file
+# Local Node tooling (config harness, panel preview) — never an Apps Script file
 tools/**
+# Claude Code project config + skills (settings.local.json is JSON, so be explicit)
+.claude/**

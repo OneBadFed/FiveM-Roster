@@ -240,7 +240,10 @@ function cpTestWebhookChannels(channels) {
  * (validate-before-write guards each save). [COLUMNS] is intentionally excluded — it has a richer dedicated editor
  * on the Control Panel's Columns tab (sample values, fill counts, header issues); a second editor here would conflict.
  */
-const CP_SETTINGS_KV_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'LEAVE', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME', 'DASHBOARD']);
+// EVERY kv block the Settings Studio serves. A block missing here is invisible to the panel — its section
+// renders empty because the client only knows the keys this payload carries. Add a block to BLOCK_SPECS_ and
+// you must add it HERE too.
+const CP_SETTINGS_KV_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'ACTIVITY', 'LEAVE', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME', 'DASHBOARD']);
 const CP_SETTINGS_TABLES_ = Object.freeze(['STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'RANKS', 'SECTION_TAGS', 'DASHBOARD_GROUPS', 'DASHBOARD_CELLS', 'FORM_MAP', 'SECTIONS', 'EMBEDS']);
 const CP_SETTINGS_HIDDEN_ = Object.freeze({ 'SYSTEM.SCHEMA_VERSION': true }); // engine-managed — never editable from the UI
 
