@@ -605,12 +605,12 @@
     if(m.t==='list' || bk==='LEAVE.LEAVE_TYPES') return ICONS.flist;
     if(m.t==='enum') return ICONS.fdrop;
     if(m.block==='SHEETS' && (bk==='SHEETS.ROSTER'||bk==='SHEETS.TRACKER'||bk==='SHEETS.LEAVE_FORM_RESPONSES')) return ICONS.fdrop;
-    if(bk==='SCHEDULE.NIGHTLY_HOUR'||bk==='SCHEDULE.WEEKLY_RESET_HOUR'||bk==='SCHEDULE.WEEKLY_HOURS_RESET'||/^LEAVE\.(APPROVED_STATUS|EXPIRED_STATUS|RETURN_STATUS|RETURN_TYPE)$/.test(bk)) return ICONS.fdrop;
+    if(bk==='SCHEDULE.NIGHTLY_HOUR'||bk==='ACTIVITY.WEEKLY_RESET_HOUR'||bk==='ACTIVITY.WEEKLY_HOURS_RESET'||/^LEAVE\.(APPROVED_STATUS|EXPIRED_STATUS|RETURN_STATUS|RETURN_TYPE)$/.test(bk)) return ICONS.fdrop;
     return ICONS.ftext;
   }
   // Friendlier display labels/help for keys whose config names read wrong in the UI (display only — keys unchanged).
-  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.LEAVE_FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_FORM_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'SIGNUP REVIEW TAB','SHEETS.SIGNUP_FORM_RESPONSES':'SIGNUP FORM RESPONSES','SHEETS.WELCOME':'WELCOME PAGE TAB','SHEETS.ACTIVITY':'ACTIVITY PANEL TAB','PUBLISH.FORCE_RANGES':'FORCE-MIRROR RANGES',
-    'ROSTER_LAYOUT.LAST_ACTIVITY_COLS':'PREVIOUS-ACTIVITY COLUMNS',
+  var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.LEAVE_FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_FORM_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'SIGNUP REVIEW TAB','SHEETS.SIGNUP_FORM_RESPONSES':'SIGNUP FORM RESPONSES','SHEETS.WELCOME':'WELCOME PAGE TAB','ACTIVITY.PANEL_TAB':'ACTIVITY PANEL TAB','PUBLISH.FORCE_RANGES':'FORCE-MIRROR RANGES',
+    'ACTIVITY.LAST_ACTIVITY_COLS':'PREVIOUS-ACTIVITY COLUMNS',
     'PATROL.COL_DISCORD':'DISCORD COLUMN','PATROL.COL_CALLSIGN':'CALLSIGN COLUMN','PATROL.COL_START':'START TIME COLUMN','PATROL.COL_END':'END TIME COLUMN','PATROL.COL_DURATION':'HOURS COLUMN',
     'LEAVE.STATUS_FLOW':'TRACKER STATUSES','LEAVE.APPROVED_STATUS':'COUNTS AS APPROVED','LEAVE.EXPIRED_STATUS':'MARK ENDED AS',
     'LEAVE.AUTO_EXPIRE':'AUTO-END LEAVES','LEAVE.EXPIRE_NEVER_APPROVED':'EXPIRE UNAPPROVED TOO',
@@ -619,7 +619,7 @@
     'THEME.TEXT':'BODY TEXT','THEME.TEXT_STRONG':'HEADING TEXT','THEME.SUBHEAD':'TABLE HEADER FILL','THEME.SUBHEAD_TEXT':'TABLE HEADER TEXT',
     'THEME.PASS':'SUCCESS','THEME.FAIL':'ERROR','THEME.INFO':'INFO','THEME.PROCESSING':'PROCESSING',
     'DASHBOARD.ENABLE':'LIVE DASHBOARD',
-    'SCHEDULE.AUTO_RESET':'AUTO-RESET ACTIVITY','SCHEDULE.RESET_CADENCE':'RESET FREQUENCY','SCHEDULE.WEEKLY_HOURS_RESET':'RESET DAY','SCHEDULE.WEEKLY_RESET_HOUR':'RESET TIME','SCHEDULE.RESET_DOM':'DAY OF MONTH','SCHEDULE.PERIOD_BUCKET':'PERIOD COLUMN COVERS','SCHEDULE.PERIOD_LABEL_FORMAT':'PERIOD COLUMN LABEL',
+    'ACTIVITY.AUTO_RESET':'AUTO-RESET ACTIVITY','ACTIVITY.RESET_CADENCE':'RESET FREQUENCY','ACTIVITY.WEEKLY_HOURS_RESET':'RESET DAY','ACTIVITY.WEEKLY_RESET_HOUR':'RESET TIME','ACTIVITY.RESET_DOM':'DAY OF MONTH','ACTIVITY.PERIOD_BUCKET':'PERIOD COLUMN COVERS','ACTIVITY.PERIOD_LABEL_FORMAT':'PERIOD COLUMN LABEL',
     'SCHEDULE.NIGHTLY_HOUR':'NIGHTLY LEAVE CHECK','LOGGING.LOG_LEVEL':'LOG DETAIL','LOGGING.LOG_MAX_ROWS':'LOG SIZE (ROWS)','LOGGING.PERF_TIMING':'TIMING LOG',
     'FORMATS.DATE_DISPLAY':'DATE FORMAT','FORMATS.TIMESTAMP_DISPLAY':'DATE + TIME FORMAT',
     'LIMITS.SNAPSHOT_KEEP':'SNAPSHOTS KEPT','LIMITS.BLANK_TAIL_ROWS':'AUTO-ROWS · SPARE ROWS'};
@@ -635,7 +635,7 @@
         +'Value = the exact label; Kind = RANK (member slot) or DIVIDER (section header). Unlisted labels fall back to the all-caps rule.'; }};
   var HELPS={'SHEETS.LEAVE_FORM_RESPONSES':'Google Form responses for LOAs.','SHEETS.PATROL_FORM_RESPONSES':'Google Form responses for Patrol Logs.',
     'SHEETS.PATROL_LOG':'Manual Patrol Log tracker tab (not a form). Blank = off.',
-    'SHEETS.ACTIVITY':'The searchable Activity Panel board — one row per patrol submission with its live status, rebuilt on every sync. The engine creates the tab. Blank = off.',
+    'ACTIVITY.PANEL_TAB':'The searchable Activity Panel board — one row per patrol submission with its live status, rebuilt on every sync. The engine creates the tab. Blank = off.',
     'SHEETS.SIGNUPS':'Signup REVIEW tab (like the LOA Tracker): synced form submissions land here for admins; STATUS + NOTES are admin-owned.',
     'SHEETS.SIGNUP_FORM_RESPONSES':'The signup Google Form\'s own responses tab. Each submission is field-matched into the review tab. Blank = signup sync off.',
     'ROSTER_LAYOUT.HEADER_ROW':'The row with your column titles (RANK, NAME, HOURS…).',
@@ -643,8 +643,8 @@
     'ROSTER_LAYOUT.TRACKER_START_ROW':'The first leave-entry row on the LOA Tracker tab.',
     'ROSTER_LAYOUT.DIVIDER_MODE':'ALL-CAPS labels count as section dividers (default) — or use your Ranks & dividers list.',
     'ROSTER_LAYOUT.UNIT_FORMAT':'How callsigns are numbered — {00} becomes the slot number, so "S-{00}" gives S-01.',
-    'ROSTER_LAYOUT.LAST_ACTIVITY_COLS':'Up to 3 columns holding previous activity, NEWEST FIRST — column letters ("AB, AC, AD") or header names. Each capture shifts them one period older and puts the closing status in the first. Blank = the single column found by its "LAST ACTIVITY" header. Header row and first member row come from the two settings above.',
-    'ROSTER_LAYOUT.LAST_ACTIVITY_STYLE':'MATCH = coloured like the current status; NEUTRAL = plain grey.',
+    'ACTIVITY.LAST_ACTIVITY_COLS':'Up to 3 columns holding previous activity, NEWEST FIRST — column letters ("AB, AC, AD") or header names. Each capture shifts them one period older and puts the closing status in the first. Blank = the single column found by its "LAST ACTIVITY" header. Header row and first member row come from the two settings above.',
+    'ACTIVITY.LAST_ACTIVITY_STYLE':'MATCH = coloured like the current status; NEUTRAL = plain grey.',
     'PATROL.MODE':'START_END = hours from start and end times. DURATION = one "hours patrolled" number.',
     'PATROL.MAX_HOURS':'Reject any single log longer than this (catches typos).',
     'PATROL.OVERNIGHT':'If the end time is before the start, assume the shift crossed midnight (+24h).',
@@ -675,13 +675,13 @@
     'THEME.INFO':'Blue — informational rows.',
     'THEME.PROCESSING':'Tint for form rows still being processed.',
     'DASHBOARD.ENABLE':'Master switch — when off, #tags stop updating everywhere.',
-    'SCHEDULE.AUTO_RESET':'Master switch. Off = hours are never zeroed on a schedule; the period closes only when you run 📸 Capture & Reset Activity yourself. Takes effect straight away.',
-    'SCHEDULE.RESET_CADENCE':'How often hours reset to zero. MANUAL = only when you run it yourself.',
-    'SCHEDULE.WEEKLY_HOURS_RESET':'Which day the reset runs — history is saved first. OFF disables the reset.',
-    'SCHEDULE.WEEKLY_RESET_HOUR':'What time the reset fires.',
-    'SCHEDULE.RESET_DOM':'Day of the month the reset runs (monthly frequency).',
-    'SCHEDULE.PERIOD_BUCKET':'RESET = one column per activity check. MONTH = checks inside the same month ADD into that month\'s column (weekly checks of 5 hrs read 5 → 10 → 15 → 20), and the columns only roll when the month changes. Hours still zero on every check either way.',
-    'SCHEDULE.PERIOD_LABEL_FORMAT':'Header put on the period column each capture closes. Blank = automatic from your frequency (monthly "JUL HOURS", weekly/bi-weekly "27 JUL HOURS"). Date pattern: d, MMM, MMMM, yyyy — quote words like \'WEEK OF\' d MMM. "HOURS" is always appended.',
+    'ACTIVITY.AUTO_RESET':'Master switch. Off = hours are never zeroed on a schedule; the period closes only when you run 📸 Capture & Reset Activity yourself. Takes effect straight away.',
+    'ACTIVITY.RESET_CADENCE':'How often hours reset to zero. MANUAL = only when you run it yourself.',
+    'ACTIVITY.WEEKLY_HOURS_RESET':'Which day the reset runs — history is saved first. OFF disables the reset.',
+    'ACTIVITY.WEEKLY_RESET_HOUR':'What time the reset fires.',
+    'ACTIVITY.RESET_DOM':'Day of the month the reset runs (monthly frequency).',
+    'ACTIVITY.PERIOD_BUCKET':'RESET = one column per activity check. MONTH = checks inside the same month ADD into that month\'s column (weekly checks of 5 hrs read 5 → 10 → 15 → 20), and the columns only roll when the month changes. Hours still zero on every check either way.',
+    'ACTIVITY.PERIOD_LABEL_FORMAT':'Header put on the period column each capture closes. Blank = automatic from your frequency (monthly "JUL HOURS", weekly/bi-weekly "27 JUL HOURS"). Date pattern: d, MMM, MMMM, yyyy — quote words like \'WEEK OF\' d MMM. "HOURS" is always appended.',
     'SCHEDULE.NIGHTLY_HOUR':'When the daily check runs — starts due leaves and ends finished ones.',
     'LOGGING.LOG_LEVEL':'How much the engine writes to its SYS Log.',
     'LOGGING.LOG_MAX_ROWS':'Oldest log rows are trimmed past this.',
@@ -734,10 +734,10 @@
     // ROSTER_LAYOUT / SHEETS); this section is where they are EDITED, and each key appears in exactly one section
     // so the dirty dots and search counts stay honest.
     {id:'activity', a:'var(--green)', title:'Activity & periods', desc:'How often activity is checked, what each period column holds, and how previous periods are kept.',
-      cards:[{t:'Activity checks', keys:['SCHEDULE.AUTO_RESET','SCHEDULE.RESET_CADENCE','SCHEDULE.WEEKLY_HOURS_RESET','SCHEDULE.RESET_DOM','SCHEDULE.WEEKLY_RESET_HOUR']},
-             {t:'Period columns', keys:['SCHEDULE.PERIOD_BUCKET','SCHEDULE.PERIOD_LABEL_FORMAT']},
-             {t:'Previous activity', keys:['ROSTER_LAYOUT.LAST_ACTIVITY_COLS','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
-             {t:'Activity Panel board', keys:['SHEETS.ACTIVITY']}]},
+      cards:[{t:'Activity checks', keys:['ACTIVITY.AUTO_RESET','ACTIVITY.RESET_CADENCE','ACTIVITY.WEEKLY_HOURS_RESET','ACTIVITY.RESET_DOM','ACTIVITY.WEEKLY_RESET_HOUR']},
+             {t:'Period columns', keys:['ACTIVITY.PERIOD_BUCKET','ACTIVITY.PERIOD_LABEL_FORMAT']},
+             {t:'Previous activity', keys:['ACTIVITY.LAST_ACTIVITY_COLS','ACTIVITY.LAST_ACTIVITY_STYLE']},
+             {t:'Activity Panel board', keys:['ACTIVITY.PANEL_TAB']}]},
     {id:'automation', a:'var(--amber)', title:'Automation & logging', desc:'When the nightly leave check runs, and what the engine writes to its diagnostics log.',
       cards:[{t:'Nightly leave check', keys:['SCHEDULE.NIGHTLY_HOUR']},
              {t:'Logging', keys:['LOGGING.LOG_LEVEL','LOGGING.LOG_MAX_ROWS','LOGGING.PERF_TIMING']},
@@ -884,8 +884,8 @@
       if(bk==='SHEETS.WELCOME') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Welcome Page) —'); // pick your Welcome/dashboard tab so the publish protects + mirrors it
       return '<input class="in" data-bk="'+esc(bk)+'" value="'+esc(v)+'" spellcheck="false" placeholder="'+esc(m.def)+'" autocomplete="off">';
     }
-    if(bk==='SCHEDULE.NIGHTLY_HOUR'||bk==='SCHEDULE.WEEKLY_RESET_HOUR') return dd({bk:bk}, HOURS, String(v), false);
-    if(bk==='SCHEDULE.WEEKLY_HOURS_RESET') return dd({bk:bk}, Object.keys(DAYS).map(function(k){return {v:k,l:DAYS[k]};}), v, false);
+    if(bk==='SCHEDULE.NIGHTLY_HOUR'||bk==='ACTIVITY.WEEKLY_RESET_HOUR') return dd({bk:bk}, HOURS, String(v), false);
+    if(bk==='ACTIVITY.WEEKLY_HOURS_RESET') return dd({bk:bk}, Object.keys(DAYS).map(function(k){return {v:k,l:DAYS[k]};}), v, false);
     if(bk==='LEAVE.APPROVED_STATUS'||bk==='LEAVE.EXPIRED_STATUS') return dd({bk:bk,derived:'flow'}, statusFlow(), v, false);
     if(bk==='LEAVE.RETURN_STATUS') return dd({bk:bk,derived:'leave'}, leaveKinds(), v, true, '— none (disabled) —');
     if(bk==='LEAVE.RETURN_TYPE') return dd({bk:bk,derived:'types'}, listOf(KV['LEAVE.LEAVE_TYPES']&&KV['LEAVE.LEAVE_TYPES'].value), v, true, '— none (disabled) —');
@@ -1185,7 +1185,7 @@
     var DAYN={SUN:'Sunday',MON:'Monday',TUE:'Tuesday',WED:'Wednesday',THU:'Thursday',FRI:'Friday',SAT:'Saturday'};
     var t12=function(h){ return h===0?'midnight':(h===12?'noon':(h<12?h+' AM':(h-12)+' PM')); };
     var reset;
-    if(KV['SCHEDULE.AUTO_RESET'] && !boolOn(KV['SCHEDULE.AUTO_RESET'].value)) reset='Auto-reset is <b>OFF</b> — hours are never zeroed on a schedule; run <b>📸 Capture &amp; Reset Activity</b> when you want to close a period';
+    if(KV['ACTIVITY.AUTO_RESET'] && !boolOn(KV['ACTIVITY.AUTO_RESET'].value)) reset='Auto-reset is <b>OFF</b> — hours are never zeroed on a schedule; run <b>📸 Capture &amp; Reset Activity</b> when you want to close a period';
     else if(cad==='MANUAL') reset='Hours never reset automatically (manual mode)';
     else if(day==='OFF' && cad!=='MONTHLY') reset='The hours reset is <b>OFF</b> (reset day is OFF)';
     else if(cad==='MONTHLY') reset='Hours reset <b>monthly on day '+esc(dom)+'</b> at <b>'+t12(hr)+'</b> — history is saved first';
@@ -1194,12 +1194,12 @@
   }
   function refreshSchedStory(){ var el=$('schedStory'); if(el) el.innerHTML=schedStoryText(); }
   function applySchedVis(){
-    var c=KV['SCHEDULE.RESET_CADENCE']; if(!c) return;
+    var c=KV['ACTIVITY.RESET_CADENCE']; if(!c) return;
     var v=String(c.value).trim().toUpperCase(), man=(v==='MANUAL'), mon=(v==='MONTHLY');
     // Auto-reset OFF = nothing below it applies, so the schedule fields hide entirely rather than sit there implying they still run.
-    var auto=!KV['SCHEDULE.AUTO_RESET'] || boolOn(KV['SCHEDULE.AUTO_RESET'].value);
+    var auto=!KV['ACTIVITY.AUTO_RESET'] || boolOn(KV['ACTIVITY.AUTO_RESET'].value);
     if(!auto) man=mon=false;
-    [['SCHEDULE.WEEKLY_HOURS_RESET',auto&&!man&&!mon],['SCHEDULE.RESET_DOM',auto&&mon],['SCHEDULE.WEEKLY_RESET_HOUR',auto&&!man],['SCHEDULE.RESET_CADENCE',auto]].forEach(function(p){
+    [['ACTIVITY.WEEKLY_HOURS_RESET',auto&&!man&&!mon],['ACTIVITY.RESET_DOM',auto&&mon],['ACTIVITY.WEEKLY_RESET_HOUR',auto&&!man],['ACTIVITY.RESET_CADENCE',auto]].forEach(function(p){
       document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(el.dataset.row===p[0]) el.classList.toggle('modehide',!p[1]); });
     });
   }
@@ -1218,15 +1218,15 @@
       .replace(/\u0001/g,ML[mo]).replace(/\u0002/g,MS[mo]);
   }
   function refreshFmtExamples(){
-    [['FORMATS.DATE_DISPLAY'],['FORMATS.TIMESTAMP_DISPLAY'],['SCHEDULE.PERIOD_LABEL_FORMAT']].forEach(function(p){
+    [['FORMATS.DATE_DISPLAY'],['FORMATS.TIMESTAMP_DISPLAY'],['ACTIVITY.PERIOD_LABEL_FORMAT']].forEach(function(p){
       var row=null; document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(!row&&el.dataset.row===p[0]) row=el; });
       if(!row) return;
       var ex=row.querySelector('.fmtex');
       if(!ex){ ex=document.createElement('div'); ex.className='fmtex'; row.appendChild(ex); }
       var m=KV[p[0]];
-      if(p[0]==='SCHEDULE.PERIOD_LABEL_FORMAT'){
+      if(p[0]==='ACTIVITY.PERIOD_LABEL_FORMAT'){
         // Mirror periodLabel_: blank falls back to the cadence's own shape, and HOURS is always appended.
-        var cad=String((KV['SCHEDULE.RESET_CADENCE']&&KV['SCHEDULE.RESET_CADENCE'].value)||'MONTHLY').toUpperCase();
+        var cad=String((KV['ACTIVITY.RESET_CADENCE']&&KV['ACTIVITY.RESET_CADENCE'].value)||'MONTHLY').toUpperCase();
         var pat=String((m&&m.value)||'').trim()||(cad==='MONTHLY'?'MMM':'d MMM');
         var lbl=fmtExample(pat).toUpperCase().trim();
         if(!/HOURS/.test(lbl)) lbl+=' HOURS';

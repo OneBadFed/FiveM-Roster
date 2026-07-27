@@ -64,6 +64,31 @@ ok('when BOTH rows exist the NEW name wins', mBoth.legacy.sheets.form === 'New N
 const vNew = X.validateConfig_({ SHEETS: { kind: 'kv', kv: { LEAVE_FORM_RESPONSES: 'Direct New' } } });
 ok('new-name row alone works', X.materialize_(vNew.config, true).legacy.sheets.form === 'Direct New');
 
+// ---- 2b · CROSS-BLOCK aka: the activity keys moved to [ACTIVITY]. A sheet written before the move still holds
+// them under [SCHEDULE] / [ROSTER_LAYOUT] / [SHEETS]; those values must MIGRATE, not reset to defaults. ----
+console.log('\n[2b] cross-block aka — a pre-move sheet keeps its settings');
+const vMoved = X.validateConfig_({
+  SCHEDULE: { kind: 'kv', kv: { AUTO_RESET: 'FALSE', RESET_CADENCE: 'BIWEEKLY', WEEKLY_HOURS_RESET: 'FRI', PERIOD_BUCKET: 'MONTH', PERIOD_LABEL_FORMAT: 'MMMM yyyy' } },
+  ROSTER_LAYOUT: { kind: 'kv', kv: { LAST_ACTIVITY_COLS: 'AB, AC', LAST_ACTIVITY_STYLE: 'NEUTRAL' } },
+  SHEETS: { kind: 'kv', kv: { ACTIVITY: 'My Activity Board' } },
+});
+ok('pre-move rows: zero ERRORs', errsOf(vMoved.problems).length === 0, JSON.stringify(errsOf(vMoved.problems).slice(0, 3)));
+const kvM = vMoved.config.kv.ACTIVITY, mM = X.materialize_(vMoved.config, true);
+ok('AUTO_RESET=FALSE survives the move', kvM.AUTO_RESET === false, String(kvM.AUTO_RESET));
+ok('RESET_CADENCE=BIWEEKLY survives', kvM.RESET_CADENCE === 'BIWEEKLY', String(kvM.RESET_CADENCE));
+ok('WEEKLY_HOURS_RESET=FRI survives', kvM.WEEKLY_HOURS_RESET === 'FRI', String(kvM.WEEKLY_HOURS_RESET));
+ok('PERIOD_BUCKET=MONTH survives', kvM.PERIOD_BUCKET === 'MONTH', String(kvM.PERIOD_BUCKET));
+ok('PERIOD_LABEL_FORMAT survives', kvM.PERIOD_LABEL_FORMAT === 'MMMM yyyy', String(kvM.PERIOD_LABEL_FORMAT));
+ok('LAST_ACTIVITY_COLS survives (list)', JSON.stringify(kvM.LAST_ACTIVITY_COLS) === '["AB","AC"]', JSON.stringify(kvM.LAST_ACTIVITY_COLS));
+ok('LAST_ACTIVITY_STYLE reaches the legacy bridge', mM.legacy.lastActivityStyle === 'NEUTRAL', String(mM.legacy.lastActivityStyle));
+ok('SHEETS.ACTIVITY -> ACTIVITY.PANEL_TAB -> sheets.activity', mM.legacy.sheets.activity === 'My Activity Board', String(mM.legacy.sheets.activity));
+const vWin = X.validateConfig_({
+  SCHEDULE: { kind: 'kv', kv: { RESET_CADENCE: 'WEEKLY' } },
+  ACTIVITY: { kind: 'kv', kv: { RESET_CADENCE: 'MONTHLY' } },
+});
+ok('an explicit [ACTIVITY] row beats the old block', vWin.config.kv.ACTIVITY.RESET_CADENCE === 'MONTHLY', String(vWin.config.kv.ACTIVITY.RESET_CADENCE));
+ok('defaults still apply with no rows at all', v0.config.kv.ACTIVITY.PERIOD_BUCKET === 'RESET' && v0.config.kv.ACTIVITY.AUTO_RESET === true);
+
 // ---- 3 · coercion & validation still catch real mistakes ----
 console.log('\n[3] validation catches bad values');
 const vBad = X.validateConfig_({ ROSTER_LAYOUT: { kind: 'kv', kv: { HEADER_ROW: 'abc' } } });

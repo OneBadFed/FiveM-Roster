@@ -287,7 +287,6 @@ const BLOCK_SPECS_ = Object.freeze({
     WELCOME: { t: 'string', d: 'Welcome Page', req: false, help: 'The Welcome Page / dashboard tab (the front page with the title banner + Department Statistics). Blank = "Welcome Page". A leading emoji is matched automatically, so "👋 Welcome Page" works even at the default; set the exact name here only if you renamed it to something else. Used so the publish protects its title block (F6:W7 reads differently public vs internal) and force-mirrors the header cells (F40:H41, AE6) from the internal.' },
     PATROL_FORM_RESPONSES: { t: 'string', d: '', req: false, aka: 'PATROL_RESPONSES', help: 'The PATROL Google Form\'s responses tab. BLANK = patrol-form sync OFF (the manual Patrol Log tab still works). Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
     PATROL_LOG: { t: 'string', d: 'Patrol Log', req: false, help: 'Manual Patrol Log tracker tab (like the LOA Tracker). Enter Unique ID + start/end date + start/end time; the engine auto-fills member info, computes TOTAL TIME, credits the hours to the roster, and sorts Pending → Flagged → Processed. BLANK = OFF. Activates only if a tab with this name exists.' },
-    ACTIVITY: { t: 'string', d: 'Activity Panel', req: false, help: 'The Activity Panel board tab: one row per patrol form submission (member, start/end, patrol length, live status from the Patrol Log) under a filter row — search and sort by any column. Engine-built VIEW, rebuilt on every patrol sync: hand edits do not survive; statuses are managed on the Patrol Log itself. BLANK = OFF.' },
     SIGNUPS: { t: 'string', d: 'Roster Signups', req: false, help: 'Roster Signup REVIEW tab (like the LOA Tracker): the engine adds field-matched form submissions here (from SIGNUP_FORM_RESPONSES) for admins to review — STATUS + NOTES are admin-owned. Lay it out with a header row (NAME / OOC NAME / UNIQUE ID / DOB / EMAIL / STATUS / NOTES…) anywhere in the top rows. Approving adds the member to a slot and writes their private details to the Internal Roster.' },
     SIGNUP_FORM_RESPONSES: { t: 'string', d: '', req: false, help: 'The Google Form\'s OWN responses tab for roster signups (Forms own row 1, so it is separate from the themed Signups tab). BLANK = signup sync OFF. Point this at the tab your signup form writes to; each submission is matched by header name and added to the SIGNUPS review tab. Name the form questions to match: Name, OOC Name, Unique ID, DOB (or Date of Birth), Email.' },
   } },
@@ -299,8 +298,6 @@ const BLOCK_SPECS_ = Object.freeze({
     DIVIDER_MODE: { t: 'enum', d: 'ALLCAPS_RANK', req: true, enum: ['ALLCAPS_RANK', 'EXPLICIT_LIST'], help: 'How ranks/section-dividers are detected. ALLCAPS_RANK = the all-caps heuristic (default). EXPLICIT_LIST = consult the [RANKS] table, falling back to the heuristic for anything unlisted.' },
     TRAINING_KEYWORDS: { t: 'list', d: 'TRAINING, CADET', req: true, help: 'Divider labels containing these words are TRAINING sections.' },
     UNIT_FORMAT: { t: 'string', d: 'S-{00}', req: true, help: 'Callsign/unit-number template. The {0…} token is the slot number zero-padded to that many digits — "S-{00}" → S-01, "TRP-{000}" → TRP-001. Text outside the token is literal (prefix/suffix). No token → the number is appended.' },
-    LAST_ACTIVITY_STYLE: { t: 'enum', d: 'MATCH', req: false, enum: ['MATCH', 'NEUTRAL'], help: 'How the LAST ACTIVITY column is coloured. MATCH = mirror CURRENT ACTIVITY\'s status colours (default). NEUTRAL = a calm grey chip so only CURRENT ACTIVITY is colour-coded. Applied by 📸 Capture Last Activity.' },
-    LAST_ACTIVITY_COLS: { t: 'list', d: '', req: false, help: 'PREVIOUS-ACTIVITY columns, NEWEST FIRST, up to 3 — e.g. "AB, AC, AD" (column letters) or "LAST ACTIVITY, 2 PERIODS AGO, 3 PERIODS AGO" (header names). Each 📸 Capture & Reset shifts the chain: the 2nd column takes what the 1st held, the 3rd takes the 2nd, and the 1st takes everyone\'s closing ACTIVITY — so you keep a rolling history of the last periods. Blank = the classic single column found by its "LAST ACTIVITY" header. The header row and first member row come from HEADER_ROW / DATA_START_ROW above.' },
     ID_TYPE: { t: 'enum', d: 'DISCORD', req: true, enum: ['DISCORD', 'COMMUNITY', 'CUSTOM'], help: 'THE Unique-ID switch for this department. DISCORD = a 17-19 digit Discord ID (default). COMMUNITY = a short 1-8 digit Community ID / CID. CUSTOM = use the ID_MIN_DIGITS…ID_MAX_DIGITS range below. NOTE: Discord @mention pings only fire for a real 17-19 digit ID, so a COMMUNITY department simply gets no pings.' },
     ID_MIN_DIGITS: { t: 'int', d: 17, req: true, min: 1, max: 30, help: 'Shortest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 17, COMMUNITY forces 1).' },
     ID_MAX_DIGITS: { t: 'int', d: 19, req: true, min: 1, max: 30, help: 'Longest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 19, COMMUNITY forces 8).' },
@@ -338,6 +335,18 @@ const BLOCK_SPECS_ = Object.freeze({
     help: 'Optional STATELESS override matrix layered on the [STATUSES] tiers. Each rule reroutes a computed status: Source = a status name or * (any); Op = < · <= · > · >= · == (or * for "always"); Hours = the threshold; Target = the resulting status. Rules apply first-match-wins and iterate to a FIXED POINT, so the result depends only on hours (idempotent — never a per-run "strike"). EMPTY (the default) = the tier ladder alone. Protected statuses are never rerouted unless named as a Source.' },
   RANKS: { type: 'table', cols: ['Value', 'Kind'], seed: [],
     help: 'Explicit rank/divider list. Value = the exact rank or divider label. Kind = RANK (a member slot), DIVIDER (a section header), or TRAINING (a member rank that ALSO lands on the Police Academy — e.g. Police Cadet, Probationary Officer). RANK/DIVIDER rows are only consulted for divider detection when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST (unlisted labels fall back to the all-caps heuristic, so a partial list is safe). TRAINING rows are read for the Academy regardless of DIVIDER_MODE.' },
+  ACTIVITY: { type: 'kv', help: 'The activity cycle — how often activity is checked, what each period column holds, how previous periods are kept, and the Activity Panel board. These keys moved here from [SCHEDULE] / [ROSTER_LAYOUT] / [SHEETS]; an existing sheet migrates its values automatically and the old rows retire.', keys: {
+    AUTO_RESET: { t: 'bool', d: true, req: false, aka: 'SCHEDULE.AUTO_RESET', help: 'Master switch for the automatic activity reset. OFF = hours are NEVER zeroed on a schedule — the period only closes when you run 👥 Roster ▸ 📸 Capture & Reset Activity yourself. Everything else (hours crediting, statuses, history) is unaffected. Takes effect immediately; no need to re-run Install Triggers.' },
+    RESET_CADENCE: { t: 'enum', d: 'WEEKLY', req: true, aka: 'SCHEDULE.RESET_CADENCE', enum: ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'MANUAL'], help: 'How often the hours reset runs. WEEKLY = the classic behavior. BIWEEKLY = every 14 days. MONTHLY = on RESET_DOM. MANUAL = no auto-reset trigger.' },
+    WEEKLY_HOURS_RESET: { t: 'enum', d: 'SUN', req: true, aka: 'SCHEDULE.WEEKLY_HOURS_RESET', enum: ['OFF', 'SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], help: 'Weekday for WEEKLY/BIWEEKLY reset (captures history BEFORE zeroing — resolved G1). OFF disables the reset regardless of cadence.' },
+    WEEKLY_RESET_HOUR: { t: 'int', d: 23, req: true, aka: 'SCHEDULE.WEEKLY_RESET_HOUR', min: 0, max: 23, help: 'Hour of day for the reset trigger.' },
+    RESET_DOM: { t: 'int', d: 1, req: true, aka: 'SCHEDULE.RESET_DOM', min: 1, max: 28, help: 'Day of month the reset runs under MONTHLY cadence (1–28, v1.0).' },
+    PERIOD_BUCKET: { t: 'enum', d: 'RESET', req: false, aka: 'SCHEDULE.PERIOD_BUCKET', enum: ['RESET', 'MONTH'], help: 'What ONE period column represents. RESET (default) = one column per activity check — a weekly check fills a new column every week. MONTH = columns are MONTHLY totals: checks inside the same month ADD into the current month\'s column, and the columns only roll when the month changes. So with a weekly check and 5 hrs a week, the month column reads 5 → 10 → 15 → 20, then a fresh column opens in the new month. Hours still zero on every check either way — this only changes how the archive columns are grouped.' },
+    PERIOD_LABEL_FORMAT: { t: 'string', d: '', req: false, aka: 'SCHEDULE.PERIOD_LABEL_FORMAT', help: 'Header written on the period column each 📸 Capture & Reset closes — a Java date pattern (d=day, MMM=Jul, MMMM=July, yyyy=2026; quote literal words like \'WEEK OF\' d MMM). BLANK = automatic from your reset frequency: MONTHLY gives "JUL HOURS", WEEKLY/BIWEEKLY give the period-ending date, "27 JUL HOURS". The word HOURS is always appended if your pattern omits it — the engine finds these columns by that word, and a header without it would drop out of the rolling set.' },
+    LAST_ACTIVITY_COLS: { t: 'list', d: '', req: false, aka: 'ROSTER_LAYOUT.LAST_ACTIVITY_COLS', help: 'PREVIOUS-ACTIVITY columns, NEWEST FIRST, up to 3 — e.g. "AB, AC, AD" (column letters) or "LAST ACTIVITY, 2 PERIODS AGO, 3 PERIODS AGO" (header names). Each 📸 Capture & Reset shifts the chain: the 2nd column takes what the 1st held, the 3rd takes the 2nd, and the 1st takes everyone\'s closing ACTIVITY — so you keep a rolling history of the last periods. Blank = the classic single column found by its "LAST ACTIVITY" header. The header row and first member row come from HEADER_ROW / DATA_START_ROW above.' },
+    LAST_ACTIVITY_STYLE: { t: 'enum', d: 'MATCH', req: false, aka: 'ROSTER_LAYOUT.LAST_ACTIVITY_STYLE', enum: ['MATCH', 'NEUTRAL'], help: 'How the LAST ACTIVITY column is coloured. MATCH = mirror CURRENT ACTIVITY\'s status colours (default). NEUTRAL = a calm grey chip so only CURRENT ACTIVITY is colour-coded. Applied by 📸 Capture Last Activity.' },
+    PANEL_TAB: { t: 'string', d: 'Activity Panel', req: false, aka: 'SHEETS.ACTIVITY', help: 'The Activity Panel board tab: one row per patrol form submission (member, start/end, patrol length, live status from the Patrol Log) under a filter row — search and sort by any column. Engine-built VIEW, rebuilt on every patrol sync: hand edits do not survive; statuses are managed on the Patrol Log itself. BLANK = OFF.' },
+  } },
   LEAVE: { type: 'kv', keys: {
     LEAVE_TYPES: { t: 'list', d: 'LOA, ROA', req: true, help: 'Each must be a LEAVE-kind status in [STATUSES].' },
     RETURN_TYPE: { t: 'string', d: '', req: false, help: 'Form value meaning "I am back" (closes leave early). EMPTY = disabled — ROA is a leave TYPE here, not a return.' },
@@ -425,13 +434,6 @@ const BLOCK_SPECS_ = Object.freeze({
   SCHEDULE: { type: 'kv', keys: {
     NIGHTLY_HOUR: { t: 'int', d: 0, req: true, min: 0, max: 23, help: 'Hour for the daily schedule check trigger (0 = midnight, the live default).' },
     TIMEZONE: { t: 'enum', d: 'SPREADSHEET', req: true, enum: ['SPREADSHEET'], help: 'Phase 1 supports the spreadsheet timezone.' },
-    AUTO_RESET: { t: 'bool', d: true, req: false, help: 'Master switch for the automatic activity reset. OFF = hours are NEVER zeroed on a schedule — the period only closes when you run 👥 Roster ▸ 📸 Capture & Reset Activity yourself. Everything else (hours crediting, statuses, history) is unaffected. Takes effect immediately; no need to re-run Install Triggers.' },
-    RESET_CADENCE: { t: 'enum', d: 'WEEKLY', req: true, enum: ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'MANUAL'], help: 'How often the hours reset runs. WEEKLY = the classic behavior. BIWEEKLY = every 14 days. MONTHLY = on RESET_DOM. MANUAL = no auto-reset trigger.' },
-    WEEKLY_HOURS_RESET: { t: 'enum', d: 'SUN', req: true, enum: ['OFF', 'SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], help: 'Weekday for WEEKLY/BIWEEKLY reset (captures history BEFORE zeroing — resolved G1). OFF disables the reset regardless of cadence.' },
-    WEEKLY_RESET_HOUR: { t: 'int', d: 23, req: true, min: 0, max: 23, help: 'Hour of day for the reset trigger.' },
-    RESET_DOM: { t: 'int', d: 1, req: true, min: 1, max: 28, help: 'Day of month the reset runs under MONTHLY cadence (1–28, v1.0).' },
-    PERIOD_BUCKET: { t: 'enum', d: 'RESET', req: false, enum: ['RESET', 'MONTH'], help: 'What ONE period column represents. RESET (default) = one column per activity check — a weekly check fills a new column every week. MONTH = columns are MONTHLY totals: checks inside the same month ADD into the current month\'s column, and the columns only roll when the month changes. So with a weekly check and 5 hrs a week, the month column reads 5 → 10 → 15 → 20, then a fresh column opens in the new month. Hours still zero on every check either way — this only changes how the archive columns are grouped.' },
-    PERIOD_LABEL_FORMAT: { t: 'string', d: '', req: false, help: 'Header written on the period column each 📸 Capture & Reset closes — a Java date pattern (d=day, MMM=Jul, MMMM=July, yyyy=2026; quote literal words like \'WEEK OF\' d MMM). BLANK = automatic from your reset frequency: MONTHLY gives "JUL HOURS", WEEKLY/BIWEEKLY give the period-ending date, "27 JUL HOURS". The word HOURS is always appended if your pattern omits it — the engine finds these columns by that word, and a header without it would drop out of the rolling set.' },
   } },
   LOGGING: { type: 'kv', keys: {
     LOG_LEVEL: { t: 'enum', d: 'INFO', req: true, enum: ['ERROR', 'WARN', 'INFO', 'DEBUG'], help: 'Minimum severity written to the SYS Log.' },
@@ -479,7 +481,7 @@ const BLOCK_SPECS_ = Object.freeze({
 });
 
 const BLOCK_ORDER_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'RANKS', 'COLUMNS', 'SECTIONS', 'SECTION_TAGS',
-  'STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'LEAVE', 'FORM_MAP', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME',
+  'STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'ACTIVITY', 'LEAVE', 'FORM_MAP', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME',
   'DASHBOARD', 'DASHBOARD_GROUPS', 'DASHBOARD_CELLS', 'EMBEDS']);
 
 /* ======================================================================
@@ -621,18 +623,33 @@ function checkLadder_(ladder, label, problems) {
  * @return {{config:Object, problems:Array}}
  */
 function validateConfig_(raw) {
-  // KEY ALIASES: a schema key with `aka` was RENAMED at some point (e.g. FORM_RESPONSES → LEAVE_FORM_RESPONSES).
-  // A sheet seeded before the rename still carries the old row — honour its value under the new name (an explicit
-  // new-name row wins) and drop the old name so it can't double-report. Seeding migrates the row itself.
+  // KEY ALIASES: a schema key with `aka` was RENAMED at some point (e.g. FORM_RESPONSES → LEAVE_FORM_RESPONSES),
+  // or MOVED to another block ("SCHEDULE.AUTO_RESET" → [ACTIVITY].AUTO_RESET — an aka containing a dot).
+  // A sheet seeded before the change still carries the old row — honour its value under the new name (an explicit
+  // new-name row wins) and drop the old one so it can't double-report. Seeding migrates the row itself.
+  // Without the cross-block form, relocating a key would silently reset every operator's saved value to the
+  // default on the next seed, so the two must always ship together.
   Object.keys(BLOCK_SPECS_).forEach((name) => {
     const spec = BLOCK_SPECS_[name];
-    if (spec.type !== 'kv' || !raw || !raw[name] || !raw[name].kv) return;
+    if (spec.type !== 'kv' || !raw) return;
+    // A block that MOVED keys in from elsewhere has to be considered even when the sheet has no such block yet —
+    // that IS the pre-move sheet, the only case the migration exists for. (Skipping it silently reset every
+    // moved setting to its default.) Blocks without cross-block aliases keep the cheap absent-block skip.
+    if (!raw[name] || !raw[name].kv) {
+      const inbound = Object.keys(spec.keys).some((k) => spec.keys[k].aka && String(spec.keys[k].aka).indexOf('.') !== -1);
+      if (!inbound) return;
+      raw[name] = { kind: 'kv', kv: {} };
+    }
     const kv = raw[name].kv;
     Object.keys(spec.keys).forEach((key) => {
       const aka = spec.keys[key].aka;
-      if (!aka || !Object.prototype.hasOwnProperty.call(kv, aka)) return;
-      if (!Object.prototype.hasOwnProperty.call(kv, key)) kv[key] = kv[aka];
-      delete kv[aka];
+      if (!aka) return;
+      const dot = String(aka).indexOf('.');
+      const src = (dot === -1) ? kv : ((raw[aka.slice(0, dot)] || {}).kv);   // same block, or the block it came FROM
+      const srcKey = (dot === -1) ? aka : aka.slice(dot + 1);
+      if (!src || !Object.prototype.hasOwnProperty.call(src, srcKey)) return;
+      if (!Object.prototype.hasOwnProperty.call(kv, key)) kv[key] = src[srcKey];
+      delete src[srcKey];
     });
   });
   const problems = [];
@@ -764,6 +781,7 @@ function validateConfig_(raw) {
       '[SHEETS].SNAPSHOTS': c.kv.SHEETS.SNAPSHOTS || '_Snapshots', '[SHEETS].PATROL_FORM_RESPONSES': c.kv.SHEETS.PATROL_FORM_RESPONSES, // '' is skipped below
       '[SHEETS].PATROL_LOG': c.kv.SHEETS.PATROL_LOG, '[SHEETS].SIGNUPS': c.kv.SHEETS.SIGNUPS || 'Roster Signups', // the manual patrol log + signup feeds each need their OWN tab too ('' skipped)
       '[SHEETS].SIGNUP_FORM_RESPONSES': c.kv.SHEETS.SIGNUP_FORM_RESPONSES, // the signup form's response tab must be distinct from its review tab ('' skipped)
+      '[ACTIVITY].PANEL_TAB': c.kv.ACTIVITY.PANEL_TAB, // the Activity Panel board is engine-BUILT — pointed at a data tab it would overwrite it ('' skipped)
     };
     const byName = {};
     Object.keys(roles).forEach((role) => {
@@ -959,8 +977,8 @@ function materialize_(c, fromTab) {
     webhookProp: 'DISCORD_WEBHOOK_URL', // engine constant (brief A6) — secrets live in Script Properties
     // v1.0 — configurable logic (unit-number format, date formats, embed appearance, retention limits).
     unitFormat: kv.ROSTER_LAYOUT.UNIT_FORMAT || 'S-{00}',
-    lastActivityStyle: kv.ROSTER_LAYOUT.LAST_ACTIVITY_STYLE || 'MATCH', // v1.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
-    lastActivityCols: (kv.ROSTER_LAYOUT.LAST_ACTIVITY_COLS || []).slice(0, 3), // newest-first previous-activity chain; blank = auto-detect one by header
+    lastActivityStyle: kv.ACTIVITY.LAST_ACTIVITY_STYLE || 'MATCH', // v1.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
+    lastActivityCols: (kv.ACTIVITY.LAST_ACTIVITY_COLS || []).slice(0, 3), // newest-first previous-activity chain; blank = auto-detect one by header
     formats: { date: kv.FORMATS.DATE_DISPLAY || 'd MMM. yyyy', timestamp: kv.FORMATS.TIMESTAMP_DISPLAY || 'd MMM yyyy, h:mm a' },
     embed: {
       submitColor: kv.DISCORD.SUBMIT_COLOR || '#3498db', returnColor: kv.DISCORD.RETURN_COLOR || '#e67e22', expireColor: kv.DISCORD.EXPIRE_COLOR || '#ed4245',
@@ -996,7 +1014,7 @@ function materialize_(c, fromTab) {
     sheets: {
       roster: kv.SHEETS.ROSTER, tracker: kv.SHEETS.TRACKER, form: kv.SHEETS.LEAVE_FORM_RESPONSES, patrol: kv.SHEETS.PATROL_FORM_RESPONSES || '',
       patrolLog: kv.SHEETS.PATROL_LOG || '',   // manual Patrol Log tracker tab (blank = OFF; only activates if the tab exists)
-      activity: kv.SHEETS.ACTIVITY || '',      // Activity Panel board tab (blank = OFF; engine-built VIEW of patrol form + log status)
+      activity: kv.ACTIVITY.PANEL_TAB || '',      // Activity Panel board tab (blank = OFF; engine-built VIEW of patrol form + log status)
       signups: kv.SHEETS.SIGNUPS || 'Roster Signups', // signup REVIEW/destination tab (engine fills it from the form)
       signupForm: kv.SHEETS.SIGNUP_FORM_RESPONSES || '', // the signup Google Form's own responses tab (blank = signup sync OFF)
       // v1.0 — system/log tab names (blank falls back to the shipped default so older configs keep working).
@@ -1171,6 +1189,21 @@ function seedConfigTab_(ss) {
   banners.push(1);
   grid.push(pad([]));
 
+  // Rows another block has CLAIMED via a cross-block `aka` ("SCHEDULE.AUTO_RESET"). Their old block must NOT
+  // re-emit them as "unknown key — preserved", or the sheet would carry a stale duplicate of every moved setting
+  // and an operator editing the old row would see nothing happen.
+  const retiredAka_ = {};
+  Object.keys(BLOCK_SPECS_).forEach((bn) => {
+    const bs = BLOCK_SPECS_[bn];
+    if (bs.type !== 'kv') return;
+    Object.keys(bs.keys).forEach((kn) => {
+      const a = bs.keys[kn].aka, dot = a ? String(a).indexOf('.') : -1;
+      if (dot === -1) return;
+      const fromBlock = a.slice(0, dot);
+      (retiredAka_[fromBlock] = retiredAka_[fromBlock] || {})[a.slice(dot + 1)] = true;
+    });
+  });
+
   BLOCK_ORDER_.forEach((name) => {
     const spec = BLOCK_SPECS_[name];
     grid.push(pad([`[${name}]`, '', spec.help || '']));
@@ -1180,14 +1213,20 @@ function seedConfigTab_(ss) {
       const consumedAka = {}; // legacy names of RENAMED keys — their value is carried into the new row, the old row is retired
       Object.keys(spec.keys).forEach((key) => {
         const k = spec.keys[key];
-        if (k.aka) consumedAka[k.aka] = true;
+        // `aka` is either a legacy name in THIS block, or "BLOCK.KEY" when the key moved between blocks. Both
+        // migrate the operator's value into the new row; the source row is retired (see retiredAka_ below).
+        const dot = k.aka ? String(k.aka).indexOf('.') : -1;
+        const akaFrom = (dot === -1) ? have : ((existing[k.aka.slice(0, dot)] && existing[k.aka.slice(0, dot)].kv) || {});
+        const akaKey = k.aka ? ((dot === -1) ? k.aka : k.aka.slice(dot + 1)) : '';
+        if (k.aka && dot === -1) consumedAka[k.aka] = true;
         let val;
         if (Object.prototype.hasOwnProperty.call(have, key)) val = have[key];
-        else if (k.aka && Object.prototype.hasOwnProperty.call(have, k.aka)) val = have[k.aka]; // renamed key: the old row's value migrates
+        else if (k.aka && Object.prototype.hasOwnProperty.call(akaFrom, akaKey)) val = akaFrom[akaKey]; // renamed/moved: the old row's value migrates
         else { val = (k.t === 'bool') ? (k.d ? 'TRUE' : 'FALSE') : String(k.d); added++; }
         grid.push(pad([key, val, k.help || '']));
       });
-      Object.keys(have).forEach((key) => { if (!spec.keys[key] && !consumedAka[key]) grid.push(pad([key, have[key], '(unknown key — preserved)'])); });
+      const movedOut = retiredAka_[name] || {};
+      Object.keys(have).forEach((key) => { if (!spec.keys[key] && !consumedAka[key] && !movedOut[key]) grid.push(pad([key, have[key], '(unknown key — preserved)'])); });
     } else {
       grid.push(pad(spec.cols));
       subheads.push(grid.length);

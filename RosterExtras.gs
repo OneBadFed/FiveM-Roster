@@ -58,7 +58,7 @@ function installExtrasTriggers_() {
   // Reset cadence/day/hour come from [SCHEDULE] on ⚙️ Config (defaults WEEKLY · SUN · 23 — the classic schedule).
   // Resolved G1: the reset captures the hours-history tab BEFORE zeroing, so the panel sparkline survives.
   let day = 'SUN', hour = 23, cadence = 'WEEKLY', dom = 1, autoReset = true;
-  try { const sc = cfg_().kv.SCHEDULE; day = sc.WEEKLY_HOURS_RESET; hour = sc.WEEKLY_RESET_HOUR; cadence = sc.RESET_CADENCE; dom = sc.RESET_DOM; autoReset = (sc.AUTO_RESET !== false); } catch (e) { /* config broken — classic weekly schedule */ }
+  try { const sc = cfg_().kv.ACTIVITY; day = sc.WEEKLY_HOURS_RESET; hour = sc.WEEKLY_RESET_HOUR; cadence = sc.RESET_CADENCE; dom = sc.RESET_DOM; autoReset = (sc.AUTO_RESET !== false); } catch (e) { /* config broken — classic weekly schedule */ }
   const weekDays = { SUN: ScriptApp.WeekDay.SUNDAY, MON: ScriptApp.WeekDay.MONDAY, TUE: ScriptApp.WeekDay.TUESDAY, WED: ScriptApp.WeekDay.WEDNESDAY, THU: ScriptApp.WeekDay.THURSDAY, FRI: ScriptApp.WeekDay.FRIDAY, SAT: ScriptApp.WeekDay.SATURDAY };
   ScriptApp.newTrigger('scanIntegrity').timeBased().atHour(7).everyDays(1).create();
   ScriptApp.newTrigger('buildCoverage').timeBased().atHour(6).everyDays(1).create();
@@ -225,7 +225,7 @@ function periodLabel_() {
   const tz = ssTz_();
   let cad = 'MONTHLY', fmt = '', bucket = 'RESET';
   try {
-    const sc = cfg_().kv.SCHEDULE;
+    const sc = cfg_().kv.ACTIVITY;
     cad = String(sc.RESET_CADENCE || 'MONTHLY').toUpperCase();
     fmt = String(sc.PERIOD_LABEL_FORMAT || '').trim();   // operator override; blank = the cadence's own shape
     bucket = String(sc.PERIOD_BUCKET || 'RESET').toUpperCase();
@@ -335,7 +335,7 @@ function doWeeklyReset_() {
       // [SCHEDULE].PERIOD_BUCKET = MONTH → checks inside one month ADD into that month's column instead of
       // rolling a fresh column each time (weekly checks, monthly archive totals).
       let acc = false;
-      try { acc = String(cfg_().kv.SCHEDULE.PERIOD_BUCKET || 'RESET').toUpperCase() === 'MONTH'; } catch (e2) { /* default RESET */ }
+      try { acc = String(cfg_().kv.ACTIVITY.PERIOD_BUCKET || 'RESET').toUpperCase() === 'MONTH'; } catch (e2) { /* default RESET */ }
       bucketLabel = periodLabel_();
       const before = acc ? archiveRightHeader_(roster) : '';
       shifted = shiftArchiveColumns_(roster, bucketLabel, acc);
@@ -409,7 +409,7 @@ function weeklyResetScheduled() {
  */
 function resetDue_() {
   try {
-    const sc = cfg_().kv.SCHEDULE;
+    const sc = cfg_().kv.ACTIVITY;
     // OFF is authoritative regardless of cadence (matches installExtras + the [SCHEDULE] contract). Enforced HERE at
     // run time too, so setting WEEKLY_HOURS_RESET=OFF via Settings takes effect immediately even if the operator
     // didn't re-run Install Extras Triggers — the live CONFIG bridge makes that the expected behavior everywhere else.

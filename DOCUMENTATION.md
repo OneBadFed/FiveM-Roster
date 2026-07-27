@@ -61,10 +61,13 @@ per-execution memo, the column cache, **and** the document cache — changes pro
 **Schema & migrations:** `SYSTEM.SCHEMA_VERSION` (currently **2**; this is a migration counter, independent of
 the release version). `migrateConfig_` seeds additively — First-Run Setup upgrades an older sheet without
 deleting anything; `validateConfig_({})` yields zero ERRORs and defaults reproduce shipped behavior exactly.
-**Key renames use `aka` aliases:** a spec key with `aka` (e.g. `LEAVE_FORM_RESPONSES` aka `FORM_RESPONSES`,
+**Key renames AND moves use `aka` aliases:** a spec key with `aka` (e.g. `LEAVE_FORM_RESPONSES` aka `FORM_RESPONSES`,
 `PATROL_FORM_RESPONSES` aka `PATROL_RESPONSES`) accepts the legacy row's value at validate time (explicit
 new-name row wins), and re-seeding migrates the old row's value into the new-name row and retires the old one —
-so renaming a key never breaks an existing sheet.
+so renaming a key never breaks an existing sheet. An `aka` containing a dot (`SCHEDULE.AUTO_RESET`) means the key
+**moved between blocks**: the value is pulled from the old block, the old row is retired rather than re-emitted as
+"unknown key — preserved", and the target block is considered even when the sheet has no such block yet — that
+absent-block case IS the pre-move sheet, and skipping it silently reset every moved setting to its default.
 
 **Blocks (inventory):** SYSTEM · SHEETS (tab names for every role incl. `PATROL_LOG`, `SIGNUPS`,
 `SIGNUP_FORM_RESPONSES`, `ACTIVITY` — the Activity Panel board (§5a), and `WELCOME` — the Welcome/dashboard tab
@@ -76,8 +79,8 @@ per-rank overrides, fixed-point transition rules)* · RANKS *(table)* · LEAVE �
 NOTIFICATIONS (opt-in event embeds) · EMBEDS *(table — per-event embed overrides from the Settings builder)* ·
 PATROL (mode, max hours, statuses, form column keywords, `FUTURE_GRACE_HOURS` — §5) ·
 PUBLISH (`NEVER_PUBLISH`, `KEEP_RANGES`, `FORCE_RANGES`) · FORMATS ·
-SCHEDULE (incl. `AUTO_RESET` — the master switch for the scheduled activity reset — plus `PERIOD_BUCKET` and `PERIOD_LABEL_FORMAT`,
-§3a) · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
+**ACTIVITY** *(the whole activity cycle in one block — `AUTO_RESET`, cadence/day/hour/day-of-month, `PERIOD_BUCKET`,
+`PERIOD_LABEL_FORMAT`, `LAST_ACTIVITY_COLS` + style, `PANEL_TAB`; §3a)* · SCHEDULE (`NIGHTLY_HOUR`, timezone) · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
 
 ---
 
