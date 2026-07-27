@@ -63,10 +63,13 @@ them at `:root` and let everything inherit.
 ## Before you commit
 
 ```bash
-node tools/preview.js both                     # renders + the two consistency checks
-node tools/cfgcheck.js RosterConfig.gs         # only if the config schema changed
+node tools/htmlchk.js ControlPanel.html SettingsPanel.html   # ALWAYS — see below
+node tools/preview.js both                                   # renders + the two consistency checks
+node tools/cfgcheck.js RosterConfig.gs                       # only if the config schema changed
 ```
 
-Plus the repo's standard syntax gate on every touched file. HTML script blocks parse-check by extracting the
-`<script>` body and running it through `new Function` with GAS scriptlets (`<?!= … ?>`) stubbed — a syntax error
-in a panel is invisible until the dialog fails to open.
+`htmlchk` is not optional. A panel has no build step, so a syntax error in its script is invisible until the
+dialog fails to open in Apps Script. The specific trap: **handlers are written entirely on one line**, so
+appending a `// comment` to one comments out the rest of that line — including its closing braces. Braces still
+balance (they are inside the comment), so the diff looks fine and only parsing catches it. Use `/* … */` when
+annotating anything mid-line. This has bitten once already.

@@ -14,13 +14,17 @@
   :root{
     --s1:4px; --s2:8px; --s3:12px; --s4:16px; --s5:24px; --s6:32px; --s7:40px;
     --r-sm:8px; --r-md:10px; --r-lg:14px; --r-pill:980px;
-    /* SURFACES — Apple's dark system greys, neutral. The old palette was blue-tinted navy, which reads as
-       "a dark theme"; Apple's greys have no hue at all, which is most of why their dark mode looks expensive. */
-    --bg:#000000; --e1:#1c1c1e; --e2:#2c2c2e; --e3:#3a3a3c; --e4:#48484a;
-    --surface:#1c1c1e; --surface-2:#2c2c2e; --surface-3:#3a3a3c;
-    --card:#1c1c1e; --card-2:#2c2c2e;
-    /* SEPARATORS — Apple separates with a hairline, not a border or a shadow. */
-    --hair:rgba(255,255,255,.08); --hair-2:rgba(255,255,255,.13);
+    /* SURFACES — a macOS WINDOW, not an iPhone at night. Apple's desktop dark mode is not black: the window
+       sits near #1e1e1e, the sidebar reads lighter because it is vibrant, and grouped boxes lift from there.
+       (Pure black is iOS on OLED — it was the main reason this looked more iPhone than Mac.) Neutral greys with
+       no hue at all, which is most of why Apple's dark mode looks expensive. */
+    --bg:#1e1e1e; --sidebar:#282828;
+    --e1:#2c2c2e; --e2:#3a3a3c; --e3:#48484a; --e4:#545456;
+    --surface:#2c2c2e; --surface-2:#3a3a3c; --surface-3:#48484a;
+    --card:#2c2c2e; --card-2:#3a3a3c;
+    /* SEPARATORS — Apple separates with a hairline, not a border or a shadow. Nearer macOS's separatorColor;
+       at .08 they read as faint rather than crisp. */
+    --hair:rgba(255,255,255,.1); --hair-2:rgba(255,255,255,.16);
     /* No glass, no inner highlight, no glow. Kept as no-ops so older rules still parse while sections migrate. */
     --glass:none; --glass-2:none;
     --ring:none; --hi:none;
@@ -64,9 +68,10 @@
        font-feature-settings:'cv02','cv03','cv04','cv11'; /* Inter's SF-like alternates: single-storey a/g, straighter l */
        letter-spacing:-.01em;}
   .mono{font-family:var(--mono);}
-  ::-webkit-scrollbar{width:10px;height:10px;}
-  ::-webkit-scrollbar-thumb{background:var(--e3);border-radius:8px;border:3px solid transparent;background-clip:padding-box;}
-  ::-webkit-scrollbar-thumb:hover{background:var(--e4);background-clip:padding-box;border:3px solid transparent;}
+  /* macOS overlay scrollbars: a thin translucent capsule over the content, not a 10px rail beside it. */
+  ::-webkit-scrollbar{width:9px;height:9px;}
+  ::-webkit-scrollbar-thumb{background:rgba(255,255,255,.18);border-radius:var(--r-pill);border:3px solid transparent;background-clip:padding-box;}
+  ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3);background-clip:padding-box;border:2px solid transparent;}
   ::-webkit-scrollbar-track{background:transparent;}
   button{font-family:inherit;}
   button:focus-visible,.field:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
@@ -74,8 +79,9 @@
 
   /* ─── app shell: sidebar + content (Studio pattern) ─── */
   .app{display:grid;grid-template-columns:240px 1fr;height:100vh;}
-  /* Sidebar and content share the same black; a hairline is the only thing that divides them. */
-  .side{display:flex;flex-direction:column;background:var(--bg);box-shadow:1px 0 0 var(--hair);}
+  /* The sidebar sits LIGHTER than the content — that tonal split is what vibrancy actually looks like on a Mac,
+     and it does the separating that a border would otherwise have to do. */
+  .side{display:flex;flex-direction:column;background:var(--sidebar);box-shadow:1px 0 0 var(--hair);}
   .brand{display:flex;align-items:center;gap:var(--s3);padding:var(--s5) var(--s4) var(--s4);}
   .badge{width:30px;height:30px;border-radius:var(--r-sm);background:var(--e2);
         color:var(--txt);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
@@ -102,8 +108,8 @@
   .tab{display:flex;align-items:center;gap:var(--s3);width:100%;text-align:left;background:none;border:none;color:var(--txt);
        border-radius:var(--r-sm);padding:var(--s1) var(--s2);margin-bottom:1px;min-height:30px;font-size:var(--f2);font-weight:400;
        cursor:pointer;position:relative;white-space:nowrap;transition:background var(--t) var(--ease),color var(--t) var(--ease);}
-  .tab:hover{background:var(--e1);}
-  .tab:active{background:var(--e2);}
+  .tab:hover{background:rgba(255,255,255,.06);} /* a translucent lift reads correctly on the vibrant sidebar */
+  .tab:active{background:rgba(255,255,255,.1);}
   .tab.active{background:var(--accent);color:#fff;font-weight:500;}
   .tab .nico{width:20px;height:20px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;color:var(--txt-2);
        background:none;border-radius:0;transition:color var(--t) var(--ease);}
@@ -121,7 +127,13 @@
   /* content column */
   /* min-height:0 + a definite height let the flex child (.content) bound itself and scroll, instead of .main
      growing to its content and spilling past the 100vh grid row (which body{overflow:hidden} then clips). */
-  .main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;position:relative;}
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;position:relative;background:var(--bg);}
+  /* Toolbar — a macOS window names the view it is showing and rules a hairline under it. The content used to
+     begin abruptly on a stat tile, which is the one structural thing no amount of restyling would have fixed. */
+  .toolbar{display:flex;align-items:center;gap:var(--s3);padding:0 var(--s6);height:52px;flex:0 0 auto;
+           box-shadow:0 1px 0 var(--hair);}
+  .tb-title{flex:1;min-width:0;margin:0;font-size:var(--f4);font-weight:600;letter-spacing:-.02em;
+            white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .progress{height:2px;overflow:hidden;position:relative;background:transparent;flex:0 0 auto;}
   .progress.on::before{content:"";position:absolute;top:0;bottom:0;width:38%;background:var(--accent);border-radius:2px;animation:prog 1.05s var(--ease) infinite;}
   @keyframes prog{0%{left:-38%;}100%{left:100%;}}
@@ -470,7 +482,9 @@
   .mrow{background:none;border:none;border-radius:0;overflow:hidden;box-shadow:0 1px 0 var(--hair);
         transition:background var(--t) var(--ease);}
   .mrow:last-child{box-shadow:none;}
-  .mrow:hover{transform:none;background:var(--e2);box-shadow:0 1px 0 var(--hair);}
+  /* No hover fill. A Mac list highlights what is SELECTED, not what the pointer happens to be over — the
+     travelling highlight is a web habit, and with 90 rows it made the list twitch as the cursor crossed it. */
+  .mrow:hover{transform:none;background:none;box-shadow:0 1px 0 var(--hair);}
   .mrow.exp{transform:none;background:var(--e2);box-shadow:0 1px 0 var(--hair);}
   .mhead{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);cursor:pointer;min-height:52px;}
   .chev{color:var(--txt-3);width:15px;height:15px;flex:0 0 auto;transition:transform .2s var(--ease),color var(--t);}
@@ -530,10 +544,10 @@
   .pc-head .nm b{font-size:15px;font-weight:700;} .pc-head .nm span{display:block;font-size:11px;opacity:.85;margin-top:1px;}
   .pc-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:1px;background:var(--hair);}
   .kvc{background:rgba(18,22,29,.55);padding:var(--s3) var(--s4);}
-  .kvc .k{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px;font-weight:700;}
+  .kvc .k{display:flex;align-items:center;gap:6px;font-size:var(--f1);color:var(--txt-2);text-transform:none;letter-spacing:0;margin-bottom:3px;font-weight:400;}
   .kvc .k svg{width:13px;height:13px;flex:0 0 auto;}
   .kvc .v{font-size:13px;font-weight:600;}
-  .kvc.idcell .v{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);font-family:var(--mono);font-size:12px;font-weight:400;word-break:break-all;}
+  .kvc.idcell .v{display:flex;align-items:center;justify-content:space-between;gap:var(--s2);font-family:inherit;font-variant-numeric:tabular-nums;font-size:var(--f2);font-weight:400;word-break:break-all;}
   .copybtn{flex:0 0 auto;background:var(--e2);border:none;color:var(--txt-3);border-radius:8px;width:26px;height:26px;
            display:flex;align-items:center;justify-content:center;cursor:pointer;box-shadow:var(--hi);transition:all var(--t);}
   .copybtn svg{width:14px;height:14px;} .copybtn:hover{color:var(--accent-2);background:var(--e3);transform:translateY(-1px);}
@@ -542,14 +556,17 @@
   .copybtn.ok svg{animation:cpop .22s var(--ease);}
   @keyframes cpop{from{transform:scale(.5);opacity:0;}to{transform:scale(1);opacity:1;}}
   .pc-sec{background:rgba(18,22,29,.4);box-shadow:0 -1px 0 var(--hair);padding:var(--s3) var(--s4);}
-  .pc-lbl{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;margin-bottom:var(--s2);font-weight:700;}
+  .pc-lbl{display:flex;align-items:center;gap:6px;font-size:var(--f1);color:var(--txt-2);text-transform:none;letter-spacing:0;margin-bottom:var(--s2);font-weight:400;}
   .pc-lbl svg{width:13px;height:13px;flex:0 0 auto;}
-  .segmented{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:var(--s3);}
-  .seg{background:var(--e2);border:none;color:var(--txt-2);border-radius:9px;padding:7px 12px;font-size:11px;
-       font-weight:650;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:background var(--t),color var(--t),transform var(--t) var(--ease),box-shadow var(--t);}
-  .seg:hover{color:var(--txt);background:var(--e3);transform:translateY(-1px);}
-  .seg.cur{background:linear-gradient(155deg,#5a97ec,#3d7cd9);color:#fff;box-shadow:var(--hi),0 4px 14px -6px var(--accent);}
-  .seg:active{transform:scale(.95);}
+  /* The status picker is the SAME kind of control as the filter row above the list — pick one of N — so it gets
+     the same treatment: one recessed track, a raised grey selected segment. It was a gradient-filled blue pill
+     with a glow, which both disagreed with the filters and competed with Move, the actual primary action here. */
+  .segmented{display:inline-flex;flex-wrap:wrap;gap:2px;margin-bottom:var(--s3);background:var(--e1);border-radius:var(--r-sm);padding:2px;}
+  .seg{background:none;border:none;color:var(--txt-2);border-radius:6px;padding:var(--s1) var(--s3);min-height:26px;font-size:var(--f2);
+       font-weight:400;cursor:pointer;box-shadow:none;transition:background var(--t) var(--ease),color var(--t) var(--ease);}
+  .seg:hover{color:var(--txt);background:var(--e2);transform:none;}
+  .seg.cur{background:var(--e3);color:var(--txt);font-weight:500;box-shadow:none;}
+  .seg:active{transform:none;background:var(--e4);}
   .seg:disabled{opacity:.5;cursor:default;}
   .linkbtn{display:inline-flex;align-items:center;gap:7px;background:var(--e2);border:none;color:var(--txt);
            border-radius:10px;padding:8px 13px;font-size:12px;font-weight:550;cursor:pointer;box-shadow:var(--hi),var(--sh-1);transition:all var(--t);}
@@ -567,10 +584,10 @@
   /* recent activity checks (last 4 weekly status snapshots) */
   .chkrow{display:grid;grid-template-columns:repeat(auto-fit,minmax(116px,1fr));gap:6px;}
   .chk{background:var(--e2);border-radius:11px;padding:9px 11px;box-shadow:var(--hi),var(--sh-1);display:flex;flex-direction:column;gap:7px;align-items:flex-start;animation:rise .28s var(--ease) both;}
-  .chk-wk{font-size:9.5px;font-weight:700;color:var(--txt-3);text-transform:uppercase;letter-spacing:.06em;}
+  .chk-wk{font-size:var(--f1);font-weight:400;color:var(--txt-2);text-transform:none;letter-spacing:0;}
   .chk-top{display:flex;align-items:center;justify-content:space-between;width:100%;gap:6px;}
   .chk-dot{width:7px;height:7px;border-radius:50%;flex:0 0 auto;}
-  .chk-big{font-size:16px;font-weight:800;font-family:var(--mono);}
+  .chk-big{font-size:var(--f4);font-weight:600;font-family:inherit;font-variant-numeric:tabular-nums;}
   .chk-big em{font-style:normal;font-size:10px;font-weight:700;color:var(--txt-3);margin-left:3px;}
   .chk-st{font-size:10px;color:var(--txt-2);font-weight:650;}
 
@@ -582,11 +599,11 @@
   .pc-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px;align-items:flex-start;}
   .pc-name{font-size:19px;font-weight:800;letter-spacing:.01em;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .pc-rank{display:flex;align-items:center;gap:8px;min-width:0;max-width:100%;}
-  .pc-rank .rk{color:var(--accent-2);font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .pc-rank .rk{color:var(--txt-2);font-size:var(--f2);font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .callchip{background:var(--e2);border-radius:7px;padding:2px 8px;font-size:11px;font-family:var(--mono);color:var(--txt-2);box-shadow:var(--hi);flex:0 0 auto;}
   .pc-stat{flex:0 0 auto;align-self:stretch;background:var(--e2);border-radius:14px;padding:10px 14px;box-shadow:var(--hi),var(--sh-1);display:flex;flex-direction:column;gap:3px;justify-content:center;min-width:130px;}
-  .ps-k{font-size:9.5px;font-weight:700;color:var(--txt-3);text-transform:uppercase;letter-spacing:.07em;}
-  .ps-v{font-size:20px;font-weight:800;color:var(--accent-2);font-family:var(--mono);}
+  .ps-k{font-size:var(--f1);font-weight:400;color:var(--txt-2);text-transform:none;letter-spacing:0;}
+  .ps-v{font-size:var(--f5);font-weight:600;color:var(--txt);font-family:inherit;font-variant-numeric:tabular-nums;}
   .ps-v em{font-style:normal;font-size:11px;font-weight:700;color:var(--txt-2);}
   .pc-meta{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:1px;background:var(--hair);box-shadow:0 -1px 0 var(--hair);}
   .pc-statusrow{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);flex-wrap:wrap;}
@@ -682,7 +699,6 @@
     <div class="brand">
       <div class="badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6l7-3z"/></svg></div>
       <div class="ttl"><div class="r1"><b id="sysName">Roster System</b></div><div class="sub">Control panel</div></div>
-      <button class="icon-btn" id="refreshBtn" title="Refresh" aria-label="Refresh data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
     </div>
     <div class="tabs">
       <div class="ngroup">Roster</div>
@@ -703,6 +719,10 @@
   </div>
   <div class="main">
     <div class="progress" id="progress"></div>
+    <div class="toolbar">
+      <h1 class="tb-title" id="tbTitle">Members</h1>
+      <button class="icon-btn" id="refreshBtn" title="Refresh" aria-label="Refresh data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+    </div>
     <div class="content">
   <div class="stats" id="stats">
     <div class="stat s-active"><span class="sdot"></span><div><b id="st-active">—</b><span>Active</span></div></div>
@@ -1695,7 +1715,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); $('stats').style.display=(t.dataset.tab==='members')?'':'none'; if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); $('stats').style.display=(t.dataset.tab==='members')?'':'none'; $('tbTitle').textContent=(t.textContent||'').trim(); /* the window titles the view it is showing */ if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('rediv').addEventListener('click',function(){ loadDividers(); });
   $('divBody').addEventListener('click',function(e){
