@@ -557,9 +557,14 @@
   .mrow:hover{transform:none;box-shadow:none;}
   .mrow.exp{transform:none;background:none;box-shadow:none;}
   /* ONE grid template shared by the header and every row — that shared definition is what makes the columns
-     actually line up, rather than each row guessing at widths. */
-  .thead,.mhead{display:grid;grid-template-columns:30px 16px 30px minmax(0,1fr) 168px 62px 62px 104px;
-                align-items:center;gap:0;padding:0 10px;}
+     actually line up, rather than each row guessing at widths.
+     The gutter is a real column-gap rather than padding on the cells: padding would sit inside .c-rank/.c-hrs,
+     which the HEADER spans do not carry, so the right-aligned Hours column would drift out of line with its own
+     heading. A gap belongs to the grid, so both sides move together and cannot disagree.
+     The three leading columns are trimmed to pay for it — the gap now supplies the air that their internal slack
+     used to, so the checkbox/triangle/insignia cluster stays as tight as it was. */
+  .thead,.mhead{display:grid;grid-template-columns:24px 14px 26px minmax(0,1fr) 168px 66px 66px 104px;
+                align-items:center;column-gap:12px;padding:0 10px;}
   .thead{height:24px;font-size:10.5px;font-weight:600;color:rgba(255,255,255,.32);box-shadow:0 1px 0 rgba(255,255,255,.09);margin-top:14px;}
   .thead .num{text-align:right;} .thead .st{text-align:right;}
   /* Sortable header — the reference asks for a "sortable header … it scans like Mail". Clicking a column drives
