@@ -99,15 +99,21 @@ division tabs are engine-built exceptions.) An existing STATUS dropdown is **nev
 read per-value chip colours, so any `setDataValidation` on a live dropdown wipes them — the engine only creates
 a dropdown where none exists and WARNs when an engine status is missing from the operator's list.
 
-**Auto-rows** (`tidyTailRows_`, `[LIMITS].BLANK_TAIL_ROWS`, default 3, 0 = OFF): the LOA Tracker, Patrol Log,
-and Signup review tabs keep exactly N blank styled rows below the last entry — the sanctioned exception to the
-no-row-surgery rule, scoped to these three tabs' data regions. When submissions consume the tail, rows are
-inserted **inside** the styled band (between the data and the last blank row), so the operator's formatting,
-STATUS dropdowns and chip colours inherit natively — the engine still paints nothing; surplus trailing blanks
-are deleted in one contiguous run, so a legacy tab's thousand empty rows disappear on the first pass and nobody
-ever adds rows by hand. Runs at the end of each tab's sort (every mutation path finishes there); a row is
-deleted only when every cell is display-blank, rows above the data start are never touched, and 🧪 sandbox tabs
-are exempt. The in-sort grow paths prefer in-band inserts too, so an oversized batch inherits styling as well.
+**Auto-rows** (`tidyTailRows_`, `[LIMITS].BLANK_TAIL_ROWS`, default 1, 0 = OFF): the LOA Tracker, Patrol Log,
+and Signup review tabs keep exactly N blank styled rows between the last entry and the tab's **closing row** —
+the sanctioned exception to the no-row-surgery rule, scoped to these three tabs' data regions. That spare is
+where the next submission lands; when it is consumed, a replacement is inserted **inside** the styled band, so
+the operator's formatting, STATUS dropdowns and chip colours inherit natively — the engine still paints
+nothing; surplus blanks are deleted in one contiguous run, so a legacy tab's thousand empty rows disappear on
+the first pass and nobody ever adds rows by hand.
+
+**The sheet's final row is the operator's closing row** (themed tabs end in a deliberate black end-bar): it is
+never written, styled, deleted, or counted as a spare — inserts go *above* it. If a multi-row batch consumes it,
+the next pass restores a final row. Runs at the end of each tab's sort (every mutation path finishes there); a
+row is deleted only when every cell is display-blank, rows above the data start are never touched, and 🧪
+sandbox tabs are exempt. New rows also get the last entry's **row height** set explicitly — height is a sheet
+property that neither an insert nor a format paste carries, so without it a correctly-skinned row still sat
+short.
 
 `styleTailRows_` then makes the tail rows — the ones the next submission lands in — **look like the operator's
 data rows**, and heals any row already holding data that still wears the blank/canvas skin (these tabs' empty
@@ -116,7 +122,9 @@ It copies from the **parity partner two rows up** (an alternating band keeps alt
 `PASTE_FORMAT` + `PASTE_DATA_VALIDATION` — fills, borders, number formats, wrap and the STATUS dropdown with
 its chip colours all travel, values never do (a whole-row `PASTE_NORMAL` would duplicate the Patrol Log's col-A
 credit marker — invariant 4). The engine still paints nothing of its own: it propagates the operator's look.
-One backgrounds read per sort, returning immediately once the tail already matches.
+Row **height** is matched first and independently (no paste carries it); the look pass then costs one
+backgrounds read per sort and returns immediately once the tail already matches. The closing row is excluded
+from both passes.
 
 **Editable assignment/group tabs (`buildGroupSheets_`).** A #group / assignment tab (Canine Unit, District
 Patrol…) is an **editable upsert**, not a read-only FILTER: the engine keeps one row per matching member (matched

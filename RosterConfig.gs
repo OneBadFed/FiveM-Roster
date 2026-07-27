@@ -440,7 +440,7 @@ const BLOCK_SPECS_ = Object.freeze({
     SNAPSHOT_KEEP: { t: 'int', d: 20, req: true, min: 1, max: 200, help: 'How many in-sheet snapshots to keep before the oldest are pruned.' },
     LOG_ROW_CAP: { t: 'int', d: 5000, req: true, min: 200, max: 50000, help: 'Row cap for the Edit Log, Integrity Log and hours-history tabs before the oldest rows are trimmed.' },
     VALIDATION_BUFFER: { t: 'int', d: 50, req: true, min: 0, max: 1000, help: 'Extra rows below the live data that entry-time data-validation covers; re-run First-Run Setup after big growth.' },
-    BLANK_TAIL_ROWS: { t: 'int', d: 3, req: false, min: 0, max: 100, help: 'Auto-rows for the LOA Tracker / Patrol Log / Signup review tabs: keep exactly this many blank styled rows below the last entry — the engine inserts rows as submissions arrive (inheriting your formatting and dropdowns) and deletes surplus trailing blanks, so the tabs never need a sea of empty rows. 0 = OFF (the engine never inserts or deletes rows on these tabs).' },
+    BLANK_TAIL_ROWS: { t: 'int', d: 1, req: false, min: 0, max: 100, help: 'Auto-rows for the LOA Tracker / Patrol Log / Signup review tabs: keep exactly this many blank styled rows between the last entry and the tab\'s closing row. That spare is where the next submission lands — the engine styles it like your other rows and re-pads it afterwards, and deletes surplus blanks, so the tabs never need a sea of empty rows and you never add rows by hand. Your sheet\'s FINAL row is always left alone (the black end-bar on themed tabs). 1 is plenty; 0 = OFF (no inserting, no deleting, no styling).' },
   } },
   THEME: { type: 'kv', keys: {
     CANVAS: { t: 'color', d: THEME_DEFAULTS.CANVAS, req: true, help: 'Dark canvas below engine tables.' },
@@ -974,7 +974,7 @@ function materialize_(c, fromTab) {
       signupSubmitted: N.SIGNUP_SUBMITTED === true, signupSubmittedTitle: N.SIGNUP_SUBMITTED_TITLE || '`🧾` New Roster Signup — {name}', signupSubmittedColor: N.SIGNUP_SUBMITTED_COLOR || '#e0a52c',
     },
     limits: { snapshotKeep: kv.LIMITS.SNAPSHOT_KEEP, logRowCap: kv.LIMITS.LOG_ROW_CAP, validationBuffer: kv.LIMITS.VALIDATION_BUFFER,
-      blankTailRows: (kv.LIMITS.BLANK_TAIL_ROWS == null ? 3 : kv.LIMITS.BLANK_TAIL_ROWS) }, // == null guard: 0 is a valid (OFF) setting
+      blankTailRows: (kv.LIMITS.BLANK_TAIL_ROWS == null ? 1 : kv.LIMITS.BLANK_TAIL_ROWS) }, // == null guard: 0 is a valid (OFF) setting
     patrol: { // v1.0 patrol-log → hours (all default; feature OFF until sheets.patrol is set)
       mode: P.MODE || 'START_END', maxHours: P.MAX_HOURS || 16, overnight: P.OVERNIGHT !== false, recompute: P.RECOMPUTE !== false,
       futureGraceHours: (P.FUTURE_GRACE_HOURS == null ? 6 : P.FUTURE_GRACE_HOURS), // == null: 0 is a valid (strict) setting

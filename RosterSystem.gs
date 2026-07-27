@@ -2312,7 +2312,15 @@ function styleTailRows_(sheet, dataStart, lastData, keep, width) {
   try {
     if (lastData < dataStart) return;                       // no styled row to copy from yet (empty tab)
     const tail = lastData + 1;
-    if (tail > sheet.getMaxRows()) return;
+    const maxR = sheet.getMaxRows();
+    if (tail > maxR) return;
+    const lastTail = Math.min(lastData + keep, maxR - 1);   // maxR is the operator's CLOSING ROW — never touched
+    // ROW HEIGHT first, and independently of the look: it is a sheet property that no paste and no insert
+    // carries, so a spare row can wear the right skin at the wrong height (reported: fresh rows sat short).
+    if (lastTail >= tail) {
+      const h = sheet.getRowHeight(lastData);
+      for (let r = tail; r <= lastTail; r++) { if (sheet.getRowHeight(r) !== h) sheet.setRowHeight(r, h); }
+    }
     const from = Math.max(dataStart, lastData - 31);        // ONE read covers the heal window + the tail sample
     const bgs = sheet.getRange(from, 1, tail - from + 1, width).getBackgrounds();
     const sig = (r) => bgs[r - from].join('|');             // a row's whole-width background signature
@@ -2322,8 +2330,7 @@ function styleTailRows_(sheet, dataStart, lastData, keep, width) {
     let first = tail;                                       // first row still wearing the unstyled look
     for (let r = lastData; r >= from; r--) { if (sig(r) !== tailSig) break; first = r; } // bounded by the read window
     if (first - 1 < dataStart) return;                      // nothing styled above to copy from
-    const maxR = sheet.getMaxRows();
-    for (let r = first; r <= lastData + keep && r <= maxR; r++) {
+    for (let r = first; r <= lastTail; r++) {
       const src = (r - 2 >= dataStart) ? r - 2 : r - 1;     // ascending, so r-2 is already correct when we reach r
       if (src < dataStart) break;
       const srcR = sheet.getRange(src, 1, 1, width), dst = sheet.getRange(r, 1, 1, width);
@@ -2333,21 +2340,22 @@ function styleTailRows_(sheet, dataStart, lastData, keep, width) {
       // to prevent. Fills, borders, number formats, wrap/alignment and the STATUS dropdown (with its chip
       // colours) all travel on these two pastes anyway.
       srcR.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-      srcR.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+      srcR.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false); // heights are handled above
     }
   } catch (e) { logWarn_('styleTailRows_', 'tail styling skipped: ' + ((e && e.message) ? e.message : e)); }
 }
 
 /**
  * AUTO-ROWS for the tracker-style tabs (LOA Tracker · Patrol Log · Signup review): keep exactly
- * [LIMITS].BLANK_TAIL_ROWS blank, fully-styled rows below the last entry. Short → rows are inserted INSIDE the
- * styled band (between the data and the last blank row), so the operator's formatting, STATUS dropdowns and
- * chip colours all inherit natively — the engine never paints a thing. Surplus → trailing rows are deleted in
- * one contiguous run, so the tab ends cleanly instead of in a thousand empty rows, and nobody ever has to add
- * rows by hand again. 0 = feature OFF. Runs at the end of each tab's sort (every mutation path finishes there),
- * so the tail is re-padded right after submissions consume it.
- * A row is deleted only when EVERY cell is display-blank across the sheet width; rows above `dataStart` are
- * never touched; 🧪 sandbox tabs are exempt (DevQA fixtures address fixed rows).
+ * [LIMITS].BLANK_TAIL_ROWS blank, fully-styled rows between the last entry and the operator's CLOSING ROW.
+ * Short → rows are inserted INSIDE the styled band, so formatting, STATUS dropdowns and chip colours inherit
+ * natively — the engine never paints a thing. Surplus → deleted in one contiguous run, so the tab ends cleanly
+ * instead of in a thousand empty rows, and nobody ever has to add rows by hand again. One spare is the default:
+ * it is the row the next submission lands in, and the pass re-pads it immediately afterwards. 0 = feature OFF
+ * (the spare is what makes hands-free growth possible, so there is no zero-spare mode). Runs at the end of each
+ * tab's sort — every mutation path finishes there.
+ * A row is deleted only when EVERY cell is display-blank across the sheet width; rows above `dataStart` and the
+ * sheet's final row are never touched; 🧪 sandbox tabs are exempt (DevQA fixtures address fixed rows).
  * @param {Sheet} sheet  @param {number} dataStart first data row (banner/header rows above are off-limits)
  */
 function tidyTailRows_(sheet, dataStart) {
@@ -2372,15 +2380,23 @@ function tidyTailRows_(sheet, dataStart) {
       if (hit >= 0) { lastData = from + hit; break; }
       lo = from; chunk *= 2;
     }
-    const blanks = maxR - lastData;
-    if (blanks < keep) {
-      // ≥1 blank template row exists → insert BEFORE the last row (strictly inside every band range: validation,
-      // formats, banding all stretch). A completely full grid appends instead (formatting inherits from the row
-      // above; the dropdown may not — the next First-Run re-applies it, and from then on the tail always exists).
-      if (blanks >= 1) sheet.insertRowsBefore(maxR, keep - blanks);
-      else sheet.insertRowsAfter(maxR, keep - blanks);
-    } else if (blanks > keep) {
-      sheet.deleteRows(lastData + keep + 1, blanks - keep);
+    // THE CLOSING ROW IS THE OPERATOR'S. Themed tabs end in a deliberate bar (a plain black row that shows where
+    // the sheet stops) — so the sheet's FINAL row is never written, styled, deleted, or counted as a spare.
+    // Auto-rows operates strictly between the last entry and it.
+    const hasCap = maxR > lastData;
+    const capRow = hasCap ? maxR : 0;
+    const room = hasCap ? (capRow - 1 - lastData) : 0; // blank rows BETWEEN the data and the closing row
+    if (room < keep) {
+      // Insert ABOVE the closing row — strictly inside every band range (validation, formats, banding all
+      // stretch) and the operator's bar stays last. If a big batch consumed the closing row, restore one.
+      const need = keep - room + (hasCap ? 0 : 1);
+      const at = hasCap ? capRow : maxR + 1;
+      if (hasCap) sheet.insertRowsBefore(capRow, need); else sheet.insertRowsAfter(maxR, need);
+      // Row height is a SHEET property — it rides along with neither an insert nor a format paste, so the new
+      // rows came out short next to real submissions. Match the last entry's height explicitly.
+      if (lastData >= dataStart) { try { sheet.setRowHeights(at, need, sheet.getRowHeight(lastData)); } catch (e) { /* default height */ } }
+    } else if (room > keep) {
+      sheet.deleteRows(lastData + keep + 1, room - keep); // strictly between the data and the closing row
     }
     // The tail rows are what the NEXT submission lands in — give them (and any row already sitting on the old
     // unstyled canvas) the operator's own data-row look, copied down natively.
