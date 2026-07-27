@@ -360,25 +360,25 @@
   /* ── The Add-member slot picker, to the reference: a pinned search, compact rows, a tick on the selected one
      and a running count at the foot. Scoped to #slotMenu so the Move/transfer and Signups pickers, which have
      not been reworked, keep the shape they already have. ── */
-  #slotMenu{padding:0;}
-  #slotMenu .sdrop-search,#slotMenu .sdrop-foot{position:sticky;background:var(--e2);z-index:1;}
-  #slotMenu .sdrop-search{top:0;display:flex;align-items:center;gap:7px;margin:0;padding:7px 9px;
+  .slotpick{padding:0;}
+  .slotpick .sdrop-search,.slotpick .sdrop-foot{position:sticky;background:var(--e2);z-index:1;}
+  .slotpick .sdrop-search{top:0;display:flex;align-items:center;gap:7px;margin:0;padding:7px 9px;
     border-bottom:1px solid var(--hair);}
-  #slotMenu .sdrop-search svg{width:12px;height:12px;color:rgba(255,255,255,.45);flex:0 0 auto;}
-  #slotMenu .sdrop-search .in{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--txt);
+  .slotpick .sdrop-search svg{width:12px;height:12px;color:rgba(255,255,255,.45);flex:0 0 auto;}
+  .slotpick .sdrop-search .in{flex:1;min-width:0;background:none;border:none;outline:none;color:var(--txt);
     font-family:inherit;font-size:12.5px;padding:0;}
-  #slotMenu .sdrop-search .in::placeholder{color:rgba(255,255,255,.38);}
-  #slotMenu .sdrop-body{padding:6px;}
-  #slotMenu .sdrop-ghead{padding:7px 8px 4px;}
-  #slotMenu .sg-rank{font-weight:600;color:rgba(255,255,255,.5);}
-  #slotMenu .sg-cnt{font-weight:400;color:rgba(255,255,255,.3);}
-  #slotMenu .sdrop-opt{height:26px;padding:0 10px;border-radius:6px;font-size:12.5px;gap:8px;}
-  #slotMenu .so-check{width:11px;height:11px;flex:0 0 auto;opacity:0;color:#fff;}
-  #slotMenu .sdrop-opt.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;
+  .slotpick .sdrop-search .in::placeholder{color:rgba(255,255,255,.38);}
+  .slotpick .sdrop-body{padding:6px;}
+  .slotpick .sdrop-ghead{padding:7px 8px 4px;}
+  .slotpick .sg-rank{font-weight:600;color:rgba(255,255,255,.5);}
+  .slotpick .sg-cnt{font-weight:400;color:rgba(255,255,255,.3);}
+  .slotpick .sdrop-opt{height:26px;padding:0 10px;border-radius:6px;font-size:12.5px;gap:8px;}
+  .slotpick .so-check{width:11px;height:11px;flex:0 0 auto;opacity:0;color:#fff;}
+  .slotpick .sdrop-opt.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;
     box-shadow:0 .5px 0 rgba(255,255,255,.22) inset;}
-  #slotMenu .sdrop-opt.sel .so-check{opacity:1;}
-  #slotMenu .sdrop-opt.sel .so-rank{color:rgba(255,255,255,.85);}
-  #slotMenu .sdrop-foot{bottom:0;padding:7px 10px;border-top:1px solid var(--hair);
+  .slotpick .sdrop-opt.sel .so-check{opacity:1;}
+  .slotpick .sdrop-opt.sel .so-rank{color:rgba(255,255,255,.85);}
+  .slotpick .sdrop-foot{bottom:0;padding:7px 10px;border-top:1px solid var(--hair);
     font-size:11.5px;color:rgba(255,255,255,.35);}
   .rava{width:22px;height:22px;border-radius:7px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
     overflow:hidden;background:var(--e3);box-shadow:var(--hi);}
@@ -1067,7 +1067,7 @@
                     <span class="sdrop-cur ph" id="slotCur">Select slot</span>
                     <span class="sdrop-chev-box"><svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span>
                   </button>
-                  <div class="sdrop-menu" id="slotMenu" role="listbox" hidden></div>
+                  <div class="sdrop-menu slotpick" id="slotMenu" role="listbox" hidden></div>
                 </div>
                 <span class="fnote" id="slotRemain"></span>
               </div></div>
@@ -1865,30 +1865,41 @@
     if(!open.length){ menu.innerHTML='<div class="sdrop-empty">No open slots right now — every rank row is filled.</div>'; var r0=$('slotRemain'); if(r0) r0.textContent='none open'; setSlot(null); return; }
     var groups={},order=[];
     open.forEach(function(m){ if(!groups[m.rank]){groups[m.rank]=[];order.push(m.rank);} groups[m.rank].push(m); });
-    menu.innerHTML='<div class="sdrop-search">'+SVG.search
-        +'<input type="text" class="in" id="slotQ" placeholder="Callsign or rank" autocomplete="off" spellcheck="false"></div>'
-      +'<div class="sdrop-body">'+order.map(function(r){
-        return '<div class="sdrop-group"><div class="sdrop-ghead"><span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
-          +groups[r].map(function(m){
-            var sv=STATE.shiftLabel?String(m.shift||'').trim():'';
-            // data-q carries what the search matches against, so filtering never depends on rendered markup.
-            return '<button type="button" class="sdrop-opt" data-slotrow="'+m.row+'" role="option" data-q="'+esc(((m.callsign||('Row '+m.row))+' '+r+' '+sv).toLowerCase())+'">'
-              +'<span class="so-check">'+SVG.check+'</span>'
-              +'<span class="so-call">'+esc(m.callsign||('Row '+m.row))+'</span>'
-              +'<span class="so-rank">'+esc(sv||r)+'</span></button>';
-          }).join('')
-        +'</div>';
-      }).join('')+'</div>'
-      +'<div class="sdrop-foot" id="slotFoot"></div>';
+    menu.innerHTML=slotPickHtml(open.map(function(m){
+      return { row:m.row, call:m.callsign, rank:m.rank, shift:STATE.shiftLabel?m.shift:'' };
+    }), STATE.addSlot, 'slotrow', 'slotQ');
     var rem=$('slotRemain'); if(rem) rem.textContent=open.length+' remaining';
     filterSlotMenu();
     setSlot(STATE.addSlot); // refresh trigger + preview + selected mark (tolerates null)
   }
-  /* Type-to-narrow, matching the Signups picker: options are hidden rather than re-rendered, so the caret and
-     the typed text survive every keystroke. A rank group with nothing left to show hides with them. */
-  function filterSlotMenu(){
-    var menu=$('slotMenu'); if(!menu) return;
-    var qi=$('slotQ'), q=qi?qi.value.trim().toLowerCase():'', shown=0, ranks=0;
+  /* ONE slot picker, used by BOTH Add member and Signups. They had grown apart — same job, two markups, two
+     filters — which is exactly how the Signups one ended up without the search, the tick or the count.
+     @param list  [{row, call, rank, shift}]   @param attr  the data-* the click handlers already listen for. */
+  function slotPickHtml(list, selRow, attr, qId){
+    if(!list.length) return '<div class="sdrop-empty">No open slots — free one on the roster.</div>';
+    var groups={},order=[];
+    list.forEach(function(s){ if(!groups[s.rank]){groups[s.rank]=[];order.push(s.rank);} groups[s.rank].push(s); });
+    return '<div class="sdrop-search">'+SVG.search
+        +'<input type="text" class="in" id="'+qId+'" placeholder="Callsign or rank" autocomplete="off" spellcheck="false"></div>'
+      +'<div class="sdrop-body">'+order.map(function(r){
+        return '<div class="sdrop-group"><div class="sdrop-ghead"><span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
+          +groups[r].map(function(s){
+            var call=s.call||('Row '+s.row), sv=String(s.shift||'').trim();
+            // data-q carries what the search matches against, so filtering never depends on rendered markup.
+            return '<button type="button" class="sdrop-opt'+(String(selRow)===String(s.row)?' sel':'')+'" data-'+attr+'="'+s.row+'" role="option" data-q="'+esc((call+' '+r+' '+sv).toLowerCase())+'">'
+              +'<span class="so-check">'+SVG.check+'</span>'
+              +'<span class="so-call">'+esc(call)+'</span>'
+              +'<span class="so-rank">'+esc(sv||r)+'</span></button>';
+          }).join('')
+        +'</div>';
+      }).join('')+'</div>'
+      +'<div class="sdrop-foot"></div>';
+  }
+  /* Type-to-narrow. Options are hidden rather than re-rendered, so the caret and the typed text survive every
+     keystroke, and a rank group with nothing left to show hides with them. */
+  function slotPickFilter(menu, qi){
+    if(!menu) return;
+    var q=qi?qi.value.trim().toLowerCase():'', shown=0, ranks=0;
     menu.querySelectorAll('.sdrop-group').forEach(function(g){
       var any=0;
       g.querySelectorAll('.sdrop-opt').forEach(function(o){
@@ -1897,9 +1908,10 @@
       });
       g.style.display=any?'':'none'; if(any) ranks++;
     });
-    var foot=$('slotFoot');
+    var foot=menu.querySelector('.sdrop-foot');
     if(foot) foot.textContent=shown?(shown+' open across '+ranks+' rank'+(ranks===1?'':'s')):'Nothing matches “'+(qi?qi.value.trim():'')+'”';
   }
+  function filterSlotMenu(){ slotPickFilter($('slotMenu'), $('slotQ')); }
   function setSlot(row){
     STATE.addSlot=(row==null?null:Number(row));
     var m=(STATE.addSlot!=null)?slotByRow(STATE.addSlot):null, cur=$('slotCur');
@@ -1998,15 +2010,11 @@
   function suKv(k,vHtml){ return vHtml?'<div class="pkv-r"><span class="pkv-k">'+k+'</span><span class="pkv-v">'+vHtml+'</span></div>':''; }
   function suEmpty(title,sub){ return '<div class="empty" style="margin-top:var(--s3)"><span class="ei">'+IEMPTY+'</span><div><b>'+title+'</b><br>'+sub+'</div></div>'; }
   function suSlotMenuHtml(){
-    if(!SU.slots.length) return '<div class="sdrop-empty">No open slots — free one on the roster.</div>';
-    var groups={},order=[];
-    SU.slots.forEach(function(s){ if(!groups[s.rank]){groups[s.rank]=[];order.push(s.rank);} groups[s.rank].push(s); });
-    return '<div class="sdrop-search"><input type="text" class="in" id="suSlotQ" placeholder="Search callsign or rank…" autocomplete="off" spellcheck="false"></div>'
-      +order.map(function(r){
-      return '<div class="sdrop-group"><div class="sdrop-ghead">'+rankAvatar(r)+'<span class="sg-rank">'+esc(r)+'</span><span class="sg-cnt">'+groups[r].length+' open</span></div>'
-        +groups[r].map(function(s){ return '<button type="button" class="sdrop-opt'+(SU.slot===s.row?' sel':'')+'" data-suslot="'+s.row+'"><span class="so-call">'+esc(s.unit||('Row '+s.row))+'</span><span class="so-rank">'+esc(r)+'</span></button>'; }).join('')+'</div>';
-    }).join('');
+    return slotPickHtml((SU.slots||[]).map(function(s){
+      return { row:s.row, call:s.unit, rank:s.rank, shift:SU.shiftLabel?s.shift:'' };
+    }), SU.slot, 'suslot', 'suSlotQ');
   }
+  function suFilterSlots(){ slotPickFilter($('suSlotMenu'), $('suSlotQ')); }
   /* "2 days ago" from a sheet timestamp. Returns '' when the cell is blank or unparseable — a wrong age is
      worse than none, and these strings drive how urgent the queue looks. */
   function suAgo(ts){
@@ -2079,7 +2087,7 @@
             +'<div class="sdrop" id="suSlotDrop"><button type="button" class="sdrop-btn" id="suSlotBtn" aria-haspopup="listbox" aria-expanded="false">'
             +'<span class="sdrop-cur'+(cur?'':' ph')+'" id="suSlotCur">'+(cur||'Select slot')+'</span>'
             +'<span class="sdrop-chev-box"><svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></button>'
-            +'<div class="sdrop-menu" id="suSlotMenu" role="listbox" hidden>'+suSlotMenuHtml()+'</div></div></div></div>'
+            +'<div class="sdrop-menu slotpick" id="suSlotMenu" role="listbox" hidden>'+suSlotMenuHtml()+'</div></div></div></div>'
           +slotCard
           +'<div class="frow fspan"><p class="fhint">Rank and callsign come from the slot. Nothing is inserted into your section layout.</p></div>'
         +'</div></div>'
@@ -2137,16 +2145,6 @@
   }
   function suOpenMenu(on){ var d=$('suSlotDrop'),menu=$('suSlotMenu'),btn=$('suSlotBtn'); if(!d||!menu) return; var show=(on==null)?menu.hidden:on; d.classList.toggle('open',show); menu.hidden=!show; if(btn) btn.setAttribute('aria-expanded',show?'true':'false');
     if(show){ var qi=$('suSlotQ'); if(qi){ qi.value=''; suFilterSlots(); setTimeout(function(){ try{ qi.focus(); }catch(ig){} },0); } } } // open → fresh filter + type-to-search immediately
-  /* Live slot filter: matches an option's whole text (callsign + rank), hides groups that empty out. */
-  function suFilterSlots(){
-    var qi=$('suSlotQ'), menu=$('suSlotMenu'); if(!menu) return;
-    var q=(qi&&qi.value?qi.value:'').trim().toLowerCase();
-    menu.querySelectorAll('.sdrop-group').forEach(function(g){
-      var any=false;
-      g.querySelectorAll('.sdrop-opt').forEach(function(o){ var hit=!q||o.textContent.toLowerCase().indexOf(q)!==-1; o.style.display=hit?'':'none'; if(hit) any=true; });
-      g.style.display=any?'':'none';
-    });
-  }
   document.addEventListener('input',function(e){ if(e.target&&e.target.id==='suSlotQ') suFilterSlots(); if(e.target&&e.target.id==='slotQ') filterSlotMenu(); });
 
   /* ── Promotions feed manager (Tools tab): list the RE_PROMOS entries, remove one → every table repaints ── */
