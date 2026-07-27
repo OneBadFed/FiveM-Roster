@@ -430,9 +430,26 @@
   .bulkbar .seg:hover{background:rgba(255,255,255,.13);color:#fff;}
   .bulkbar .bclear{background:none;border:none;color:var(--accent);border-radius:var(--r-sm);padding:var(--s1) var(--s2);font-size:12.5px;font-weight:400;cursor:pointer;transition:color var(--t),background var(--t);}
   .bulkbar .bclear:hover{color:var(--txt);background:var(--e3);}
-  .sform{margin-top:var(--s2);}
-  .srow{display:flex;flex-wrap:wrap;gap:var(--s2);margin-bottom:var(--s2);}
-  .sf-mini{flex:1 1 110px;min-width:0;padding:8px 10px;}
+  /* The leave form sits in a 288px sub-panel, so its controls take the same 24px metrics as everything else in
+     the inspector. They were the last fields on the old sizing — a 32px select next to a 20px "New LOA" button
+     read as two different toolkits stacked in one box. */
+  .sform{margin-top:11px;}
+  .srow{display:flex;flex-wrap:nowrap;gap:8px;margin-bottom:8px;}
+  .sform .field{height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
+                background:rgba(255,255,255,.08);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
+  .sform .field:focus{background:rgba(255,255,255,.11);
+                box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset,0 0 0 3px var(--accent-soft);}
+  .sform select.field{padding-right:24px;background-position:right 8px center;}
+  .sf-mini{flex:1 1 0;min-width:0;}
+  /* Submit takes the SAME primary treatment as + Add in the toolbar, at the same 24px — one primary button in
+     the panel, and it looks like the others. It was a full-width 13.5px/700 slab with a coloured glow, which
+     made scheduling leave look like the most important action on a member's profile. */
+  .btn.sf-go{width:auto;margin-top:2px;height:24px;padding:0 12px;border-radius:6px;font-size:12.5px;font-weight:500;
+         background:linear-gradient(180deg,#0f8cff,#0a7ae8);
+         box-shadow:0 .5px 0 rgba(255,255,255,.25) inset,0 1px 2px rgba(0,0,0,.3);}
+  .btn.sf-go:hover{filter:brightness(1.07);transform:none;
+         box-shadow:0 .5px 0 rgba(255,255,255,.25) inset,0 1px 2px rgba(0,0,0,.3);}
+  .btn.sf-go:active{transform:none;filter:brightness(.93);}
   .pc-adm{background:linear-gradient(155deg,rgba(224,87,79,.06),transparent),rgba(18,22,29,.4);}
   .pc-adm>.pc-lbl{color:#e08a84;}
   .adm-flex{display:flex;flex-wrap:wrap;gap:0 var(--s2);}
@@ -1365,7 +1382,7 @@
             +'<select class="field sf-mini" id="sfs'+m.row+'">'+op('Pending',fd.s)+op('Approved',fd.s)+'</select></div>'
           +'<div class="srow"><input type="date" class="field sf-mini" id="sfst'+m.row+'" value="'+esc(fd.st||'')+'" aria-label="Start date"><input type="date" class="field sf-mini" id="sfen'+m.row+'" value="'+esc(fd.en||'')+'" aria-label="End date"></div>'
           +'<input class="field" id="sfn'+m.row+'" value="'+esc(fd.n||'')+'" placeholder="Notes (optional)" autocomplete="off">'
-          +'<button class="btn" data-schedgo="'+m.row+'">Schedule leave</button>'
+          +'<button class="btn sf-go" data-schedgo="'+m.row+'">Schedule leave</button>'
         +'</div>'
         +'<div id="lv'+m.row+'" class="leaves"><span class="muted2">Loading…</span></div></div>';
       })()
