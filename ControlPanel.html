@@ -1883,7 +1883,9 @@
       +(m.section?r('Section',esc(m.section)):'')
       +r('Sheet row','<span class="mono">'+m.row+'</span>')
       +(req?r('Hours requirement','<span class="mono">'+req.toFixed(1)+'</span>'):'')
-      +r('Status after seating',pill(STATE.statuses.length?STATE.statuses[STATE.statuses.length-1]:'Inactive'))
+      // The status that will ACTUALLY be written — the one chosen above, not the last entry in the vocabulary.
+      // (It read STATE.statuses[last], which is simply the final status a department happens to have defined.)
+      +r('Status after seating',pill(STATE.addStatus||STATE.defaultStatus||(STATE.statuses.length?STATE.statuses[STATE.statuses.length-1]:'Inactive')))
       +'<div class="pv-foot">They appear on the roster immediately. Status and leave are managed from their profile on the Members tab.</div>';
   }
   /* The footer reports whether the form can be submitted and why not — the button never explains itself. */
