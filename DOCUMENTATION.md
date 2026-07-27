@@ -109,6 +109,15 @@ ever adds rows by hand. Runs at the end of each tab's sort (every mutation path 
 deleted only when every cell is display-blank, rows above the data start are never touched, and 🧪 sandbox tabs
 are exempt. The in-sort grow paths prefer in-band inserts too, so an oversized batch inherits styling as well.
 
+`styleTailRows_` then makes the tail rows — the ones the next submission lands in — **look like the operator's
+data rows**, and heals any row already holding data that still wears the blank/canvas skin (these tabs' empty
+region was never styled, so the first submission to land there after the blanks were trimmed came out unbanded).
+It copies from the **parity partner two rows up** (an alternating band keeps alternating) using
+`PASTE_FORMAT` + `PASTE_DATA_VALIDATION` — fills, borders, number formats, wrap and the STATUS dropdown with
+its chip colours all travel, values never do (a whole-row `PASTE_NORMAL` would duplicate the Patrol Log's col-A
+credit marker — invariant 4). The engine still paints nothing of its own: it propagates the operator's look.
+One backgrounds read per sort, returning immediately once the tail already matches.
+
 **Editable assignment/group tabs (`buildGroupSheets_`).** A #group / assignment tab (Canine Unit, District
 Patrol…) is an **editable upsert**, not a read-only FILTER: the engine keeps one row per matching member (matched
 by Unique ID, else name), mirrors the roster's columns by header, places members into the tab's RANK GROUP bands

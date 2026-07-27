@@ -2298,6 +2298,47 @@ function statusDropdownOrder_(sheet, row, col) {
 }
 
 /**
+ * Make the blank tail rows LOOK like the data rows above them — and HEAL a row that already holds data but
+ * still wears the blank/canvas skin (these tabs' empty region was never styled, so the first submission to land
+ * there after auto-rows trimmed the blanks came out black instead of banded — visible immediately).
+ * Everything here is a NATIVE cell copy from rows the OPERATOR styled: their fills, borders, number formats,
+ * the STATUS dropdown and its chip colours all come along, and the engine still paints nothing of its own
+ * (layout ownership holds — we propagate their look, we don't invent one). Copies from the PARITY PARTNER two
+ * rows up, so an alternating band keeps alternating. Costs ONE backgrounds read per sort and returns
+ * immediately once the tail already matches.
+ * @param {number} lastData last row holding content  @param {number} keep blank tail rows to style
+ */
+function styleTailRows_(sheet, dataStart, lastData, keep, width) {
+  try {
+    if (lastData < dataStart) return;                       // no styled row to copy from yet (empty tab)
+    const tail = lastData + 1;
+    if (tail > sheet.getMaxRows()) return;
+    const from = Math.max(dataStart, lastData - 31);        // ONE read covers the heal window + the tail sample
+    const bgs = sheet.getRange(from, 1, tail - from + 1, width).getBackgrounds();
+    const sig = (r) => bgs[r - from].join('|');             // a row's whole-width background signature
+    const tailSig = sig(tail);
+    const partner = (lastData - 1 >= from) ? lastData - 1 : lastData; // what the tail SHOULD look like
+    if (tailSig === sig(partner)) return;                   // already consistent → nothing to do
+    let first = tail;                                       // first row still wearing the unstyled look
+    for (let r = lastData; r >= from; r--) { if (sig(r) !== tailSig) break; first = r; } // bounded by the read window
+    if (first - 1 < dataStart) return;                      // nothing styled above to copy from
+    const maxR = sheet.getMaxRows();
+    for (let r = first; r <= lastData + keep && r <= maxR; r++) {
+      const src = (r - 2 >= dataStart) ? r - 2 : r - 1;     // ascending, so r-2 is already correct when we reach r
+      if (src < dataStart) break;
+      const srcR = sheet.getRange(src, 1, 1, width), dst = sheet.getRange(r, 1, 1, width);
+      // FORMAT + DATA_VALIDATION only — never PASTE_NORMAL. A whole-row copy would carry the source row's
+      // VALUES, and on the Patrol Log that includes the hidden col-A credit marker: duplicating it into another
+      // row, even for the instant before a clearContent, is exactly the double-credit hazard invariant 4 exists
+      // to prevent. Fills, borders, number formats, wrap/alignment and the STATUS dropdown (with its chip
+      // colours) all travel on these two pastes anyway.
+      srcR.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      srcR.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+    }
+  } catch (e) { logWarn_('styleTailRows_', 'tail styling skipped: ' + ((e && e.message) ? e.message : e)); }
+}
+
+/**
  * AUTO-ROWS for the tracker-style tabs (LOA Tracker · Patrol Log · Signup review): keep exactly
  * [LIMITS].BLANK_TAIL_ROWS blank, fully-styled rows below the last entry. Short → rows are inserted INSIDE the
  * styled band (between the data and the last blank row), so the operator's formatting, STATUS dropdowns and
@@ -2341,6 +2382,9 @@ function tidyTailRows_(sheet, dataStart) {
     } else if (blanks > keep) {
       sheet.deleteRows(lastData + keep + 1, blanks - keep);
     }
+    // The tail rows are what the NEXT submission lands in — give them (and any row already sitting on the old
+    // unstyled canvas) the operator's own data-row look, copied down natively.
+    styleTailRows_(sheet, dataStart, lastData, keep, width);
   } catch (e) { logWarn_('tidyTailRows_', 'auto-rows skipped: ' + ((e && e.message) ? e.message : e)); }
 }
 
