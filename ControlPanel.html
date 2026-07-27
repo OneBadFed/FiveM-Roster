@@ -630,68 +630,6 @@
   .cseg.on[data-k="MEMBER"]{background:var(--blue-t);color:var(--blue-f);box-shadow:0 0 10px -4px var(--blue);}
   .cseg.on[data-k="SLOT"]{background:var(--amber-t);color:var(--amber-f);box-shadow:0 0 10px -4px var(--amber);}
 
-  /* dividers tab */
-  .divgroup{margin-bottom:var(--s2);border-radius:14px;transition:box-shadow .2s var(--ease);}
-  .divgroup.open{box-shadow:0 0 24px -12px var(--rc-b,rgba(0,0,0,.5)),var(--sh-2);}
-  .divrow{display:flex;align-items:center;gap:10px;background:var(--glass),var(--e1);border:none;border-radius:14px;padding:11px 13px;cursor:pointer;
-          box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),box-shadow var(--t),background var(--t);}
-  .divrow:hover{transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
-  .divgroup.open .divrow{background:linear-gradient(155deg,var(--rc-t,transparent),transparent 70%),var(--e2);border-bottom-left-radius:0;border-bottom-right-radius:0;}
-  .divrow .dcaret{width:16px;height:16px;flex:0 0 auto;color:var(--txt-3);display:flex;align-items:center;justify-content:center;transition:transform .22s var(--ease),color var(--t);}
-  .divrow .dcaret svg{width:13px;height:13px;}
-  .divgroup.open .divrow .dcaret{transform:rotate(90deg);color:var(--rc-f,var(--txt-2));}
-  .divrow .dnode{width:30px;height:30px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:var(--rc-t,var(--aux-t));color:var(--rc-f,var(--aux-f));border:none;box-shadow:var(--hi);}
-  .divrow .dnode svg{width:15px;height:15px;}
-  .divrow .dh{flex:1;min-width:0;}
-  .divrow .dh b{display:block;font-weight:650;font-size:13px;letter-spacing:.02em;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .divrow .dh small{display:block;color:var(--txt-3);font-size:11px;margin-top:1px;}
-  .divrow .dmeta{display:flex;align-items:center;gap:8px;flex:0 0 auto;}
-  .dtag{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;padding:3px 10px;border-radius:999px;border:1px solid transparent;white-space:nowrap;box-shadow:var(--hi);}
-  .dcnt{font-family:var(--mono);font-size:10px;color:var(--txt-3);white-space:nowrap;text-align:right;}
-  .dcnt b{color:var(--txt-2);font-weight:600;}
-  .divmembers{display:none;flex-direction:column;gap:5px;margin:0 0 0 15px;padding:8px 0 8px 14px;border-left:2px solid var(--rc-b,var(--hair-2));}
-  .divgroup.open .divmembers{display:flex;animation:divIn .24s var(--ease) both;}
-  @keyframes divIn{from{opacity:0;transform:translateY(-4px);}to{opacity:1;transform:none;}}
-  .dmemrow{display:flex;align-items:center;gap:10px;background:var(--e1);border:none;border-radius:11px;padding:8px 11px;font-size:12px;box-shadow:var(--hi),var(--sh-1);animation:rowIn .26s var(--ease) both;cursor:pointer;transition:transform var(--t) var(--ease),box-shadow var(--t);}
-  .dmemrow:hover{transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
-  @keyframes rowIn{from{opacity:0;transform:translateX(-6px);}to{opacity:1;transform:none;}}
-  .dmemrow .dmr-rank{flex:0 0 auto;min-width:112px;color:var(--txt-3);font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .dmemrow .dmr-name{flex:1;min-width:0;color:var(--txt);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .dmem-empty{display:flex;align-items:center;gap:11px;color:var(--txt-3);font-size:11px;padding:11px 12px;background:rgba(255,255,255,.012);border:1.5px dashed rgba(255,255,255,.12);border-radius:11px;flex-wrap:wrap;}
-  .dmem-empty .de-assign{margin-left:auto;flex:0 0 auto;}
-  /* per-divider style editor */
-  .dedit{background:none;border:none;color:var(--txt-3);cursor:pointer;padding:5px;border-radius:8px;display:flex;align-items:center;transition:color var(--t),background var(--t);}
-  .dedit svg{width:14px;height:14px;}
-  .dedit:hover{color:var(--txt);background:var(--btn-hi);}
-  .divgroup.custom .dedit{color:var(--rc-f,var(--accent-2));}
-  .diveditor{background:var(--e2);border-radius:0 0 14px 14px;padding:14px 16px;margin-top:-6px;box-shadow:inset 0 1px 0 var(--hair);display:flex;flex-direction:column;gap:13px;}
-  .diveditor[hidden]{display:none;} /* the author display:flex above beats the UA [hidden] rule — restore it so the Edit toggle works */
-  .divgroup.open .diveditor{margin-top:0;border-radius:14px;margin-bottom:6px;}
-  .de-fld{display:flex;align-items:flex-start;gap:13px;}
-  .de-fld>label{flex:0 0 54px;font-size:9.5px;text-transform:uppercase;letter-spacing:.07em;color:var(--txt-3);font-weight:800;padding-top:8px;}
-  .de-pill{flex:1;min-width:0;background:var(--btn);border:none;color:var(--txt);border-radius:9px;padding:8px 12px;font-size:12.5px;font-family:inherit;outline:none;box-shadow:var(--hi);}
-  .de-pill::placeholder{color:var(--txt-3);}
-  .de-pill:focus{background:var(--e4);box-shadow:var(--hi),0 0 0 2px var(--accent-ring);}
-  .de-tones{display:flex;flex-wrap:wrap;gap:8px;flex:1;padding-top:2px;}
-  .de-tone{width:24px;height:24px;border-radius:50%;border:2px solid transparent;cursor:pointer;padding:0;transition:transform .12s var(--ease);box-shadow:var(--hi);}
-  .de-tone:hover{transform:scale(1.14);}
-  .de-tone.sel{border-color:#fff;box-shadow:0 0 0 2px var(--e2),0 0 0 4px var(--txt-3);}
-  .de-icons{display:flex;flex-wrap:wrap;gap:6px;flex:1;}
-  .de-icon{width:30px;height:30px;border-radius:9px;background:var(--e3);border:1px solid transparent;color:var(--txt-2);cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background var(--t),color var(--t),border-color var(--t);}
-  .de-icon svg{width:16px;height:16px;}
-  .de-icon:hover{background:var(--e4);color:var(--txt);}
-  .de-icon.sel{border-color:var(--accent);color:var(--accent-2);background:var(--accent-soft);}
-  .de-acts{display:flex;gap:8px;justify-content:flex-end;align-items:center;}
-  .de-btn{font:inherit;font-size:12px;font-weight:650;padding:8px 15px;border-radius:9px;border:none;cursor:pointer;transition:filter var(--t),color var(--t),background var(--t);}
-  .de-save{background:linear-gradient(155deg,#5a97ec,#3d7cd9);color:#fff;box-shadow:var(--hi),var(--sh-1);}
-  .de-save:hover{filter:brightness(1.07);}
-  .de-reset{background:transparent;color:var(--txt-3);}
-  .de-reset:hover{color:var(--txt);background:var(--btn-hi);}
-  .de-ic{width:32px;height:32px;border-radius:10px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;background:var(--rc-t,var(--e3));color:var(--rc-f,var(--txt-3));border:none;box-shadow:var(--hi);}
-  .de-ic svg{width:16px;height:16px;}
-  .de-tx b{display:block;color:var(--txt-2);font-size:12px;font-weight:650;}
-  .de-tx small{color:var(--txt-3);}
-
   /* snapshots + audit */
   .snap-row{display:flex;align-items:center;gap:var(--s3);background:var(--glass),var(--e1);border:none;border-radius:14px;padding:10px 13px;font-size:12px;box-shadow:var(--hi),var(--sh-1);transition:transform var(--t) var(--ease),box-shadow var(--t);}
   .snap-row:hover{transform:translateY(-1px);box-shadow:var(--hi),var(--sh-2);}
@@ -1030,7 +968,6 @@
       <button class="tab active" data-tab="members" data-title="Members"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg></span>Members</button>
       <button class="tab" data-tab="add" data-title="Add member" data-sub="Seats a person into an existing open slot — never inserts a row"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
       <button class="tab" data-tab="signups" data-title="Signups"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups<span class="cnt" id="navSignupCount"></span></button>
-      <button class="tab" data-tab="dividers" data-title="Dividers"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg></span>Dividers</button>
       <div class="ngroup">Operations</div>
       <button class="tab" data-tab="tools" data-title="Tools"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</button>
       <button class="tab" data-tab="columns" data-title="Columns"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></span>Columns</button>
@@ -1164,7 +1101,6 @@
       <button class="linkbtn" id="suSkip">Skip</button>
       <button class="btn-primary" id="suSeat">Approve &amp; seat</button>
     </div>
-  </div>
 
   <div class="pane" id="pane-tools">
     <div class="tsec">
@@ -1256,10 +1192,6 @@
     <p class="hint">Member columns follow the person on transfer and ride along in snapshots; slot columns stay with the position. Tapping a toggle saves to the <b>[COLUMNS]</b> block on the <b>⚙️ Config</b> tab.</p>
   </div>
 
-  <div class="pane" id="pane-dividers">
-    <div class="colhead">Section dividers<button class="linkbtn" id="rediv">Refresh</button></div>
-    <div id="divBody" class="sys-body"><span class="muted2">Loading…</span></div>
-    <p class="hint">Any ALL-CAPS label in the rank column (like <b>CADETS</b>) starts a section automatically. Click a section to see its members — open a profile, or use <b>Assign member</b> to fill an empty seat. Counts are filled seats out of total slots. Section tags can be changed under <b>SECTION_TAGS</b> in Engine Settings.</p>
   </div>
 
   </div>
@@ -1270,7 +1202,7 @@
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
   var INIT_TAB = "<?= initialTab ?>"; // deep-link target tab (e.g. 'signups' from 🧾 Review Roster Signups); '' = default
-  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',filterShift:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,dividersLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null,shiftLabel:'',shiftAssignedBy:'MEMBER',shiftValues:[],addShift:'',addStatus:'',defaultStatus:''};
+  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',filterShift:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null,shiftLabel:'',shiftAssignedBy:'MEMBER',shiftValues:[],addShift:'',addStatus:'',defaultStatus:''};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
   var SVG={
@@ -2375,89 +2307,6 @@
         '</span></div>';
     }).join('');
   }
-  function loadDividers(silent){
-    if(!silent) $('divBody').innerHTML=skel(4);
-    api(function(d){ STATE.dividersLoaded=true; renderDividers(d); }, function(e){ $('divBody').innerHTML='<span class="muted2">Could not load dividers.</span>'; onError(e); }, "cpDividersInfo");
-  }
-  function dtone(c){ return (c && c.tone) ? String(c.tone).replace(/[^a-z]/gi,'') : 'aux'; }
-  function renderDividers(d){
-    d=d||{}; var divs=d.dividers||[]; STATE.divStyles=d.styles||{};
-    if(d.error){ $('divBody').innerHTML='<span class="muted2">'+esc(d.error)+'</span>'; return; }
-    if(!divs.length){ $('divBody').innerHTML='<div class="empty"><span class="ei">'+(RICON.aux)+'</span><div><b>No section dividers found</b><br>Add an all-caps label (e.g. CADETS) in the rank column to start a section.</div></div>'; return; }
-    $('divBody').innerHTML = divs.map(function(v,vi){
-      var cat=v.category, st=(STATE.divStyles||{})[v.label]||null;
-      var tone=st?(DIVTONES.indexOf(st.tone)>=0?st.tone:'aux'):dtone(cat);
-      var ic=st?(DIVICONS[st.icon]||DIVICONS.person):(DIVICONS[DIVTONE_DEFAULT[tone]]||DIVICONS.person);
-      var pillLabel=st?st.pill:(cat?cat.label:'');
-      var people=v.people||[], nextRow=(vi+1<divs.length)?divs[vi+1].row:'';
-      var body = people.length
-        ? people.map(function(p,i){ return '<div class="dmemrow" data-mrow="'+p.row+'" role="button" tabindex="0" title="Open '+esc(p.name||'member')+'’s profile" style="animation-delay:'+(i*38)+'ms"><span class="dmr-rank">'+esc(p.rank)+'</span><span class="dmr-name">'+esc(p.name||'—')+'</span>'+pill(p.status)+'</div>'; }).join('')
-        : '<div class="dmem-empty"><span class="de-ic">'+IEMPTY+'</span><div class="de-tx"><b>No personnel assigned</b><small>'+(v.slots?('This division has '+v.slots+' open slot'+(v.slots===1?'':'s')+' ready to staff.'):'No slots defined under this divider.')+'</small></div>'+(v.slots?('<button class="linkbtn de-assign" data-afrom="'+v.row+'" data-ato="'+nextRow+'">+ Assign member</button>'):'')+'</div>';
-      var rvars='--rc:var(--'+tone+');--rc-b:var(--'+tone+'-b);--rc-t:var(--'+tone+'-t);--rc-f:var(--'+tone+'-f)';
-      return '<div class="divgroup'+(st?' custom':'')+'" data-divlabel="'+esc(v.label)+'" style="'+rvars+'">'+
-        '<div class="divrow" role="button" tabindex="0" aria-expanded="false">'+
-          '<span class="dcaret">'+SVG.chev+'</span>'+
-          '<span class="dnode" style="background:var(--'+tone+'-t);color:var(--'+tone+'-f);border-color:var(--'+tone+'-b)">'+ic+'</span>'+
-          '<span class="dh"><b>'+esc(v.label)+'</b><small>Row '+esc(v.row)+' · '+v.members+' member'+(v.members===1?'':'s')+'</small></span>'+
-          '<span class="dmeta">'+
-            (pillLabel?'<span class="dtag" style="background:var(--'+tone+'-t);color:var(--'+tone+'-f);border-color:var(--'+tone+'-b)">'+esc(pillLabel)+'</span>':'')+
-            '<span class="dcnt"><b>'+v.members+'</b>/'+v.slots+'</span>'+
-            '<button type="button" class="dedit" data-divedit title="Customise pill &amp; icon">'+DIVEDIT_SVG+'</button>'+
-          '</span>'+
-        '</div>'+
-        divEditor(v.label, pillLabel, tone, (st?st.icon:(DIVTONE_DEFAULT[tone]||'person')))+
-        '<div class="divmembers">'+body+'</div>'+
-      '</div>';
-    }).join('');
-  }
-  function divEditor(label, pill, tone, iconKey){
-    var tones=DIVTONES.map(function(t){ return '<button type="button" class="de-tone'+(t===tone?' sel':'')+'" data-detone="'+t+'" style="background:var(--'+t+')" title="'+t+'"></button>'; }).join('');
-    var icons=DIVICON_KEYS.map(function(k){ return '<button type="button" class="de-icon'+(k===iconKey?' sel':'')+'" data-deicon="'+k+'" title="'+k+'">'+DIVICONS[k]+'</button>'; }).join('');
-    return '<div class="diveditor" hidden>'+
-      '<div class="de-fld"><label>Pill</label><input type="text" class="de-pill" maxlength="40" value="'+esc(pill||'')+'" placeholder="e.g. SUPERVISORS · leave blank for no pill"></div>'+
-      '<div class="de-fld"><label>Colour</label><div class="de-tones">'+tones+'</div></div>'+
-      '<div class="de-fld"><label>Icon</label><div class="de-icons">'+icons+'</div></div>'+
-      '<div class="de-acts"><button type="button" class="de-btn de-reset" data-dereset>Reset to auto</button><button type="button" class="de-btn de-save" data-desave>Save</button></div>'+
-    '</div>';
-  }
-  function saveDivStyle(grp){
-    if(!grp) return;
-    var label=grp.getAttribute('data-divlabel')||'', ed=grp.querySelector('.diveditor'); if(!ed) return;
-    var pill=(ed.querySelector('.de-pill').value||'').trim();
-    var te=ed.querySelector('.de-tone.sel'), ie=ed.querySelector('.de-icon.sel');
-    var tone=te?te.getAttribute('data-detone'):'aux', icon=ie?ie.getAttribute('data-deicon'):'person';
-    api(function(){ toast('Divider style saved.','ok'); loadDividers(true); }, onError, "cpSetDividerStyle", label, {pill:pill,tone:tone,icon:icon});
-  }
-  function resetDivStyle(grp){
-    if(!grp) return;
-    var label=grp.getAttribute('data-divlabel')||'';
-    api(function(){ toast('Reverted to auto-detection.','ok'); loadDividers(true); }, onError, "cpDeleteDividerStyle", label);
-  }
-  function toggleDivRow(row){
-    var grp=row.closest('.divgroup'); if(!grp) return;
-    var open=grp.classList.toggle('open');
-    row.setAttribute('aria-expanded', open?'true':'false');
-  }
-  function openMemberFromDivider(row){
-    var m=memberByRow(row);
-    if(!m){ toast('That member is no longer on the roster — try Refresh.','err'); return; }
-    STATE.filterStatus='all'; STATE.filterRank='all';
-    var s=$('search'); if(s){ s.value=''; $('searchWrap').classList.remove('has-text'); }
-    if($('rankFilter')) $('rankFilter').value='all';
-    document.querySelectorAll('#statusChips .fchip').forEach(function(x){ x.classList.toggle('active', x.dataset.fs==='all'); });
-    STATE.openRow=row;
-    document.querySelector('.tab[data-tab="members"]').click();
-    renderMembers();
-    setTimeout(function(){ var el=document.querySelector('.mrow[data-row="'+row+'"]'); if(el && el.scrollIntoView) el.scrollIntoView({behavior:'smooth',block:'center'}); }, 70);
-  }
-  function assignToSection(from,to){
-    var slot=null;
-    STATE.members.forEach(function(m){ if(!m.filled && m.row>from && m.row<to && (slot===null||m.row<slot.row)) slot=m; });
-    document.querySelector('.tab[data-tab="add"]').click();
-    setSlot(slot ? slot.row : null);
-    toast(slot ? 'Open slot pre-selected — fill in the new member.' : 'Opened Add member — choose an open slot.','ok');
-    setTimeout(function(){ var n=$('addName'); if(n) n.focus(); }, 70);
-  }
   function renderHealth(h){
     setHealthPill(h);
     if(!h||!h.checks){ $('healthBody').innerHTML='<span class="muted2">Unavailable.</span>'; return; }
@@ -2559,25 +2408,8 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScope').hidden=(t.dataset.tab!=='signups'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScope').hidden=(t.dataset.tab!=='signups'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
-  $('rediv').addEventListener('click',function(){ loadDividers(); });
-  $('divBody').addEventListener('click',function(e){
-    var eb=e.target.closest('[data-divedit]'); if(eb){ e.stopPropagation(); var g=eb.closest('.divgroup'), ed=g&&g.querySelector('.diveditor'); if(ed) ed.hidden=!ed.hidden; return; }
-    var tn=e.target.closest('[data-detone]'); if(tn){ e.stopPropagation(); tn.parentNode.querySelectorAll('.de-tone').forEach(function(x){x.classList.remove('sel');}); tn.classList.add('sel'); return; }
-    var icn=e.target.closest('[data-deicon]'); if(icn){ e.stopPropagation(); icn.parentNode.querySelectorAll('.de-icon').forEach(function(x){x.classList.remove('sel');}); icn.classList.add('sel'); return; }
-    var sv=e.target.closest('[data-desave]'); if(sv){ e.stopPropagation(); saveDivStyle(sv.closest('.divgroup')); return; }
-    var rs=e.target.closest('[data-dereset]'); if(rs){ e.stopPropagation(); resetDivStyle(rs.closest('.divgroup')); return; }
-    var as=e.target.closest('.de-assign'); if(as){ e.stopPropagation(); assignToSection(Number(as.dataset.afrom), as.dataset.ato?Number(as.dataset.ato):Infinity); return; }
-    var mr=e.target.closest('.dmemrow'); if(mr){ openMemberFromDivider(Number(mr.dataset.mrow)); return; }
-    if(e.target.closest('.diveditor')) return; // clicks inside the editor never toggle the row
-    var r=e.target.closest('.divrow'); if(r) toggleDivRow(r);
-  });
-  $('divBody').addEventListener('keydown',function(e){
-    if(e.key!=='Enter'&&e.key!==' ') return;
-    var mr=e.target.closest('.dmemrow'); if(mr){ e.preventDefault(); openMemberFromDivider(Number(mr.dataset.mrow)); return; }
-    var r=e.target.closest('.divrow'); if(r){ e.preventDefault(); toggleDivRow(r); }
-  });
   $('colBody').addEventListener('click',function(e){ var seg=e.target.closest('.cseg'); if(!seg||seg.classList.contains('on')) return; var tog=seg.closest('.coltog'); var header=tog.getAttribute('data-header'); var k=seg.getAttribute('data-k'); tog.querySelectorAll('.cseg').forEach(function(s){ s.classList.remove('on'); }); seg.classList.add('on'); api(function(d){ renderColumns(d); toast('“'+header+'” → '+(k==='MEMBER'?'Member':'Slot'),'ok'); }, function(ev){ onError(ev); loadColumns(); }, "cpSetColumnClass", header, k); });
   $('refreshBtn').addEventListener('click',refresh);
   $('sideToggle').addEventListener('click',function(){ document.querySelector('.app').classList.toggle('side-off'); });

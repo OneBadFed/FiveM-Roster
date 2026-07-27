@@ -15,11 +15,27 @@ const fs = require('fs');
 const files = process.argv.slice(2);
 if (!files.length) { console.error('usage: node tools/htmlchk.js <file.html> [more.html …]'); process.exit(2); }
 
+/* A listener bound to an id that no longer exists is a PANEL-KILLER, not a dead branch: $('gone') returns null
+ * and .addEventListener on null throws while the script is still initialising, so nothing below it ever runs and
+ * the dialog opens blank. Syntax checking cannot see it — the code is perfectly valid. This is exactly what a
+ * removed tab leaves behind, which is how it was found. */
+function checkBindings(file, src) {
+  const ids = new Set([...src.matchAll(/\bid="([^"]+)"/g)].map((m) => m[1]));
+  const used = [...src.matchAll(/\$\('([A-Za-z][\w-]*)'\)\s*\.\s*addEventListener/g)].map((m) => m[1]);
+  const missing = [...new Set(used)].filter((i) => !ids.has(i));
+  if (!missing.length) { console.log(`  ${file}: ${new Set(used).size} id-bound listeners all resolve`); return 0; }
+  console.error(`  ${file}: LISTENER BOUND TO A MISSING ELEMENT — ${missing.join(', ')}`);
+  console.error('      $(id) returns null and .addEventListener throws during init; the panel opens blank.');
+  return 1;
+}
+
 let failed = 0;
 files.forEach((file) => {
   let src;
   try { src = fs.readFileSync(file, 'utf8'); }
   catch (e) { console.error(`  ${file}: cannot read — ${e.message}`); failed = 1; return; }
+
+  if (checkBindings(file, src)) failed = 1;
 
   const blocks = src.match(/<script\b[^>]*>[\s\S]*?<\/script>/gi) || [];
   if (!blocks.length) { console.log(`  ${file}: no <script> blocks`); return; }
