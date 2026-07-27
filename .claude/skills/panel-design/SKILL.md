@@ -21,6 +21,21 @@ Writes `tools/.preview/*.preview.html` — open in any browser. `google.script.r
 payload is generated from the **real** `BLOCK_SPECS_`, so every key, default, enum and help string is the live
 one. Do this after any visual change and ask the operator to look, or check the rendered markup yourself.
 
+To check *behaviour* rather than looks, drive the rendered preview in headless Edge — the same engine the Apps
+Script dialog runs in. Append a probe script that clicks things and writes its findings into a known element,
+then read that element back:
+
+```bash
+"/c/Program Files (x86)/Microsoft/Edge/Application/msedge.exe" --headless=new --disable-gpu \
+  --user-data-dir=<scratch>/edgeprofile --virtual-time-budget=4000 --dump-dom probe.html | grep -o 'id="PROBE">[^<]*'
+```
+
+`--user-data-dir` is required or the dump comes back empty. Two traps, both of which have already cost a
+debugging round: headless reports **`prefers-reduced-motion: reduce`**, so anything branching on it takes the
+reduced path; and **animations do not tick under `--virtual-time-budget`** (no compositor frames), so sampled
+heights and opacities stay frozen at their start value. Timers and clicks *do* run. Use this to prove state
+transitions, handler wiring and settle logic — never to judge whether motion looks right.
+
 The same command runs two consistency checks and exits non-zero on the first:
 
 - **Panel references a key the server never sends.** The sidebar renders from `SECTIONS` in the HTML while the

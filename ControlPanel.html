@@ -628,21 +628,14 @@
   .mrow.exp .pc-hero>:nth-child(3){animation-delay:.12s;}
 
   /* profile card */
+  /* overflow:hidden is what makes the fold READ as a fold — the panel is clipped as its height comes down
+     rather than its contents reflowing into a smaller box. */
   .mdetail{display:none;overflow:hidden;}
   .mrow.exp .mdetail{display:block;animation:slide .24s var(--ease);}
   @keyframes slide{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
-  /* CLOSING. Opening could animate because the panel is created; closing could not, because toggleDetail
-     re-rendered the list and the panel was simply gone by the next frame. So the close is now played FIRST and
-     the re-render happens after it: the panel's measured height is pinned and driven to 0 while the collapsed
-     row fades back in over it. The row is restored by that re-render, in its normal resting state. */
-  .mrow.closing .mdetail{animation:none;opacity:0;
-        transition:height .24s var(--ease),opacity .16s var(--ease);}
-  .mrow.exp.closing .mhead{display:grid;animation:headIn .24s var(--ease) both;}
-  @keyframes headIn{from{opacity:0;}to{opacity:1;}}
-  @media (prefers-reduced-motion:reduce){
-    .mrow.exp .mdetail,.mrow.exp.closing .mhead{animation:none;}
-    .mrow.closing .mdetail{transition:none;}
-  }
+  /* The close is driven by the Web Animations API in toggleDetail, not by a class — see the note there. */
+  .mrow.closing .mdetail{animation:none;}
+  @media (prefers-reduced-motion:reduce){ .mrow.exp .mdetail{animation:none;} }
   .pc{background:rgba(255,255,255,.05);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;
       padding:18px 20px 20px;margin:2px 0 6px;}
   .pc-head{display:flex;align-items:center;justify-content:space-between;gap:var(--s3);padding:var(--s3) var(--s4);}
@@ -1313,24 +1306,37 @@
   function toggleDetail(row){
     STATE.moveTo=null;
     if(STATE.openRow!==row){ STATE.openRow=row; renderMembers(); return; } // opening animates on arrival (@slide)
-    // CLOSING — play it, then re-render. A re-render alone destroys the panel, so there is nothing left to
-    // animate; height cannot be transitioned from `auto` either, so the measured height is pinned first.
+    // CLOSING — play it, THEN re-render. A re-render alone destroys the panel, so there is nothing left to
+    // animate. Driven by element.animate() rather than a CSS transition: a transition needs the start height
+    // committed in its own style recalculation before the end value is set, and any re-render or style read in
+    // between silently collapses both into one frame — which is exactly how this looked like a jump. The Web
+    // Animations API takes both keyframes up front, so there is no frame to lose.
     var mrow=document.querySelector('.mrow[data-row="'+row+'"]');
     if(mrow && mrow.classList.contains('closing')) return; // already folding — a second click must not restart it
     var det=mrow?mrow.querySelector('.mdetail'):null;
-    // Guarded by row: open a DIFFERENT member mid-fold and this one's pending timer must not then close THAT one.
+    // Guarded by row: open a DIFFERENT member mid-fold and this one's pending finish must not then close THAT one.
     var settle=function(){ if(STATE.openRow!==row) return; STATE.openRow=null; renderMembers(); };
+    // prefers-reduced-motion SHORTENS this; it does not skip it. Skipping turns a fold into the very jump the
+    // setting is meant to spare you — the panel is a disclosure, so its collapse is functional motion, not
+    // decoration. Reduced gets a quick fold with no cross-fade.
     var reduced=window.matchMedia && window.matchMedia('(prefers-reduced-motion:reduce)').matches;
-    if(!det || reduced || !det.offsetHeight){ settle(); return; }
-    var list=$('mlist'); if(list) list.classList.remove('focused'); // the other rows brighten AS it folds, not after
-    det.style.height=det.offsetHeight+'px';
+    var h=det?det.offsetHeight:0;
+    if(!det || !h || !det.animate){ settle(); return; }
+    // Fold down to the height of a COLLAPSED row, not to zero: the re-render replaces the panel with exactly
+    // that row, so the two match and the list never steps. Folding to 0 left a row-height jump at the end.
+    var list=$('mlist');
+    var peer=list?list.querySelector('.mrow:not(.exp) .mhead'):null;
+    var endH=(peer&&peer.offsetHeight)||32;
+    if(h<=endH){ settle(); return; }
+    if(list) list.classList.remove('focused'); // the other rows brighten AS it folds, not after
     mrow.classList.add('closing');
-    void det.offsetHeight; /* commit the start height, or the browser coalesces both values and skips the transition */
-    det.style.height='0px';
-    var fired=false;
-    var end=function(e){ if(fired) return; if(e && (e.target!==det || e.propertyName!=='height')) return; fired=true; settle(); };
-    det.addEventListener('transitionend',end);
-    setTimeout(function(){ end(); },320); // transitionend is lost if anything else re-renders the list mid-fold
+    var dur=reduced?120:220;
+    var anim=det.animate(reduced ? [{height:h+'px'},{height:endH+'px'}]
+                                 : [{height:h+'px',opacity:1},{height:endH+'px',opacity:0}],
+                         {duration:dur,easing:'cubic-bezier(.32,.72,0,1)',fill:'forwards'});
+    var fired=false, end=function(){ if(fired) return; fired=true; settle(); };
+    anim.onfinish=end;
+    setTimeout(end,dur+80); // onfinish is never delivered if something else re-renders the list mid-fold
   }
   function loadProfile(m){
     var req=Number(m.req)||0; // this rank's top-tier MinHours — colours the checks and draws the requirement line
