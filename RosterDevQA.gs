@@ -2386,6 +2386,25 @@ function devNewLayoutTests_() {
     devEq_(R, 'archive shift: left col took the next period (JUN=6)', sh.getRange(CONFIG.rosterStartRow, 11).getValue(), 6);
   })();
 
+  // PERIOD_BUCKET=MONTH: a check whose label matches the rightmost column ADDS into it instead of rolling —
+  // four weekly 5-hour checks must read 20 in one month column, not roll four columns away.
+  (() => {
+    const sh = buildNL('NLAccum');
+    const r0 = CONFIG.rosterStartRow;
+    const rolled = shiftArchiveColumns_(sh, 'JUL HOURS', true);   // label differs from the sheet's → normal roll
+    devEq_(R, 'bucket=MONTH: a NEW label still rolls', rolled, 2);
+    devEq_(R, 'bucket=MONTH: rolled col holds the closed hours (12)', sh.getRange(r0, 12).getValue(), 12);
+    sh.getRange(r0, 9).setValue(5);                                // next check earns 5 more in the SAME month
+    const again = shiftArchiveColumns_(sh, 'JUL HOURS', true);
+    devEq_(R, 'bucket=MONTH: same label does NOT roll', again, 0);
+    devEq_(R, 'bucket=MONTH: hours ACCUMULATE (12 + 5 = 17)', sh.getRange(r0, 12).getValue(), 17);
+    devEq_(R, 'bucket=MONTH: the older column is untouched', sh.getRange(r0, 11).getValue(), 6);
+    devEq_(R, 'bucket=MONTH: header unchanged while accumulating', sh.getRange(6, 12).getDisplayValue(), 'JUL HOURS');
+    sh.getRange(r0, 9).setValue(4);
+    devEq_(R, 'bucket=RESET (no flag): same label rolls as before', shiftArchiveColumns_(sh, 'JUL HOURS'), 2);
+    devEq_(R, 'bucket=RESET: rolled col took the current hours (4)', sh.getRange(r0, 12).getValue(), 4);
+  })();
+
   return R;
 }
 

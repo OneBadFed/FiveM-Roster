@@ -76,7 +76,7 @@ per-rank overrides, fixed-point transition rules)* · RANKS *(table)* · LEAVE �
 NOTIFICATIONS (opt-in event embeds) · EMBEDS *(table — per-event embed overrides from the Settings builder)* ·
 PATROL (mode, max hours, statuses, form column keywords, `FUTURE_GRACE_HOURS` — §5) ·
 PUBLISH (`NEVER_PUBLISH`, `KEEP_RANGES`, `FORCE_RANGES`) · FORMATS ·
-SCHEDULE (incl. `AUTO_RESET` — the master switch for the scheduled activity reset — and `PERIOD_LABEL_FORMAT`,
+SCHEDULE (incl. `AUTO_RESET` — the master switch for the scheduled activity reset — plus `PERIOD_BUCKET` and `PERIOD_LABEL_FORMAT`,
 §3a) · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
 
 ---
@@ -189,7 +189,17 @@ ownership as usual).
 **§3a · Period columns & their labels.** `shiftArchiveColumns_` rolls every "… HOURS" column (all but the live
 HOURS) one to the LEFT on each 📸 Capture & Reset — data *and* header — the oldest dropping off the visible set
 and the rightmost receiving the hours just closed under `periodLabel_()`. **How many periods stay visible is
-simply how many such columns the operator laid out.** `periodLabel_()` picks the date by cadence — MONTHLY names
+simply how many such columns the operator laid out.**
+
+**Bucketing (`[SCHEDULE].PERIOD_BUCKET`, default `RESET`).** `RESET` = one column per activity check, the
+classic behavior. **`MONTH`** decouples the check cadence from the archive grain: when the label the check
+produces already matches the rightmost column's header, the check's hours are **added into that column and
+nothing rolls** — so weekly checks of 5 hrs read 5 → 10 → 15 → 20 through July, and the columns roll only when
+the month changes, opening a fresh AUG column while JUL keeps its 20. Only member rows accumulate (dividers and
+empty slots keep whatever they hold), and hours still zero on every check either way — this changes how the
+archive is *grouped*, not how the activity engine runs. Under `MONTH` with a weekly/bi-weekly cadence the column
+is named for the month the check **runs in** (no previous-month grace: checks land ~4× a month, so the first of
+a month legitimately opens it); a MONTHLY cadence keeps its "first 7 days label the month that ended" rule. `periodLabel_()` picks the date by cadence — MONTHLY names
 the month that ended (dates in the first 7 days label the previous month), WEEKLY/BIWEEKLY name the
 period-ending date — and formats it with `[SCHEDULE].PERIOD_LABEL_FORMAT`, a Java date pattern with quoted
 literals (`'WEEK OF' d MMM`). Blank keeps the built-in shapes (`JUL HOURS` / `27 JUL HOURS`). The word **HOURS

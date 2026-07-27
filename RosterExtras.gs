@@ -223,11 +223,12 @@ function captureHoursSnapshot_(weekLabel) {
  */
 function periodLabel_() {
   const tz = ssTz_();
-  let cad = 'MONTHLY', fmt = '';
+  let cad = 'MONTHLY', fmt = '', bucket = 'RESET';
   try {
     const sc = cfg_().kv.SCHEDULE;
     cad = String(sc.RESET_CADENCE || 'MONTHLY').toUpperCase();
     fmt = String(sc.PERIOD_LABEL_FORMAT || '').trim();   // operator override; blank = the cadence's own shape
+    bucket = String(sc.PERIOD_BUCKET || 'RESET').toUpperCase();
   } catch (e) { /* config broken → monthly */ }
   // WHICH date the period is named after is the cadence's call; HOW it reads is the operator's.
   const now = todayInSheetTz_();
@@ -236,6 +237,10 @@ function periodLabel_() {
     const d = new Date(now);
     if (d.getDate() <= 7) d.setDate(0);                  // just after a month boundary → label the month that ended
     when = d; auto = 'MMM';
+  } else if (bucket === 'MONTH') {
+    // Monthly buckets under a weekly/bi-weekly check: the column is named for the month the check RUNS in, with
+    // no previous-month grace — checks land ~4x a month, so the first one of a month legitimately opens it.
+    auto = 'MMM';
   }
   let text;
   try { text = Utilities.formatDate(when, tz, fmt || auto); }
@@ -255,7 +260,7 @@ function periodLabel_() {
  * and the rightmost receives the current HOURS under `periodLabel`. No visible archive columns → a no-op (the
  * hidden history tab still keeps the record). @return {number} archive columns shifted.
  */
-function shiftArchiveColumns_(roster, periodLabel) {
+function shiftArchiveColumns_(roster, periodLabel, accumulate) {
   const RC = rosterCols_(roster);
   if (!RC.hours || !RC.headerRow) return 0;
   const lastCol = roster.getLastColumn();
@@ -270,6 +275,24 @@ function shiftArchiveColumns_(roster, periodLabel) {
   const n = roster.getLastRow() - startRow + 1;
   if (n <= 0) return 0;
   const curHours = roster.getRange(startRow, RC.hours, n, 1).getValues();
+  // MONTHLY BUCKETS: the rightmost column already belongs to this period (same label) → this check's hours are
+  // ADDED to it and nothing rolls. That is what turns four weekly 5-hour checks into one 20-hour month column;
+  // the roll happens only when the label changes, i.e. when the month does.
+  const lastArch = archive[archive.length - 1];
+  if (accumulate && norm_(hdr[lastArch - 1]) === norm_(periodLabel)) {
+    const ranks = roster.getRange(startRow, RC.rank, n, 1).getValues();
+    const names = roster.getRange(startRow, RC.name, n, 1).getValues();
+    const prior = roster.getRange(startRow, lastArch, n, 1).getValues();
+    const out = [];
+    for (let i = 0; i < n; i++) {
+      if (!isValidMemberValues_(ranks[i][0], names[i][0])) { out.push([prior[i][0]]); continue; } // dividers/empty slots keep whatever they hold
+      const was = parseHours_(prior[i][0]) || 0, add = parseHours_(curHours[i][0]) || 0;
+      const sum = Math.round((was + add) * 100) / 100;
+      out.push([(sum === 0 && String(prior[i][0]).trim() === '' && String(curHours[i][0]).trim() === '') ? '' : sum]);
+    }
+    roster.getRange(startRow, lastArch, n, 1).setValues(out);
+    return 0; // nothing rolled — the caller reports an accumulation instead
+  }
   const archData = archive.map((c) => roster.getRange(startRow, c, n, 1).getValues()); // read ALL before writing
   for (let i = 0; i < archive.length - 1; i++) { // shift data + headers LEFT: col i takes col (i+1)
     roster.getRange(startRow, archive[i], n, 1).setValues(archData[i + 1]);
@@ -279,6 +302,22 @@ function shiftArchiveColumns_(roster, periodLabel) {
   roster.getRange(startRow, last, n, 1).setValues(curHours);
   roster.getRange(RC.headerRow, last, 1, 1).setValue(periodLabel);
   return archive.length;
+}
+
+/** The header currently on the RIGHTMOST period column ('' when the tab has none) — used to tell an accumulation apart from a roll. */
+function archiveRightHeader_(roster) {
+  try {
+    const RC = rosterCols_(roster);
+    if (!RC.hours || !RC.headerRow) return '';
+    const lastCol = roster.getLastColumn();
+    const hdr = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0];
+    let out = '';
+    for (let c = 1; c <= lastCol; c++) {
+      if (c === RC.hours) continue;
+      if (String(hdr[c - 1] || '').toUpperCase().indexOf('HOURS') !== -1) out = String(hdr[c - 1]);
+    }
+    return out;
+  } catch (e) { return ''; }
 }
 
 /** Core reset: archive-shift, capture history, then zero + recompute. Locked; no UI (safe from triggers). */
@@ -291,8 +330,17 @@ function doWeeklyReset_() {
     if (!roster) return;
     const captured = captureHoursSnapshot_() || 0; // preserve history BEFORE zeroing
     const before = readMembers_(roster);
-    let shifted = 0; // roll the visible period columns (MAY HOURS → JUN HOURS → …) BEFORE hours are zeroed
-    try { shifted = shiftArchiveColumns_(roster, periodLabel_()); } catch (e) { log_('doWeeklyReset_.archive', e); }
+    let shifted = 0, bucketLabel = '', accumulated = false; // roll the visible period columns BEFORE hours are zeroed
+    try {
+      // [SCHEDULE].PERIOD_BUCKET = MONTH → checks inside one month ADD into that month's column instead of
+      // rolling a fresh column each time (weekly checks, monthly archive totals).
+      let acc = false;
+      try { acc = String(cfg_().kv.SCHEDULE.PERIOD_BUCKET || 'RESET').toUpperCase() === 'MONTH'; } catch (e2) { /* default RESET */ }
+      bucketLabel = periodLabel_();
+      const before = acc ? archiveRightHeader_(roster) : '';
+      shifted = shiftArchiveColumns_(roster, bucketLabel, acc);
+      accumulated = acc && !shifted && norm_(before) === norm_(bucketLabel);
+    } catch (e) { log_('doWeeklyReset_.archive', e); }
     // LAST ACTIVITY must snapshot each member's status AS THE PERIOD CLOSED — i.e. BEFORE the recompute below
     // re-tiers everyone off zeroed hours. (This was the whole point of the column and was never wired in here.)
     let lastAct = -1;
@@ -321,7 +369,7 @@ function doWeeklyReset_() {
       postSummary_('`🗑️` Weekly Reset', `Hours zeroed and statuses recomputed. **${dropped.length}** member(s) dropped to ${lowestTier}.`, 15105570);
     }
     try { PropertiesService.getScriptProperties().setProperty(LAST_RESET_PROP, String(Date.now())); } catch (e) { /* best-effort cadence marker */ } // v1.0: advance the cadence clock (manual + scheduled both count)
-    return { captured: captured, shifted: shifted, lastActivity: lastAct, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
+    return { captured: captured, shifted: shifted, accumulated: accumulated, periodLabel: bucketLabel, lastActivity: lastAct, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
   } finally {
     lock.releaseLock();
   }
@@ -341,7 +389,10 @@ function weeklyResetWithHistory() {
     const dn = res.droppedNames.filter(Boolean);
     const sample = dn.length ? ` (${dn.slice(0, 8).join(', ')}${dn.length > 8 ? `, +${dn.length - 8}` : ''})` : '';
     const laLine = res.lastActivity === -1 ? 'No LAST ACTIVITY column (add one to snapshot closing statuses)' : `LAST ACTIVITY snapshotted for ${res.lastActivity} member(s)`;
-    ui.alert(`✅ Activity captured & reset.\n\n• ${res.shifted ? `${res.shifted} period column${res.shifted === 1 ? '' : 's'} rolled forward` : 'No visible period columns (history-only)'}\n• ${res.captured} member-hours saved to history\n• ${laLine}\n• ${res.total} member(s) recomputed\n• ${dn.length} dropped to ${res.lowestTier}${sample}\n• ${Math.round(res.totalHours * 10) / 10} hrs logged this period`);
+    const archLine = res.accumulated
+      ? `Hours ADDED into the “${res.periodLabel}” column (monthly totals — columns roll when the month changes)`
+      : (res.shifted ? `${res.shifted} period column${res.shifted === 1 ? '' : 's'} rolled forward` : 'No visible period columns (history-only)');
+    ui.alert(`✅ Activity captured & reset.\n\n• ${archLine}\n• ${res.captured} member-hours saved to history\n• ${laLine}\n• ${res.total} member(s) recomputed\n• ${dn.length} dropped to ${res.lowestTier}${sample}\n• ${Math.round(res.totalHours * 10) / 10} hrs logged this period`);
   });
 }
 
