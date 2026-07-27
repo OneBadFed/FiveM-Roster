@@ -130,10 +130,31 @@
   .main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;position:relative;background:var(--bg);}
   /* Toolbar — a macOS window names the view it is showing and rules a hairline under it. The content used to
      begin abruptly on a stat tile, which is the one structural thing no amount of restyling would have fixed. */
-  .toolbar{display:flex;align-items:center;gap:var(--s3);padding:0 var(--s6);height:52px;flex:0 0 auto;
+  .toolbar{display:flex;align-items:center;gap:var(--s3);padding:0 var(--s4) 0 var(--s3);height:56px;flex:0 0 auto;
            box-shadow:0 1px 0 var(--hair);}
-  .tb-title{flex:1;min-width:0;margin:0;font-size:var(--f4);font-weight:600;letter-spacing:-.02em;
+  .tb-tt{flex:1;min-width:0;}
+  .tb-title{margin:0;font-size:var(--f3);font-weight:600;letter-spacing:-.02em;line-height:1.2;
             white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* The subtitle carries the numbers that used to sit in a separate line under the filters — a Mac window puts
+     "what am I looking at" directly under its title. */
+  .tb-sub{font-size:var(--f1);color:var(--txt-2);line-height:1.3;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .toolbar .search-wrap{flex:0 1 260px;max-width:260px;}
+  .toolbar .search-wrap .field{min-height:28px;padding-top:var(--s1);padding-bottom:var(--s1);}
+  .btn-primary{flex:0 0 auto;background:var(--accent);border:none;color:#fff;border-radius:var(--r-sm);
+               padding:var(--s1) var(--s3);min-height:28px;font-size:var(--f2);font-weight:500;font-family:inherit;
+               cursor:pointer;transition:filter var(--t) var(--ease);}
+  .btn-primary:hover{filter:brightness(1.1);}
+  .btn-primary:active{filter:brightness(.9);}
+  /* Filters get their own strip under the toolbar, with the result count inline on the right where a Mac would
+     put a status readout — it was previously a lonely line of grey text above the list. */
+  .filterbar{display:flex;align-items:center;gap:var(--s3);padding:var(--s2) var(--s4);flex:0 0 auto;
+             box-shadow:0 1px 0 var(--hair);}
+  .filterbar .rescount{margin:0 0 0 auto;padding-left:var(--s3);white-space:nowrap;}
+  /* Collapsing the sidebar gives the table the full window — the same affordance every Mac sidebar has. */
+  .app.side-off{grid-template-columns:0 1fr;}
+  .app.side-off .side{opacity:0;pointer-events:none;}
+  .side{transition:opacity var(--t) var(--ease);}
+  .app{transition:grid-template-columns var(--t) var(--ease);}
   .progress{height:2px;overflow:hidden;position:relative;background:transparent;flex:0 0 auto;}
   .progress.on::before{content:"";position:absolute;top:0;bottom:0;width:38%;background:var(--accent);border-radius:2px;animation:prog 1.05s var(--ease) infinite;}
   @keyframes prog{0%{left:-38%;}100%{left:100%;}}
@@ -146,12 +167,18 @@
      deliberate — just gentler than the 32/16 jump, which read as an accident rather than a decision. */
   .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:1px;margin-bottom:var(--s5);
          background:var(--hair);border-radius:var(--r-lg);overflow:hidden;}
-  .stat{display:block;padding:var(--s4);background:var(--e1);transition:background var(--t) var(--ease);}
-  .stat .sdot{display:none;}
-  .stat b{display:block;font-family:inherit;font-size:var(--f5);font-weight:600;line-height:1.1;letter-spacing:-.02em;
+  /* Label ABOVE the number, with a small status dot — the label says what you are reading before the figure
+     lands, and the dot ties the tile to the same colour its pills use in the list. Tracked uppercase at 11px
+     reads as a data label (Numbers, Xcode), not as shouting. */
+  .stat{display:flex;flex-direction:column;gap:var(--s2);padding:var(--s3) var(--s4) var(--s4);
+        background:var(--e1);transition:background var(--t) var(--ease);}
+  .stat .slab{display:flex;align-items:center;gap:var(--s2);font-size:var(--f1);color:var(--txt-2);text-transform:uppercase;
+              letter-spacing:.06em;white-space:nowrap;font-weight:500;}
+  .stat .sdot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:var(--sc,var(--gray));}
+  .stat b{display:block;font-family:inherit;font-size:var(--f5);font-weight:600;line-height:1;letter-spacing:-.02em;
           font-variant-numeric:tabular-nums;}
-  .stat span{display:block;font-size:var(--f1);color:var(--txt-2);text-transform:none;letter-spacing:0;margin-top:var(--s1);
-             white-space:nowrap;font-weight:400;}
+  .s-active{--sc:var(--green);} .s-semi{--sc:var(--amber);} .s-inact{--sc:var(--gray);}
+  .s-leave{--sc:var(--blue);} .s-open{--sc:var(--gray);} .s-exp{--sc:var(--amber);}
   @keyframes rise{from{opacity:0;transform:translateY(8px);}to{opacity:1;transform:none;}}
 
   .pane{display:none;}
@@ -486,7 +513,17 @@
      travelling highlight is a web habit, and with 90 rows it made the list twitch as the cursor crossed it. */
   .mrow:hover{transform:none;background:none;box-shadow:0 1px 0 var(--hair);}
   .mrow.exp{transform:none;background:var(--e2);box-shadow:0 1px 0 var(--hair);}
-  .mhead{display:flex;align-items:center;gap:var(--s3);padding:var(--s3) var(--s4);cursor:pointer;min-height:52px;}
+  /* ONE grid template shared by the header and every row — that shared definition is what makes the columns
+     actually line up, rather than each row guessing at widths. */
+  .thead,.mhead{display:grid;grid-template-columns:22px 14px 26px minmax(140px,1.6fr) minmax(110px,1fr) 72px 72px 104px;
+                align-items:center;gap:var(--s3);padding:0 var(--s4);}
+  .thead{height:30px;font-size:var(--f1);color:var(--txt-2);box-shadow:0 1px 0 var(--hair);}
+  .thead .num{text-align:right;} .thead .st{text-align:right;}
+  .mhead{cursor:pointer;min-height:34px;}
+  .c-name{font-size:var(--f2);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .c-rank,.c-slot{font-size:var(--f2);color:var(--txt-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .c-hrs{font-size:var(--f2);color:var(--txt-2);text-align:right;font-variant-numeric:tabular-nums;}
+  .c-st{display:flex;justify-content:flex-end;min-width:0;}
   .chev{color:var(--txt-3);width:15px;height:15px;flex:0 0 auto;transition:transform .2s var(--ease),color var(--t);}
   .mrow.exp .chev{transform:rotate(90deg);color:var(--accent-2);}
   /* The avatar is the only place rank colour appears now — the 3px left stripe on every row was a second
@@ -720,26 +757,17 @@
   <div class="main">
     <div class="progress" id="progress"></div>
     <div class="toolbar">
-      <h1 class="tb-title" id="tbTitle">Members</h1>
+      <button class="icon-btn" id="sideToggle" title="Hide sidebar" aria-label="Toggle sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
+      <div class="tb-tt"><h1 class="tb-title" id="tbTitle">Members</h1><div class="tb-sub" id="tbSub"></div></div>
+      <div class="search-wrap" id="searchWrap">
+        <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input class="field search" id="search" placeholder="Search roster" autocomplete="off" aria-label="Search members">
+        <button class="search-clear" id="searchClear" aria-label="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
+      </div>
       <button class="icon-btn" id="refreshBtn" title="Refresh" aria-label="Refresh data"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg></button>
+      <button class="btn-primary" id="tbAdd">+ Add</button>
     </div>
-    <div class="content">
-  <div class="stats" id="stats">
-    <div class="stat s-active"><span class="sdot"></span><div><b id="st-active">—</b><span>Active</span></div></div>
-    <div class="stat s-semi"><span class="sdot"></span><div><b id="st-semi">—</b><span>Semi</span></div></div>
-    <div class="stat s-inact"><span class="sdot"></span><div><b id="st-inact">—</b><span>Inactive</span></div></div>
-    <div class="stat s-leave" title="Currently on LOA / ROA / Reserve"><span class="sdot"></span><div><b id="st-leave">—</b><span>On leave</span></div></div>
-    <div class="stat s-open" title="Empty roster slots ready to fill"><span class="sdot"></span><div><b id="st-open">—</b><span>Open slots</span></div></div>
-    <div class="stat s-exp" title="Approved leaves ending within 7 days"><span class="sdot"></span><div><b id="st-exp">—</b><span>Expiring</span></div></div>
-  </div>
-
-  <div class="pane active" id="pane-members">
-    <div class="search-wrap" id="searchWrap">
-      <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
-      <input class="field search" id="search" placeholder="Search name, callsign, rank, ID…" autocomplete="off" aria-label="Search members">
-      <button class="search-clear" id="searchClear" aria-label="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
-    </div>
-    <div class="filters">
+    <div class="filterbar" id="filterbar">
       <div class="fchips" id="statusChips">
         <button class="fchip active" data-fs="all">All</button>
         <button class="fchip" data-fs="Active">Active</button>
@@ -749,9 +777,21 @@
       </div>
       <select class="fselect" id="rankFilter" aria-label="Filter by rank"><option value="all">All ranks</option></select>
       <select class="fselect" id="sortBy" aria-label="Sort members"><option value="roster">Roster order</option><option value="name">Name A–Z</option><option value="hours">Hours (high→low)</option><option value="status">Status</option></select>
+      <div class="rescount" id="rescount"></div>
     </div>
-    <div class="rescount" id="rescount"></div>
+    <div class="content">
+  <div class="stats" id="stats">
+    <div class="stat s-active"><span class="slab"><span class="sdot"></span>Active</span><b id="st-active">—</b></div>
+    <div class="stat s-semi"><span class="slab"><span class="sdot"></span>Semi</span><b id="st-semi">—</b></div>
+    <div class="stat s-inact"><span class="slab"><span class="sdot"></span>Inactive</span><b id="st-inact">—</b></div>
+    <div class="stat s-leave" title="Currently on LOA / ROA / Reserve"><span class="slab"><span class="sdot"></span>On leave</span><b id="st-leave">—</b></div>
+    <div class="stat s-open" title="Empty roster slots ready to fill"><span class="slab"><span class="sdot"></span>Open slots</span><b id="st-open">—</b></div>
+    <div class="stat s-exp" title="Approved leaves ending within 7 days"><span class="slab"><span class="sdot"></span>Expiring</span><b id="st-exp">—</b></div>
+  </div>
+
+  <div class="pane active" id="pane-members">
     <div class="bulkbar" id="bulkbar" hidden></div>
+    <div class="thead" aria-hidden="true"><span></span><span></span><span></span><span>Name</span><span>Rank</span><span>Slot</span><span class="num">Hours</span><span class="st">Status</span></div>
     <div class="mlist" id="mlist"><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div><div class="skel-row"></div></div>
   </div>
 
@@ -1035,6 +1075,7 @@
   }
   function renderBulk(){
     var rows=Object.keys(STATE.selected).filter(function(k){return STATE.selected[k];}), bar=$('bulkbar');
+    tbSub(); /* the toolbar reports the selection too */
     if(!rows.length){ bar.hidden=true; bar.innerHTML=''; return; }
     bar.hidden=false;
     bar.innerHTML='<span class="bsel">'+rows.length+' selected</span><div class="bbtns">'
@@ -1051,20 +1092,38 @@
       return true;
     });
   }
+  /* Toolbar subtitle — the roster's shape in one line, under the view's name. Selecting members replaces it with
+     what is selected, which is where a Mac reports that state rather than in a banner over the content. */
+  function tbSub(){
+    var el=$('tbSub'); if(!el) return;
+    var sel=Object.keys(STATE.selected||{}).filter(function(k){return STATE.selected[k];}).length;
+    if(sel){ el.textContent=sel+' selected'; return; }
+    if(!STATE.members || !STATE.members.length){ el.textContent=''; return; }
+    var filled=STATE.members.filter(function(m){return m.filled;}).length;
+    var open=STATE.members.length-filled;
+    el.textContent=filled+' in roster'+(open?(' · '+open+' open slot'+(open===1?'':'s')):'');
+  }
   function renderMembers(){
     var list=sortList(filtered()), host=$('mlist');
     var total=STATE.members.filter(function(m){return m.filled;}).length;
-    $('rescount').textContent='Showing '+list.length+' of '+total+' member'+(total===1?'':'s');
+    $('rescount').textContent='Showing '+list.length+' of '+total;
+    tbSub();
     renderBulk();
     if(!list.length){ host.innerHTML='<div class="empty"><span class="ei">'+IEMPTY+'</span><div><b>No members match</b><br>Try clearing the search or filters above.</div></div>'; return; }
     host.innerHTML=list.map(function(m){
       var open=(m.row===STATE.openRow), c=rankColor(m);
       var ic=(STATE.rankIcons&&STATE.rankIcons[m.rank])||'';
       var avin=ic?('<img class="mav-img" src="'+esc(ic)+'" alt="'+esc(m.rank)+'" loading="lazy">'):esc(mInitials(m.name));
+      // Columnar row: rank, slot and hours get their own cells instead of being run together into a subtitle,
+      // so the eye can scan DOWN a column. The grid template lives on .mhead and .thead together.
       return '<div class="mrow'+(open?' exp':'')+'" data-row="'+m.row+'" style="--rank:'+c+'">'
         +'<div class="mhead"><input type="checkbox" class="mcheck" data-sel="'+m.row+'"'+(STATE.selected[m.row]?' checked':'')+' aria-label="Select member"><span class="chev">'+SVG.chev+'</span>'
-          +'<span class="mav'+(ic?' mav-has':'')+'" style="border-color:'+c+';box-shadow:var(--ring),0 0 12px -4px '+c+'">'+avin+'</span>'
-          +'<div class="mname"><b>'+esc(m.name)+'</b><span>'+esc(m.rank)+(m.callsign?(' · '+esc(m.callsign)):'')+' · <span class="mono">'+esc(m.hours||'0')+'</span> hrs</span></div>'+pill(m.status)+'</div>'
+          +'<span class="mav'+(ic?' mav-has':'')+'">'+avin+'</span>'
+          +'<span class="c-name">'+esc(m.name)+'</span>'
+          +'<span class="c-rank">'+esc(m.rank)+'</span>'
+          +'<span class="c-slot">'+esc(m.callsign||'—')+'</span>'
+          +'<span class="c-hrs">'+esc(m.hours||'0')+'</span>'
+          +'<span class="c-st">'+pill(m.status)+'</span></div>'
         +'<div class="mdetail">'+(open?renderCard(m):'')+'</div></div>';
     }).join('');
     if(STATE.openRow!=null){ var m=memberByRow(STATE.openRow); if(m && list.indexOf(m)>=0) loadProfile(m); }
@@ -1715,7 +1774,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); $('stats').style.display=(t.dataset.tab==='members')?'':'none'; $('tbTitle').textContent=(t.textContent||'').trim(); /* the window titles the view it is showing */ if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('tbTitle').textContent=(t.textContent||'').trim(); tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='dividers' && !STATE.dividersLoaded) loadDividers(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('rediv').addEventListener('click',function(){ loadDividers(); });
   $('divBody').addEventListener('click',function(e){
@@ -1736,6 +1795,8 @@
   });
   $('colBody').addEventListener('click',function(e){ var seg=e.target.closest('.cseg'); if(!seg||seg.classList.contains('on')) return; var tog=seg.closest('.coltog'); var header=tog.getAttribute('data-header'); var k=seg.getAttribute('data-k'); tog.querySelectorAll('.cseg').forEach(function(s){ s.classList.remove('on'); }); seg.classList.add('on'); api(function(d){ renderColumns(d); toast('“'+header+'” → '+(k==='MEMBER'?'Member':'Slot'),'ok'); }, function(ev){ onError(ev); loadColumns(); }, "cpSetColumnClass", header, k); });
   $('refreshBtn').addEventListener('click',refresh);
+  $('sideToggle').addEventListener('click',function(){ document.querySelector('.app').classList.toggle('side-off'); });
+  $('tbAdd').addEventListener('click',function(){ var t=document.querySelector('.tab[data-tab="add"]'); if(t) t.click(); });
   var searchT; $('search').addEventListener('input',function(){ $('searchWrap').classList.toggle('has-text',this.value.length>0); clearTimeout(searchT); searchT=setTimeout(renderMembers,200); });
   $('searchClear').addEventListener('click',function(){ var s=$('search'); s.value=''; $('searchWrap').classList.remove('has-text'); s.focus(); renderMembers(); });
   $('statusChips').addEventListener('click',function(e){ var c=e.target.closest('[data-fs]'); if(!c) return; STATE.filterStatus=c.dataset.fs; document.querySelectorAll('#statusChips .fchip').forEach(function(x){ x.classList.toggle('active',x===c); }); renderMembers(); });
