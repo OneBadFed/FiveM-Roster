@@ -609,6 +609,7 @@
   }
   // Friendlier display labels/help for keys whose config names read wrong in the UI (display only — keys unchanged).
   var LABELS={'SHEETS.TRACKER':'LOA TRACKER','SHEETS.LEAVE_FORM_RESPONSES':'LOA FORM RESPONSES','SHEETS.PATROL_FORM_RESPONSES':'PATROL FORM RESPONSES','SHEETS.PATROL_LOG':'PATROL LOG TAB','SHEETS.SIGNUPS':'SIGNUP REVIEW TAB','SHEETS.SIGNUP_FORM_RESPONSES':'SIGNUP FORM RESPONSES','SHEETS.WELCOME':'WELCOME PAGE TAB','PUBLISH.FORCE_RANGES':'FORCE-MIRROR RANGES',
+    'ROSTER_LAYOUT.LAST_ACTIVITY_COLS':'PREVIOUS-ACTIVITY COLUMNS',
     'PATROL.COL_DISCORD':'DISCORD COLUMN','PATROL.COL_CALLSIGN':'CALLSIGN COLUMN','PATROL.COL_START':'START TIME COLUMN','PATROL.COL_END':'END TIME COLUMN','PATROL.COL_DURATION':'HOURS COLUMN',
     'LEAVE.STATUS_FLOW':'TRACKER STATUSES','LEAVE.APPROVED_STATUS':'COUNTS AS APPROVED','LEAVE.EXPIRED_STATUS':'MARK ENDED AS',
     'LEAVE.AUTO_EXPIRE':'AUTO-END LEAVES','LEAVE.EXPIRE_NEVER_APPROVED':'EXPIRE UNAPPROVED TOO',
@@ -640,6 +641,7 @@
     'ROSTER_LAYOUT.TRACKER_START_ROW':'The first leave-entry row on the LOA Tracker tab.',
     'ROSTER_LAYOUT.DIVIDER_MODE':'ALL-CAPS labels count as section dividers (default) — or use your Ranks & dividers list.',
     'ROSTER_LAYOUT.UNIT_FORMAT':'How callsigns are numbered — {00} becomes the slot number, so "S-{00}" gives S-01.',
+    'ROSTER_LAYOUT.LAST_ACTIVITY_COLS':'Up to 3 columns holding previous activity, NEWEST FIRST — column letters ("AB, AC, AD") or header names. Each capture shifts them one period older and puts the closing status in the first. Blank = the single column found by its "LAST ACTIVITY" header. Header row and first member row come from the two settings above.',
     'ROSTER_LAYOUT.LAST_ACTIVITY_STYLE':'MATCH = coloured like the current status; NEUTRAL = plain grey.',
     'PATROL.MODE':'START_END = hours from start and end times. DURATION = one "hours patrolled" number.',
     'PATROL.MAX_HOURS':'Reject any single log longer than this (catches typos).',
@@ -705,7 +707,7 @@
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, where headers and data begin, and which Google Form responses tab feeds each tracker.',
       cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.PATROL_LOG','SHEETS.SIGNUPS','LIMITS.BLANK_TAIL_ROWS']},
              {t:'Google Form links — responses tab → tracker', keys:['SHEETS.LEAVE_FORM_RESPONSES','SHEETS.PATROL_FORM_RESPONSES','SHEETS.SIGNUP_FORM_RESPONSES']},
-             {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
+             {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT','ROSTER_LAYOUT.LAST_ACTIVITY_COLS','ROSTER_LAYOUT.LAST_ACTIVITY_STYLE']},
              {t:'Patrol logs → hours', keys:['PATROL.MODE','PATROL.MAX_HOURS','PATROL.FUTURE_GRACE_HOURS','PATROL.OVERNIGHT','PATROL.RECOMPUTE','PATROL.COL_DISCORD','PATROL.COL_CALLSIGN','PATROL.COL_START','PATROL.COL_END','PATROL.COL_DURATION']},
              {t:'Public roster', keys:['SHEETS.WELCOME','PUBLISH.NEVER_PUBLISH','PUBLISH.KEEP_RANGES','PUBLISH.FORCE_RANGES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']}]},

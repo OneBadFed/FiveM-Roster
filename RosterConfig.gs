@@ -300,6 +300,7 @@ const BLOCK_SPECS_ = Object.freeze({
     TRAINING_KEYWORDS: { t: 'list', d: 'TRAINING, CADET', req: true, help: 'Divider labels containing these words are TRAINING sections.' },
     UNIT_FORMAT: { t: 'string', d: 'S-{00}', req: true, help: 'Callsign/unit-number template. The {0…} token is the slot number zero-padded to that many digits — "S-{00}" → S-01, "TRP-{000}" → TRP-001. Text outside the token is literal (prefix/suffix). No token → the number is appended.' },
     LAST_ACTIVITY_STYLE: { t: 'enum', d: 'MATCH', req: false, enum: ['MATCH', 'NEUTRAL'], help: 'How the LAST ACTIVITY column is coloured. MATCH = mirror CURRENT ACTIVITY\'s status colours (default). NEUTRAL = a calm grey chip so only CURRENT ACTIVITY is colour-coded. Applied by 📸 Capture Last Activity.' },
+    LAST_ACTIVITY_COLS: { t: 'list', d: '', req: false, help: 'PREVIOUS-ACTIVITY columns, NEWEST FIRST, up to 3 — e.g. "AB, AC, AD" (column letters) or "LAST ACTIVITY, 2 PERIODS AGO, 3 PERIODS AGO" (header names). Each 📸 Capture & Reset shifts the chain: the 2nd column takes what the 1st held, the 3rd takes the 2nd, and the 1st takes everyone\'s closing ACTIVITY — so you keep a rolling history of the last periods. Blank = the classic single column found by its "LAST ACTIVITY" header. The header row and first member row come from HEADER_ROW / DATA_START_ROW above.' },
     ID_TYPE: { t: 'enum', d: 'DISCORD', req: true, enum: ['DISCORD', 'COMMUNITY', 'CUSTOM'], help: 'THE Unique-ID switch for this department. DISCORD = a 17-19 digit Discord ID (default). COMMUNITY = a short 1-8 digit Community ID / CID. CUSTOM = use the ID_MIN_DIGITS…ID_MAX_DIGITS range below. NOTE: Discord @mention pings only fire for a real 17-19 digit ID, so a COMMUNITY department simply gets no pings.' },
     ID_MIN_DIGITS: { t: 'int', d: 17, req: true, min: 1, max: 30, help: 'Shortest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 17, COMMUNITY forces 1).' },
     ID_MAX_DIGITS: { t: 'int', d: 19, req: true, min: 1, max: 30, help: 'Longest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 19, COMMUNITY forces 8).' },
@@ -957,6 +958,7 @@ function materialize_(c, fromTab) {
     // v1.0 — configurable logic (unit-number format, date formats, embed appearance, retention limits).
     unitFormat: kv.ROSTER_LAYOUT.UNIT_FORMAT || 'S-{00}',
     lastActivityStyle: kv.ROSTER_LAYOUT.LAST_ACTIVITY_STYLE || 'MATCH', // v1.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
+    lastActivityCols: (kv.ROSTER_LAYOUT.LAST_ACTIVITY_COLS || []).slice(0, 3), // newest-first previous-activity chain; blank = auto-detect one by header
     formats: { date: kv.FORMATS.DATE_DISPLAY || 'd MMM. yyyy', timestamp: kv.FORMATS.TIMESTAMP_DISPLAY || 'd MMM yyyy, h:mm a' },
     embed: {
       submitColor: kv.DISCORD.SUBMIT_COLOR || '#3498db', returnColor: kv.DISCORD.RETURN_COLOR || '#e67e22', expireColor: kv.DISCORD.EXPIRE_COLOR || '#ed4245',

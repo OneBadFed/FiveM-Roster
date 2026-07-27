@@ -70,7 +70,7 @@ so renaming a key never breaks an existing sheet.
 `SIGNUP_FORM_RESPONSES`, `ACTIVITY` — the Activity Panel board (§5a), and `WELCOME` — the Welcome/dashboard tab
 the publish keep/force ranges resolve
 against; roles must resolve to distinct tabs) · ROSTER_LAYOUT (header/data rows, divider mode,
-`UNIT_FORMAT` callsign template, last-activity style) · COLUMNS *(table — SLOT vs MEMBER classes)* ·
+`UNIT_FORMAT` callsign template, `LAST_ACTIVITY_COLS` + style) · COLUMNS *(table — SLOT vs MEMBER classes)* ·
 SECTIONS / SECTION_TAGS *(tables)* · STATUSES / STATUS_OVERRIDES / STATUS_RULES *(tables — tier ladder,
 per-rank overrides, fixed-point transition rules)* · RANKS *(table)* · LEAVE · FORM_MAP *(table)* · DISCORD ·
 NOTIFICATIONS (opt-in event embeds) · EMBEDS *(table — per-event embed overrides from the Settings builder)* ·
@@ -168,12 +168,23 @@ content so edit-driven refreshes touch only those; menu/nightly runs do full res
 entry that is **both** a SECTION_TAGS label and a real rank registers as both (rank wins per member) — so a
 "Cadet" rank isn't swallowed by the tag-only branch and #training-style stats count correctly.
 
-**LAST ACTIVITY.** The optional LAST ACTIVITY column snapshots each member's status **as the period closed**:
-📸 Capture & Reset mirrors ACTIVITY → LAST ACTIVITY *before* zeroing hours and recomputing tiers (so it shows
-what everyone earned last period, not the post-reset drop). Every capture stamps a NOTE on the column header —
-capture date + the cadence-aware period label ("Captured 1 Aug 2026 · closing the JUL HOURS period"). Add a
-**LAST ACTIVITY DATE** column and each capture also writes the date per member (the engine fills it only when
-the operator adds it — layout ownership as usual).
+**PREVIOUS ACTIVITY (up to 3 columns).** These columns snapshot each member's status **as the period closed**:
+📸 Capture & Reset writes them *before* zeroing hours and recomputing tiers (so they show what everyone earned
+last period, not the post-reset drop). `[ROSTER_LAYOUT].LAST_ACTIVITY_COLS` names them **newest first**, up to
+three — each entry is either a **column letter** (`AB, AC, AD`) or a **header name** (`LAST ACTIVITY, 2 Periods
+Ago, …`), resolved by `lastActivityCols_` against the roster's configured header row; the first member row is
+`DATA_START_ROW`, so neither is ever assumed. Blank keeps the classic behavior: one column auto-detected by its
+"LAST ACTIVITY" header (`lastActivityCol_` still returns the newest, so older callers are unchanged).
+
+Each capture **shifts the chain one period older** — the 3rd column takes what the 2nd held, the 2nd takes the
+1st, and the 1st takes the closing ACTIVITY — reading every column before writing any, so nothing is lost.
+Divider and empty-slot rows are left alone; an entry that resolves to no column is skipped with a WARN rather
+than shifting the rest out of position, and a duplicate is dropped (it would copy a column onto itself). Every
+capture stamps a NOTE on each header — the newest gets capture date + the cadence-aware period label ("Captured
+1 Aug 2026 · closing the JUL HOURS period"), the older ones say which period they now hold. Each column gets the
+ACTIVITY dropdown and `[ROSTER_LAYOUT].LAST_ACTIVITY_STYLE` colouring. Add a **LAST ACTIVITY DATE** column and
+each capture also writes the date per member (the engine fills it only when the operator adds it — layout
+ownership as usual).
 
 **§3a · Promotions feed.** `promoRecord_` stores recent promotions (Document Property `RE_PROMOS`);
 `renderPromotions_` fills every "RECENT PROMOTIONS" table. The table-bearing tabs are remembered in

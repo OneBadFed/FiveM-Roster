@@ -1753,25 +1753,68 @@ function updateStatusFromHours(sheet, row) {
  * LAST ACTIVITY — snapshot of the previous activity-check status (optional column)
  * ====================================================================== */
 
-/** @return {number} 1-based column of the "LAST ACTIVITY" header in row 5, or -1 if the column isn't present. */
-function lastActivityCol_(sheet) {
+/** The roster's label row: whatever `rosterCols_` actually resolved, else [ROSTER_LAYOUT].HEADER_ROW. Never hardcoded. */
+function rosterHeaderRow_(sheet) {
+  try { const h = rosterCols_(sheet).headerRow; if (h) return h; } catch (e) { /* fall through to config */ }
+  return ROSTER_HEADER_ROW; // live getter over cfg_().legacy.headerRow
+}
+
+/**
+ * The PREVIOUS-ACTIVITY chain, NEWEST FIRST, up to three columns.
+ * Source of truth is `[ROSTER_LAYOUT].LAST_ACTIVITY_COLS`: each entry is either a COLUMN LETTER ("AB") or a
+ * HEADER NAME ("2 Periods Ago"), matched on the roster's configured header row. An entry that resolves to
+ * nothing is dropped rather than shifting the rest out of position. With the key blank the classic behavior
+ * stands: one column found by its "LAST ACTIVITY" header.
+ * @return {Array<number>} 1-based columns, newest → oldest (empty when none exist).
+ */
+function lastActivityCols_(sheet) {
+  const out = [];
   try {
+    const hRow = rosterHeaderRow_(sheet);
     const lastCol = sheet.getLastColumn();
-    if (lastCol < 1 || sheet.getLastRow() < ROSTER_HEADER_ROW) return -1;
-    const hdr = sheet.getRange(ROSTER_HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0];
-    for (let c = 0; c < hdr.length; c++) {
-      const h = String(hdr[c]).toUpperCase();
-      if (/LAST\s*ACTIVITY/.test(h) && !/DATE/.test(h)) return c + 1; // "LAST ACTIVITY DATE" is its own column (below)
+    if (lastCol < 1) return out;
+    const hdr = sheet.getRange(hRow, 1, 1, lastCol).getDisplayValues()[0];
+    let want = [];
+    try { want = (CONFIG.lastActivityCols || []).map((x) => String(x || '').trim()).filter(Boolean); } catch (e) { want = []; }
+    if (want.length) {
+      want.slice(0, 3).forEach((entry) => {
+        let col = 0;
+        if (/^[A-Za-z]{1,2}$/.test(entry)) col = colLetterToIndex_(entry);       // a column letter wins — explicit placement
+        if (!col) { const k = norm_(entry); for (let c = 0; c < hdr.length; c++) { if (norm_(hdr[c]) === k) { col = c + 1; break; } } }
+        if (!col) { const k = norm_(entry); for (let c = 0; c < hdr.length; c++) { if (k && norm_(hdr[c]).indexOf(k) !== -1) { col = c + 1; break; } } }
+        if (col > 0 && out.indexOf(col) === -1) out.push(col);                    // a duplicate would copy a column onto itself
+        else if (!col) logWarn_('lastActivityCols_', `previous-activity entry "${entry}" matched no column letter or header — skipped.`);
+      });
+      return out;
     }
-  } catch (e) { log_('lastActivityCol_', e); }
-  return -1;
+    for (let c = 0; c < hdr.length; c++) {                                        // classic: one auto-detected column
+      const h = String(hdr[c]).toUpperCase();
+      if (/LAST\s*ACTIVITY/.test(h) && !/DATE/.test(h)) { out.push(c + 1); break; } // "LAST ACTIVITY DATE" is its own column (below)
+    }
+  } catch (e) { log_('lastActivityCols_', e); }
+  return out;
+}
+
+/** "AB" → 28. 0 when it isn't a plain A..ZZ reference. */
+function colLetterToIndex_(s) {
+  const t = String(s || '').trim().toUpperCase();
+  if (!/^[A-Z]{1,2}$/.test(t)) return 0;
+  let n = 0;
+  for (let i = 0; i < t.length; i++) n = n * 26 + (t.charCodeAt(i) - 64);
+  return n;
+}
+
+/** @return {number} 1-based column of the newest previous-activity column, or -1 when there is none. */
+function lastActivityCol_(sheet) {
+  const cols = lastActivityCols_(sheet);
+  return cols.length ? cols[0] : -1;
 }
 
 /** Optional companion column: "LAST ACTIVITY DATE" — when present, each capture stamps the capture date per member. */
 function lastActivityDateCol_(sheet) {
   try {
     const lastCol = sheet.getLastColumn();
-    const hdr = sheet.getRange(ROSTER_HEADER_ROW, 1, 1, lastCol).getDisplayValues()[0];
+    const hdr = sheet.getRange(rosterHeaderRow_(sheet), 1, 1, lastCol).getDisplayValues()[0];
     for (let c = 0; c < hdr.length; c++) { if (/LAST\s*ACTIVITY\s*DATE/.test(String(hdr[c]).toUpperCase())) return c + 1; }
   } catch (e) { log_('lastActivityDateCol_', e); }
   return -1;
@@ -1782,31 +1825,37 @@ function lastActivityDateCol_(sheet) {
  *  it was taken), and — when the operator added a "LAST ACTIVITY DATE" column — write the capture date per
  *  member. @return {number} captured, or -1 if no LAST ACTIVITY column. */
 function captureLastActivityCore_(roster) {
-  const laCol = lastActivityCol_(roster);
-  if (laCol === -1) return -1;
+  const cols = lastActivityCols_(roster);   // newest → oldest, up to 3
+  if (!cols.length) return -1;
   const RC = rosterCols_(roster);
-  const n = Math.max(0, roster.getLastRow() - CONFIG.rosterStartRow + 1);
+  const start = CONFIG.rosterStartRow;      // first member row — configured, never assumed
+  const n = Math.max(0, roster.getLastRow() - start + 1);
   if (!n) return 0;
-  const ranks = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getValues();
-  const names = roster.getRange(CONFIG.rosterStartRow, RC.name, n, 1).getValues();
-  const acts = roster.getRange(CONFIG.rosterStartRow, RC.activity, n, 1).getValues();
-  const out = roster.getRange(CONFIG.rosterStartRow, laCol, n, 1).getValues(); // preserve divider/empty-slot rows
+  const ranks = roster.getRange(start, RC.rank, n, 1).getValues();
+  const names = roster.getRange(start, RC.name, n, 1).getValues();
+  const acts = roster.getRange(start, RC.activity, n, 1).getValues();
+  // Read the whole chain BEFORE writing any of it — each column's new value is the column to its left's OLD one.
+  const cur = cols.map((c) => roster.getRange(start, c, n, 1).getValues());
   const dCol = lastActivityDateCol_(roster);
-  const dOut = (dCol !== -1) ? roster.getRange(CONFIG.rosterStartRow, dCol, n, 1).getValues() : null;
+  const dOut = (dCol !== -1) ? roster.getRange(start, dCol, n, 1).getValues() : null;
   const today = todayInSheetTz_();
   let count = 0;
   for (let i = 0; i < n; i++) {
-    if (!isValidMemberValues_(ranks[i][0], names[i][0])) continue;
-    out[i][0] = acts[i][0];
+    if (!isValidMemberValues_(ranks[i][0], names[i][0])) continue; // divider / empty-slot rows keep whatever they hold
+    for (let k = cols.length - 1; k >= 1; k--) cur[k][i][0] = cur[k - 1][i][0]; // oldest first: each takes its newer neighbour
+    cur[0][i][0] = acts[i][0];                                                  // newest takes the closing ACTIVITY
     if (dOut) dOut[i][0] = today;
     count++;
   }
-  roster.getRange(CONFIG.rosterStartRow, laCol, n, 1).setValues(out);
-  if (dOut) roster.getRange(CONFIG.rosterStartRow, dCol, n, 1).setValues(dOut).setNumberFormat('d mmm. yyyy');
+  cols.forEach((c, k) => roster.getRange(start, c, n, 1).setValues(cur[k]));
+  if (dOut) roster.getRange(start, dCol, n, 1).setValues(dOut).setNumberFormat('d mmm. yyyy');
   try { // the header note answers "captured WHEN, closing WHICH period" — hover the column head to see it
+    const hRow = RC.headerRow || ROSTER_HEADER_ROW;
     let when = '📸 Captured ' + Utilities.formatDate(today, ssTz_(), 'd MMM yyyy');
     try { if (typeof periodLabel_ === 'function') when += ' · closing the "' + periodLabel_() + '" period'; } catch (e2) { /* Extras absent → date alone */ }
-    roster.getRange(RC.headerRow || ROSTER_HEADER_ROW, laCol).setNote(when);
+    roster.getRange(hRow, cols[0]).setNote(when);
+    // The older columns say which period they now hold, so a three-wide chain reads unambiguously.
+    for (let k = 1; k < cols.length; k++) roster.getRange(hRow, cols[k]).setNote(`📸 ${k + 1} period(s) before the last capture (${Utilities.formatDate(today, ssTz_(), 'd MMM yyyy')})`);
   } catch (e) { log_('captureLastActivityCore_.note', e); }
   return count;
 }
@@ -1886,13 +1935,13 @@ function captureLastActivity() {
   runAction_('Capture Last Activity', () => {
     const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
     if (!roster) return;
-    const laCol = lastActivityCol_(roster);
-    if (laCol === -1) { SpreadsheetApp.getUi().alert('No "LAST ACTIVITY" header found in row 5.\n\nAdd that header, then run this again.'); return; }
-    try { ensureLastActivityFormat_(roster, laCol); } catch (e) { log_('captureLastActivity.format', e); }
+    const cols = lastActivityCols_(roster);
+    if (!cols.length) { SpreadsheetApp.getUi().alert(`No previous-activity column found on header row ${rosterHeaderRow_(roster)}.\n\nAdd a "LAST ACTIVITY" header, or name up to three columns under ⚙️ Engine Settings ▸ Sheets & layout ▸ Previous-activity columns, then run this again.`); return; }
+    cols.forEach((c) => { try { ensureLastActivityFormat_(roster, c); } catch (e) { log_('captureLastActivity.format', e); } });
     const count = captureLastActivityCore_(roster);
     SpreadsheetApp.getUi().alert(count <= 0
       ? 'No members found to capture.'
-      : `✅ LAST ACTIVITY captured for ${count} member(s) — mirrored from each member's current ACTIVITY.`);
+      : `✅ Previous activity captured for ${count} member(s) across ${cols.length} column${cols.length === 1 ? '' : 's'} — each column shifted one period older, the newest taking each member's closing ACTIVITY.`);
   });
 }
 
