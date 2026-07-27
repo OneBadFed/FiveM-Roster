@@ -2297,6 +2297,53 @@ function statusDropdownOrder_(sheet, row, col) {
   return null;
 }
 
+/**
+ * AUTO-ROWS for the tracker-style tabs (LOA Tracker · Patrol Log · Signup review): keep exactly
+ * [LIMITS].BLANK_TAIL_ROWS blank, fully-styled rows below the last entry. Short → rows are inserted INSIDE the
+ * styled band (between the data and the last blank row), so the operator's formatting, STATUS dropdowns and
+ * chip colours all inherit natively — the engine never paints a thing. Surplus → trailing rows are deleted in
+ * one contiguous run, so the tab ends cleanly instead of in a thousand empty rows, and nobody ever has to add
+ * rows by hand again. 0 = feature OFF. Runs at the end of each tab's sort (every mutation path finishes there),
+ * so the tail is re-padded right after submissions consume it.
+ * A row is deleted only when EVERY cell is display-blank across the sheet width; rows above `dataStart` are
+ * never touched; 🧪 sandbox tabs are exempt (DevQA fixtures address fixed rows).
+ * @param {Sheet} sheet  @param {number} dataStart first data row (banner/header rows above are off-limits)
+ */
+function tidyTailRows_(sheet, dataStart) {
+  try {
+    const keep = Number(CONFIG.limits.blankTailRows || 0);
+    if (!(keep > 0) || !sheet || String(sheet.getName()).indexOf('🧪') === 0) return;
+    const maxR = sheet.getMaxRows();
+    const width = Math.max(1, sheet.getLastColumn());
+    if (maxR < dataStart) return;
+    // Last non-blank row, scanning DISPLAY values bottom-up in growing chunks — the tail is usually tiny (one
+    // small read per sort); a legacy tab with 1000 blank rows costs a few chunk reads exactly once, then one delete.
+    let lastData = dataStart - 1;
+    let lo = maxR + 1; // rows from `lo` down are known-blank
+    let chunk = Math.max(keep + 20, 40);
+    while (lo > dataStart) {
+      const from = Math.max(dataStart, lo - chunk);
+      const disp = sheet.getRange(from, 1, lo - from, width).getDisplayValues();
+      let hit = -1;
+      for (let i = disp.length - 1; i >= 0; i--) {
+        if (disp[i].some((c) => String(c).trim() !== '')) { hit = i; break; }
+      }
+      if (hit >= 0) { lastData = from + hit; break; }
+      lo = from; chunk *= 2;
+    }
+    const blanks = maxR - lastData;
+    if (blanks < keep) {
+      // ≥1 blank template row exists → insert BEFORE the last row (strictly inside every band range: validation,
+      // formats, banding all stretch). A completely full grid appends instead (formatting inherits from the row
+      // above; the dropdown may not — the next First-Run re-applies it, and from then on the tail always exists).
+      if (blanks >= 1) sheet.insertRowsBefore(maxR, keep - blanks);
+      else sheet.insertRowsAfter(maxR, keep - blanks);
+    } else if (blanks > keep) {
+      sheet.deleteRows(lastData + keep + 1, blanks - keep);
+    }
+  } catch (e) { logWarn_('tidyTailRows_', 'auto-rows skipped: ' + ((e && e.message) ? e.message : e)); }
+}
+
 function sortTracker_(prepend, trackerSheet) {
   try {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
@@ -2357,7 +2404,10 @@ function sortTracker_(prepend, trackerSheet) {
     const sorted = dec.map((d) => d.row);
 
     // Write reordered VALUES back into the SAME physical rows. '@' the ID column BEFORE writing so long IDs stay exact.
-    if (start + sorted.length - 1 > tracker.getMaxRows()) tracker.insertRowsAfter(tracker.getMaxRows(), start + sorted.length - 1 - tracker.getMaxRows());
+    const shortT = start + sorted.length - 1 - tracker.getMaxRows();
+    if (shortT > 0) { // grow INSIDE the styled band when blank tail rows exist (formats + dropdowns inherit), else append
+      if (tracker.getMaxRows() > last) tracker.insertRowsBefore(tracker.getMaxRows(), shortT); else tracker.insertRowsAfter(tracker.getMaxRows(), shortT);
+    }
     if (RC.discord) tracker.getRange(start, RC.discord, sorted.length, 1).setNumberFormat('@');
     // Merge-safe: a merged cell anywhere in the tracker's data rows would make a full-width setValues throw, and this
     // whole function is wrapped in a catch — so sorting would silently stop working.
@@ -2379,6 +2429,7 @@ function sortTracker_(prepend, trackerSheet) {
       if (RC.timeLeft) tracker.getRange(start, RC.timeLeft, sorted.length, 1).setFormulas(lftF);
       if (RC.returnDate) tracker.getRange(start, RC.returnDate, sorted.length, 1).setFormulas(retF).setNumberFormat('d mmm. yyyy');
     }
+    tidyTailRows_(tracker, start); // auto-rows: re-pad the blank tail submissions consumed / trim surplus blanks
   } catch (e) { logWarn_('sortTracker_', 'tracker sort failed: ' + ((e && e.message) ? e.message : e)); }
 }
 
@@ -3158,7 +3209,10 @@ function sortPatrolLog_(patrolSheet) {
     dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
 
-    if (start + sorted.length - 1 > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), start + sorted.length - 1 - sheet.getMaxRows());
+    const shortP = start + sorted.length - 1 - sheet.getMaxRows();
+    if (shortP > 0) { // grow INSIDE the styled band when blank tail rows exist (formats + dropdowns inherit), else append
+      if (sheet.getMaxRows() > last) sheet.insertRowsBefore(sheet.getMaxRows(), shortP); else sheet.insertRowsAfter(sheet.getMaxRows(), shortP);
+    }
     if (PC.discord) sheet.getRange(start, PC.discord, sorted.length, 1).setNumberFormat('@');
     writeValuesSafe_(sheet, start, 1, sorted, null); // merge-safe (see sortTracker_)
     if (last > start + sorted.length - 1) sheet.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent();
@@ -3171,6 +3225,7 @@ function sortPatrolLog_(patrolSheet) {
     if (PC.endDate) sheet.getRange(start, PC.endDate, sorted.length, 1).setNumberFormat(PATROL_DATE_FMT_);
     if (PC.startTime) sheet.getRange(start, PC.startTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
     if (PC.endTime) sheet.getRange(start, PC.endTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
+    tidyTailRows_(sheet, start); // auto-rows: re-pad the blank tail submissions consumed / trim surplus blanks
   } catch (e) { logWarn_('sortPatrolLog_', 'patrol sort failed: ' + ((e && e.message) ? e.message : e)); }
 }
 

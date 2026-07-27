@@ -141,6 +141,8 @@ restructure, or reformat your sheets.
 
 - Staff get invited to **this** file; members only ever get the **public roster's** link.
 - Run **🔌 Install Triggers** once on every new copy.
+- You never add rows on the **LOA Tracker**, **Patrol Log**, or **Roster Signups** — each submission brings its
+  own row (styled like your others), and leftover blank rows below the data are tidied away automatically.
 - Unique IDs are the backbone — keep them accurate, one per member.
 - Don't edit the hidden first column on the Patrol Log.
 - 🎬 Load Demo Roster is for fresh copies only — it overwrites.

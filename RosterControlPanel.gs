@@ -1631,6 +1631,7 @@ function sortSignups_(sheet) {
       const blanks = []; for (let k = ds + sorted.length; k <= last; k++) blanks.push(new Array(W).fill(''));
       writeValuesSafe_(sheet, ds + sorted.length, 1, blanks, null);
     }
+    if (typeof tidyTailRows_ === 'function') tidyTailRows_(sheet, ds); // auto-rows: re-pad the blank tail / trim surplus blanks
     return sorted.length;
   } catch (e) { logWarn_('sortSignups_', 'signup sort failed: ' + ((e && e.message) ? e.message : e)); return 0; }
 }

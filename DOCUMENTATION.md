@@ -99,6 +99,16 @@ division tabs are engine-built exceptions.) An existing STATUS dropdown is **nev
 read per-value chip colours, so any `setDataValidation` on a live dropdown wipes them — the engine only creates
 a dropdown where none exists and WARNs when an engine status is missing from the operator's list.
 
+**Auto-rows** (`tidyTailRows_`, `[LIMITS].BLANK_TAIL_ROWS`, default 3, 0 = OFF): the LOA Tracker, Patrol Log,
+and Signup review tabs keep exactly N blank styled rows below the last entry — the sanctioned exception to the
+no-row-surgery rule, scoped to these three tabs' data regions. When submissions consume the tail, rows are
+inserted **inside** the styled band (between the data and the last blank row), so the operator's formatting,
+STATUS dropdowns and chip colours inherit natively — the engine still paints nothing; surplus trailing blanks
+are deleted in one contiguous run, so a legacy tab's thousand empty rows disappear on the first pass and nobody
+ever adds rows by hand. Runs at the end of each tab's sort (every mutation path finishes there); a row is
+deleted only when every cell is display-blank, rows above the data start are never touched, and 🧪 sandbox tabs
+are exempt. The in-sort grow paths prefer in-band inserts too, so an oversized batch inherits styling as well.
+
 **Editable assignment/group tabs (`buildGroupSheets_`).** A #group / assignment tab (Canine Unit, District
 Patrol…) is an **editable upsert**, not a read-only FILTER: the engine keeps one row per matching member (matched
 by Unique ID, else name), mirrors the roster's columns by header, places members into the tab's RANK GROUP bands
@@ -442,7 +452,9 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
 6. Simple `onEdit` runs in AuthMode.LIMITED: no other-file opens, no UrlFetch, no trigger creation, no HTML
    dialogs (`ui.alert`/`ui.prompt` only) — and its ~30s budget spans any human dialog.
 7. Publishing and roster mutations never contend for the same script lock.
-8. The engine fills user sheets — it never restructures or reformats their layout.
+8. The engine fills user sheets — it never restructures or reformats their layout. (Sole carve-out: auto-rows
+   manages the data-region row COUNT on the three tracker-style tabs — §3 — inserting inside the styled band
+   and trimming trailing blanks; `[LIMITS].BLANK_TAIL_ROWS = 0` turns it off.)
 9. DevQA touches 🧪-prefixed sandbox tabs only.
 
 ---
