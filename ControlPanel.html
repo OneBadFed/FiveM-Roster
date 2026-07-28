@@ -409,7 +409,7 @@
   /* ══ SIGNUPS — a QUEUE, not a form. The old pane was one applicant on a page with no sense of what else was
      waiting; this is the three-pane review shape: who is in line, what you are deciding, and what they sent. ══ */
   #pane-signups.pane.active{display:flex;flex-direction:column;min-height:100%;}
-  .sucols{display:grid;grid-template-columns:222px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
+  .sucols{display:grid;grid-template-columns:236px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
   .suqueue{min-width:0;margin-left:-14px;padding:12px 14px;background:var(--queue);
            box-shadow:1px 0 0 var(--hair);align-self:stretch;}
   /* In the toolbar the scope control sits OVER the column it filters, and the rule between them continues the
@@ -417,13 +417,16 @@
   /* order:-1 puts it ahead of the sidebar toggle WITHOUT reordering the DOM for every other tab — the toggle's
      26px would otherwise push the control 36px right of the column it belongs to, and the rule under it would
      miss the column divide it is meant to continue. */
-  .toolbar .suq-tabs{order:-1;flex:0 0 222px;margin:0 0 0 -14px;padding:0 14px;height:100%;align-self:stretch;
+  /* The REGION: the queue surface continued up into the header, and the divider that carries on down the page.
+     It must not restyle the control inside it — doing exactly that is what flattened the segmented control into
+     "some text next to a grey box". */
+  .tb-seg{order:-1;flex:0 0 250px;margin:0 0 0 -14px;padding:0 14px;height:100%;align-self:stretch;
     display:flex;align-items:center;background:var(--queue);box-shadow:1px 0 0 var(--hair);}
-  .toolbar .suq-tabs .fchips,.toolbar .suq-tabs{border-radius:0;}
-  .toolbar .suq-tabs.fchips{gap:0;overflow:visible;}
-  .toolbar .suq-tabs[hidden]{display:none;}
-  .suq-tabs .fchip{flex:1 1 0;min-width:0;justify-content:center;display:flex;align-items:center;gap:6px;}
-  .suq-n{font-family:var(--mono);font-size:11px;opacity:.75;}
+  .tb-seg[hidden]{display:none;}
+  /* The CONTROL: one track, two equal halves inside it, spanning the column. */
+  .suq-tabs{width:100%;}
+  .suq-tabs .fchip{flex:1 1 0;min-width:0;justify-content:center;display:flex;align-items:center;gap:5px;}
+  .suq-n{font-family:var(--mono);font-size:10.5px;color:rgba(255,255,255,.45);font-weight:400;}
   .suq-list{display:flex;flex-direction:column;gap:2px;}
   .suq-row{display:flex;align-items:center;gap:9px;padding:0 8px;height:44px;border-radius:7px;cursor:pointer;
            background:none;border:none;width:100%;text-align:left;color:var(--txt);transition:background var(--t) var(--ease);}
@@ -441,7 +444,7 @@
   .suq-dot{width:6px;height:6px;border-radius:50%;flex:0 0 auto;background:#ff9f0a;}
   .suq-row.on .suq-dot{background:#fff;}
   .suq-head{font-size:11px;font-weight:600;color:rgba(255,255,255,.38);padding:14px 8px 5px;}
-  .suq-done{display:flex;align-items:center;gap:9px;padding:0 8px;height:30px;font-size:12px;color:rgba(255,255,255,.4);}
+  .suq-done{display:flex;align-items:center;gap:9px;padding:0 8px;height:32px;font-size:12px;color:rgba(255,255,255,.4);}
   .suq-done .suq-av{width:20px;height:20px;font-size:8.5px;background:var(--e2);color:rgba(255,255,255,.5);}
   .suq-done b{flex:1;min-width:0;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .suq-done span{font-size:11px;color:rgba(255,255,255,.3);}
@@ -508,7 +511,7 @@
   .filters{display:flex;align-items:center;gap:var(--s3);flex-wrap:wrap;margin-top:var(--s4);}
   .fchips{display:inline-flex;gap:0;flex-wrap:nowrap;flex:0 0 auto;height:22px;background:rgba(255,255,255,.06);
           border-radius:6px;padding:0;overflow:hidden;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;}
-  .fchip{background:none;border:none;color:rgba(255,255,255,.72);border-radius:0;padding:0 11px;height:22px;min-height:22px;
+  .fchip{background:none;border:none;color:rgba(255,255,255,.7);border-radius:0;padding:0 11px;height:22px;min-height:22px;
          font-size:12px;font-weight:400;cursor:pointer;white-space:nowrap;
          transition:background var(--t) var(--ease),color var(--t) var(--ease);}
   .fchip:hover{color:#fff;background:rgba(255,255,255,.07);}
@@ -983,9 +986,11 @@
     <div class="progress" id="progress"></div>
     <div class="toolbar">
       <button class="icon-btn" id="sideToggle" title="Hide sidebar" aria-label="Toggle sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
-      <div class="fchips suq-tabs" id="suScope" hidden>
-        <button class="fchip active" data-suscope="open">Pending <span class="suq-n" id="suScopeN"></span></button>
-        <button class="fchip" data-suscope="all">All</button>
+      <div class="tb-seg" id="suScopeWrap" hidden>
+        <div class="fchips suq-tabs" id="suScope">
+          <button class="fchip active" data-suscope="open">Pending <span class="suq-n" id="suScopeN"></span></button>
+          <button class="fchip" data-suscope="all">All</button>
+        </div>
       </div>
       <div class="tb-tt"><h1 class="tb-title" id="tbTitle">Members</h1><div class="tb-sub" id="tbSub"></div></div>
       <div class="search-wrap" id="searchWrap">
@@ -2408,7 +2413,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScope').hidden=(t.dataset.tab!=='signups'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('colBody').addEventListener('click',function(e){ var seg=e.target.closest('.cseg'); if(!seg||seg.classList.contains('on')) return; var tog=seg.closest('.coltog'); var header=tog.getAttribute('data-header'); var k=seg.getAttribute('data-k'); tog.querySelectorAll('.cseg').forEach(function(s){ s.classList.remove('on'); }); seg.classList.add('on'); api(function(d){ renderColumns(d); toast('“'+header+'” → '+(k==='MEMBER'?'Member':'Slot'),'ok'); }, function(ev){ onError(ev); loadColumns(); }, "cpSetColumnClass", header, k); });
   $('refreshBtn').addEventListener('click',refresh);
