@@ -457,7 +457,21 @@
   .dcbtn.primary{background:var(--blue);color:#fff;font-weight:500;box-shadow:var(--bluering);}
   .dcbtn.primary:hover{background:linear-gradient(180deg,#1e95ff,#1183f0);}
   .dcbtn.danger{color:#ff6961;} .dcbtn.danger:hover{background:var(--red-soft);color:#ff6961;}
-  .dcseg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;}
+  /* #dcBuild is a direct child of .card, so nothing inside it inherited the card's gutter — same as #dcwh. */
+  .card>#dcBuild{margin:12px 14px 14px;}
+  /* A real segmented track: one control with N halves, not N loose chips. */
+  .dcseg{display:inline-flex;flex-wrap:wrap;gap:0;align-items:center;margin:0;padding:2px;
+         background:rgba(255,255,255,.06);border-radius:7px;box-shadow:var(--ctlring);}
+  .dcsegb{background:none;border:none;height:22px;padding:0 11px;border-radius:5px;font-family:inherit;
+          font-size:12.5px;font-weight:400;color:var(--txt-2);cursor:pointer;white-space:nowrap;
+          transition:background var(--t),color var(--t);}
+  .dcsegb:hover{color:var(--txt);}
+  .dcsegb.on{background:var(--blue);color:#fff;font-weight:500;box-shadow:var(--bluering);}
+  /* The state sentence and its two resets, scoped narrow to wide. */
+  .dcstate{display:flex;align-items:center;gap:12px;margin-top:9px;font-size:11.5px;color:var(--txt-3);}
+  .dcstate>span{flex:1;min-width:0;}
+  .dctokens{margin:6px 0 0;}
+  .dctokens .rlt{font-family:var(--mono);font-size:11px;}
   .dclb{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin:16px 0 0;}
   .dccnt{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--txt-3);text-transform:none;letter-spacing:0;font-weight:400;}
   .dcta{min-height:66px;resize:vertical;font-family:inherit;width:100%;}
@@ -1412,7 +1426,7 @@
   function discordShell(g){
     return '<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+(ICONS[g.id]||ICONS.table)+'</span><b>Webhook</b><small>['+esc(g.channel)+']</small></div><div id="dcwh"></div></div>'
       +'<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+ICONS.theme+'</span><b>Embed builder</b><small>[EMBEDS]</small>'
-        +'<button type="button" class="rlt" data-dcresetall="1" style="margin-left:auto;color:var(--red)" title="Clear every saved override for this channel and factory-reset its embed title settings — one click to adopt the current built-in look">Reset ALL to defaults</button></div><div id="dcBuild"></div></div>'
+        +'</div><div id="dcBuild"></div></div>'
       +'<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+ICONS.check+'</span><b>What posts here</b></div><ul class="dcev">'
       +g.events.map(function(x){ return '<li>'+esc(x)+'</li>'; }).join('')+'</ul></div>';
   }
@@ -1521,7 +1535,7 @@
     var host=$('dcBuild'); if(!host) return;
     var m=dcCurMeta(); if(!m){ host.innerHTML=''; return; }
     var saved=embGet_(m.cur), t=saved||embWorking_(m.cur); // no override → pre-fill the form with the built-in default so every field shows its real content
-    var seg=m.evs.map(function(x){ return '<button type="button" class="rlt'+(x.id===m.cur?' on':'')+'" data-dcev="'+esc(x.id)+'">'+esc(x.label)+'</button>'; }).join('');
+    var seg=m.evs.map(function(x){ return '<button type="button" class="dcsegb'+(x.id===m.cur?' on':'')+'" data-dcev="'+esc(x.id)+'">'+esc(x.label)+'</button>'; }).join('');
     var chips=m.meta.ph.map(function(p){ return '<span class="rlt" data-dcph="{'+esc(p)+'}" title="Click to insert into the focused field">{'+esc(p)+'}</span>'; }).join('');
     var f=function(k,ph){ return '<input class="in" data-emb="'+k+'" value="'+esc(t[k]||'')+'" placeholder="'+esc(ph)+'" autocomplete="off" spellcheck="false">'; };
     var ta=function(k,ph){ return '<textarea class="in dcta" data-emb="'+k+'" placeholder="'+esc(ph)+'" spellcheck="false">'+esc(t[k]||'')+'</textarea>'; };
@@ -1540,11 +1554,18 @@
         +toggle('data-embinl="'+i+'"',!!fl.inline,'Inline')
         +'</div>';
     }).join('');
-    var h='<div class="dcseg">'+seg
-      +(saved!==null
-        ?'<button type="button" class="rlt" style="margin-left:auto;color:var(--red)" data-dcreset="1">Reset to default</button>'
-        :'<span class="sdesc" style="margin-left:auto">Built-in embed in use — edit any field to override</span>')+'</div>'
-      +'<div class="tagrow" style="margin:6px 0 12px">'+chips+'</div>';
+    /* Both resets live together on the state line, where their DIFFERENT SCOPES can be read side by side:
+       one clears this event, the other clears every event on the channel. In the card header the wider one
+       sat alone in red with nothing to compare it against. */
+    var h='<div class="dcseg">'+seg+'</div>'
+      +'<div class="dcstate"><span>'
+      +(saved!==null ? 'Override saved for this event.' : 'Built-in embed in use — edit any field to override.')
+      +'</span>'
+      +(saved!==null ? '<button type="button" class="dclink" data-dcreset="1">Reset this event</button>' : '')
+      +'<button type="button" class="dclink danger" data-dcresetall="1" title="Clear every saved override for this channel and factory-reset its embed title settings">Reset all events\u2026</button>'
+      +'</div>'
+      +'<label class="dclb">Tokens <span class="pv-note">click one to insert it into the field you were editing</span></label>'
+      +'<div class="tagrow dctokens">'+chips+'</div>';
     h+=sec('Message', '<label class="dclb">Message text (above the embed)</label>'+ta('content','Posted above the embed. {user} pings the member.'));
     h+=sec('Embed', '<div class="dctog-row"><span>Send the embed <small>(off = message text only)</small></span>'+toggle('data-embtoggle="1"',sendOn)+'</div>');
     h+=sec('Embed author', '<label class="dclb">Author name</label>'+f('author','Author name')+'<label class="dclb">Author link URL</label>'+f('authorUrl','https://…')+'<label class="dclb">Author icon URL</label>'+f('authorIcon','https://…'));
@@ -1643,7 +1664,7 @@
       +'<button type="button" class="dcbtn" data-dcclear="'+esc(g.channel)+'">Clear</button>'
       +'</div>';
     if(!DATA.adminLinked) h+='<div class="callout" style="margin:10px 0 0">Webhooks are stored in the <b>admin roster</b> — link one first (Control Panel ▸ Tools ▸ Admin roster).</div>';
-    h+='<div class="sdesc dcnote">Write-only — the URL is stored in the admin spreadsheet and never shown again. <b>Clear</b> empties this channel; <b>Remove all</b> wipes every channel at once. Only accounts with admin-file access can change either.</div>';
+    h+='<div class="sdesc dcnote">Write-only — the URL is stored in the admin spreadsheet, never shown again. <b>Clear</b> empties this channel, <b>Remove all</b> every channel. Needs admin-file access.</div>';
     var togs=(DC_NOTIFY_TOGGLES[g.channel]||[]).filter(function(p){ return KV[p[0]]; });
     if(togs.length){
       h+='<label class="dclb">Opt-in event embeds <span class="pv-note">off = that event posts nothing \u00b7 saved with Save</span></label>'
