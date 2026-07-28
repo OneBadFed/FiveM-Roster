@@ -74,6 +74,10 @@
     --mono:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
   }
   *{box-sizing:border-box;}
+  /* The hidden ATTRIBUTE is only a UA rule (display:none), so ANY author rule that sets display beats it — a
+     .frow is display:grid, so [hidden] on one did nothing and the row kept rendering. That is why several
+     elements here had grown their own bespoke [hidden] rules; this states it once, for everything. */
+  [hidden]{display:none !important;}
   html,body{margin:0;padding:0;height:100%;}
   /* Flat. The three coloured radial washes that used to sit here were the loudest decoration in the panel and
      carried no information — the first thing to go. Depth now comes from the surface ladder alone. */
@@ -109,10 +113,7 @@
   .side{display:flex;flex-direction:column;background:var(--sidebar);
         -webkit-backdrop-filter:blur(42px) saturate(180%);backdrop-filter:blur(42px) saturate(180%);
         border-right:1px solid rgba(0,0,0,.42);}
-  .tlights{height:52px;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding-left:19px;pointer-events:none;}
-  .tl{width:12px;height:12px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 .5px rgba(0,0,0,.25) inset;}
-  .tl.r{background:#ff5f57;} .tl.y{background:#febc2e;} .tl.g{background:#28c840;}
-  .brand{display:flex;align-items:center;gap:9px;padding:2px 12px 12px 14px;}
+  .brand{display:flex;align-items:center;gap:9px;padding:14px 12px 12px 14px;}
   .badge{width:28px;height:28px;border-radius:7px;background:linear-gradient(180deg,#3a3a3e,#2c2c30);
         box-shadow:0 0 0 .5px rgba(255,255,255,.14) inset,0 1px 2px rgba(0,0,0,.35);
         color:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
@@ -184,7 +185,10 @@
   /* content column */
   /* min-height:0 + a definite height let the flex child (.content) bound itself and scroll, instead of .main
      growing to its content and spilling past the 100vh grid row (which body{overflow:hidden} then clips). */
-  .main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100vh;position:relative;background:var(--bg);}
+  /* 100% of the WINDOW, not 100vh. The window is inset by its margin, so a 100vh child makes the grid row taller
+     than the window and overflow:hidden clips the bottom off BOTH columns — the action bars and the sidebar's
+     version line went with it. */
+  .main{display:flex;flex-direction:column;min-width:0;min-height:0;height:100%;position:relative;background:var(--bg);}
   /* Toolbar — a macOS window names the view it is showing and rules a hairline under it. The content used to
      begin abruptly on a stat tile, which is the one structural thing no amount of restyling would have fixed. */
   .toolbar{display:flex;align-items:center;gap:10px;padding:0 14px;height:52px;flex:0 0 auto;
@@ -1069,9 +1073,6 @@
 <body>
 <div class="app">
   <div class="side">
-    <!-- Decorative: Google's own × is the working control, so these do not pretend to be buttons. They are
-         here because the 52px strip is what makes the sidebar read as running the full height of the window. -->
-    <div class="tlights" aria-hidden="true"><i class="tl r"></i><i class="tl y"></i><i class="tl g"></i></div>
     <div class="brand">
       <div class="badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6l7-3z"/></svg></div>
       <div class="ttl"><div class="r1"><b id="sysName">Roster System</b></div><div class="sub">Control panel</div></div>
@@ -1114,7 +1115,7 @@
       </div>
       <button class="btn-primary" id="tbAdd">+ Add</button>
       <button class="pushbtn" id="runAll" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>Run all</button>
-      <button class="icon-btn" id="openSettingsBtn" title="Engine settings" aria-label="Engine settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9z"/></svg></button>
+      <button class="icon-btn" id="openSettingsBtn" title="Engine settings" aria-label="Engine settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
       <span class="tb-nav" id="suNav" hidden><button class="icon-btn" id="suPrev" title="Previous applicant" aria-label="Previous applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="icon-btn" id="suNext" title="Next applicant" aria-label="Next applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></span>
     </div>
     <div class="filterbar" id="filterbar">
