@@ -74,12 +74,10 @@
   .brand small{font-size:11px;font-weight:400;color:var(--txt-3);text-transform:none;letter-spacing:0;}
   .searchw{position:relative;margin:0 10px 8px;}
   .searchw .mag{position:absolute;left:8px;top:50%;transform:translateY(-50%);width:12px;height:12px;color:rgba(255,255,255,.45);pointer-events:none;stroke-width:2.1;}
-  .searchw input{width:100%;height:24px;background:rgba(255,255,255,.06);border:none;color:var(--txt);border-radius:var(--r-in);padding:0 46px 0 26px;
+  .searchw input{width:100%;height:24px;background:rgba(255,255,255,.06);border:none;color:var(--txt);border-radius:var(--r-in);padding:0 9px 0 26px;
         font-size:12.5px;font-family:inherit;outline:none;box-shadow:var(--ctlring);transition:box-shadow var(--t);}
   .searchw input::placeholder{color:var(--txt-3);}
   .searchw input:focus{background:rgba(0,0,0,.24);box-shadow:var(--focus);}
-  .searchw kbd{position:absolute;right:6px;top:50%;transform:translateY(-50%);font-size:10px;font-weight:500;font-family:var(--mono);color:var(--txt-3);
-        background:rgba(255,255,255,.07);border-radius:4px;padding:2px 5px;letter-spacing:0;pointer-events:none;}
   .nav{flex:1 1 0;min-height:0;overflow-y:auto;padding:0 10px 6px;}
   .ngroup{font-size:11px;font-weight:600;color:var(--txt-3);text-transform:none;letter-spacing:0;padding:14px 8px 6px;}
   .nav>.ngroup:first-child{padding-top:6px;}
@@ -148,9 +146,13 @@
   .card>.grid2,.card>.stgrid,.card>.gtbl,.card>.rkgrid{margin-top:14px;margin-bottom:14px;}
 
   .grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:16px 26px;}
-  .setting{min-width:0;position:relative;}
+  /* A column, so the control can be pinned to the BOTTOM of the cell. Grid stretches every cell to the row
+     height already; what broke alignment is .sdesc being clamped to AT MOST two lines — a one-line
+     description lifted its control ~17px above its two-line neighbours. */
+  .setting{min-width:0;position:relative;display:flex;flex-direction:column;}
   .setting.hide{display:none;}
-  .setting .slab{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;letter-spacing:0;margin-bottom:3px;color:rgba(255,255,255,.88);}
+  .setting .slab{display:flex;align-items:center;gap:6px;font-size:12.5px;font-weight:500;letter-spacing:0;margin-bottom:3px;color:rgba(255,255,255,.88);
+        min-height:19px;white-space:nowrap;overflow:hidden;}
   .slab-ico{display:inline-flex;color:var(--txt-3);flex:0 0 auto;transition:color var(--t);}
   .slab-ico svg{width:13px;height:13px;stroke-width:1.7;}
   .setting:focus-within .slab-ico,.setting.mod .slab-ico{color:var(--accent-2);}
@@ -158,7 +160,10 @@
   .setting.mod .moddot{opacity:1;}
   .undo{background:none;border:none;color:var(--txt-3);cursor:pointer;padding:0 2px;font-size:12px;line-height:1;opacity:0;transition:opacity var(--t),color var(--t);}
   .setting.mod .undo{opacity:.8;} .undo:hover{color:var(--txt);}
-  .setting .sdesc{font-size:11.5px;color:var(--txt-3);font-weight:400;line-height:1.5;margin-bottom:8px;max-width:52ch;
+  /* The description is clamped to at most two lines, so it is given exactly two: 3em at line-height 1.5.
+     A one-line help string keeps a blank second line, and every control in the grid then starts at the same
+     y — not just level with its own row, but with the whole section. */
+  .setting .sdesc{min-height:3em;font-size:11.5px;color:var(--txt-3);font-weight:400;line-height:1.5;margin-bottom:8px;max-width:52ch;
         display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
   .setting .serr{display:none;font-size:11px;color:#ff6961;line-height:1.45;margin-top:6px;font-weight:400;}
   .setting.modehide{display:none;}
@@ -471,8 +476,13 @@
 
   /* ─── ranks & labels ─── */
   .rlhead{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:12px;}
-  .rladd{display:inline-flex;gap:6px;align-items:stretch;}
-  .rladd .in{width:190px;}
+  .rladd{display:inline-flex;gap:6px;align-items:center;}
+  .rladd .in{width:190px;height:24px;font-size:12.5px;}
+  /* .gtadd is the FULL-WIDTH "add row" button that sits under a table — inline in this row it brought the
+     table version's 8px top margin and width:100% with it, which is why Add label sat low and oversized.
+     Everything in .rlhead is 24px now: chips, field, button, one baseline. */
+  .rladd .gtadd{margin-top:0;width:auto;height:24px;padding:0 12px;font-size:12.5px;border-radius:6px;
+                display:inline-flex;align-items:center;justify-content:center;}
   .rlrow{display:flex;align-items:center;gap:11px;padding:8px 11px;background:var(--panel-2);border-radius:8px;box-shadow:var(--hairline);margin-bottom:6px;}
   .rlav{width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;
       font-family:var(--mono);color:var(--txt-2);overflow:hidden;flex:0 0 auto;box-shadow:0 0 0 .5px rgba(255,255,255,.11) inset;}
@@ -480,7 +490,8 @@
   .rlnm{min-width:150px;font-weight:500;font-size:12.5px;}
   .rlnm small{display:block;color:var(--txt-3);font-weight:400;font-size:11px;margin-top:2px;}
   .rlchips{display:flex;flex-wrap:wrap;gap:5px;flex:1;}
-  .rlt{cursor:pointer;font-size:11.5px;font-weight:400;border-radius:5px;padding:3px 9px;background:var(--ctl);color:var(--txt-2);box-shadow:var(--ctlring);
+  .rlt{cursor:pointer;font-size:11.5px;font-weight:400;border-radius:5px;padding:0 9px;height:24px;
+      display:inline-flex;align-items:center;background:var(--ctl);color:var(--txt-2);box-shadow:var(--ctlring);
       transition:background var(--t),color var(--t);user-select:none;}
   .rlt:hover{color:var(--txt);background:var(--ctl-h);transform:none;}
   .rlt.on{background:rgba(255,255,255,.16);color:#fff;font-weight:500;box-shadow:0 .5px 0 rgba(255,255,255,.14) inset,0 1px 2px rgba(0,0,0,.25);}
@@ -509,8 +520,6 @@
   .rkbtn:hover{background:var(--ctl-h);border-color:transparent;}
   .rkbtn.rkup{position:relative;}
   .rkbtn.rkdel{color:var(--txt-2);}
-  .rkbtn.rkcol{gap:7px;}
-  .rkbtn.rkcol input[type=color]{width:18px;height:16px;padding:0;border:none;border-radius:4px;background:none;cursor:pointer;
       box-shadow:0 0 0 .5px rgba(255,255,255,.22) inset;}
   .rkbtn.rkdel:hover{color:#ff6961;background:var(--red-soft);border-color:transparent;}
 
@@ -567,7 +576,6 @@
     <div class="searchw">
       <svg class="mag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
       <input id="q" placeholder="Search settings…" autocomplete="off">
-      <kbd id="qkbd">Ctrl K</kbd>
     </div>
     <div class="nav" id="nav"></div>
     <div class="sfoot">
@@ -1637,9 +1645,6 @@
         +'<div class="rkbtns"><label class="rkbtn rkup">'+(r.icon?'Replace':'Upload')
           +'<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-rankfile="'+esc(r.rank)+'" hidden></label>'
           +(r.icon?'<button type="button" class="rkbtn rkdel" data-rankdel="'+esc(r.rank)+'">Remove</button>':'')
-          +'<label class="rkbtn rkcol" title="Profile-card colour for everyone holding this rank">'
-            +'<input type="color" data-rankcol="'+esc(r.rank)+'" value="'+esc(r.color||'#43434d')+'">Colour</label>'
-          +(r.color?'<button type="button" class="rkbtn rkdel" data-rankcoldel="'+esc(r.rank)+'" title="Back to the roster cell\'s colour">Reset</button>':'')
         +'</div></div>';
     }).join('');
   }
@@ -1673,17 +1678,9 @@
         +'<div class="rkbtns"><label class="rkbtn rkup">'+(r.icon?'Replace':'Upload')
           +'<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-rankfile="'+esc(r.rank)+'" hidden></label>'
           +(r.icon?'<button type="button" class="rkbtn rkdel" data-rankdel="'+esc(r.rank)+'">Remove</button>':'')
-          +'<label class="rkbtn rkcol" title="Profile-card colour for everyone holding this rank">'
-            +'<input type="color" data-rankcol="'+esc(r.rank)+'" value="'+esc(r.color||'#43434d')+'">Colour</label>'
-          +(r.color?'<button type="button" class="rkbtn rkdel" data-rankcoldel="'+esc(r.rank)+'">Reset</button>':'')
         +'</div></div>';
     }).join('')+'</div>';
   }
-  function handleRankColor(input){
-    var rank=input.getAttribute('data-rankcol'), color=String(input.value||'').trim();
-    api(function(){ toast('Colour set for '+rank+'.','ok'); rankIconsChanged(); }, onError, 'cpSetRankColor', rank, color);
-  }
-  function handleRankColorReset(rank){ api(function(){ toast('Colour reset for '+rank+'.','ok'); rankIconsChanged(); }, onError, 'cpSetRankColor', rank, ''); }
   function handleRankUpload(input){
     var rank=input.getAttribute('data-rankfile'), file=input.files&&input.files[0];
     input.value=''; // let the same file be re-picked later
@@ -1750,13 +1747,11 @@
   /* ── events ── */
   $('content').addEventListener('change',function(e){ var f=e.target; if(!f) return;
     if(f.matches&&f.matches('input[data-rankfile]')){ handleRankUpload(f); return; }
-    if(f.matches&&f.matches('input[data-rankcol]')){ handleRankColor(f); return; }
     if(f.closest&&f.closest('#dcBuild')&&(f.hasAttribute('data-embtoggle')||f.hasAttribute('data-embinl'))) dcSyncFromForm_(); });
   $('content').addEventListener('focusin',function(e){ var f=e.target; if(f&&f.closest&&f.closest('#dcBuild')&&f.dataset&&(f.dataset.emb!==undefined||f.dataset.embf!==undefined)) LASTEMB=f; }); // placeholder chips insert here
   $('content').addEventListener('error',function(e){ var t=e.target; if(t&&t.tagName==='IMG'&&/\bdc-(thumb|img|eaic|ficon)\b/.test(t.className||'')) t.style.display='none'; },true); // hide broken embed-preview images (capture phase — error doesn't bubble)
   $('content').addEventListener('click',function(e){
     var d=e.target.closest&&e.target.closest('[data-rankdel]'); if(d){ handleRankDelete(d.getAttribute('data-rankdel')); return; }
-    var cd=e.target.closest&&e.target.closest('[data-rankcoldel]'); if(cd) handleRankColorReset(cd.getAttribute('data-rankcoldel'));
   });
   $('nav').addEventListener('click',function(e){ var b=e.target.closest('[data-sec]'); if(!b) return; CUR=b.dataset.sec; renderNav(); renderSection(); });
   var qT; $('q').addEventListener('input',function(){ Q=this.value; clearTimeout(qT); qT=setTimeout(function(){ renderNav(); renderSection(); },170); });
@@ -1917,7 +1912,6 @@
   $('content').addEventListener('keydown',function(e){
     if(e.key==='Enter' && e.target.dataset && e.target.dataset.addfor){ e.preventDefault(); var btn=document.querySelector('[data-addbtn="'+e.target.dataset.addfor+'"]'); if(btn) btn.click(); }
   });
-  if(navigator.platform && navigator.platform.indexOf('Mac')!==-1) $('qkbd').textContent='⌘K';
 
   boot();
 </script>
