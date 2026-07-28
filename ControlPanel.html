@@ -34,9 +34,17 @@
     /* THE control surface. Every box you can type in, pick from or press — field, pop-up, segmented track,
        recessed button — is this fill and this hairline ring. It was written out by hand in a dozen places and
        had already drifted; naming it is what keeps the next control from inventing its own grey. */
-    --ctl:#1e1e1e; --ctl-hi:#252528;
+    /* A field well is BLACK AT LOW ALPHA, not a grey hex: it darkens whatever surface it sits on and stays
+       correct if that surface changes. Darker than its container is what makes a field read as recessed —
+       #1e1e1e was identical to --bg, so fields on the content area had no depth at all, and every focus state
+       LIGHTENED them, which is a button's behaviour, not a well's. */
+    --ctl:rgba(0,0,0,.24); --ctl-on:rgba(0,0,0,.3); --ctl-hi:rgba(0,0,0,.14);
     --btn:rgba(255,255,255,.08); --btn-hi:rgba(255,255,255,.13);
-    --ctl-ring:0 0 0 .5px rgba(255,255,255,.1) inset;
+    --ctl-ring:0 0 0 .5px rgba(255,255,255,.15) inset;
+    /* TWO shadows, never one. The inset .5px REPLACES the well's hairline bezel so the border itself turns
+       blue; the 3px spread is the glow. A glow without the recoloured bezel is a halo stuck onto a grey box.
+       box-shadow rather than outline so both layers stack and follow the 6px radius cleanly. */
+    --focus-ring:0 0 0 .5px #0a84ff inset,0 0 0 3px rgba(10,132,255,.32);
     /* No glass, no inner highlight, no glow. Kept as no-ops so older rules still parse while sections migrate. */
     --glass:none; --glass-2:none;
     --ring:none; --hi:none;
@@ -53,7 +61,6 @@
     /* THE accent. systemBlue (dark). One colour carries every interactive state in the panel. */
     --accent:#0A84FF; --accent-2:#409CFF; --accent-soft:rgba(10,132,255,.18);
     /* The focus OUTLINE — thinner than the old halo, so a little more opaque to stay as visible. */
-    --accent-ring:rgba(10,132,255,.45);
     /* Apple's system palette (dark variants). These stay defined so every existing rule keeps working —
        but on this tab colour is reserved for MEANING (status, destructive), never for decoration. */
     --green:#30D158; --green-t:rgba(48,209,88,.12); --green-b:rgba(48,209,88,.3); --green-f:#30D158;
@@ -96,7 +103,9 @@
   ::-webkit-scrollbar-thumb:hover{background:rgba(255,255,255,.3);background-clip:padding-box;border:2px solid transparent;}
   ::-webkit-scrollbar-track{background:transparent;}
   button{font-family:inherit;}
-  button:focus-visible,.field:focus-visible,select:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+  /* Fields and field-shaped controls draw their own ring below; leaving them here too would stack an offset
+     outline on top of it. This is the fallback for everything else. */
+  button:focus-visible,[tabindex]:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   svg{display:block;}
 
   /* ─── app shell: sidebar + content (Studio pattern) ─── */
@@ -215,8 +224,8 @@
   .toolbar .search-clear{width:18px;height:18px;right:3px;}
   .toolbar .search-clear svg{width:12px;height:12px;}
   .toolbar .search-wrap .field{height:24px;min-height:24px;padding-top:0;padding-bottom:0;font-size:12.5px;border-radius:6px;
-                               background:rgba(255,255,255,.06);box-shadow:0 0 0 .5px rgba(255,255,255,.1) inset;}
-  .toolbar .search-wrap .field:focus{background:rgba(255,255,255,.09);box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
+                               background:var(--ctl);box-shadow:var(--ctl-ring);}
+  .toolbar .search-wrap .field:focus{background:var(--ctl-on);box-shadow:var(--focus-ring);}
   .btn-primary{flex:0 0 auto;background:linear-gradient(180deg,#0f8cff,#0a7ae8);border:none;color:#fff;border-radius:6px;
                padding:0 9px;height:24px;min-height:24px;font-size:12.5px;font-weight:500;font-family:inherit;
                box-shadow:0 .5px 0 rgba(255,255,255,.25) inset,0 1px 2px rgba(0,0,0,.3);
@@ -271,10 +280,13 @@
      states for one text box. Now: one resting fill, and a focus ring in the accent. That ring is the only
      blue on the tab until you select something. */
   .field{width:100%;background:var(--ctl);border:none;color:var(--txt);border-radius:var(--r-sm);padding:var(--s2) var(--s3);
-         min-height:32px;font-size:var(--f2);font-family:inherit;outline:none;
-         transition:box-shadow var(--t) var(--ease);}
+         min-height:32px;font-size:var(--f2);font-family:inherit;outline:none;box-shadow:var(--ctl-ring);
+         transition:box-shadow var(--t) var(--ease),background var(--t) var(--ease);}
   .field::placeholder{color:var(--txt-3);}
-  .field:focus{background:var(--ctl-hi);box-shadow:0 0 0 2px var(--accent-ring);}
+  .field:focus{background:var(--ctl-on);box-shadow:var(--focus-ring);}
+  /* A text field rings on CLICK and on tab — you are about to type either way. A <select> wearing .field is a
+     control, not a text field, so it takes the ring back unless the focus came from the keyboard. */
+  select.field:focus:not(:focus-visible){background:var(--ctl);box-shadow:var(--ctl-ring);}
   select.field,select.fselect{cursor:pointer;appearance:none;-webkit-appearance:none;
     background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%237f8894' stroke-width='1.6' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
     background-repeat:no-repeat;background-position:right 12px center;padding-right:30px;}
@@ -317,7 +329,7 @@
   .fhint{margin:0;font-size:11.5px;color:rgba(255,255,255,.42);line-height:1.5;}
   .fin{width:auto;flex:1 1 140px;max-width:240px;min-width:0;height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
        background:var(--ctl);box-shadow:var(--ctl-ring);}
-  .fin:focus{background:rgba(255,255,255,.11);box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
+  .fin:focus{background:var(--ctl-on);box-shadow:var(--focus-ring);}
   .fdate{flex:0 0 auto;} /* the date picker is drawn dark by color-scheme on :root */
   /* The tick sits INSIDE the field, so validity reads as a property of the value rather than a separate widget. */
   .idwrap{position:relative;display:flex;flex:1 1 140px;max-width:240px;min-width:0;}
@@ -356,7 +368,8 @@
   .fctl .sdrop-btn{height:24px;padding:0 3px 0 9px;border-radius:6px;font-size:12.5px;gap:8px;
                    background:var(--ctl);box-shadow:var(--ctl-ring);}
   .fctl .sdrop-btn:hover{background:var(--ctl-hi);}
-  .fctl .sdrop.open .sdrop-btn{background:var(--ctl-hi);box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
+  .fctl .sdrop-btn:focus-visible{background:var(--ctl-on);box-shadow:var(--focus-ring);outline:none;}
+  .fctl .sdrop.open .sdrop-btn{background:var(--ctl-on);box-shadow:var(--focus-ring);}
   .sdrop-chev-box{width:18px;height:18px;border-radius:4px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
                   background:linear-gradient(180deg,#0f8cff,#0a7ae8);box-shadow:0 .5px 0 rgba(255,255,255,.25) inset;}
   .sdrop-chev-box .sdrop-chev{width:10px;height:10px;color:#fff;}
@@ -378,10 +391,10 @@
   .nextbox b{color:var(--accent-2);display:block;margin-bottom:3px;font-size:12px;}
   .sdrop{position:relative;}
   .sdrop-btn{width:100%;display:flex;align-items:center;gap:10px;background:var(--ctl);border:none;color:var(--txt);
-    border-radius:var(--r-md);padding:9px 12px;font-size:13px;cursor:pointer;box-shadow:var(--hi),var(--sh-1);
+    border-radius:var(--r-md);padding:9px 12px;font-size:13px;cursor:pointer;box-shadow:var(--ctl-ring);
     transition:background var(--t),box-shadow var(--t);text-align:left;}
   .sdrop-btn:hover{background:var(--ctl-hi);}
-  .sdrop.open .sdrop-btn{background:var(--e4);box-shadow:var(--hi),0 0 0 2px var(--accent-ring),var(--sh-2);}
+  .sdrop.open .sdrop-btn{background:var(--ctl-on);box-shadow:var(--focus-ring);}
   .sdrop-cur{flex:1;min-width:0;display:flex;align-items:center;gap:9px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sdrop-cur span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .sdrop-cur.ph{color:var(--txt-3);}
@@ -648,7 +661,7 @@
               text-align:left;padding:0 8px 8px;cursor:pointer;transition:color var(--t) var(--ease);}
   .sfoot-link:hover{color:rgba(255,255,255,.8);}
   /* ── signups pane ── */
-  .ro{width:100%;background:var(--ctl);color:var(--txt);border-radius:var(--r-md);padding:10px 13px;font-size:13px;box-shadow:var(--hi),var(--sh-1);min-height:39px;display:flex;align-items:center;word-break:break-word;}
+  .ro{width:100%;background:var(--ctl);color:var(--txt);border-radius:var(--r-md);padding:10px 13px;font-size:13px;box-shadow:var(--ctl-ring);min-height:39px;display:flex;align-items:center;word-break:break-word;}
   .ro.mono{font-family:var(--mono);font-size:12.5px;} .ro.empty{color:var(--txt-3);}
   .ro.blank{color:var(--txt-3);font-style:italic;font-size:12px;background:transparent;box-shadow:inset 0 0 0 1px var(--hair);} /* optional field the applicant left empty — same 39px rhythm as a filled one */
   .apps{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:var(--s4);}
@@ -702,7 +715,7 @@
            font-size:12px;font-family:inherit;cursor:pointer;outline:none;transition:background var(--t) var(--ease);}
   select.fselect{background-position:right 8px center;}
   .fselect:hover{background-color:var(--ctl-hi);}
-  .fselect:focus{background-color:var(--ctl-hi);box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
+  .fselect:focus-visible{background-color:var(--ctl-on);box-shadow:var(--focus-ring);outline:none;}
   .rescount{font-size:11.5px;color:rgba(255,255,255,.4);margin-top:0;letter-spacing:0;}
   /* Apple's checkbox: a filled accent square with a white tick. Round, no glow, no inset ring. */
   .mcheck{appearance:none;-webkit-appearance:none;width:14px;height:14px;border:none;border-radius:3.5px;background:rgba(255,255,255,.09);cursor:pointer;flex:0 0 auto;
@@ -732,8 +745,7 @@
   .srow{display:flex;flex-wrap:nowrap;gap:8px;margin-bottom:8px;}
   .sform .field{height:24px;min-height:24px;padding:0 9px;font-size:12.5px;border-radius:6px;
                 background:var(--ctl);box-shadow:var(--ctl-ring);}
-  .sform .field:focus{background:rgba(255,255,255,.11);
-                box-shadow:var(--ctl-ring),0 0 0 2px var(--accent-ring);}
+  .sform .field:focus{background:var(--ctl-on);box-shadow:var(--focus-ring);}
   .sform select.field{padding-right:24px;background-position:right 8px center;}
   .sf-mini{flex:1 1 0;min-width:0;}
   /* Submit takes the SAME primary treatment as + Add in the toolbar, at the same 24px — one primary button in
@@ -768,7 +780,8 @@
                      background:var(--ctl);box-shadow:var(--ctl-ring);}
   .mvrow .mv-trigger:hover{background:var(--ctl-hi);}
   .mv-trigger .sdrop-chev{transition:transform var(--t) var(--ease);}
-  .mv-trigger.open{background:var(--e4);border-color:transparent;box-shadow:var(--hi),0 0 0 2px var(--accent-ring),var(--sh-2);}
+  .mvrow .mv-trigger:focus-visible{background:var(--ctl-on);box-shadow:var(--focus-ring);outline:none;}
+  .mv-trigger.open{background:var(--ctl-on);border-color:transparent;box-shadow:var(--focus-ring);}
   .mv-trigger.open .sdrop-chev{transform:rotate(180deg);}
     /* Move stays visibly INERT until a slot is chosen — a live blue button invites a click that cannot work. */
   .mvrow .mv-go{flex:0 0 auto;width:auto;margin-top:0;padding:0 13px;height:24px;border-radius:6px;font-size:12.5px;font-weight:500;
