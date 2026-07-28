@@ -1992,7 +1992,7 @@
     api(function(res){
       STATE.moveTo=null; STATE.openRow=(res.toRow!=null?res.toRow:null); // clear picker, keep the member expanded at its new row
       api(function(s){ apply(s); if(STATE.systemLoaded) loadSystem(true); setLoading(false); btn.disabled=false;
-        toast(res.name+' moved to '+res.toRank+(res.wiped?' · section-specific columns cleared':'')+'.','ok');
+        toast(res.name+' moved to '+res.toRank+'.','ok');
       }, function(e){ setLoading(false); btn.disabled=false; onError(e); }, "cpRefresh");
     }, function(e){ setLoading(false); btn.disabled=false; onError(e); }, "cpMoveMember", {fromRow:row,toRow:to,expectedId:(mem?mem.discord:'')});
   }

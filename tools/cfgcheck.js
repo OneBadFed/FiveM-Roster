@@ -25,7 +25,7 @@ global.UrlFetchApp = { fetch: () => { throw new Error('no network in harness'); 
 global.LockService = { getScriptLock: () => ({ tryLock: () => true, releaseLock: () => {} }) };
 
 // ---- evaluate RosterConfig.gs and export its internals ----
-const tail = '\n;globalThis.__X = { BLOCK_SPECS_: typeof BLOCK_SPECS_!=="undefined"?BLOCK_SPECS_:null, validateConfig_, materialize_, norm_, coerce_: typeof coerce_!=="undefined"?coerce_:null };';
+const tail = '\n;globalThis.__X = { BLOCK_SPECS_: typeof BLOCK_SPECS_!=="undefined"?BLOCK_SPECS_:null, BLOCK_ORDER_, RETIRED_, validateConfig_, materialize_, norm_, coerce_: typeof coerce_!=="undefined"?coerce_:null, parseBlocks_, LOG_ORDER_ };';
 try { new Function(src + tail)(); } catch (e) { console.log('LOAD FAIL:', e.message); process.exit(1); }
 const X = global.__X;
 
@@ -117,6 +117,105 @@ Object.keys(X.BLOCK_SPECS_).forEach((b) => {
   });
 });
 ok('all kv specs coherent (type/enum/default/aka)', specIssues.length === 0, specIssues.slice(0, 4).join(' | '));
+ok('BLOCK_ORDER_ covers BLOCK_SPECS_ exactly', Object.keys(X.BLOCK_SPECS_).every((b) => X.BLOCK_ORDER_.indexOf(b) !== -1) && X.BLOCK_ORDER_.every((b) => X.BLOCK_SPECS_[b]),
+  'order=' + X.BLOCK_ORDER_.length + ' specs=' + Object.keys(X.BLOCK_SPECS_).length);
+ok('nothing is both retired AND live', X.RETIRED_.blocks.every((b) => !X.BLOCK_SPECS_[b]) &&
+  Object.keys(X.RETIRED_.keys).every((b) => !X.BLOCK_SPECS_[b] || X.RETIRED_.keys[b].every((k) => !X.BLOCK_SPECS_[b].keys[k])));
+
+// ---- 5 · parseBlocks_ boundaries. A table block used to have no next-marker guard, so ONE hand-deleted
+// separator row let it swallow the following block whole — the swallowed block then vanished from the parse
+// and silently fell back to its seed defaults. The kv reader always stopped correctly; both now do. ----
+console.log('\n[5] block boundaries survive a hand-deleted separator row');
+const fakeSheet = (rows) => {
+  const W = Math.max(...rows.map((r) => r.length), 1);
+  const g = rows.map((r) => { const o = r.slice(); while (o.length < W) o.push(''); return o; });
+  return { getLastRow: () => g.length, getLastColumn: () => W,
+    getRange: (r, c, nr, nc) => ({ getDisplayValues: () => g.slice(r - 1, r - 1 + nr).map((x) => x.slice(c - 1, c - 1 + nc)) }) };
+};
+const rawT = X.parseBlocks_(fakeSheet([
+  ['RE_CONFIG', 'header'], [],
+  ['[STATUSES]', '', 'help'],
+  ['Status', 'Kind', 'MinHours', 'Color'],
+  ['Active', 'TIER', '10', '#57b85a'],
+  ['Inactive', 'TIER', '0', '#e0574f'],
+  /* the blank separator seedConfigTab_ writes has been deleted by hand */
+  ['[SECTION_TAGS]', '', 'help'],
+  ['Label', 'Keywords', 'Tone'],
+  ['Patrol', 'PATROL', 'patrol'], [],
+]));
+ok('TABLE block stops at the next [MARKER]', rawT.STATUSES.rows.length === 2, JSON.stringify(rawT.STATUSES.rows));
+ok('the following block still parses', !!rawT.SECTION_TAGS && rawT.SECTION_TAGS.rows.length === 1, Object.keys(rawT).join(','));
+const rawK = X.parseBlocks_(fakeSheet([
+  ['RE_CONFIG', 'h'], [], ['[DASHBOARD]', '', 'help'], ['ENABLE', 'TRUE', 'help'],
+  ['[LOGGING]', '', 'help'], ['LOG_LEVEL', 'DEBUG', 'help'], [],
+]));
+ok('KV block stops at the next [MARKER]', Object.keys(rawK.DASHBOARD.kv).length === 1 && !!rawK.LOGGING, Object.keys(rawK).join(','));
+
+// ---- 6 · every [SHEETS] role must resolve to its OWN tab. WELCOME was the one role outside the check,
+// and the publish force-mirrors that tab's header cells from the internal copy. ----
+console.log('\n[6] tab-role collisions');
+const sheetErrs = (block, key, val) => {
+  const r = { SHEETS: { kind: 'kv', kv: { ROSTER: 'Member Information' } } };
+  r[block] = r[block] || { kind: 'kv', kv: {} };
+  r[block].kv[key] = val;
+  return errsOf(X.validateConfig_(r).problems).filter((p) => p.type === 'sheet').length;
+};
+['COVERAGE', 'SIGNUPS', 'INTEGRITY', 'WELCOME'].forEach((role) => {
+  ok('[SHEETS].' + role + ' colliding with the roster -> ERROR', sheetErrs('SHEETS', role, 'Member Information') > 0);
+});
+ok('[ACTIVITY].PANEL_TAB colliding with the roster -> ERROR', sheetErrs('ACTIVITY', 'PANEL_TAB', 'Member Information') > 0);
+ok('a role named after the reserved SYS Log -> ERROR', sheetErrs('SHEETS', 'WELCOME', 'SYS Log') > 0);
+
+// ---- 7 · a status the engine WRITES must be offered by the dropdown it writes into ----
+console.log('\n[7] status-name membership');
+const vPat = X.validateConfig_({ PATROL: { kind: 'kv', kv: { STATUS_FLOW: 'New, Credited', PROCESSED_STATUS: 'Processed', FLAGGED_STATUS: 'Flagged' } } });
+// all four: APPROVED_STATUS/DENIED_STATUS keep their 'Approved'/'Denied' defaults, which this flow omits too
+ok('[PATROL] statuses outside STATUS_FLOW -> WARN', vPat.problems.filter((p) => String(p.key).indexOf('[PATROL]') === 0).length === 4,
+  JSON.stringify(vPat.problems.map((p) => p.key)));
+ok('[PATROL] mismatch is never fatal', errsOf(vPat.problems).length === 0);
+const vFlag = X.validateConfig_({ LEAVE: { kind: 'kv', kv: { FLAGGED_STATUS: 'Needs Review' } } });
+ok('[LEAVE].FLAGGED_STATUS outside STATUS_FLOW -> WARN', vFlag.problems.some((p) => p.key === '[LEAVE].FLAGGED_STATUS'));
+const vAppr = X.validateConfig_({ LEAVE: { kind: 'kv', kv: { APPROVED_STATUS: 'Signed Off' } } });
+ok('[LEAVE].APPROVED_STATUS outside STATUS_FLOW is still ERROR', errsOf(vAppr.problems).some((p) => p.key === '[LEAVE].APPROVED_STATUS'));
+
+// ---- 8 · no silent truncation / no silently-ignored colour ----
+console.log('\n[8] silent-failure guards');
+const vCols = X.validateConfig_({ ACTIVITY: { kind: 'kv', kv: { LAST_ACTIVITY_COLS: 'AB, AC, AD, AE' } } });
+ok('a 4th LAST_ACTIVITY column WARNs instead of vanishing', vCols.problems.some((p) => p.key === '[ACTIVITY].LAST_ACTIVITY_COLS'));
+ok('3 columns stay silent', X.validateConfig_({ ACTIVITY: { kind: 'kv', kv: { LAST_ACTIVITY_COLS: 'AB, AC, AD' } } }).problems.length === 0);
+// LOA/ROA rows included: [LEAVE].LEAVE_TYPES and RETURN_STATUS legitimately ERROR without them, which would
+// mask what this case is actually asserting.
+const vColor = X.validateConfig_({ STATUSES: { kind: 'table', header: ['Status', 'Kind', 'MinHours', 'Color'],
+  rows: [['Active', 'TIER', '10', 'greenish'], ['Inactive', 'TIER', '0', '#e0574f'], ['LOA', 'LEAVE', '', '#4ea7d6'], ['ROA', 'LEAVE', '', '#e0a52c']] } });
+ok('an unreadable [STATUSES] Color WARNs', vColor.problems.some((p) => p.type === 'color'));
+ok('a bad colour is never fatal', errsOf(vColor.problems).length === 0);
+
+// ---- 9 · retired blocks/keys leave quietly: no WARN on a sheet that still carries the row ----
+console.log('\n[9] retirement is silent');
+const vRet = X.validateConfig_({
+  SECTIONS: { kind: 'table', header: ['Section'], rows: [['Patrol']] },
+  SYSTEM: { kind: 'kv', kv: { DEV_MODE: 'TRUE', MAINTENANCE_MODE: 'FALSE' } },
+  LOGGING: { kind: 'kv', kv: { EMAIL_ON_ERROR: 'TRUE' } },
+});
+ok('a retired BLOCK raises nothing', !vRet.problems.some((p) => p.key === '[SECTIONS]'), JSON.stringify(vRet.problems.map((p) => p.key)));
+ok('retired KEYS raise nothing', !vRet.problems.some((p) => /DEV_MODE|MAINTENANCE_MODE|EMAIL_ON_ERROR/.test(String(p.key))));
+ok('a genuinely unknown key still WARNs', X.validateConfig_({ SYSTEM: { kind: 'kv', kv: { WHO_KNOWS: 'x' } } }).problems.some((p) => p.key === '[SYSTEM].WHO_KNOWS'));
+
+// ---- 10 · SYS Log severity ranks. DEBUG is 0, so any `|| default` fallback silently promotes it. ----
+console.log('\n[10] log-level ordering');
+ok('DEBUG ranks below INFO', X.LOG_ORDER_.DEBUG < X.LOG_ORDER_.INFO, JSON.stringify(X.LOG_ORDER_));
+ok('slog_ compares with == null, not ||', /LOG_ORDER_\[sev\] == null/.test(src) && !/LOG_ORDER_\[sev\] \|\|/.test(src));
+
+// ---- 11 · the two leave-expiry switches reach a consumer (they used to reach none) ----
+console.log('\n[11] leave-expiry switches are published + consumed');
+ok('autoExpire defaults ON', m0.legacy.autoExpire === true, String(m0.legacy.autoExpire));
+ok('expireNeverApproved defaults OFF', m0.legacy.expireNeverApproved === false, String(m0.legacy.expireNeverApproved));
+const vOff = X.materialize_(X.validateConfig_({ LEAVE: { kind: 'kv', kv: { AUTO_EXPIRE: 'FALSE', EXPIRE_NEVER_APPROVED: 'TRUE' } } }).config, true);
+ok('AUTO_EXPIRE=FALSE reaches the bridge', vOff.legacy.autoExpire === false);
+ok('EXPIRE_NEVER_APPROVED=TRUE reaches the bridge', vOff.legacy.expireNeverApproved === true);
+const sysSrc = fs.readFileSync('RosterSystem.gs', 'utf8');
+ok('processDailyLOAs_ actually reads CONFIG.autoExpire', /if \(!CONFIG\.autoExpire\) continue;/.test(sysSrc));
+ok('processDailyLOAs_ actually reads CONFIG.expireNeverApproved', /CONFIG\.expireNeverApproved && st === PENDING/.test(sysSrc));
 
 console.log('\n==== ' + pass + ' passed, ' + fail + ' failed ====');
 process.exit(fail ? 1 : 0);

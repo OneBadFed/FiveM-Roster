@@ -733,7 +733,7 @@
     if(m.t==='list' || bk==='LEAVE.LEAVE_TYPES') return ICONS.flist;
     if(m.t==='enum') return ICONS.fdrop;
     if(m.block==='SHEETS' && (bk==='SHEETS.ROSTER'||bk==='SHEETS.TRACKER'||bk==='SHEETS.LEAVE_FORM_RESPONSES')) return ICONS.fdrop;
-    if(bk==='SCHEDULE.NIGHTLY_HOUR'||bk==='ACTIVITY.WEEKLY_RESET_HOUR'||bk==='ACTIVITY.WEEKLY_HOURS_RESET'||/^LEAVE\.(APPROVED_STATUS|EXPIRED_STATUS|RETURN_STATUS|RETURN_TYPE)$/.test(bk)) return ICONS.fdrop;
+    if(bk==='SCHEDULE.NIGHTLY_HOUR'||bk==='ACTIVITY.WEEKLY_RESET_HOUR'||bk==='ACTIVITY.WEEKLY_HOURS_RESET'||/^LEAVE\.(APPROVED_STATUS|EXPIRED_STATUS|RETURN_STATUS)$/.test(bk)) return ICONS.fdrop;
     return ICONS.ftext;
   }
   // Friendlier display labels/help for keys whose config names read wrong in the UI (display only — keys unchanged).
@@ -742,10 +742,10 @@
     'PATROL.COL_DISCORD':'DISCORD COLUMN','PATROL.COL_CALLSIGN':'CALLSIGN COLUMN','PATROL.COL_START':'START TIME COLUMN','PATROL.COL_END':'END TIME COLUMN','PATROL.COL_DURATION':'HOURS COLUMN',
     'LEAVE.STATUS_FLOW':'TRACKER STATUSES','LEAVE.APPROVED_STATUS':'COUNTS AS APPROVED','LEAVE.EXPIRED_STATUS':'MARK ENDED AS',
     'LEAVE.AUTO_EXPIRE':'AUTO-END LEAVES','LEAVE.EXPIRE_NEVER_APPROVED':'EXPIRE UNAPPROVED TOO',
-    'LEAVE.RETURN_TYPE':'EARLY-RETURN FORM ANSWER','LEAVE.RETURN_STATUS':'RETURNING STATUS',
+    'LEAVE.RETURN_STATUS':'RETURNING STATUS',
     'THEME.CANVAS':'BACKGROUND','THEME.BANNER':'BANNER FILL','THEME.GRID':'GRID LINES','THEME.ACCENT':'ACCENT',
     'THEME.TEXT':'BODY TEXT','THEME.TEXT_STRONG':'HEADING TEXT','THEME.SUBHEAD':'TABLE HEADER FILL','THEME.SUBHEAD_TEXT':'TABLE HEADER TEXT',
-    'THEME.PASS':'SUCCESS','THEME.FAIL':'ERROR','THEME.INFO':'INFO','THEME.PROCESSING':'PROCESSING',
+    'THEME.PASS':'SUCCESS','THEME.FAIL':'ERROR','THEME.INFO':'INFO',
     'DASHBOARD.ENABLE':'LIVE DASHBOARD',
     'ACTIVITY.AUTO_RESET':'AUTO-RESET ACTIVITY','ACTIVITY.RESET_CADENCE':'RESET FREQUENCY','ACTIVITY.WEEKLY_HOURS_RESET':'RESET DAY','ACTIVITY.WEEKLY_RESET_HOUR':'RESET TIME','ACTIVITY.RESET_DOM':'DAY OF MONTH','ACTIVITY.PERIOD_BUCKET':'PERIOD COLUMN COVERS','ACTIVITY.PERIOD_LABEL_FORMAT':'PERIOD COLUMN LABEL',
     'SCHEDULE.NIGHTLY_HOUR':'NIGHTLY LEAVE CHECK','LOGGING.LOG_LEVEL':'LOG DETAIL','LOGGING.LOG_MAX_ROWS':'LOG SIZE (ROWS)','LOGGING.PERF_TIMING':'TIMING LOG',
@@ -758,7 +758,6 @@
     'SECTION_TAGS':'Colours + type for each divider keyword — a divider matches when its text CONTAINS the keyword. Tone must be one of: exec, admin, super, cadet, training, patrol, aux.',
     'DASHBOARD_GROUPS':'Rows are PRIORITY ORDER — each member counts under the first group matching their rank or section. Everyday label editing is easier in the Ranks section; each group is also a #tag.',
     'FORM_MAP':'The leave form\'s question keywords — ONLY applied when First-Run Setup builds the form. Edits here do nothing until the form is rebuilt.',
-    'SECTIONS':'Which certification columns are cleared when a member transfers across sections. Empty = members keep all their columns (the safe default).',
     'RANKS':function(){ var m=KV['ROSTER_LAYOUT.DIVIDER_MODE'], ex=m&&String(m.value).trim().toUpperCase()==='EXPLICIT_LIST';
       return (ex?'ACTIVE — Divider mode is EXPLICIT_LIST. ':'Dormant right now — Divider mode is ALLCAPS_RANK (see Sheets & layout). ')
         +'Value = the exact label; Kind = RANK (member slot) or DIVIDER (section header). Unlisted labels fall back to the all-caps rule.'; }};
@@ -792,7 +791,6 @@
     'LEAVE.EXPIRED_STATUS':'Written on the tracker row once the leave has ended.',
     'LEAVE.AUTO_EXPIRE':'End approved leaves automatically once their end date passes.',
     'LEAVE.EXPIRE_NEVER_APPROVED':'Also expire requests that were never approved. Off = they stay Pending.',
-    'LEAVE.RETURN_TYPE':'A form answer meaning "I\'m back" that ends the member\'s leave early. Empty = off.',
     'LEAVE.RETURN_STATUS':'Optional protected "just returned" status that relaxes once hours recover. Empty = off.',
     'THEME.CANVAS':'The background behind the engine\'s own tabs (logs, results, coverage).',
     'THEME.BANNER':'The title bar at the top of engine tabs.',
@@ -805,7 +803,6 @@
     'THEME.PASS':'Green — success and done rows.',
     'THEME.FAIL':'Red — errors and failures.',
     'THEME.INFO':'Blue — informational rows.',
-    'THEME.PROCESSING':'Tint for form rows still being processed.',
     'DASHBOARD.ENABLE':'Master switch — when off, #tags stop updating everywhere.',
     'ACTIVITY.AUTO_RESET':'Master switch. Off = hours are never zeroed on a schedule; the period closes only when you run 📸 Capture & Reset Activity yourself. Takes effect straight away.',
     'ACTIVITY.RESET_CADENCE':'How often hours reset to zero. MANUAL = only when you run it yourself.',
@@ -854,11 +851,11 @@
       cards:[{t:'1 · Request', keys:['LEAVE.LEAVE_TYPES','LEAVE.STATUS_FLOW','LEAVE.FORM_TYPE_POLICY','LEAVE.FLAGGED_STATUS','LEAVE.MAX_DAYS_WARN']},
              {t:'2 · Approval', keys:['LEAVE.APPROVED_STATUS']},
              {t:'3 · Ending', keys:['LEAVE.AUTO_EXPIRE','LEAVE.EXPIRED_STATUS','LEAVE.EXPIRE_NEVER_APPROVED']},
-             {t:'Early returns · optional', keys:['LEAVE.RETURN_TYPE','LEAVE.RETURN_STATUS']}]},
+             {t:'Early returns · optional', keys:['LEAVE.RETURN_STATUS']}]},
     {id:'theme', a:'var(--cyan)', title:'Theme', desc:'Every colour the engine paints on its own tabs — the preview updates as you pick.',
       cards:[{t:'Canvas & frame', keys:['THEME.CANVAS','THEME.BANNER','THEME.GRID','THEME.ACCENT']},
              {t:'Text', keys:['THEME.TEXT','THEME.TEXT_STRONG','THEME.SUBHEAD','THEME.SUBHEAD_TEXT']},
-             {t:'Status colours', keys:['THEME.PASS','THEME.FAIL','THEME.INFO','THEME.PROCESSING']}]},
+             {t:'Status colours', keys:['THEME.PASS','THEME.FAIL','THEME.INFO']}]},
     {id:'dashboard', a:'var(--cyan)', title:'Dashboard & sections', desc:'The live #tags the dashboard keeps filled, the headcount groups behind them, and the tags that colour the Dividers view.',
       cards:[{t:'Live dashboard', keys:['DASHBOARD.ENABLE']}],
       tablesMulti:['SECTION_TAGS','DASHBOARD_GROUPS']},
@@ -878,7 +875,7 @@
     {id:'advanced', a:'var(--red)', title:'Advanced', desc:'Engine flags, retention limits and the structural mappings that tell the engine how to read your sheet.', warn:true,
       note:'Column classes (SLOT / MEMBER) are edited on the Control Panel ▸ Columns tab, which shows live samples and fill counts.',
       cards:[{t:'Retention limits', keys:['LIMITS.SNAPSHOT_KEEP','LIMITS.LOG_ROW_CAP','LIMITS.VALIDATION_BUFFER']}],
-      tablesMulti:['FORM_MAP','SECTIONS','RANKS']},
+      tablesMulti:['FORM_MAP','RANKS']},
   ];
   var HOURS=[]; (function(){ for(var h=0;h<24;h++){ var lbl=(h===0)?'12:00 AM · midnight':(h===12)?'12:00 PM · noon':(h<12)?h+':00 AM':(h-12)+':00 PM'; HOURS.push({v:String(h), l:lbl}); } })();
   var DAYS={OFF:'Off — never', SUN:'Sunday', MON:'Monday', TUE:'Tuesday', WED:'Wednesday', THU:'Thursday', FRI:'Friday', SAT:'Saturday'};
@@ -916,7 +913,7 @@
     var q=Q.trim().toLowerCase(); if(!q) return 0;
     var g=SECTIONS.filter(function(x){return x.id===id;})[0]; var n=0;
     var tblSearch=function(nm){ var meta=TBLMETA[nm]||{}; return ((nm+' '+(meta.cols||[]).join(' ')+' '+(meta.help||'')).toLowerCase().indexOf(q)!==-1); };
-    if(g.tables && ((g.title+' statuses tiers ladder override kind minhours color announce status rules').toLowerCase().indexOf(q)!==-1 || tblSearch('STATUS_RULES'))) n++;
+    if(g.tables && ((g.title+' statuses tiers ladder override kind minhours color status rules').toLowerCase().indexOf(q)!==-1 || tblSearch('STATUS_RULES'))) n++;
     if(g.table && tblSearch(g.table)) n++;
     if(g.tablesMulti) g.tablesMulti.forEach(function(nm){ if(tblSearch(nm)) n++; });
     if(g.cards){ for(var bk in KV){ if(sectionOf(bk)!==id) continue; var m=KV[bk]; if((m.key+' '+m.help).toLowerCase().indexOf(q)!==-1) n++; } }
@@ -1039,7 +1036,6 @@
     if(bk==='ACTIVITY.WEEKLY_HOURS_RESET') return dd({bk:bk}, Object.keys(DAYS).map(function(k){return {v:k,l:DAYS[k]};}), v, false);
     if(bk==='LEAVE.APPROVED_STATUS'||bk==='LEAVE.EXPIRED_STATUS') return dd({bk:bk,derived:'flow'}, statusFlow(), v, false);
     if(bk==='LEAVE.RETURN_STATUS') return dd({bk:bk,derived:'leave'}, leaveKinds(), v, true, '— none (disabled) —');
-    if(bk==='LEAVE.RETURN_TYPE') return dd({bk:bk,derived:'types'}, listOf(KV['LEAVE.LEAVE_TYPES']&&KV['LEAVE.LEAVE_TYPES'].value), v, true, '— none (disabled) —');
     if(bk==='LEAVE.LEAVE_TYPES'){
       var on=listOf(v), kinds=leaveKinds(), h='<div class="chipbox" data-tchips="'+esc(bk)+'">';
       kinds.forEach(function(k){ h+='<span class="tchip'+(on.some(function(x){return x.toUpperCase()===k.toUpperCase();})?' on':'')+'" data-tv="'+esc(k)+'">'+esc(k)+'</span>'; });
@@ -1112,8 +1108,10 @@
     return html;
   }
   function embedInner(){
-    var col=(KV['DISCORD.EMBED_COLOR']&&KV['DISCORD.EMBED_COLOR'].value)||'#236995';
-    col=/^#[0-9a-fA-F]{6}$/.test(String(col).trim())?String(col).trim():'#236995';
+    /* SUBMIT_COLOR, not the old "reserved" EMBED_COLOR: this preview IS a new-leave-submission embed (its title
+       comes from SUBMIT_TITLE), so the bar has to be the colour that embed will really be posted with. */
+    var col=(KV['DISCORD.SUBMIT_COLOR']&&KV['DISCORD.SUBMIT_COLOR'].value)||'#3498db';
+    col=/^#[0-9a-fA-F]{6}$/.test(String(col).trim())?String(col).trim():'#3498db';
     var name=(KV['SYSTEM.SYSTEM_NAME']&&KV['SYSTEM.SYSTEM_NAME'].value)||'Roster System';
     var title=((KV['DISCORD.SUBMIT_TITLE']&&KV['DISCORD.SUBMIT_TITLE'].value)||'`📥` New {type} Submission').replace(/\{type\}/g,'LOA');
     var desc=['**Member** — J. Doe  ·  👤 **Senior Trooper**',

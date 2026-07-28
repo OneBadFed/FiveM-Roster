@@ -577,7 +577,7 @@ function setupWizard() {
     // 5c. Populate the live summary dashboard (finds the KPI boxes by label and writes current values).
     try {
       const dn = refreshDashboard_(true); // wizard = explicit full discovery scan (finds KPI boxes/#tags on any tab)
-      steps.push(dn ? `✅ Dashboard refreshed (${dn} value${dn === 1 ? '' : 's'}).` : '⏳ Dashboard: no KPI labels found — check CONFIG.dashboard.cells labels match your sheet.');
+      steps.push(dn ? `✅ Dashboard refreshed (${dn} value${dn === 1 ? '' : 's'}).` : '⏳ Dashboard: no #stat tags found — type #members, #active or #hours into a cell and the engine keeps it live.');
     } catch (e) { steps.push(`⚠️ Dashboard: ${e.message}`); }
 
     // 6. Webhook (manual one-time step).
@@ -2080,19 +2080,27 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
   const expirations = [];
   const APPROVED = CONFIG.approvedStatus; // config-driven leave-active state (default 'Approved')
   const EXPIRED = CONFIG.expiredStatus;   // config-driven leave-terminal state (default 'Expired')
+  const PENDING = CONFIG.pendingStatus;   // first STATUS_FLOW value (default 'Pending') — a request nobody acted on
+  // [LEAVE].AUTO_EXPIRE / EXPIRE_NEVER_APPROVED. Which tracker states a past-END row may be ended FROM: Approved
+  // always, plus Pending when the operator opts in. Anything else (Denied, a custom terminal state) is left exactly
+  // as an admin set it.
+  const expirableFrom_ = (st) => st === APPROVED || (CONFIG.expireNeverApproved && st === PENDING);
   const okToChange = (ri, type) => (ri !== -1) && (!isProtectedStatus_(activity[ri][0]) || activity[ri][0] === type);
 
-  // PASS 1 — expire approved leaves whose end date has passed (the end date is the return day).
+  // PASS 1 — end leaves whose end date has passed (the end date is the return day). Skipped entirely when
+  // [LEAVE].AUTO_EXPIRE is off, in which case a leave only ever ends when an admin changes its status by hand;
+  // rows are still COUNTED as scanned so the summary stays honest, and PASS 2 still starts due leaves.
   for (let i = 0; i < n; i++) {
     summary.scanned++;
     const discordId = String(trkIds[i][0]).trim(); // exact ID text (not the coercion-prone getValues cell)
     if (!discordId) continue;
+    if (!CONFIG.autoExpire) continue;
     const status = data[i][TC.status - 2];
     const end = startOfDay_(new Date(data[i][TC.end - 2]));
     if (status === APPROVED && isNaN(end.getTime())) {
       logWarn_('processDailyLOAs_', `tracker row ${CONFIG.trackerStartRow + i} is ${APPROVED} but has no valid End date; it will not auto-expire.`);
     }
-    if (status !== APPROVED || isNaN(end.getTime()) || today.getTime() < end.getTime()) continue;
+    if (!expirableFrom_(status) || isNaN(end.getTime()) || today.getTime() < end.getTime()) continue;
     const type = trackerLeaveType_();
     const ri = idToIndex.has(discordId) ? idToIndex.get(discordId) : -1;
     statusOut[i][0] = EXPIRED;
@@ -3985,7 +3993,7 @@ function isValidMemberRow(sheet, row) {
  * a divider is an all-caps label longer than 3 chars (e.g. "CADETS", "COMMAND STAFF") — a section header, not a
  * real rank. v1.0 (DIVIDER_MODE = EXPLICIT_LIST): the [RANKS] list wins — a listed DIVIDER is a divider, a listed
  * RANK is a member slot (even if it's ALL-CAPS), and anything unlisted falls back to the heuristic. Used by
- * isValidMemberValues_, isMemberSlot_, isTrainingRow_, and the panel's Dividers list, so every place that
+ * isValidMemberValues_, isMemberSlot_, and the panel's Dividers list, so every place that
  * distinguishes a divider from a member agrees by definition. Must NEVER throw (a broken config → heuristic).
  */
 function isDividerValue_(rankValue) {
@@ -4042,18 +4050,6 @@ function isMemberSlot_(rankValue) {
   return !isDividerValue_(rankValue);
 }
 
-function isTrainingRow_(sheet, row) {
-  if (!sheet || row < CONFIG.rosterStartRow) return false;
-  const n = row - CONFIG.rosterStartRow + 1;
-  if (n < 1) return false;
-  const ranks = sheet.getRange(CONFIG.rosterStartRow, rosterCols_(sheet).rank, n, 1).getDisplayValues();
-  for (let i = n - 1; i >= 0; i--) { // nearest section divider at/above the row
-    const s = String(ranks[i][0]).trim();
-    if (isDividerValue_(s)) return isTrainingDividerLabel_(s);
-  }
-  return false;
-}
-
 /**
  * Transfers a member to a new row when their Discord ID is entered there.
  * @param {function(string):boolean} [confirmFn] - injectable confirm (tests pass a stub).
@@ -4061,42 +4057,30 @@ function isTrainingRow_(sheet, row) {
  */
 /**
  * Move a member's MEMBER-class columns from sourceRow → targetRow, keeping SLOT columns (Rank/Callsign) at each
- * position, and clearing the source. A cross-section move (training ⇄ non-training) drops opted-in section-specific
- * columns at the destination instead of carrying them. Returns true iff such a column was cleared. Copies with
+ * position, and clearing the source. Copies with
  * PASTE_NO_BORDERS: value/formula, number format and validation still follow the person (so TIME IN RANK stays a
  * live formula and 17-19 digit IDs stay exact), but the source cell's BORDERS do not — a move used to carry a
  * band/section border into the destination row and repaint the roster. The caller must hold the script lock and have
  * validated both rows. Shared by the sheet-edit transfer (checkForMemberMove) and the Control Panel's Move action.
  */
 function moveMemberColumns_(sheet, sourceRow, targetRow) {
-  const crossSection = isTrainingRow_(sheet, sourceRow) !== isTrainingRow_(sheet, targetRow);
   const slot = slotColumnSet_(sheet);
-  const checkbox = {};
-  CONFIG.columns.trainingCheckboxCols.forEach((c) => { checkbox[c] = true; });
   const lastCol = sheet.getLastColumn();
-  let wiped = false;
   // MEMBER columns are moved in CONTIGUOUS RUNS — one copyTo + one clearContent per run instead of two calls per
   // column. The transfer runs inside the LIMITED onEdit budget that also hosts the human confirm dialog, so the
-  // per-column churn directly ate the margin. Semantics are unchanged: SLOT stays put, cross-section checkbox
-  // columns are wiped instead of carried, borders are never repainted.
+  // per-column churn directly ate the margin. Semantics: SLOT stays put, everything else follows the person, and
+  // borders are never repainted.
   let c = 2;
   while (c <= lastCol) {
     if (slot[c]) { c++; continue; }                // SLOT stays with the destination position (and on the source)
-    if (crossSection && checkbox[c]) {
-      sheet.getRange(targetRow, c).clearContent(); // section-specific column (opted in): don't carry it across sections
-      sheet.getRange(sourceRow, c).clearContent(); // the member has left the source row
-      wiped = true;
-      c++; continue;
-    }
     let e = c;
-    while (e + 1 <= lastCol && !slot[e + 1] && !(crossSection && checkbox[e + 1])) e++;
+    while (e + 1 <= lastCol && !slot[e + 1]) e++;
     // Carry value/formula + number format + validation, but NOT borders — so a move never repaints the roster's band/section lines.
     sheet.getRange(sourceRow, c, 1, e - c + 1).copyTo(sheet.getRange(targetRow, c, 1, e - c + 1), SpreadsheetApp.CopyPasteType.PASTE_NO_BORDERS, false);
     sheet.getRange(sourceRow, c, 1, e - c + 1).clearContent(); // the member has left the source row
     c = e + 1;
   }
   sheet.getRange(targetRow, rosterCols_(sheet).discord).setNumberFormat('@'); // keep the moved ID exact
-  return wiped;
 }
 
 function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) {
@@ -4149,13 +4133,11 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
       return;
     }
 
-    // Classification-driven transfer: MEMBER columns follow the person, SLOT columns (Rank/Callsign) stay with the
-    // position; cross-section moves drop opted-in section-specific columns. Shared with the panel's Move action.
-    const wiped = moveMemberColumns_(sheet, sourceRow, targetRow);
+    // Classification-driven transfer: MEMBER columns follow the person, SLOT columns (Rank/Callsign) stay with
+    // the position. Shared with the panel's Move action.
+    moveMemberColumns_(sheet, sourceRow, targetRow);
 
-    notify(wiped
-      ? '✅ Transfer complete.\n\n⚠️ Cross-section move — section-specific columns were NOT carried over; re-enter them manually.'
-      : '✅ Transfer complete.');
+    notify('✅ Transfer complete.');
   } finally {
     lock.releaseLock();
   }

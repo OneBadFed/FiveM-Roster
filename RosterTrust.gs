@@ -312,12 +312,10 @@ function cpSnapshotRows_(roster, id, when) {
   const rows = [];
   if (roster.getLastRow() >= CONFIG.rosterStartRow) {
     const RC = rosterCols_(roster);
-    // Extra = MEMBER columns beyond the four captured explicitly (name/discord/status/hours), excluding any
-    // section-specific columns opted into trainingCheckboxCols (none by default). Keyed by header so restore is
-    // column-order-independent. Auto-captures new columns like LAST ACTIVITY.
+    // Extra = MEMBER columns beyond the four captured explicitly (name/discord/status/hours). Keyed by header so
+    // restore is column-order-independent. Auto-captures new columns like LAST ACTIVITY.
     const core = {}; [RC.name, RC.discord, RC.activity, RC.hours].forEach((c) => { core[c] = true; });
-    const cbox = {}; CONFIG.columns.trainingCheckboxCols.forEach((c) => { cbox[c] = true; });
-    const extraCols = columnRegistry_(roster).filter((c) => c.klass === 'MEMBER' && !core[c.col] && !cbox[c.col]);
+    const extraCols = columnRegistry_(roster).filter((c) => c.klass === 'MEMBER' && !core[c.col]);
     const n = roster.getLastRow() - CONFIG.rosterStartRow + 1;
     const v = roster.getRange(CONFIG.rosterStartRow, 1, n, roster.getLastColumn()).getDisplayValues(); // full width; index by RC
     for (let i = 0; i < n; i++) {

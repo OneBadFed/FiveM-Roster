@@ -247,7 +247,7 @@ function cpTestWebhookChannels(channels) {
 // renders empty because the client only knows the keys this payload carries. Add a block to BLOCK_SPECS_ and
 // you must add it HERE too.
 const CP_SETTINGS_KV_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'ACTIVITY', 'LEAVE', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME', 'DASHBOARD']);
-const CP_SETTINGS_TABLES_ = Object.freeze(['STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'RANKS', 'SECTION_TAGS', 'DASHBOARD_GROUPS', 'DASHBOARD_CELLS', 'FORM_MAP', 'SECTIONS', 'EMBEDS']);
+const CP_SETTINGS_TABLES_ = Object.freeze(['STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'RANKS', 'SECTION_TAGS', 'DASHBOARD_GROUPS', 'FORM_MAP', 'EMBEDS']);
 const CP_SETTINGS_HIDDEN_ = Object.freeze({ 'SYSTEM.SCHEMA_VERSION': true }); // engine-managed — never editable from the UI
 
 /** Distinct member-slot ranks from the live roster, in sheet order — feeds the Settings rank dropdowns. */
@@ -1103,8 +1103,8 @@ function cpMoveMember_(roster, fromRow, toRow) {
   const fromRank = String(roster.getRange(fromRow, RC.rank).getDisplayValue()).trim() || 'Unknown';
   const toRank = String(roster.getRange(toRow, RC.rank).getDisplayValue()).trim() || 'Unknown';
   const discord = String(roster.getRange(fromRow, RC.discord).getDisplayValue()).trim();
-  const wiped = moveMemberColumns_(roster, fromRow, toRow);
-  return { name: name, discord: discord, fromRank: fromRank, toRank: toRank, wiped: wiped, member: cpMemberAt_(roster, toRow) };
+  moveMemberColumns_(roster, fromRow, toRow);
+  return { name: name, discord: discord, fromRank: fromRank, toRank: toRank, member: cpMemberAt_(roster, toRow) };
 }
 
 /** Panel endpoint: move a member into an open slot, audit it, and fire the optional transfer embed. */
@@ -1134,7 +1134,7 @@ function cpMoveMember(payload) {
       { name: '`🛡️` To', value: clamp_(dash_(withIcon_(res.toRank)), 1000), inline: true },
     ],
   }, mention_(res.discord));
-  return { moved: true, name: res.name, fromRank: res.fromRank, toRank: res.toRank, wiped: res.wiped, toRow: res.member.row, member: res.member };
+  return { moved: true, name: res.name, fromRank: res.fromRank, toRank: res.toRank, toRow: res.member.row, member: res.member };
 }
 
 /** Activate the roster tab and select a member's row (jump-to). Starts at the RANK column so a merged RANK GROUP band to its left never pulls the whole section into the selection. */

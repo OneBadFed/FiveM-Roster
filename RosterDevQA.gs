@@ -2028,10 +2028,10 @@ function devWhiteLabelTests_() {
   const NO_HOOK = { sendWebhooks: false };
 
   const RENAMED = {
-    STATUSES: { kind: 'table', header: ['Status', 'Kind', 'MinHours', 'Color', 'Announce'], rows: [
-      ['Duty', 'TIER', '10', '', ''], ['Light', 'TIER', '6', '', ''], ['Off', 'TIER', '0', '', ''],
-      ['Vacation', 'LEAVE', '', '', ''], ['Returning', 'LEAVE', '', '', ''], ['Medical', 'LEAVE', '', '', ''],
-      ['Standby', 'PROTECTED', '', '', ''],
+    STATUSES: { kind: 'table', header: ['Status', 'Kind', 'MinHours', 'Color'], rows: [
+      ['Duty', 'TIER', '10', ''], ['Light', 'TIER', '6', ''], ['Off', 'TIER', '0', ''],
+      ['Vacation', 'LEAVE', '', ''], ['Returning', 'LEAVE', '', ''], ['Medical', 'LEAVE', '', ''],
+      ['Standby', 'PROTECTED', '', ''],
     ] },
     LEAVE: { kind: 'kv', kv: {
       LEAVE_TYPES: 'Vacation, Returning, Medical', STATUS_FLOW: 'New, Greenlit, Rejected, Closed',
@@ -2108,12 +2108,11 @@ function devIdentityWriteTests_() {
       { rank: 'Sergeant', name: '', id: '', activity: '', hours: '' },
     ]);
     const RC = rosterCols_(ro);
-    const wiped = moveMemberColumns_(ro, CONFIG.rosterStartRow, CONFIG.rosterStartRow + 1);
+    moveMemberColumns_(ro, CONFIG.rosterStartRow, CONFIG.rosterStartRow + 1);
     devEq_(R, 'moveMemberColumns_ MEMBER col (hours) followed', ro.getRange(CONFIG.rosterStartRow + 1, RC.hours).getValue(), 42);
     devEq_(R, 'moveMemberColumns_ MEMBER col (name) followed', ro.getRange(CONFIG.rosterStartRow + 1, RC.name).getDisplayValue(), 'Mv');
     devEq_(R, 'moveMemberColumns_ SLOT col (rank) stayed at destination', ro.getRange(CONFIG.rosterStartRow + 1, RC.rank).getDisplayValue(), 'Sergeant');
     devEq_(R, 'moveMemberColumns_ source name cleared', ro.getRange(CONFIG.rosterStartRow, RC.name).getDisplayValue(), '');
-    devEq_(R, 'moveMemberColumns_ same-section move -> nothing wiped', wiped, false);
   })();
 
   // cpApplyRestore_ restores by IDENTITY: a member relocated since the snapshot gets their data on their CURRENT row.

@@ -74,13 +74,18 @@ absent-block case IS the pre-move sheet, and skipping it silently reset every mo
 the publish keep/force ranges resolve
 against; roles must resolve to distinct tabs) · ROSTER_LAYOUT (header/data rows, divider mode,
 `UNIT_FORMAT` callsign template, `LAST_ACTIVITY_COLS` + style) · COLUMNS *(table — SLOT vs MEMBER classes)* ·
-SECTIONS / SECTION_TAGS *(tables)* · STATUSES / STATUS_OVERRIDES / STATUS_RULES *(tables — tier ladder,
+SECTION_TAGS *(table)* · STATUSES / STATUS_OVERRIDES / STATUS_RULES *(tables — tier ladder,
 per-rank overrides, fixed-point transition rules)* · RANKS *(table)* · LEAVE · FORM_MAP *(table)* · DISCORD ·
 NOTIFICATIONS (opt-in event embeds) · EMBEDS *(table — per-event embed overrides from the Settings builder)* ·
 PATROL (mode, max hours, statuses, form column keywords, `FUTURE_GRACE_HOURS` — §5) ·
 PUBLISH (`NEVER_PUBLISH`, `KEEP_RANGES`, `FORCE_RANGES`) · FORMATS ·
 **ACTIVITY** *(the whole activity cycle in one block — `AUTO_RESET`, cadence/day/hour/day-of-month, `PERIOD_BUCKET`,
-`PERIOD_LABEL_FORMAT`, `LAST_ACTIVITY_COLS` + style, `PANEL_TAB`; §3a)* · SCHEDULE (`NIGHTLY_HOUR`, timezone) · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS / DASHBOARD_CELLS.
+`PERIOD_LABEL_FORMAT`, `LAST_ACTIVITY_COLS` + style, `PANEL_TAB`; §3a)* · SCHEDULE (`NIGHTLY_HOUR`) · LOGGING · LIMITS · THEME · DASHBOARD / DASHBOARD_GROUPS.
+
+Every key in every block reaches an engine consumer. A block or key that is withdrawn is listed in `RETIRED_`
+(RosterConfig.gs) rather than merely deleted from the schema: an existing sheet still carries the row, and the
+retirement list is what stops it becoming a permanent "unknown key — preserved" warning and gets the next seed to
+drop it. `tools/cfgcheck.js` fails if anything is both retired and live.
 
 ---
 
@@ -251,8 +256,12 @@ deferred-work queue + 1-minute sweep as backstop.
    Manual: 📥 Sync Leave Forms to Tracker.
 3. **Approval** — tracker STATUS → approved. The `onEdit` transition applies an already-active leave
    immediately and fires the leave-approved notification.
-4. **Daily job** — `processDailyLOAs` (nightly, script-locked): starts due leaves, expires ended ones
-   (status recomputed from hours), posts the configured embeds.
+4. **Daily job** — `processDailyLOAs` (nightly, script-locked): starts due leaves, ends leaves whose END date has
+   passed (status recomputed from hours), posts the configured embeds. Ending is gated by `[LEAVE].AUTO_EXPIRE`
+   — OFF and a leave only ever ends when an admin changes its status by hand, while due leaves still start. By
+   default only `APPROVED_STATUS` rows are ended; `[LEAVE].EXPIRE_NEVER_APPROVED` extends that to rows still on
+   the first STATUS_FLOW value (a request nobody acted on, whose dates have already gone by). Anything else — a
+   Denied row, a custom terminal state — is left exactly as an admin set it.
 5. **Coverage** — the "who's out now" board rebuilds on schedule and from the menu.
 
 Entering a Unique ID on a tracker row auto-fills the member's identity from the roster (bulk pastes are batched:
