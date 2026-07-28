@@ -88,12 +88,11 @@
   html,body{margin:0;padding:0;height:100%;}
   /* Flat. The three coloured radial washes that used to sit here were the loudest decoration in the panel and
      carried no information — the first thing to go. Depth now comes from the surface ladder alone. */
-  /* A desktop for the window to sit on. Google draws the dialog's own white chrome and we cannot remove it —
-     but inside that frame this is what turns "a page filling a modal" into "a window": something for the
-     shadow to fall on, and something for a translucent sidebar to be translucent AGAINST. */
+  /* Flat --bg, not a desktop gradient: the shell fills the dialog now, so nothing behind it is ever visible and
+     a gradient here would only show as a flash before layout. */
   body{color:var(--txt);font-family:'Inter',Arial,sans-serif;font-size:var(--f2);line-height:1.47;
        -webkit-font-smoothing:antialiased;overflow:hidden;
-       background:radial-gradient(120% 130% at 18% 0%,#22242c 0%,#14151a 45%,#0e0f12 100%);
+       background:var(--bg);
        font-feature-settings:'cv02','cv03','cv04','cv11'; /* Inter's SF-like alternates: single-storey a/g, straighter l */
        letter-spacing:-.01em;}
   .mono{font-family:var(--mono);}
@@ -109,14 +108,13 @@
   svg{display:block;}
 
   /* ─── app shell: sidebar + content (Studio pattern) ─── */
-  /* Four stacked shadows, no border. The first — 1px of light along the TOP edge only — is the bevel catching
-     light from above, and is the single most "Mac" detail here. */
-  .app{display:grid;grid-template-columns:218px 1fr;height:calc(100vh - 24px);margin:12px;border-radius:11px;
-       overflow:hidden;background:var(--bg);
-       box-shadow:0 1px 0 rgba(255,255,255,.13) inset,
-                  0 0 0 1px rgba(0,0,0,.55),
-                  0 32px 70px -12px rgba(0,0,0,.75),
-                  0 8px 22px rgba(0,0,0,.4);}
+  /* Edge to edge. Google's dialog already IS the window — it draws its own chrome, title bar and rounded
+     corners — so an inset shell with its own radius and drop shadow was a second window drawn inside the first,
+     and it cost 24px of height and 24px of width that the roster table wanted. The 1px inset highlight stays:
+     it reads as the bevel catching light along the top edge, and it is the one part of the window treatment
+     that still makes sense flush against the frame. */
+  .app{display:grid;grid-template-columns:218px 1fr;height:100vh;width:100%;overflow:hidden;background:var(--bg);
+       box-shadow:0 1px 0 rgba(255,255,255,.13) inset;}
   /* The sidebar sits LIGHTER than the content — that tonal split is what vibrancy actually looks like on a Mac,
      and it does the separating that a border would otherwise have to do. */
   .side{display:flex;flex-direction:column;background:var(--sidebar);
@@ -468,7 +466,7 @@
   .sucols{display:grid;grid-template-columns:236px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
   /* Its OWN scrolling region, and air at both ends: the list used to grow the whole pane instead, so with more
    than a handful of signups the first and last rows ran flush against the header and the action bar. */
-  .suqueue{min-width:0;min-height:0;margin:-14px 0 0 -14px;padding:28px 14px 18px;background:var(--queue);
+  .suqueue{min-width:0;min-height:0;margin:-14px 0 0 -14px;padding:10px 14px 18px;background:var(--queue);
            box-shadow:1px 0 0 var(--hair);align-self:stretch;overflow-y:auto;overscroll-behavior:contain;}
   .sudetail{min-height:0;overflow-y:auto;}
   /* In the toolbar the scope control sits OVER the column it filters, and the rule between them continues the
@@ -588,10 +586,11 @@
   .lmore{display:block;width:100%;background:none;border:none;text-align:left;padding:9px 12px;cursor:pointer;
          font-family:inherit;font-size:11.5px;color:#4aa8ff;}
   /* ── Promotions: roster data with its own lifecycle, so a table rather than a stack of cards ── */
-  .ptable{display:flex;flex-direction:column;max-height:calc(100vh - 190px);}
-  /* 104px, because "20 Jul. 2026" in 11.5px mono does not fit 78 — it wrapped to two lines and took the row
-     height with it. nowrap below makes that impossible to reintroduce. */
-  .prow{display:grid;grid-template-columns:104px minmax(0,1fr) 160px;align-items:center;gap:10px;
+  .ptable{display:flex;flex-direction:column;max-height:calc(100vh - 166px);}
+  /* Three equal tracks. A fixed 104px date track left the name starting almost immediately after "20 Jul. 2026"
+     while the rank floated at the far edge — two columns crowded and one adrift. Equal thirds give each label a
+     column start its rows actually line up under. nowrap on the date makes the old wrap impossible to reintroduce. */
+  .prow{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;gap:10px;
         padding:0 11px;height:26px;font-size:12px;}
   /* Header sticks, footer is pinned, the ROWS scroll between them — the box never grows past the window. */
   .phead{height:22px;flex:0 0 auto;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.09);
@@ -645,18 +644,6 @@
   .pkbd{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.3);}
   .pskel{height:26px;margin:0 11px;border-radius:4px;background:rgba(255,255,255,.05);}
   .pskel+.pskel{margin-top:4px;}
-  .prow{display:grid;grid-template-columns:64px minmax(0,1fr) minmax(0,auto);align-items:center;gap:12px;
-        padding:0 12px;height:26px;font-size:12px;}
-  .phead{height:24px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);}
-  .prow .pdate{font-family:var(--mono);font-size:10.5px;color:rgba(255,255,255,.4);}
-  .prow .pname{color:rgba(255,255,255,.88);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  /* Right-aligned so the column has an edge to read down. */
-  .prow .pto{text-align:right;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .prow.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;}
-  .prow.sel .pdate,.prow.sel .pname,.prow.sel .pto{color:#fff;}
-  #promoFeed .prow{cursor:pointer;}
-  #promoFeed .prow:nth-child(odd){background:rgba(255,255,255,.018);}
-  #promoFeed .prow.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);}
   .sfoot-link{background:none;border:none;color:rgba(255,255,255,.45);font-family:inherit;font-size:11.5px;
               text-align:left;padding:0 8px 8px;cursor:pointer;transition:color var(--t) var(--ease);}
   .sfoot-link:hover{color:rgba(255,255,255,.8);}
@@ -1310,9 +1297,17 @@
         <div class="gbox" id="actionList">
           <div class="arow" data-arow="updateStatuses"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.36"/><path d="M21 3v6h-6"/></svg></span><span class="att"><b>Update all statuses</b><span>Recompute every member from logged hours</span></span><span class="alast" id="al-updateStatuses"></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
           <div class="arow" data-arow="processLeaves"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8.5 15.5l2 2 4-4.5"/></svg></span><span class="att"><b>Run schedule check</b><span>Start due leaves, expire ended ones</span></span><span class="alast" id="al-processLeaves"></span><button class="runbtn" data-act="processLeaves">Run</button></div>
-          <div class="arow" data-arow="syncForms"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M8 10.5l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></span><span class="att"><b>Sync leave forms</b><span>Pull new form responses into the tracker</span></span><span class="alast" id="al-syncForms"></span><button class="runbtn" data-act="syncForms">Run</button></div>          <div class="arow" data-arow="checkDuplicates"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 5.5H6.5A2 2 0 0 0 4.5 7.5V16"/></svg></span><span class="att"><b>Check duplicate IDs</b><span>Find repeated or malformed unique IDs</span></span><span class="alast" id="al-checkDuplicates"></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
+          <div class="arow" data-arow="syncForms"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M8 10.5l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></span><span class="att"><b>Sync leave forms</b><span>Pull new form responses into the tracker</span></span><span class="alast" id="al-syncForms"></span><button class="runbtn" data-act="syncForms">Run</button></div>
+          <div class="arow" data-arow="syncSignups"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="4.5" y="4" width="15" height="17" rx="2.5"/><path d="M9 3h6v3H9z"/><path d="M12 10.5v5"/><path d="M9.75 13.5l2.25 2.25 2.25-2.25"/></svg></span><span class="att"><b>Sync signup forms</b><span>Pull new applications into the review tab</span></span><span class="alast" id="al-syncSignups"></span><button class="runbtn" data-act="syncSignups">Run</button></div>
+          <div class="arow" data-arow="syncPatrol"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7.5"/><path d="M12 10v3.5l2.5 1.5"/><path d="M9.5 2.5h5"/><path d="M12 2.5v3"/></svg></span><span class="att"><b>Sync patrol logs</b><span>Place submitted patrols and credit hours</span></span><span class="alast" id="al-syncPatrol"></span><button class="runbtn" data-act="syncPatrol">Run</button></div>
+          <div class="arow" data-arow="buildGroups"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"/><path d="M3 10h18"/><path d="M9 10v9.5"/></svg></span><span class="att"><b>Build / refresh group sheets</b><span>Fill each rank-group tab from the roster</span></span><span class="alast" id="al-buildGroups"></span><button class="runbtn" data-act="buildGroups">Run</button></div>
+          <div class="arow" data-arow="buildAcademy"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4.5l9.5 4.5-9.5 4.5L2.5 9z"/><path d="M6.5 11.2V16c0 1.6 2.5 2.8 5.5 2.8s5.5-1.2 5.5-2.8v-4.8"/></svg></span><span class="att"><b>Build / refresh police academy</b><span>Fill the academy tabs from the roster</span></span><span class="alast" id="al-buildAcademy"></span><button class="runbtn" data-act="buildAcademy">Run</button></div>
+          <div class="arow" data-arow="buildActivity"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20h16"/><path d="M7.5 20v-6"/><path d="M12 20V8"/><path d="M16.5 20v-9"/></svg></span><span class="att"><b>Build / refresh activity panel</b><span>Rebuild the patrol activity board</span></span><span class="alast" id="al-buildActivity"></span><button class="runbtn" data-act="buildActivity">Run</button></div>
+          <div class="arow" data-arow="scanIntegrity"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7.5 2.8v6.2c0 4.4-3.1 7.6-7.5 9-4.4-1.4-7.5-4.6-7.5-9V5.8z"/><path d="M9 12l2.2 2.2L15.2 10"/></svg></span><span class="att"><b>Run integrity scan</b><span>Cross-check the roster against the tracker</span></span><span class="alast" id="al-scanIntegrity"></span><button class="runbtn" data-act="scanIntegrity">Run</button></div>
+          <div class="arow" data-arow="checkDuplicates"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 5.5H6.5A2 2 0 0 0 4.5 7.5V16"/></svg></span><span class="att"><b>Check duplicate IDs</b><span>Find repeated or malformed unique IDs</span></span><span class="alast" id="al-checkDuplicates"></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
+          <div class="arow" data-arow="publishRoster"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17"/><path d="M12 3.5c2.3 2.3 3.5 5.3 3.5 8.5s-1.2 6.2-3.5 8.5c-2.3-2.3-3.5-5.3-3.5-8.5S9.7 5.8 12 3.5z"/></svg></span><span class="att"><b>Publish public roster</b><span>Mirror the roster to the linked public file</span></span><span class="alast" id="al-publishRoster"></span><button class="runbtn" data-act="publishRoster">Run</button></div>
         </div>
-        <p class="tfoot">Every action is reversible from the log for 24 hours. Runs are queued, so two can&rsquo;t touch the roster at once.</p>
+        <p class="tfoot">Runs are queued, so two can&rsquo;t touch the roster at once. Each one reports what it changed and is recorded in the log. <b>Run all</b> works down the list in order, so the publish at the end goes out with everything above it already applied.</p>
       </div>
       <aside class="tside">
         <div class="gbox">
@@ -1516,7 +1511,7 @@
                 +(document.querySelector('.filterbar') && $('filterbar').style.display!=='none' ? $('filterbar').offsetHeight : 0);
       var pad=parseFloat(getComputedStyle(content).paddingTop)+parseFloat(getComputedStyle(content).paddingBottom);
       var side=document.querySelector('.side').scrollHeight;
-      var need=Math.max(chrome+pane.scrollHeight+pad, side)+24 /* the window's own margin */;
+      var need=Math.max(chrome+pane.scrollHeight+pad, side);
       var h=Math.round(Math.min(FIT.max,Math.max(FIT.min,need)));
       if(Math.abs(h-FIT.last)<8) return; // ignore noise, or every render nudges the window
       FIT.last=h; google.script.host.setHeight(h);

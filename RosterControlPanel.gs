@@ -1179,10 +1179,24 @@ const CP_ACTION_LABELS_ = Object.freeze({
   updateStatuses: 'Update all statuses',
   processLeaves: 'Run schedule check',
   syncForms: 'Sync leave forms',
-  fixUnits: 'Fix callsign numbers',
+  syncSignups: 'Sync signup forms',
+  syncPatrol: 'Sync patrol logs',
+  buildGroups: 'Build / refresh group sheets',
+  buildAcademy: 'Build / refresh police academy',
+  buildActivity: 'Build / refresh activity panel',
+  scanIntegrity: 'Run integrity scan',
   checkDuplicates: 'Check duplicate IDs',
+  publishRoster: 'Publish public roster',
+  fixUnits: 'Fix callsign numbers',        // retired from the panel; the label stays so old run-log rows still read
   purgeWebhooks: 'Remove all webhooks',
 });
+/* Every one of these has a MENU twin (buildGroupSheets, scanIntegrity, publishPublicRosterNow …) that wraps the
+ * same work in runAction_ + SpreadsheetApp.getUi().alert. None of those can be called from here: a modeless
+ * dialog has no UI to alert into, and the wrapper returns nothing to report. So each case calls the CORE and
+ * builds the sentence itself — which is also why the messages read like the alerts they replace.
+ *
+ * RosterExtras.gs is an optional file in a library-mode install, so anything living there is feature-detected
+ * rather than assumed; a missing file must say so, not throw a ReferenceError at the panel. */
 function cpRunActionCore_(name) {
   switch (name) {
     case 'purgeWebhooks': {
@@ -1227,9 +1241,78 @@ function cpRunActionCore_(name) {
     }
     case 'checkDuplicates':
       return cpDuplicateReport_();
+    case 'scanIntegrity': {
+      if (typeof scanIntegrityCore_ !== 'function') throw new Error('Integrity scan needs RosterExtras.gs, which is not installed.');
+      const issues = scanIntegrityCore_();
+      if (!issues.length) return 'No integrity issues found — the roster and tracker look clean.';
+      const where = (typeof EXTRAS === 'object' && EXTRAS && EXTRAS.integritySheet) ? ` Full list on the "${EXTRAS.integritySheet}" tab.` : '';
+      return `${issues.length} integrity issue${issues.length === 1 ? '' : 's'} found — first: ${issues[0]}.${where}`;
+    }
+    case 'syncSignups': {
+      if (!CONFIG.sheets.signupForm) return 'Signup sync is off — no signup form response tab is set in the config.';
+      const ss = SpreadsheetApp.getActive();
+      if (!ss.getSheetByName(CONFIG.sheets.signupForm)) throw new Error(`The form response tab "${CONFIG.sheets.signupForm}" was not found.`);
+      const review = ss.getSheetByName(CONFIG.sheets.signups);
+      if (!review) throw new Error(`The review tab "${CONFIG.sheets.signups}" was not found.`);
+      const added = syncSignupForm();
+      // Re-group/compact the review tab even when nothing new arrived — it clears leftover blank scaffolding rows.
+      let cleaned = 0;
+      try { cleaned = sortSignups_(review); } catch (e) { log_('cpRunAction.syncSignups.sort', e); }
+      return added ? `Added ${added} new signup${added === 1 ? '' : 's'} to "${CONFIG.sheets.signups}" (Pending).`
+        : (cleaned ? `No new signups — tidied ${cleaned} row(s) on the review tab.` : 'No new signups to sync.');
+    }
+    case 'syncPatrol': {
+      const r = syncPatrolFormNow_();
+      if (r.off) return 'Patrol sync is off — no patrol form response tab is set in the config.';
+      if (r.missing) throw new Error(`The form response tab "${CONFIG.sheets.patrol}" was not found.`);
+      if (r.locked) return 'Sync skipped — another roster operation is running.';
+      if (r.mode === 'credit') {
+        const res = r.res;
+        if (res === false) return 'Sync skipped — another roster operation is running.';
+        if (!res || res.off || res.missing) return 'Nothing to sync — the patrol form or roster tab is missing.';
+        const why = r.logless ? ' (no patrol log tab, so hours were credited straight from the form)'
+          : ' (DURATION mode carries no start/end times to place on the log)';
+        return `Credited ${res.hoursAdded} hour(s) to ${res.credited.length} member(s) from ${res.scanned} submission(s)`
+          + (res.errored ? `, ${res.errored} errored` : '') + why + '.';
+      }
+      const res = r.res || { added: 0, skipped: [] };
+      const skipped = (res.skipped || []).length;
+      return `Placed ${res.added} patrol${res.added === 1 ? '' : 's'} on the log`
+        + (skipped ? `, ${skipped} skipped` : '') + '.';
+    }
+    case 'buildGroups': {
+      if (typeof buildGroupSheets_ !== 'function') throw new Error('Group sheets need RosterExtras.gs, which is not installed.');
+      return cpBuildReport_(buildGroupSheets_(), 'group');
+    }
+    case 'buildAcademy': {
+      if (typeof buildAcademySheets_ !== 'function') throw new Error('The police academy needs RosterExtras.gs, which is not installed.');
+      return cpBuildReport_(buildAcademySheets_(), 'academy');
+    }
+    case 'buildActivity': {
+      if (typeof buildActivityPanel_ !== 'function') throw new Error('The activity panel needs RosterExtras.gs, which is not installed.');
+      const r = buildActivityPanel_();
+      if (!r) return 'The activity panel is off — it needs [SHEETS].ACTIVITY and a patrol form to read.';
+      return `"${r.name}" rebuilt — ${r.rows} patrol${r.rows === 1 ? '' : 's'} listed.`;
+    }
+    case 'publishRoster': {
+      const res = publishPublicRoster();
+      if (res === false) return 'Publish skipped — another roster operation is running.';
+      if (!res || !res.linked) return 'No public roster is linked yet — set one up before publishing.';
+      return `Published ${res.rows} row(s) across ${res.tabs.length} tab(s).`;
+    }
     default:
       throw new Error(`Unknown action: ${name}`);
   }
+}
+
+/** Both sheet builders return {built, sheets[], skipped[{name, why}]} — one sentence covering either. */
+function cpBuildReport_(res, kind) {
+  const parts = [];
+  if (res.built) parts.push(`Filled ${res.built} ${kind} tab${res.built === 1 ? '' : 's'}: ${res.sheets.join(', ')}`);
+  const skipped = res.skipped || [];
+  if (skipped.length) parts.push(`skipped ${skipped.length} (${skipped.map((x) => `${x.name} — ${x.why}`).join('; ')})`);
+  if (!parts.length) return `No ${kind} tabs found to fill.`;
+  return parts.join(', ') + '.';
 }
 
 /** Read-only duplicate / malformed Discord ID report (string, for the panel). */

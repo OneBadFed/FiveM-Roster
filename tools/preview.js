@@ -294,7 +294,10 @@ function runtimeStub(configPayload, boot) {
     };
     return api;
   }
-  window.google = { script: { run: chain(), host: { close: function () {}, setHeight: function () {}, setWidth: function () {} }, url: { getLocation: function (cb) { cb({ parameter: {} }); } } } };
+  /* A NEW chain per access. Real google.script.run builds a fresh runner for every call; one shared
+     object means two overlapping dispatches share ok/fail, and the second withSuccessHandler wins BOTH.
+     That handed cpPromoList the roster snapshot and blew up the panel in the harness only. */
+  window.google = { script: { get run() { return chain(); }, host: { close: function () {}, setHeight: function () {}, setWidth: function () {} }, url: { getLocation: function (cb) { cb({ parameter: {} }); } } } };
   window.addEventListener('DOMContentLoaded', function () {
     var b = document.createElement('div');
     b.textContent = 'PREVIEW — stubbed server';
