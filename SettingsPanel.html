@@ -423,9 +423,25 @@
   .dcdot{width:7px;height:7px;border-radius:50%;background:#ff453a;}
   .dcdot.on{background:var(--green);box-shadow:none;}
   .dcev{margin:0;padding-left:16px;color:var(--txt-2);font-size:12.5px;line-height:1.8;}
-  .dcwrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap;}
-  .dcwrow .dcst{flex:0 0 auto;font-size:11.5px;white-space:nowrap;margin:0;}
+  /* #dcwh is a direct child of .card, so nothing inside it picked up the card's 14px gutter. */
+  .card>#dcwh{margin:12px 14px 14px;}
+  /* Status line. The hairline is 0 -.5px inset — a NEGATIVE offset exposes the strip at the BOTTOM of the
+     box, which is the edge a rule under a heading belongs on. */
+  .dcwhead{display:flex;align-items:center;gap:10px;height:24px;margin-bottom:11px;padding-bottom:9px;
+           box-shadow:0 -.5px 0 rgba(255,255,255,.08) inset;}
+  .dcwhead .dcst{flex:1;min-width:0;font-size:12.5px;}
+  .dclink{background:none;border:none;padding:0;font-family:inherit;font-size:11.5px;cursor:pointer;
+          color:var(--txt-3);transition:color var(--t);flex:0 0 auto;}
+  .dclink:hover{color:var(--txt);}
+  .dclink.danger{color:rgba(255,105,97,.72);}
+  .dclink.danger:hover{color:#ff6961;}
+  .dcwrow{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
   .dcwrow .dcurl{flex:1 1 220px;min-width:160px;margin:0;font-family:var(--mono);font-size:11.5px;color:var(--txt-3);}
+  .dcnote{margin-top:9px;max-width:74ch;}
+  /* The opt-in switches are a LIST, not four loose rows: one grouped box, hairline between each. */
+  .dcgroup{background:rgba(255,255,255,.04);border-radius:8px;box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;
+           overflow:hidden;margin-top:6px;}
+  .dcgroup>*+*{box-shadow:0 .5px 0 rgba(255,255,255,.07) inset;}
   .dcbtn{flex:0 0 auto;background:var(--ctl);border:none;color:var(--txt);border-radius:var(--r-in);height:24px;padding:0 11px;font-size:12.5px;font-weight:400;
          cursor:pointer;box-shadow:var(--ctlring),var(--sh-1);transition:background var(--t);}
   .dcbtn:hover{background:var(--ctl-h);transform:none;}
@@ -434,7 +450,7 @@
   .dcbtn.primary:hover{background:linear-gradient(180deg,#1e95ff,#1183f0);}
   .dcbtn.danger{color:#ff6961;} .dcbtn.danger:hover{background:var(--red-soft);color:#ff6961;}
   .dcseg{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-bottom:6px;}
-  .dclb{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin:10px 0 5px;}
+  .dclb{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin:16px 0 0;}
   .dccnt{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--txt-3);text-transform:none;letter-spacing:0;font-weight:400;}
   .dcta{min-height:66px;resize:vertical;font-family:inherit;width:100%;}
   .dcta-sm{min-height:44px;resize:vertical;font-family:inherit;width:100%;}
@@ -447,7 +463,7 @@
   .dcsec[open]>summary::before{transform:rotate(90deg);}
   .dcsec>summary:hover{background:rgba(255,255,255,.05);}
   .dcsec-b{padding:2px 12px 12px;}
-  .dctog-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:5px 0;}
+  .dctog-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:0 11px;height:32px;font-size:12.5px;}
   .dctog-row small{color:var(--txt-3);font-weight:400;}
   .dccolor{display:flex;align-items:center;gap:9px;flex-wrap:wrap;}
   .dccolin{width:110px;flex:0 0 auto;font-family:var(--mono);}
@@ -1608,19 +1624,24 @@
   function renderDiscordSec(g){
     var host=$('dcwh'); if(!host) return;
     var on=!!(DATA.webhooks&&DATA.webhooks[g.channel]);
-    var h='<div class="dcwrow"><span class="dcst"><span class="dcdot'+(on?' on':'')+'"></span>'+(on?'Configured':'Not set')+'</span>'
+    /* The STATE reads on its own line, and Remove all lives up here rather than beside Clear. It wipes EVERY
+       channel, Clear wipes this one — two very different actions that were sitting adjacent at equal weight. */
+    var h='<div class="dcwhead"><span class="dcst"><span class="dcdot'+(on?' on':'')+'"></span>'+(on?'Configured':'Not set')+'</span>'
+      +'<button type="button" class="dclink danger" data-dcpurge="1" title="Abuse kill switch — silences every channel">Remove all\u2026</button></div>'
+      +'<div class="dcwrow">'
       +'<input type="password" class="in dcurl" id="dcUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off">'
       +'<button type="button" class="dcbtn primary" data-dcsave="'+esc(g.channel)+'">Save</button>'
       +'<button type="button" class="dcbtn" data-dctest="'+esc(g.channel)+'">Test</button>'
       +'<button type="button" class="dcbtn" data-dcclear="'+esc(g.channel)+'">Clear</button>'
-      +'<button type="button" class="dcbtn danger" data-dcpurge="1" title="Abuse kill switch — silences every channel">Remove all</button>'
       +'</div>';
     if(!DATA.adminLinked) h+='<div class="callout" style="margin:10px 0 0">Webhooks are stored in the <b>admin roster</b> — link one first (Control Panel ▸ Tools ▸ Admin roster).</div>';
-    h+='<div class="sdesc" style="margin-top:8px;max-width:74ch">Write-only — stored in the admin spreadsheet, never shown again. <b>Remove all</b> wipes every channel (the abuse kill switch); only accounts with admin-file access can change this.</div>';
+    h+='<div class="sdesc dcnote">Write-only — the URL is stored in the admin spreadsheet and never shown again. <b>Clear</b> empties this channel; <b>Remove all</b> wipes every channel at once. Only accounts with admin-file access can change either.</div>';
     var togs=(DC_NOTIFY_TOGGLES[g.channel]||[]).filter(function(p){ return KV[p[0]]; });
     if(togs.length){
-      h+='<div style="margin-top:14px"><label class="dclb">Opt-in event embeds <span class="pv-note">(off = that event posts nothing; saved with Save)</span></label>'
-        +togs.map(function(p){ return '<div class="dctog-row"><span>'+esc(p[1])+'</span>'+control(p[0])+'</div>'; }).join('')+'</div>';
+      h+='<label class="dclb">Opt-in event embeds <span class="pv-note">off = that event posts nothing \u00b7 saved with Save</span></label>'
+        +'<div class="dcgroup">'
+        +togs.map(function(p){ return '<div class="dctog-row"><span>'+esc(p[1])+'</span>'+control(p[0])+'</div>'; }).join('')
+        +'</div>';
     }
     host.innerHTML=h;
     renderDcBuilder();
