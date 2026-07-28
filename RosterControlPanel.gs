@@ -294,14 +294,21 @@ function cpGetConfig_(ss) {
       const def = (k.t === 'bool') ? (k.d ? 'TRUE' : 'FALSE') : String(k.d);
       // A RENAMED key (spec `aka`): an un-migrated sheet still carries the old-name row — show ITS value as the
       // effective one (that's what validation resolves to), not the default. An explicit new-name row wins.
+      // `aka` is either a plain key in THIS block, or "BLOCK.KEY" when the key MOVED between blocks. Only the
+      // first form was handled here, so a moved key (ACTIVITY.RESET_CADENCE aka SCHEDULE.RESET_CADENCE) looked
+      // up "SCHEDULE.RESET_CADENCE" as a literal key name inside [ACTIVITY], never found it, and showed the
+      // default instead of what the sheet actually resolves to. materialize_ already splits on the dot.
       const direct = Object.prototype.hasOwnProperty.call(have, key);
-      const viaAka = !direct && k.aka && Object.prototype.hasOwnProperty.call(have, k.aka);
+      const akaDot = k.aka ? String(k.aka).indexOf('.') : -1;
+      const akaHave = (akaDot === -1) ? have : ((raw[k.aka.slice(0, akaDot)] && raw[k.aka.slice(0, akaDot)].kv) || {});
+      const akaKey = k.aka ? ((akaDot === -1) ? k.aka : k.aka.slice(akaDot + 1)) : '';
+      const viaAka = !direct && k.aka && Object.prototype.hasOwnProperty.call(akaHave, akaKey);
       const fromSheet = direct || !!viaAka;
       keys.push({
         key, t: k.t, def, req: !!k.req, help: k.help || '',
         min: (k.min != null ? k.min : null), max: (k.max != null ? k.max : null),
         options: k.enum ? k.enum.slice() : null,
-        value: direct ? String(have[key]) : (viaAka ? String(have[k.aka]) : def),
+        value: direct ? String(have[key]) : (viaAka ? String(akaHave[akaKey]) : def),
         fromSheet,
       });
     });
@@ -378,7 +385,20 @@ function cpApplyConfig_(configSheet, payload) {
   }
 
   // ---- write through the guarded primitives ----
-  kvChanges.forEach((c) => { setKvValue_(configSheet, c.block, c.key, String(c.value == null ? '' : c.value)); });
+  // setKvValue_ returns FALSE when the block marker is missing from the tab — it writes nothing. That return
+  // was discarded, so the panel reported a successful save, reloaded, and showed the old value again: the
+  // "it says saved but reverts" symptom. Blocks are checked BEFORE anything is written, so a bad change set
+  // cannot half-apply.
+  const missingBlocks = [];
+  kvChanges.forEach((c) => { if (missingBlocks.indexOf(c.block) === -1 && !cpBlockPresent_(configSheet, c.block)) missingBlocks.push(c.block); });
+  if (missingBlocks.length) {
+    throw new Error(`Nothing was saved — ${missingBlocks.map((b) => `[${b}]`).join(', ')} ${missingBlocks.length === 1 ? 'is' : 'are'} missing from the ${CONFIG_SHEET_NAME} tab. Run 🚀 First-Run Setup to rebuild it.`);
+  }
+  kvChanges.forEach((c) => {
+    if (!setKvValue_(configSheet, c.block, c.key, String(c.value == null ? '' : c.value))) {
+      throw new Error(`Could not write [${c.block}].${c.key} to the ${CONFIG_SHEET_NAME} tab.`);
+    }
+  });
   Object.keys(tableChanges).forEach((name) => { setTableRows_(configSheet, name, tableChanges[name]); });
   cfgInvalidate_();
   SpreadsheetApp.flush();
@@ -387,6 +407,15 @@ function cpApplyConfig_(configSheet, payload) {
     problems: v.problems.filter((x) => x.sev === 'WARN').map((x) => ({ sev: x.sev, code: x.code, key: x.key, value: String(x.value == null ? '' : x.value), expected: x.expected || '' })),
     written: { kv: kvChanges.length, tables: Object.keys(tableChanges).length },
   };
+}
+
+/** Is a [BLOCK] marker actually on the Config tab? setKvValue_ silently writes nothing when it is not. */
+function cpBlockPresent_(configSheet, blockName) {
+  const last = configSheet.getLastRow();
+  if (last < 1) return false;
+  const colA = configSheet.getRange(1, 1, last, 1).getDisplayValues();
+  for (let i = 0; i < colA.length; i++) { if (String(colA[i][0]).trim() === `[${blockName}]`) return true; }
+  return false;
 }
 
 /** Panel read: current config for the Settings tab. */
@@ -1021,7 +1050,9 @@ function cpAssignMember_(roster, payload) {
   const statusReq = String((payload && payload.status) || '').trim();
   let startStatus = '';
   if (statusReq) {
-    const known = (CONFIG.statusNames || []).filter((s) => norm_(s) === norm_(statusReq));
+    // cpStatuses_(), not CONFIG.statusNames: CONFIG is a getter for cfg_().LEGACY, and the legacy view has
+    // no statusNames key — so this read undefined, the list was always [], and EVERY status was rejected.
+    const known = cpStatuses_().filter((s) => norm_(s) === norm_(statusReq));
     if (!known.length) throw new Error(`"${statusReq}" is not one of this department's statuses.`);
     startStatus = known[0]; // the configured spelling, not whatever case the client sent
   }
