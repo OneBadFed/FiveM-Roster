@@ -535,7 +535,10 @@
      as a box-shadow rather than a border because sub-pixel borders are unreliable and shadow spread is not. */
   .gbox{background:rgba(255,255,255,.04);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;overflow:hidden;}
   /* Separators are per-row inset shadows, not borders: no doubling at the seam, no :last-child rules. */
-  .gbox>*+*{box-shadow:0 -.5px 0 rgba(255,255,255,.07) inset;}
+  /* Offset DOWN, not up: an inset shadow shifted up exposes the strip at the BOTTOM of the box, so this drew
+     a line beneath every element from the second on — none between the first two, and a stray one under the
+     last. Shifted down it lands at the top of the second element, which is where a separator belongs. */
+  .gbox>*+*{box-shadow:0 .5px 0 rgba(255,255,255,.07) inset;}
   .ghead{display:flex;align-items:center;gap:8px;padding:9px 12px 8px;font-size:10px;font-weight:600;
          letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);}
   .ghead-r{margin-left:auto;font-weight:400;letter-spacing:0;text-transform:none;font-size:11px;color:rgba(255,255,255,.3);}
@@ -587,6 +590,10 @@
          font-family:inherit;font-size:11.5px;color:#4aa8ff;}
   /* ── Promotions: roster data with its own lifecycle, so a table rather than a stack of cards ── */
   .ptable{display:flex;flex-direction:column;max-height:calc(100vh - 166px);}
+  /* Opt out of the generic .gbox hairline: .phead carries its own border-bottom and .pbar its own
+     border-top, so the shared rule stacked a second .5px line right beside each of them — a 2px rule made of
+     two different greys. This table states its own divisions. */
+  .ptable>*+*{box-shadow:none;}
   /* Three equal tracks. A fixed 104px date track left the name starting almost immediately after "20 Jul. 2026"
      while the rank floated at the far edge — two columns crowded and one adrift. Equal thirds give each label a
      column start its rows actually line up under. nowrap on the date makes the old wrap impossible to reintroduce. */
@@ -596,7 +603,6 @@
   .phead{height:22px;flex:0 0 auto;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.09);
          font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.42);}
   .sortp{cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;}
-  .sortp.pto{justify-content:flex-end;}
   .sortp:hover{color:rgba(255,255,255,.7);}
   .sortp.on::after{content:"";width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;
                    border-top:4px solid currentColor;}
@@ -607,7 +613,7 @@
      why one column header looked bigger and bolder than the other two. */
   #promoFeed .prow .pdate{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.42);white-space:nowrap;}
   #promoFeed .prow .pname{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  #promoFeed .prow .pto{font-size:12px;color:rgba(255,255,255,.55);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #promoFeed .prow .pto{font-size:12px;color:rgba(255,255,255,.55);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   /* One format for every column header, whichever cell it sits in. */
   .phead .sortp{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
                 color:rgba(255,255,255,.42);white-space:nowrap;}
@@ -791,7 +797,6 @@
   .hck .hlbl{flex:1;font-size:12px;} .hck .hlbl b{font-weight:650;} .hck .hlbl small{display:block;color:var(--txt-3);font-size:11px;margin-top:1px;}
 
   /* columns tab */
-  .colhead{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.1em;margin-bottom:var(--s2);font-weight:800;}
   .collegend{display:flex;flex-wrap:wrap;gap:var(--s3) var(--s4);font-size:11px;color:var(--txt-2);margin-bottom:var(--s3);}
   .collegend span{display:inline-flex;align-items:center;}
   .collegend i{width:9px;height:9px;border-radius:3px;display:inline-block;margin-right:6px;vertical-align:middle;box-shadow:0 0 8px -1px currentColor;}
@@ -1181,6 +1186,7 @@
         <input class="field search" id="promoQ" placeholder="Search entries" autocomplete="off" aria-label="Search promotions">
       </div>
       <button class="pushbtn" id="runAll" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>Run all</button>
+      <button class="pushbtn" id="recols" hidden title="Re-read the roster headers from the sheet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3.5V9h-5.5"/></svg>Re-read sheet</button>
       <button class="icon-btn" id="openSettingsBtn" title="Engine settings" aria-label="Engine settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
       <span class="tb-nav" id="suNav" hidden><button class="icon-btn" id="suPrev" title="Previous applicant" aria-label="Previous applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="icon-btn" id="suNext" title="Next applicant" aria-label="Next applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></span>
     </div>
@@ -1410,7 +1416,6 @@
   </div>
 
   <div class="pane" id="pane-columns">
-    <div class="colhead">Columns<button class="linkbtn" id="recols">Refresh</button></div>
     <div class="collegend"><span><i style="background:var(--blue)"></i>Member — follows the person</span><span><i style="background:var(--amber)"></i>Slot — stays with the position</span></div>
     <div id="colIssues"></div>
     <div id="colBody" class="sys-body"><span class="muted2">Loading…</span></div>
@@ -2880,7 +2885,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('runAll').hidden=(t.dataset.tab!=='tools'); $('promoQWrap').hidden=(t.dataset.tab!=='promos'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); setTimeout(fitWindow,0); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !RUNS.loaded) loadRunLog(); if(t.dataset.tab==='promos' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('runAll').hidden=(t.dataset.tab!=='tools'); $('recols').hidden=(t.dataset.tab!=='columns'); $('promoQWrap').hidden=(t.dataset.tab!=='promos'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); setTimeout(fitWindow,0); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !RUNS.loaded) loadRunLog(); if(t.dataset.tab==='promos' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('colBody').addEventListener('click',function(e){ var seg=e.target.closest('.cseg'); if(!seg||seg.classList.contains('on')) return; var tog=seg.closest('.coltog'); var header=tog.getAttribute('data-header'); var k=seg.getAttribute('data-k'); tog.querySelectorAll('.cseg').forEach(function(s){ s.classList.remove('on'); }); seg.classList.add('on'); api(function(d){ renderColumns(d); toast('“'+header+'” → '+(k==='MEMBER'?'Member':'Slot'),'ok'); }, function(ev){ onError(ev); loadColumns(); }, "cpSetColumnClass", header, k); });
   $('sideToggle').addEventListener('click',function(){ document.querySelector('.app').classList.toggle('side-off'); });
