@@ -470,7 +470,9 @@
   /* The state sentence and its two resets, scoped narrow to wide. */
   .dcstate{display:flex;align-items:center;gap:12px;margin-top:9px;font-size:11.5px;color:var(--txt-3);}
   .dcstate>span{flex:1;min-width:0;}
-  .dctokens{margin:6px 0 0;}
+  /* The token row is a group of its own — the sections below start their own stack, so it needs a real
+     gap under it. The markup it replaced carried margin:6px 0 12px and my rule dropped the bottom half. */
+  .dctokens{margin:6px 0 16px;}
   .dctokens .rlt{font-family:var(--mono);font-size:11px;}
   .dclb{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--txt-3);text-transform:uppercase;letter-spacing:.08em;font-weight:600;margin:16px 0 0;}
   .dccnt{margin-left:auto;font-family:var(--mono);font-size:10px;color:var(--txt-3);text-transform:none;letter-spacing:0;font-weight:400;}
