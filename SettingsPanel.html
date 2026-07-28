@@ -171,8 +171,11 @@
   /* The description is clamped to at most two lines, so it is given exactly two: 3em at line-height 1.5.
      A one-line help string keeps a blank second line, and every control in the grid then starts at the same
      y — not just level with its own row, but with the whole section. */
-  .setting .sdesc{min-height:3em;font-size:11.5px;color:var(--txt-3);font-weight:400;line-height:1.5;margin-bottom:8px;max-width:52ch;
+  /* Base, NOT scoped to .setting — table cards use .sdesc too and were inheriting nothing. */
+  .sdesc{font-size:11.5px;color:var(--txt-3);font-weight:400;line-height:1.5;margin-bottom:8px;max-width:52ch;
         display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}
+  /* Only the grid cells need the fixed two-line box that keeps their controls on one line. */
+  .setting .sdesc{min-height:3em;}
   .setting .serr{display:none;font-size:11px;color:#ff6961;line-height:1.45;margin-top:6px;font-weight:400;}
   .setting.modehide{display:none;}
   .setting.err .serr{display:block;}
@@ -364,11 +367,15 @@
       transition:color var(--t),background var(--t);flex:0 0 auto;}
   .gtdel:hover{color:#ff6961;background:var(--red-soft);}
   .gtdel svg{width:12px;height:12px;stroke-width:1.9;}
-  .gtadd{margin-top:8px;width:100%;border:none;border-radius:8px;background:rgba(255,255,255,.03);box-shadow:0 0 0 .5px rgba(255,255,255,.07) inset;
-      display:flex;align-items:center;justify-content:center;gap:7px;padding:9px;color:var(--txt-3);cursor:pointer;font-size:12.5px;font-weight:400;
+  /* A button, not a second empty box. Full-width and pale, it sat under the equally pale "no rows yet"
+     panel and the pair read as two empty slabs rather than a list and its add control. */
+  .gtadd{margin-top:8px;width:auto;height:24px;padding:0 11px;border:none;border-radius:6px;
+      background:var(--ctl);box-shadow:var(--ctlring);
+      display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--txt-2);cursor:pointer;
+      font-family:inherit;font-size:12.5px;font-weight:400;
       transition:background var(--t),color var(--t);}
-  .gtadd:hover{color:var(--txt);background:rgba(255,255,255,.06);border-color:transparent;transform:none;}
-  .gtadd svg{width:13px;height:13px;stroke-width:1.9;}
+  .gtadd:hover{color:var(--txt);background:var(--ctl-h);border-color:transparent;transform:none;}
+  .gtadd svg{width:11px;height:11px;stroke-width:2;}
   .gtempty{padding:14px;text-align:center;color:var(--txt-3);font-size:11.5px;}
 
   /* ─── previews (Discord chrome below stays Discord's own palette on purpose) ─── */
@@ -507,8 +514,7 @@
   /* .gtadd is the FULL-WIDTH "add row" button that sits under a table — inline in this row it brought the
      table version's 8px top margin and width:100% with it, which is why Add label sat low and oversized.
      Everything in .rlhead is 24px now: chips, field, button, one baseline. */
-  .rladd .gtadd{margin-top:0;width:auto;height:24px;padding:0 12px;font-size:12.5px;border-radius:6px;
-                display:inline-flex;align-items:center;justify-content:center;}
+  .rladd .gtadd{margin-top:0;padding:0 12px;}
   .rlrow{display:flex;align-items:center;gap:11px;padding:8px 11px;background:var(--panel-2);border-radius:8px;box-shadow:var(--hairline);margin-bottom:6px;}
   .rlav{width:28px;height:28px;border-radius:6px;background:rgba(255,255,255,.07);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:600;
       font-family:var(--mono);color:var(--txt-2);overflow:hidden;flex:0 0 auto;box-shadow:0 0 0 .5px rgba(255,255,255,.11) inset;}
@@ -720,6 +726,7 @@
   // Display-only overrides for table cards (title / help), same idea as LABELS/HELPS for kv settings.
   var TBLTITLE={'DASHBOARD_GROUPS':'Headcount groups · priority order'};
   var TBLHELP={
+    'STATUS_RULES':'Extra rules layered on top of the status tiers. Each row reads "when a member is SOURCE and their hours OP HOURS, set them to TARGET" — use * for any status or always. First match wins, and the result depends only on hours, so re-running never stacks up. Leave empty to use the tiers alone. Protected statuses are skipped unless a rule names one directly.',
     'SECTION_TAGS':'Colours + type for each divider keyword — a divider matches when its text CONTAINS the keyword. Tone must be one of: exec, admin, super, cadet, training, patrol, aux.',
     'DASHBOARD_GROUPS':'Rows are PRIORITY ORDER — each member counts under the first group matching their rank or section. Everyday label editing is easier in the Ranks section; each group is also a #tag.',
     'FORM_MAP':'The leave form\'s question keywords — ONLY applied when First-Run Setup builds the form. Edits here do nothing until the form is rebuilt.',
