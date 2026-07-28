@@ -528,9 +528,10 @@
   .arow{display:flex;align-items:center;gap:11px;padding:9px 12px;}
   /* A labelled placeholder is honest; a bad hand-drawn icon is worse than none. Drop 16px symbols in the same
      box later and nothing else moves. */
-  .atile{width:24px;height:24px;flex:0 0 auto;border-radius:6px;background:rgba(255,255,255,.07);
-         box-shadow:0 0 0 .5px rgba(255,255,255,.11) inset;display:flex;align-items:center;justify-content:center;
-         font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.5);letter-spacing:.02em;}
+  /* The icon sits ON the row — no plate. A tile around it was the placeholder's scaffolding, not the design. */
+  .aico{width:20px;height:20px;flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+        color:rgba(255,255,255,.55);}
+  .aico svg{width:16px;height:16px;}
   .att{flex:1;min-width:0;}
   .att b{display:block;font-size:13px;line-height:1;font-weight:500;color:rgba(255,255,255,.88);}
   .att span{display:block;font-size:11.5px;line-height:1;font-weight:400;color:rgba(255,255,255,.42);margin-top:4px;}
@@ -1085,7 +1086,7 @@
       <button class="tab" data-tab="signups" data-title="Signups"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups<span class="cnt" id="navSignupCount"></span></button>
       <div class="ngroup">Operations</div>
       <div class="navparent"><span class="navtri"></span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</div>
-      <button class="tab sub" data-tab="tools" data-title="Maintenance" data-sub="Engine actions — each one reports what it changed">Maintenance</button>
+      <button class="tab sub" data-tab="tools" data-title="Maintenance" data-sub="Engine actions">Maintenance</button>
       <button class="tab sub" data-tab="promos" data-title="Promotions feed" data-sub="What the RECENT PROMOTIONS tables are built from">Promotions feed<span class="cnt" id="navPromoCount"></span></button>
       <button class="tab sub" data-tab="conns" data-title="Connections" data-sub="Discord webhooks and the linked admin file">Connections</button>
       <button class="tab" data-tab="columns" data-title="Columns"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></span>Columns</button>
@@ -1229,13 +1230,13 @@
     <div class="tcols">
       <div class="tmain">
         <div class="gbox" id="actionList">
-          <div class="arow" data-arow="updateStatuses"><span class="atile">STAT</span><span class="att"><b>Update all statuses</b><span>Recompute every member from logged hours</span></span><span class="alast" id="al-updateStatuses"></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
-          <div class="arow" data-arow="processLeaves"><span class="atile">CAL</span><span class="att"><b>Run schedule check</b><span>Start due leaves, expire ended ones</span></span><span class="alast" id="al-processLeaves"></span><button class="runbtn" data-act="processLeaves">Run</button></div>
-          <div class="arow" data-arow="syncForms"><span class="atile">SYNC</span><span class="att"><b>Sync leave forms</b><span>Pull new form responses into the tracker</span></span><span class="alast" id="al-syncForms"></span><button class="runbtn" data-act="syncForms">Run</button></div>
-          <div class="arow" data-arow="fixUnits"><span class="atile">S##</span><span class="att"><b>Fix callsign numbers</b><span>Renumber S-01, S-02 … to close gaps</span></span><span class="alast" id="al-fixUnits"></span><button class="runbtn" data-act="fixUnits">Run</button></div>
-          <div class="arow" data-arow="checkDuplicates"><span class="atile">DUP</span><span class="att"><b>Check duplicate IDs</b><span>Find repeated or malformed unique IDs</span></span><span class="alast" id="al-checkDuplicates"></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
+          <div class="arow" data-arow="updateStatuses"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.6-6.36"/><path d="M21 3v6h-6"/></svg></span><span class="att"><b>Update all statuses</b><span>Recompute every member from logged hours</span></span><span class="alast" id="al-updateStatuses"></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
+          <div class="arow" data-arow="processLeaves"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/><path d="M8.5 15.5l2 2 4-4.5"/></svg></span><span class="att"><b>Run schedule check</b><span>Start due leaves, expire ended ones</span></span><span class="alast" id="al-processLeaves"></span><button class="runbtn" data-act="processLeaves">Run</button></div>
+          <div class="arow" data-arow="syncForms"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v11"/><path d="M8 10.5l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg></span><span class="att"><b>Sync leave forms</b><span>Pull new form responses into the tracker</span></span><span class="alast" id="al-syncForms"></span><button class="runbtn" data-act="syncForms">Run</button></div>
+          <div class="arow" data-arow="fixUnits"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h13M4 12h9M4 17h5"/><path d="M19 11v8M16 16l3 3 3-3"/></svg></span><span class="att"><b>Fix callsign numbers</b><span>Renumber S-01, S-02 … to close gaps</span></span><span class="alast" id="al-fixUnits"></span><button class="runbtn" data-act="fixUnits">Run</button></div>
+          <div class="arow" data-arow="checkDuplicates"><span class="aico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="11" height="11" rx="2.5"/><path d="M15 5.5H6.5A2 2 0 0 0 4.5 7.5V16"/></svg></span><span class="att"><b>Check duplicate IDs</b><span>Find repeated or malformed unique IDs</span></span><span class="alast" id="al-checkDuplicates"></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
         </div>
-        <p class="tfoot">Every action is reversible from the Edit Log for 24 hours. Runs are queued, so two of them can never touch the roster at once.</p>
+        <p class="tfoot">Every action is reversible from the log for 24 hours. Runs are queued, so two can&rsquo;t touch the roster at once.</p>
       </div>
       <aside class="tside">
         <div class="gbox">
@@ -1405,6 +1406,25 @@
       return d.toLocaleDateString(undefined,opts);
     }catch(e){ return t; }
   }
+  /* A Mac window is the height of what it holds. This dialog opens at a fixed 760 and Maintenance needs about
+     half of it, leaving 600px of void. setHeight is the only lever Apps Script gives us, so each tab asks for
+     the height it actually needs — clamped, so it never collapses to nothing or grows past the original. */
+  var FIT={min:420,max:760,last:0};
+  function fitWindow(){
+    try{
+      if(!(window.google && google.script && google.script.host && google.script.host.setHeight)) return;
+      var pane=document.querySelector('.pane.active'); if(!pane) return;
+      var content=document.querySelector('.content');
+      var chrome=document.querySelector('.toolbar').offsetHeight
+                +(document.querySelector('.filterbar') && $('filterbar').style.display!=='none' ? $('filterbar').offsetHeight : 0);
+      var pad=parseFloat(getComputedStyle(content).paddingTop)+parseFloat(getComputedStyle(content).paddingBottom);
+      var side=document.querySelector('.side').scrollHeight;
+      var need=Math.max(chrome+pane.scrollHeight+pad, side)+24 /* the window's own margin */;
+      var h=Math.round(Math.min(FIT.max,Math.max(FIT.min,need)));
+      if(Math.abs(h-FIT.last)<8) return; // ignore noise, or every render nudges the window
+      FIT.last=h; google.script.host.setHeight(h);
+    }catch(e){ /* sizing is a nicety — never let it break the panel */ }
+  }
   function copyClick(e){
     var cp=e.target.closest('[data-copy]'); if(!cp) return false;
     if(copyText(cp.getAttribute('data-copy'))){
@@ -1546,7 +1566,14 @@
      what is selected, which is where a Mac reports that state rather than in a banner over the content. */
   function tbSub(){
     var el=$('tbSub'); if(!el) return;
-    var at=document.querySelector('.tab.active'); if(at && at.dataset.sub){ el.textContent=at.dataset.sub; return; }
+    var at=document.querySelector('.tab.active');
+    // Maintenance says when it last ran — that is the one fact worth carrying in the window's subtitle.
+    if(at && at.dataset.tab==='tools'){
+      var last=(RUNS.list&&RUNS.list[0]);
+      el.textContent='Engine actions'+(last?(' · last run '+runClock(last.t)):' — each one reports what it changed');
+      return;
+    }
+    if(at && at.dataset.sub){ el.textContent=at.dataset.sub; return; }
     if(at && at.dataset.tab==='signups'){ var q=(SU.signups||[]).length, old=null;
       (SU.signups||[]).forEach(function(a){ var d=suDays(a.submitted); if(d!=null && (old==null||d>old)) old=d; });
       el.textContent=q?(q+' pending'+(old!=null?(' · oldest '+old+' day'+(old===1?'':'s')):'')):'Nothing waiting'; return; } // a tab that describes itself
@@ -2348,20 +2375,51 @@
     if(days<7) return d.toLocaleDateString(undefined,{weekday:'short'});
     return d.toLocaleDateString(undefined,{day:'numeric',month:'short'});
   }
+  /* What the row says it did, not merely when. A run that FOUND something leads with the count — "2 found
+     Monday" tells you more than "Monday" and is the reason the amber state exists at all. */
+  /* Today gets a clock; anything older gets its weekday. A column of times for runs a week apart says nothing. */
+  function runStamp(t){
+    var d=new Date(Number(t)), now=new Date();
+    if(isNaN(d.getTime())) return '';
+    if(d.toDateString()===now.toDateString()) return runClock(t);
+    if(Math.floor((now-d)/86400000)<7){ try{ return d.toLocaleDateString(undefined,{weekday:'short'}); }catch(e){} }
+    try{ return d.toLocaleDateString(undefined,{day:'numeric',month:'short'}); }catch(e){ return ''; }
+  }
+  function runStatusText(r){
+    var n=(String(r.r||'').match(/^\s*(\d+)\b/)||[])[1];
+    var d=new Date(Number(r.t)), now=new Date();
+    var days=Math.floor((now-d)/86400000);
+    var when;
+    if(d.toDateString()===now.toDateString()) when=runClock(r.t);
+    else if(days<=1) when='Yesterday';
+    else if(days<7) { try{ when=d.toLocaleDateString(undefined,{weekday:'long'}); }catch(e){ when=runAgo(r.t); } }
+    else when=runAgo(r.t);
+    // ONLY when the result literally says it FOUND something. '12 members changed' is not '12 found' —
+    // borrowing the word makes the row claim something the action never reported.
+    if(r.lv==='warn' && n && Number(n)>0 && /\bfound\b/i.test(String(r.r||''))) return n+' found '+when;
+    if(d.toDateString()===now.toDateString() && (now-d)<6*3600000 && (now-d)>=3600000) return runAgo(r.t);
+    return when;
+  }
   function runClock(t){ var d=new Date(Number(t)); return isNaN(d.getTime())?'':d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
   function loadRunLog(){
-    api(function(d){ RUNS.list=(d&&d.runs)||[]; RUNS.loaded=true; renderRunLog(); }, function(){ RUNS.loaded=true; renderRunLog(); }, 'cpRunLog');
+    api(function(d){ RUNS.list=(d&&d.runs)||[]; RUNS.loaded=true; renderRunLog(); tbSub(); fitWindow(); }, function(){ RUNS.loaded=true; renderRunLog(); fitWindow(); }, 'cpRunLog');
   }
   function renderRunLog(){
     var el=$('runLog'); if(!el) return;
     var list=RUNS.list||[];
-    var when=$('runWhen'); if(when) when.textContent=list.length?runAgo(list[0].t):'';
+    // The header's right-hand label names the DAY the newest entry belongs to, the way a grouped list does.
+    var when=$('runWhen');
+    if(when){
+      if(!list.length) when.textContent='';
+      else { var d=new Date(Number(list[0].t)), now=new Date();
+        when.textContent=(d.toDateString()===now.toDateString())?'Today':runStamp(list[0].t); }
+    }
     if(!list.length){ el.innerHTML='<div class="gempty">Nothing has been run yet.</div>'; }
     else {
       var show=list.slice(0,6);
       el.innerHTML=show.map(function(r){
         var cls=(r.lv==='err')?'err':(r.lv==='warn'?'warn':'');
-        return '<div class="lrow"><span class="ltime">'+esc(runClock(r.t))+'</span>'
+        return '<div class="lrow"><span class="ltime">'+esc(runStamp(r.t))+'</span>'
           +'<span class="ltt"><b>'+esc(r.l||r.a)+'</b><span class="'+cls+'">'+esc(r.r||'')+'</span></span></div>';
       }).join('')
       +(list.length>show.length?('<button type="button" class="lmore" id="runMore">Show all '+list.length+' runs</button>'):'');
@@ -2373,7 +2431,7 @@
       var k=row.dataset.arow, last=seen[k], cell=row.querySelector('.alast'); if(!cell) return;
       if(!last){ cell.className='alast'; cell.innerHTML='<span class="d"></span>Never run'; return; }
       cell.className='alast '+(last.lv==='err'?'err':(last.lv==='warn'?'warn':'ok'));
-      cell.innerHTML='<span class="d"></span>'+esc(runAgo(last.t));
+      cell.innerHTML='<span class="d"></span>'+esc(runStatusText(last));
     });
   }
   function loadPromos(){
@@ -2625,7 +2683,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('runAll').hidden=(t.dataset.tab!=='tools'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !RUNS.loaded) loadRunLog(); if(t.dataset.tab==='promos' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('runAll').hidden=(t.dataset.tab!=='tools'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); setTimeout(fitWindow,0); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !RUNS.loaded) loadRunLog(); if(t.dataset.tab==='promos' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('colBody').addEventListener('click',function(e){ var seg=e.target.closest('.cseg'); if(!seg||seg.classList.contains('on')) return; var tog=seg.closest('.coltog'); var header=tog.getAttribute('data-header'); var k=seg.getAttribute('data-k'); tog.querySelectorAll('.cseg').forEach(function(s){ s.classList.remove('on'); }); seg.classList.add('on'); api(function(d){ renderColumns(d); toast('“'+header+'” → '+(k==='MEMBER'?'Member':'Slot'),'ok'); }, function(ev){ onError(ev); loadColumns(); }, "cpSetColumnClass", header, k); });
   $('refreshBtn').addEventListener('click',refresh);
@@ -2725,7 +2783,7 @@
   document.querySelectorAll('.runbtn[data-act]').forEach(function(b){ b.addEventListener('click',function(){ runAction(b.dataset.act,b); }); });
   document.addEventListener('click',function(e){ if(e.target&&e.target.id==='runMore'){ RUNS.showAll=true; var el=$('runLog');
     el.innerHTML=(RUNS.list||[]).map(function(r){ var cls=(r.lv==='err')?'err':(r.lv==='warn'?'warn':'');
-      return '<div class="lrow"><span class="ltime">'+esc(runClock(r.t))+'</span><span class="ltt"><b>'+esc(r.l||r.a)+'</b><span class="'+cls+'">'+esc(r.r||'')+'</span></span></div>'; }).join(''); } });
+      return '<div class="lrow"><span class="ltime">'+esc(runStamp(r.t))+'</span><span class="ltt"><b>'+esc(r.l||r.a)+'</b><span class="'+cls+'">'+esc(r.r||'')+'</span></span></div>'; }).join(''); } });
   /* Run all: sequential, not parallel — these actions take the same script lock, so firing them together just
      makes four of them fail on 'another operation is running'. Each waits for the last. */
   $('runAll').addEventListener('click',function(){
