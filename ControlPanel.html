@@ -273,7 +273,7 @@
   /* A value the operator cannot change here reads as TEXT, not as a disabled input — a greyed-out box invites
      a click that will never do anything. */
   .fro{font-size:12.5px;color:rgba(255,255,255,.88);white-space:nowrap;}
-  .fseg{flex:0 0 auto;}
+  .fseg{flex:0 1 auto;min-width:0;max-width:100%;}
   .fseg .seg{padding:0 10px;}
   /* A row that is all explanation spans both columns — a hint has no label to sit beside. */
   .fspan{grid-template-columns:1fr;padding-top:9px;padding-bottom:10px;}
@@ -408,10 +408,16 @@
   .addbtn:hover{filter:brightness(1.06);}
   /* ══ SIGNUPS — a QUEUE, not a form. The old pane was one applicant on a page with no sense of what else was
      waiting; this is the three-pane review shape: who is in line, what you are deciding, and what they sent. ══ */
-  #pane-signups.pane.active{display:flex;flex-direction:column;min-height:100%;}
+  /* height, NOT min-height: min-height lets the pane grow to fit the queue, so a long list pushed the whole
+     page taller and ran straight through the action bar. A definite height bounds the grid row, which is what
+     lets each column scroll inside itself — the two panes then behave independently, as they should. */
+  #pane-signups.pane.active{display:flex;flex-direction:column;height:100%;}
   .sucols{display:grid;grid-template-columns:236px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
-  .suqueue{min-width:0;margin-left:-14px;padding:12px 14px;background:var(--queue);
-           box-shadow:1px 0 0 var(--hair);align-self:stretch;}
+  /* Its OWN scrolling region, and air at both ends: the list used to grow the whole pane instead, so with more
+   than a handful of signups the first and last rows ran flush against the header and the action bar. */
+  .suqueue{min-width:0;min-height:0;margin-left:-14px;padding:14px 14px 18px;background:var(--queue);
+           box-shadow:1px 0 0 var(--hair);align-self:stretch;overflow-y:auto;overscroll-behavior:contain;}
+  .sudetail{min-height:0;overflow-y:auto;}
   /* In the toolbar the scope control sits OVER the column it filters, and the rule between them continues the
      column divide below — the header is split the same way the body is. */
   /* order:-1 puts it ahead of the sidebar toggle WITHOUT reordering the DOM for every other tab — the toggle's
@@ -425,6 +431,7 @@
   .tb-seg[hidden]{display:none;}
   /* The CONTROL: one track, two equal halves inside it, spanning the column. */
   .suq-tabs{width:100%;}
+  .suentry{margin-top:14px;}
   .suq-tabs .fchip{flex:1 1 0;min-width:0;justify-content:center;display:flex;align-items:center;gap:5px;}
   .suq-n{font-family:var(--mono);font-size:10.5px;color:rgba(255,255,255,.45);font-weight:400;}
   .suq-list{display:flex;flex-direction:column;gap:2px;}
@@ -2100,6 +2107,21 @@
     return '<div class="su-ro"><span class="su-ro-k">'+k+'</span>'
       +'<span class="su-ro-v'+(blank?' blank':'')+''+(mono&&!blank?' mono':'')+'">'+(blank?'Not provided':esc(v))+(blank?'':(extra||''))+'</span></div>';
   }
+  /* The editable half of a review, built once and placed full-width under the paired read-only panels. */
+  function suEntryHtml(a, s){
+    return '<div class="fglbl">Roster entry</div><div class="fpanel">'
+      +'<div class="frow"><label class="flbl" for="suName">Name</label><div class="fctl"><input class="field fin" id="suName" value="'+esc(a.name||'')+'" autocomplete="off"></div></div>'
+      +(SU.oocCol?('<div class="frow"><label class="flbl" for="suOoc">OOC name</label><div class="fctl"><input class="field fin" id="suOoc" value="'+esc(a.ooc||'')+'" autocomplete="off"><span class="fnote">Optional</span></div></div>'):'')
+      +(function(){ // the same shift control Add member uses — a seat is a seat, however it is created
+        var mode=addShiftMode(); if(mode==='off') return '';
+        return '<div class="frow" id="suShiftRow"><label class="flbl">'+esc(titleish(STATE.shiftLabel))+'</label>'
+          +'<div class="fctl" id="suShiftCtl">'+shiftCtlHtml(mode, SU.shift, (mode==='rank'?(s?s.shift:null):null), 'suShift')+'</div></div>';
+      })()
+      +'<div class="frow"><label class="flbl" for="suStatus2">Status</label><div class="fctl"><select class="field fin" id="suStatus2">'
+        +(SU.statuses||STATE.statuses||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(x===(SU.status||STATE.defaultStatus)?' selected':'')+'>'+esc(x)+'</option>'; }).join('')
+        +'</select></div></div>'
+    +'</div>';
+  }
   function suDetail(){
     var a=suApp(SU.cur); if(!a) return '';
     var s=(SU.slot!=null)?suSlotObj(SU.slot):null;
@@ -2126,18 +2148,6 @@
           +slotCard
           +'<div class="frow fspan"><p class="fhint">Rank and callsign come from the slot. Nothing is inserted into your section layout.</p></div>'
         +'</div></div>'
-        +'<div class="fgroup"><div class="fglbl">Roster entry</div><div class="fpanel">'
-          +'<div class="frow"><label class="flbl" for="suName">Name</label><div class="fctl"><input class="field fin" id="suName" value="'+esc(a.name||'')+'" autocomplete="off"></div></div>'
-          +(SU.oocCol?('<div class="frow"><label class="flbl" for="suOoc">OOC name</label><div class="fctl"><input class="field fin" id="suOoc" value="'+esc(a.ooc||'')+'" autocomplete="off"><span class="fnote">Optional</span></div></div>'):'')
-          +(function(){ // the same shift control Add member uses — a seat is a seat, however it is created
-            var mode=addShiftMode(); if(mode==='off') return '';
-            return '<div class="frow" id="suShiftRow"><label class="flbl">'+esc(titleish(STATE.shiftLabel))+'</label>'
-              +'<div class="fctl" id="suShiftCtl">'+shiftCtlHtml(mode, SU.shift, (mode==='rank'?(s?s.shift:null):null), 'suShift')+'</div></div>';
-          })()
-          +'<div class="frow"><label class="flbl" for="suStatus2">Status</label><div class="fctl"><select class="field fin" id="suStatus2">'
-            +(SU.statuses||STATE.statuses||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(x===(SU.status||STATE.defaultStatus)?' selected':'')+'>'+esc(x)+'</option>'; }).join('')
-            +'</select></div></div>'
-        +'</div></div>'
       +'</div>'
       +'<div>'
         +'<div class="fgroup"><div class="fglbl">From their signup<span class="su-lblnote">Read-only</span></div><div class="fpanel">'
@@ -2151,7 +2161,10 @@
           +(blanks?(' '+blanks+' field'+(blanks===1?' was':'s were')+' left blank on the form — you can fill '+(blanks===1?'it':'them')+' in later from the Members tab.'):'')+'</p>'
         +'</div>'
       +'</div>'
-      +'</div>';
+      +'</div>'
+      // Roster entry sits BELOW the two read-only halves and spans the pane: it is the editable part, and the
+      // shift segmented needs a row wider than half the panel to sit on.
+      +'<div class="fgroup suentry">' + suEntryHtml(a, s) + '</div>';
   }
   function renderSignups(){
     var el=$('suBody'), qhost=$('suQueue'), bar=$('suBar'); if(!el) return;
