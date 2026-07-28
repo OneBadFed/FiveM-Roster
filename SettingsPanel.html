@@ -150,7 +150,9 @@
   .card-h small{margin-left:auto;font-size:10.5px;font-family:var(--mono);color:var(--txt-3);letter-spacing:0;}
   .card>.grid2,.card>.stgrid,.card>.gtbl,.card>.rkgrid,.card>.ovcard,.card>.ovadd,.card>.rlhead,.card>.rlrow,
   .card>.pv-lbl,.card>.pv,.card>.dcwrow,.card>.dcsec,.card>.dcst,.card>.dcev,.card>.tagrow,.card>.fmtex,.card>.gtadd,.card>.gtempty,.card>.dcseg,
-  .card>.sdesc{margin-left:14px;margin-right:14px;}
+  /* Clears the header's border-bottom. The inline -8px these carried pulled them UP over that rule,
+     which drew a line straight through the first line of the text. */
+  .card>.sdesc{margin:12px 14px 14px;}
   .card>.grid2,.card>.stgrid,.card>.gtbl,.card>.rkgrid{margin-top:14px;margin-bottom:14px;}
 
   .grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:16px 26px;}
@@ -1177,7 +1179,7 @@
   function overridesCard(){
     var rows=TBL.STATUS_OVERRIDES||[];
     var h='<div class="card" style="--a:var(--purple)"><div class="card-h"><span class="cico">'+ICONS.advanced+'</span><b>Per-rank ladders</b><small>[STATUS_OVERRIDES]</small></div>'
-      +'<div class="sdesc" style="margin-top:-8px;margin-bottom:14px;max-width:74ch">Give a rank its own activity ladder — each step reads “status at ≥ hours”; exactly one step must be 0.</div>';
+      +'<div class="sdesc" style="max-width:74ch">Give a rank its own activity ladder — each step reads “status at ≥ hours”; exactly one step must be 0.</div>';
     rows.forEach(function(r,i){
       var isSection=String(r[0]).toUpperCase()==='SECTION';
       var steps=parseLadderStr(r[2]);
@@ -1210,7 +1212,7 @@
     var gcs='grid-template-columns:repeat('+cols.length+',minmax(0,1fr)) 34px';
     var h='<div class="card" style="--a:'+(accent||'var(--accent)')+'"><div class="card-h"><span class="cico">'+ICONS.table+'</span><b>'+esc(TBLTITLE[name]||prettyBlock(name))+'</b><small>['+esc(name)+']</small></div>';
     var thelp=TBLHELP[name]; if(typeof thelp==='function') thelp=thelp(); thelp=thelp||meta.help;
-    if(thelp) h+='<div class="sdesc" style="margin-top:-8px;margin-bottom:14px;max-width:74ch;-webkit-line-clamp:3" title="'+esc(meta.help)+'">'+esc(thelp)+'</div>';
+    if(thelp) h+='<div class="sdesc" style="max-width:74ch;-webkit-line-clamp:3" title="'+esc(meta.help)+'">'+esc(thelp)+'</div>';
     h+='<div class="gtbl">';
     if(rows.length){
       h+='<div class="gthead" style="'+gcs+'">'; cols.forEach(function(c){ h+='<span>'+esc(c)+'</span>'; }); h+='</div>';
