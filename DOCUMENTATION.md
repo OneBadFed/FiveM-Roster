@@ -374,7 +374,7 @@ immediately, with the deferred queue as backstop.
 design system, deep-linkable (`openControlPanel('signups')` lands on a tab directly).
 
 **Security architecture (D5):** the client calls exactly one server function — `dispatch(name, args)` — which
-validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **42 endpoints**; the shim's
+validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **43 endpoints**; the shim's
 `RE_ENDPOINTS` list mirrors it one-for-one (adding an endpoint = one line in each — and a DevQA regression test
 now round-trips the whitelist, so a forgotten registration fails the suite instead of erroring in production). Writes are **identity-keyed**: the
 client sends each row's Unique ID so a shifted row can't hit the wrong member (`cpResolveMemberRow_` for

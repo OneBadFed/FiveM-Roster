@@ -43,7 +43,7 @@ const RE_ENDPOINTS = Object.freeze([
   'cpRankIcons', 'cpSetRankIcon', 'cpDeleteRankIcon', 'cpSetRankColor',
   'cpSetDividerStyle', 'cpDeleteDividerStyle',
   'cpAdminSetup', 'cpAdminInfo', 'cpAddDiscipline', 'cpSignupList', 'cpSignupApprove', 'cpSignupFlag',
-  'cpSignupPostSeat', 'cpPromoList', 'cpPromoRemove',
+  'cpSignupPostSeat', 'cpPromoList', 'cpPromoRemove', 'cpPromoRestore',
 ]);
 
 /** The Control Panel's single server entry point (google.script.run.dispatch). */

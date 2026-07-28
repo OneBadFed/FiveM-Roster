@@ -575,7 +575,62 @@
   .lmore{display:block;width:100%;background:none;border:none;text-align:left;padding:9px 12px;cursor:pointer;
          font-family:inherit;font-size:11.5px;color:#4aa8ff;}
   /* ── Promotions: roster data with its own lifecycle, so a table rather than a stack of cards ── */
-  .ptable{max-width:640px;}
+  .ptable{max-width:660px;display:flex;flex-direction:column;max-height:calc(100vh - 190px);}
+  .prow{display:grid;grid-template-columns:78px minmax(0,1fr) 122px;align-items:center;gap:10px;
+        padding:0 11px;height:26px;font-size:12px;}
+  /* Header sticks, footer is pinned, the ROWS scroll between them — the box never grows past the window. */
+  .phead{height:22px;flex:0 0 auto;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.09);
+         font-size:10px;font-weight:600;letter-spacing:0;text-transform:none;color:rgba(255,255,255,.42);}
+  .sortp{cursor:pointer;user-select:none;display:inline-flex;align-items:center;gap:4px;}
+  .sortp.pto{justify-content:flex-end;}
+  .sortp:hover{color:rgba(255,255,255,.7);}
+  .sortp.on::after{content:"";width:0;height:0;border-left:4px solid transparent;border-right:4px solid transparent;
+                   border-top:4px solid currentColor;}
+  .sortp.on.asc::after{border-top:none;border-bottom:4px solid currentColor;}
+  .pscroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
+  .prow .pdate{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.42);}
+  .prow .pname{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .prow .pto{font-size:12px;color:rgba(255,255,255,.55);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #promoFeed .prow{cursor:default;}
+  #promoFeed .prow:nth-child(odd){background:rgba(255,255,255,.018);}
+  /* NO radius on a selected row: a contiguous run has to read as one unbroken block, which is how a range
+     announces itself. Rounding each row breaks the run into separate pills. */
+  #promoFeed .prow.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);border-radius:0;}
+  #promoFeed .prow.sel .pdate{color:rgba(255,255,255,.75);}
+  #promoFeed .prow.sel .pname{color:#fff;}
+  #promoFeed .prow.sel .pto{color:rgba(255,255,255,.85);}
+  .pbar{flex:0 0 auto;height:32px;border-top:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.022);}
+  .pbar.on{background:rgba(10,132,255,.11);}
+  .pbar-idle,.pbar-act{display:flex;align-items:center;gap:9px;height:100%;padding:0 9px;}
+  .pbar-r{margin-left:auto;font-size:11px;color:rgba(255,255,255,.38);}
+  .psel{display:flex;align-items:baseline;gap:5px;}
+  .psel b{font-size:11.5px;font-weight:500;color:rgba(255,255,255,.88);}
+  .psel span{font-size:11.5px;color:rgba(255,255,255,.35);}
+  /* A joined pair, split by a dark hairline — one control, two halves. */
+  .pmpair{display:inline-flex;height:20px;border-radius:5px;overflow:hidden;background:rgba(255,255,255,.07);
+          box-shadow:0 0 0 .5px rgba(255,255,255,.11) inset;}
+  .pmbtn{width:27px;border:none;background:none;color:rgba(255,255,255,.8);font-family:inherit;font-size:13px;
+         line-height:1;cursor:pointer;padding:0;transition:background var(--t) var(--ease);}
+  .pmbtn+.pmbtn{box-shadow:-1px 0 0 rgba(0,0,0,.32);}
+  .pmbtn:hover{background:rgba(255,255,255,.09);}
+  /* The minus states its own precondition: dimmed until something is selected. */
+  .pmbtn:disabled{opacity:.3;cursor:default;}
+  .pmbtn:disabled:hover{background:none;}
+  /* Tinted, not filled. A solid red button is the default action in a confirm sheet; a bar action must not
+     outrank the content it sits under. */
+  .pdanger{height:22px;padding:0 9px;border:none;border-radius:6px;cursor:pointer;font-family:inherit;
+           font-size:11.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;
+           background:rgba(255,69,58,.15);box-shadow:0 0 0 .5px rgba(255,69,58,.32) inset;color:#ff6961;}
+  .pdanger:hover{background:rgba(255,69,58,.22);}
+  .pdanger .pkbd{color:#ff6961;opacity:.55;}
+  .pundo{display:flex;align-items:center;gap:9px;margin-top:10px;max-width:660px;padding:9px 11px;border-radius:8px;
+         background:rgba(255,255,255,.05);box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;font-size:12.5px;
+         color:rgba(255,255,255,.85);}
+  .pundo svg{width:14px;height:14px;color:rgba(255,255,255,.5);flex:0 0 auto;}
+  .plink{background:none;border:none;padding:0;font-family:inherit;font-size:12.5px;color:#4aa8ff;cursor:pointer;}
+  .pkbd{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.3);}
+  .pskel{height:26px;margin:0 11px;border-radius:4px;background:rgba(255,255,255,.05);}
+  .pskel+.pskel{margin-top:4px;}
   .prow{display:grid;grid-template-columns:64px minmax(0,1fr) minmax(0,auto);align-items:center;gap:12px;
         padding:0 12px;height:26px;font-size:12px;}
   .phead{height:24px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);}
@@ -1120,6 +1175,10 @@
         <button class="search-clear" id="searchClear" aria-label="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <button class="btn-primary" id="tbAdd">+ Add</button>
+      <div class="search-wrap promoq" id="promoQWrap" hidden>
+        <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
+        <input class="field search" id="promoQ" placeholder="Search entries" autocomplete="off" aria-label="Search promotions">
+      </div>
       <button class="pushbtn" id="runAll" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>Run all</button>
       <button class="icon-btn" id="openSettingsBtn" title="Engine settings" aria-label="Engine settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></button>
       <span class="tb-nav" id="suNav" hidden><button class="icon-btn" id="suPrev" title="Previous applicant" aria-label="Previous applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="icon-btn" id="suNext" title="Next applicant" aria-label="Next applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></span>
@@ -1252,10 +1311,32 @@
 
   <div class="pane" id="pane-promos">
     <div class="gbox ptable">
-      <div class="prow phead"><span>Date</span><span>Member</span><span class="pto">Promoted to</span></div>
-      <div id="promoFeed"><div class="gempty">Loading…</div></div>
+      <div class="prow phead" id="promoHead">
+        <span class="sortp" data-psort="date">Date</span>
+        <span class="sortp" data-psort="name">Member</span>
+        <span class="sortp pto" data-psort="rank">Promoted to</span>
+      </div>
+      <div class="pscroll" id="promoFeed"></div>
+      <!-- Always present, never appearing or disappearing: this is the one place list editing happens. -->
+      <div class="pbar" id="promoBar">
+        <div class="pbar-idle" id="pbarIdle">
+          <span class="pmpair"><button type="button" class="pmbtn" id="promoAdd" title="Add an entry">+</button><button type="button" class="pmbtn" id="promoDel" title="Remove the selected entries">&minus;</button></span>
+          <span class="pbar-r" id="promoCount"></span>
+        </div>
+        <div class="pbar-act" id="pbarAct" hidden>
+          <span class="psel"><b id="promoSelN"></b><span id="promoSelOf"></span></span>
+          <span class="fbar-gap"></span>
+          <button type="button" class="linkbtn" id="promoDeselect">Deselect</button>
+          <button type="button" class="pdanger" id="promoRemove"></button>
+        </div>
+      </div>
     </div>
-    <p class="tfoot" id="promoFoot"></p>
+    <div class="pundo" id="promoUndo" hidden>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/><path d="M6 7l1 12a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2l1-12"/></svg>
+      <span id="promoUndoTxt"></span><span class="fbar-gap"></span>
+      <button type="button" class="plink" id="promoUndoBtn">Undo</button><span class="pkbd">&#8984;Z</span>
+    </div>
+    <p class="tfoot">Removing an entry deletes the log record only. The member&rsquo;s current rank is unchanged.</p>
   </div>
 
   <div class="pane" id="pane-conns">
@@ -1574,6 +1655,11 @@
     if(at && at.dataset.tab==='tools'){
       var last=(RUNS.list&&RUNS.list[0]);
       el.textContent='Engine actions'+(last?(' · last run '+runClock(last.t)):' — each one reports what it changed');
+      return;
+    }
+    if(at && at.dataset.tab==='promos'){
+      var n=(PROMOS.list||[]).length;
+      el.textContent=n?(n+' entr'+(n===1?'y':'ies')+' · newest '+esc(PROMOS.list[0].when)):'No entries yet';
       return;
     }
     if(at && at.dataset.sub){ el.textContent=at.dataset.sub; return; }
@@ -2365,7 +2451,152 @@
   /* ── Promotions feed manager (Tools tab): list the RE_PROMOS entries, remove one → every table repaints ── */
   /* A table, and the row is the target — 18 red crosses sitting at rest are 18 chances to destroy data.
      Select a row and press Delete; the keyboard is the verb. */
-  var PROMOS={list:[],sel:null};
+  /* ── Promotions feed ──────────────────────────────────────────────────────────────────────────────
+     A table of records with a lifecycle, not a list of buttons. Selection follows the platform: click replaces,
+     shift extends FROM THE ANCHOR (not from the last row touched — shift-clicking twice must re-range from the
+     same origin), cmd/ctrl toggles one. Removal never opens a dialog: undo lets you look at the result and
+     change your mind, which a confirm sheet cannot. */
+  var PROMOS={list:[],view:[],sel:{},anchor:null,sort:'date',asc:false,q:'',loaded:false,undo:null,undoT:null};
+  function promoKey(x){ return String(x.t)+'|'+String(x.name||''); }
+  function promoSelCount(){ var n=0; for(var k in PROMOS.sel) if(PROMOS.sel[k]) n++; return n; }
+  function promoSelected(){ return PROMOS.view.filter(function(x){ return PROMOS.sel[promoKey(x)]; }); }
+  function loadPromos(){
+    var el=$('promoFeed'); if(!el) return;
+    el.innerHTML=new Array(7).join('<div class="pskel"></div>');   // skeletons, no spinner
+    api(function(list){
+      PROMOS.list=list||[]; PROMOS.loaded=true; PROMOS.sel={}; PROMOS.anchor=null;
+      var badge=$('navPromoCount'); if(badge) badge.textContent=PROMOS.list.length||'';
+      renderPromos(); tbSub();
+    }, function(e){ el.innerHTML='<div class="gempty">Couldn\'t load the feed: '+esc((e&&e.message)||'')+'</div>'; }, 'cpPromoList');
+  }
+  function promoView(){
+    var q=PROMOS.q.trim().toLowerCase();
+    var v=PROMOS.list.filter(function(x){ return !q || (x.name+' '+x.rank+' '+x.when).toLowerCase().indexOf(q)>=0; });
+    var dir=PROMOS.asc?1:-1;
+    v.sort(function(a,b){
+      if(PROMOS.sort==='name') return dir*String(a.name).localeCompare(String(b.name));
+      if(PROMOS.sort==='rank') return dir*String(a.rank).localeCompare(String(b.rank));
+      return dir*(Number(a.t)-Number(b.t));
+    });
+    return v;
+  }
+  function renderPromos(){
+    var el=$('promoFeed'); if(!el) return;
+    PROMOS.view=promoView();
+    document.querySelectorAll('#promoHead .sortp').forEach(function(h){
+      h.classList.toggle('on', h.dataset.psort===PROMOS.sort);
+      h.classList.toggle('asc', h.dataset.psort===PROMOS.sort && PROMOS.asc);
+    });
+    if(!PROMOS.list.length){
+      el.innerHTML='<div class="gempty">No promotions recorded.</div>';
+    } else if(!PROMOS.view.length){
+      // A filter that matches nothing is NOT the same as having nothing — never reuse the empty copy.
+      el.innerHTML='<div class="gempty">No promotions match your search.<br><button type="button" class="plink" id="promoClearQ" style="margin-top:6px">Clear</button></div>';
+    } else {
+      el.innerHTML=PROMOS.view.map(function(x){
+        return '<div class="prow'+(PROMOS.sel[promoKey(x)]?' sel':'')+'" data-pk="'+esc(promoKey(x))+'">'
+          +'<span class="pdate">'+esc(x.when)+'</span><span class="pname">'+esc(x.name)+'</span>'
+          +'<span class="pto">'+esc(x.rank)+'</span></div>';
+      }).join('');
+    }
+    promoBar();
+  }
+  function promoBar(){
+    var n=promoSelCount(), bar=$('promoBar');
+    if(bar) bar.classList.toggle('on', n>0);
+    $('pbarIdle').hidden=n>0; $('pbarAct').hidden=n===0;
+    $('promoDel').disabled=n===0;
+    $('promoCount').textContent=PROMOS.list.length+' entr'+(PROMOS.list.length===1?'y':'ies');
+    $('promoSelN').textContent=n+' selected';
+    $('promoSelOf').textContent='of '+PROMOS.list.length;
+    $('promoRemove').innerHTML='Remove '+n+'<span class="pkbd">&#9003;</span>';
+  }
+  /* click / shift-click / cmd-click, with a STABLE anchor. */
+  function promoClick(x, e){
+    var k=promoKey(x);
+    if(e.shiftKey && PROMOS.anchor){
+      var a=PROMOS.view.findIndex(function(y){ return promoKey(y)===PROMOS.anchor; });
+      var b=PROMOS.view.indexOf(x);
+      if(a>=0 && b>=0){
+        PROMOS.sel={};
+        for(var i=Math.min(a,b);i<=Math.max(a,b);i++) PROMOS.sel[promoKey(PROMOS.view[i])]=true;
+      }
+    } else if(e.metaKey||e.ctrlKey){
+      PROMOS.sel[k]=!PROMOS.sel[k]; PROMOS.anchor=k;         // toggling moves the anchor; extending does not
+    } else {
+      PROMOS.sel={}; PROMOS.sel[k]=true; PROMOS.anchor=k;
+    }
+    renderPromos();
+  }
+  function promoMove(delta, extend){
+    if(!PROMOS.view.length) return;
+    var cur=PROMOS.anchor?PROMOS.view.findIndex(function(y){ return promoKey(y)===PROMOS.anchor; }):-1;
+    var next=Math.max(0, Math.min(PROMOS.view.length-1, (cur<0?0:cur+delta)));
+    var x=PROMOS.view[next];
+    if(extend && PROMOS.anchor){ promoClick(x,{shiftKey:true}); }
+    else { PROMOS.sel={}; PROMOS.sel[promoKey(x)]=true; PROMOS.anchor=promoKey(x); renderPromos(); }
+    var row=document.querySelector('#promoFeed .prow[data-pk="'+CSS.escape(promoKey(x))+'"]');
+    if(row && row.scrollIntoView) row.scrollIntoView({block:'nearest'});
+  }
+  function promoDeselect(){ PROMOS.sel={}; renderPromos(); }
+  /* Remove: rows go at once, the bar reverts, and an undo strip appears. The WRITE happens immediately and undo
+     restores — a Sheets dialog can close at any moment, and a deferred write would go with it. */
+  function promoRemoveSelected(){
+    var picked=promoSelected(); if(!picked.length) return;
+    var payload=picked.map(function(x){ return {t:x.t, name:x.name, rank:x.rank}; });
+    var keys={}; picked.forEach(function(x){ keys[promoKey(x)]=true; });
+    PROMOS.list=PROMOS.list.filter(function(x){ return !keys[promoKey(x)]; });
+    PROMOS.sel={}; PROMOS.anchor=null; renderPromos(); tbSub();
+    var badge=$('navPromoCount'); if(badge) badge.textContent=PROMOS.list.length||'';
+    promoShowUndo(payload);
+    api(function(){}, function(e){ onError(e); loadPromos(); }, 'cpPromoRemove', {entries:payload});
+  }
+  function promoShowUndo(entries){
+    PROMOS.undo=entries;
+    var strip=$('promoUndo');
+    $('promoUndoTxt').textContent=entries.length+' entr'+(entries.length===1?'y':'ies')+' removed';
+    strip.hidden=false;
+    clearTimeout(PROMOS.undoT);
+    PROMOS.undoT=setTimeout(promoHideUndo, 10000);
+  }
+  function promoHideUndo(){ clearTimeout(PROMOS.undoT); PROMOS.undo=null; var s=$('promoUndo'); if(s) s.hidden=true; }
+  function promoUndo(){
+    var entries=PROMOS.undo; if(!entries||!entries.length) return;
+    promoHideUndo();
+    api(function(){ loadPromos(); toast('Restored '+entries.length+' entr'+(entries.length===1?'y':'ies')+'.','ok'); },
+        function(e){ onError(e); loadPromos(); }, 'cpPromoRestore', {entries:entries});
+  }
+  var promoQT;
+  $('promoQ').addEventListener('input',function(){ var v=this.value; clearTimeout(promoQT); promoQT=setTimeout(function(){ PROMOS.q=v; PROMOS.sel={}; renderPromos(); },160); });
+  $('promoHead').addEventListener('click',function(e){
+    var h=e.target.closest('.sortp'); if(!h) return;
+    if(PROMOS.sort===h.dataset.psort) PROMOS.asc=!PROMOS.asc; else { PROMOS.sort=h.dataset.psort; PROMOS.asc=(h.dataset.psort!=='date'); }
+    renderPromos();
+  });
+  $('promoFeed').addEventListener('click',function(e){
+    if(e.target && e.target.id==='promoClearQ'){ PROMOS.q=''; var f=$('promoQ'); if(f) f.value=''; renderPromos(); return; }
+    var row=e.target.closest('.prow');
+    if(!row){ promoDeselect(); return; }                 // the empty area below the rows clears the selection
+    var x=null; for(var i=0;i<PROMOS.view.length;i++){ if(promoKey(PROMOS.view[i])===row.dataset.pk){ x=PROMOS.view[i]; break; } }
+    if(x) promoClick(x,e);
+  });
+  $('promoDeselect').addEventListener('click',promoDeselect);
+  $('promoRemove').addEventListener('click',promoRemoveSelected);
+  $('promoDel').addEventListener('click',promoRemoveSelected);
+  $('promoUndoBtn').addEventListener('click',promoUndo);
+  $('promoAdd').addEventListener('click',function(){ toast('Adding an entry by hand is not built yet.','err'); });
+  document.addEventListener('keydown',function(e){
+    var pane=$('pane-promos'); if(!pane || !pane.classList.contains('active')) return;
+    if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName||'')) return;
+    var meta=e.metaKey||e.ctrlKey;
+    if(meta && (e.key==='z'||e.key==='Z')){ e.preventDefault(); promoUndo(); return; }
+    if(meta && (e.key==='a'||e.key==='A')){ e.preventDefault(); PROMOS.view.forEach(function(x){ PROMOS.sel[promoKey(x)]=true; }); renderPromos(); return; }
+    if(e.key==='Escape'){ promoDeselect(); return; }
+    if(e.key==='ArrowDown'){ e.preventDefault(); promoMove(1,e.shiftKey); return; }
+    if(e.key==='ArrowUp'){ e.preventDefault(); promoMove(-1,e.shiftKey); return; }
+    if((e.key==='Backspace'||e.key==='Delete') && promoSelCount()){ e.preventDefault(); promoRemoveSelected(); }
+  });
+
   /* The run log. "Each reports what it changed" had nowhere to report; this is that place. */
   var RUNS={list:[],loaded:false};
   function runAgo(t){
@@ -2437,48 +2668,6 @@
       cell.innerHTML='<span class="d"></span>'+esc(runStatusText(last));
     });
   }
-  function loadPromos(){
-    var el=$('promoFeed'); if(!el) return;
-    el.innerHTML='<div class="gempty">Loading…</div>';
-    api(function(list){
-      PROMOS.list=list||[];
-      var badge=$('navPromoCount'); if(badge) badge.textContent=PROMOS.list.length||'';
-      renderPromos();
-    }, function(e){ el.innerHTML='<div class="gempty">Couldn\'t load the feed: '+esc((e&&e.message)||'')+'</div>'; }, 'cpPromoList');
-  }
-  function renderPromos(){
-    var el=$('promoFeed'), foot=$('promoFoot'); if(!el) return;
-    var list=PROMOS.list;
-    if(!list.length){
-      el.innerHTML='<div class="gempty">No promotions recorded yet — a member moving UP the roster to a new rank lands here.</div>';
-      if(foot) foot.textContent=''; return;
-    }
-    if(PROMOS.sel!=null && !list.some(function(x){ return String(x.t)===String(PROMOS.sel); })) PROMOS.sel=null;
-    el.innerHTML=list.map(function(x){
-      return '<div class="prow'+(String(x.t)===String(PROMOS.sel)?' sel':'')+'" data-promot="'+esc(String(x.t))+'" data-promoi="'+x.i+'" data-promon="'+esc(x.name)+'" tabindex="0">'
-        +'<span class="pdate">'+esc(x.when)+'</span><span class="pname">'+esc(x.name)+'</span><span class="pto">'+esc(x.rank)+'</span></div>';
-    }).join('');
-    if(foot) foot.innerHTML=list.length+' entr'+(list.length===1?'y':'ies')
-      +(PROMOS.sel!=null?' &middot; 1 selected &middot; press <b>Delete</b> to remove it from the feed':' &middot; select a row to remove it');
-  }
-  function promoRemoveSelected(){
-    if(PROMOS.sel==null) return;
-    var row=null; for(var i=0;i<PROMOS.list.length;i++){ if(String(PROMOS.list[i].t)===String(PROMOS.sel)){ row=PROMOS.list[i]; break; } }
-    if(!row) return;
-    if(!confirm('Remove '+row.name+' from the RECENT PROMOTIONS feed?\n\nEvery promotions table repaints without them. This does not undo the transfer itself.')) return;
-    api(function(r){ toast('Removed '+((r&&r.removed)||'entry')+' from the promotions feed.','ok'); PROMOS.sel=null; loadPromos(); },
-      function(err){ onError(err); loadPromos(); }, 'cpPromoRemove', {index:Number(row.i), t:String(row.t), name:row.name});
-  }
-  document.addEventListener('click',function(e){
-    var r=e.target.closest('#promoFeed .prow'); if(!r) return;
-    PROMOS.sel=(String(PROMOS.sel)===r.dataset.promot)?null:r.dataset.promot; renderPromos();
-  });
-  document.addEventListener('keydown',function(e){
-    if(e.key!=='Delete' && e.key!=='Backspace') return;
-    var pane=$('pane-promos'); if(!pane || !pane.classList.contains('active') || PROMOS.sel==null) return;
-    if(/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName||''))) return; // never hijack a field
-    e.preventDefault(); promoRemoveSelected();
-  });
   function suSetSlot(row){
     SU.slot=(row==null?null:Number(row));
     var det=$('suBody'); if(det){ /* the slot CARD is part of the detail, so re-render it, keeping typed edits */ var nm=$('suName'), oc=$('suOoc'); var keepN=nm?nm.value:null, keepO=oc?oc.value:null; det.innerHTML=suDetail(); if(keepN!=null&&$('suName')) $('suName').value=keepN; if(keepO!=null&&$('suOoc')) $('suOoc').value=keepO; }
@@ -2686,7 +2875,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('runAll').hidden=(t.dataset.tab!=='tools'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); setTimeout(fitWindow,0); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !RUNS.loaded) loadRunLog(); if(t.dataset.tab==='promos' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('runAll').hidden=(t.dataset.tab!=='tools'); $('promoQWrap').hidden=(t.dataset.tab!=='promos'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); setTimeout(fitWindow,0); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !RUNS.loaded) loadRunLog(); if(t.dataset.tab==='promos' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('colBody').addEventListener('click',function(e){ var seg=e.target.closest('.cseg'); if(!seg||seg.classList.contains('on')) return; var tog=seg.closest('.coltog'); var header=tog.getAttribute('data-header'); var k=seg.getAttribute('data-k'); tog.querySelectorAll('.cseg').forEach(function(s){ s.classList.remove('on'); }); seg.classList.add('on'); api(function(d){ renderColumns(d); toast('“'+header+'” → '+(k==='MEMBER'?'Member':'Slot'),'ok'); }, function(ev){ onError(ev); loadColumns(); }, "cpSetColumnClass", header, k); });
   $('sideToggle').addEventListener('click',function(){ document.querySelector('.app').classList.toggle('side-off'); });

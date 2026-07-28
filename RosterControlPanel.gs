@@ -93,6 +93,7 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpSignupPostSeat: (p) => cpSignupPostSeat(p),
   cpPromoList: () => cpPromoList(),
   cpPromoRemove: (p) => cpPromoRemove(p),
+  cpPromoRestore: (p) => cpPromoRestore(p),
 });
 
 /** The panel's single server entry point. @param {string} name @param {Array} args */
@@ -2938,6 +2939,34 @@ function cpSignupPostSeat(payload) {
   return { ok: true };
 }
 
+/**
+ * Panel: put removed entries BACK. Newest-first order is restored by timestamp, so an undone removal lands
+ * where it was rather than at the top.
+ */
+function cpPromoRestore(payload) {
+  const entries = (payload && Array.isArray(payload.entries)) ? payload.entries : [];
+  if (!entries.length) return { ok: true, restored: 0 };
+  const P = PropertiesService.getDocumentProperties();
+  let list; try { list = JSON.parse(P.getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
+  if (!Array.isArray(list)) list = [];
+  const have = {};
+  list.forEach((x) => { have[String(x.t) + '|' + String(x.n || '')] = true; });
+  let added = 0;
+  entries.forEach((e) => {
+    const key = String(e.t) + '|' + String(e.name || '');
+    if (have[key]) return;                                   // already back — undo pressed twice
+    list.push({ t: Number(e.t) || 0, n: String(e.name || ''), r: String(e.rank || '') });
+    have[key] = true; added++;
+  });
+  list.sort((a, b) => Number(b.t) - Number(a.t));
+  if (list.length > PROMO_MAX_) list.length = PROMO_MAX_;
+  P.setProperty(PROMO_STORE_PROP_, JSON.stringify(list));
+  try { renderPromotions_(true); } catch (e) { log_('cpPromoRestore.render', e); }
+  try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
+  try { cpAudit_('action', '', 'Restored ' + added + ' promotions-feed entr' + (added === 1 ? 'y' : 'ies'), '', ''); } catch (e) { /* best-effort */ }
+  return { ok: true, restored: added, left: list.length };
+}
+
 /** Panel: the RECENT PROMOTIONS feed entries (the RE_PROMOS document-property store, newest first). */
 function cpPromoList() {
   let list; try { list = JSON.parse(PropertiesService.getDocumentProperties().getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
@@ -2948,10 +2977,26 @@ function cpPromoList() {
 /** Panel: remove ONE promotions-feed entry — matched by index + timestamp + name so a promotion recorded while the
  *  panel sat open can't shift the wrong row out — then repaint every RECENT PROMOTIONS table (the removed row blanks). */
 function cpPromoRemove(payload) {
-  const idx = Number(payload && payload.index);
   const P = PropertiesService.getDocumentProperties();
   let list; try { list = JSON.parse(P.getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
   if (!Array.isArray(list)) list = [];
+
+  // Batch form: {entries:[{t,name}, …]} — matched on identity, because indices shift as soon as one is spliced.
+  const batch = (payload && Array.isArray(payload.entries)) ? payload.entries : null;
+  if (batch) {
+    const want = {};
+    batch.forEach((e) => { want[String(e.t) + '|' + String(e.name || '')] = true; });
+    const kept = list.filter((x) => !want[String(x.t) + '|' + String(x.n || '')]);
+    const gone = list.length - kept.length;
+    if (!gone) throw new Error('Those entries are no longer in the feed — it will reload.');
+    P.setProperty(PROMO_STORE_PROP_, JSON.stringify(kept));
+    try { renderPromotions_(true); } catch (e) { log_('cpPromoRemove.render', e); }
+    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
+    try { cpAudit_('action', '', 'Removed ' + gone + ' promotions-feed entr' + (gone === 1 ? 'y' : 'ies'), '', ''); } catch (e) { /* best-effort */ }
+    return { ok: true, removed: gone, left: kept.length };
+  }
+
+  const idx = Number(payload && payload.index);
   const p = list[idx];
   if (!p || String(p.t) !== String(payload && payload.t) || String(p.n || '') !== String((payload && payload.name) || '')) {
     throw new Error('The promotions feed changed since the panel loaded — it will reload; try again.');
