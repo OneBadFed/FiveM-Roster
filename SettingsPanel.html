@@ -172,6 +172,32 @@
   .in:focus{background:var(--field-f);box-shadow:var(--focus);}
   textarea.in,.dcta,.dcta-sm{height:auto;padding:7px 8px;line-height:1.5;}
   input.in[type=number]{font-family:var(--mono);font-size:12.5px;font-variant-numeric:tabular-nums;}
+  /* Chromium's number stepper is an OS widget: -webkit-appearance can REMOVE it but nothing can recolour it,
+     so it stays the one light-mode control in a dark panel. Removed, and replaced with our own below. */
+  input[type=number]{-moz-appearance:textfield;}
+  input[type=number]::-webkit-outer-spin-button,
+  input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0;}
+  .numwrap{position:relative;display:block;width:100%;}
+  .numwrap>input{width:100%;padding-right:23px;}
+  /* Raised, like the pop-up buttons — a stepper is something you press, not a well you type into. */
+  .stepper{position:absolute;right:3px;top:50%;transform:translateY(-50%);display:flex;flex-direction:column;
+           width:15px;height:18px;border-radius:4px;overflow:hidden;background:var(--ctl);box-shadow:var(--ctlring);}
+  .stepper button{flex:1 1 0;min-height:0;display:flex;align-items:center;justify-content:center;padding:0;
+                  border:none;background:none;color:var(--txt-2);cursor:pointer;
+                  transition:background var(--t),color var(--t);}
+  .stepper button:hover{background:var(--ctl-h);color:var(--txt);}
+  .stepper button:active{background:var(--accent);color:#fff;}
+  /* Positive inset offset = hairline at the TOP of the lower half. A negative one would draw it at the
+     BOTTOM of the upper half, which is a different pixel and the wrong edge. */
+  .stepper button+button{box-shadow:0 .5px 0 rgba(255,255,255,.13) inset;}
+  .stepper svg{width:7px;height:7px;pointer-events:none;}
+  /* The two narrow contexts: the wrapper takes the width the bare input used to have. */
+  .strow .numwrap{width:70px;flex:0 0 auto;}
+  .strow .numwrap .in{width:100%;}
+  .lstep .numwrap{width:56px;}
+  .lstep .numwrap input{width:100%;padding-right:17px;}
+  .lstep .stepper{width:13px;height:15px;right:2px;border-radius:3px;}
+  .lstep .stepper svg{width:6px;height:6px;}
 
   /* ─── pop-up button + menu ─── */
   .ddbtn{display:flex;align-items:center;gap:8px;width:100%;height:24px;text-align:left;background:var(--btn);border:none;color:var(--txt);
@@ -844,6 +870,19 @@
     $('nav').innerHTML=h;
   }
 
+  /* A number field plus our own stepper. tabindex="-1" and aria-hidden because the INPUT is already the
+     control: it takes arrow keys natively, and a screen reader gaining two extra buttons per field would be
+     a downgrade. The stepper is a pointer affordance, nothing more. */
+  var CHEV_U='<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7.5L6 4.5l3 3"/></svg>';
+  var CHEV_D='<svg viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4.5L6 7.5l3-3"/></svg>';
+  function numIn(attrs, value, min, max){
+    return '<span class="numwrap"><input type="number" '+attrs+' value="'+esc(value)+'"'
+      + (min!=null&&min!==''?' min="'+min+'"':'') + (max!=null&&max!==''?' max="'+max+'"':'') + '>'
+      + '<span class="stepper" aria-hidden="true">'
+      + '<button type="button" class="stup" tabindex="-1">'+CHEV_U+'</button>'
+      + '<button type="button" class="stdn" tabindex="-1">'+CHEV_D+'</button></span></span>';
+  }
+
   /* ── custom dropdown ── */
   function dd(attrs, options, value, allowEmpty, emptyLabel){
     var id='dd'+(++DDSEQ);
@@ -937,7 +976,7 @@
       items.forEach(function(x,i){ h2+='<span class="chip">'+(i>0?'<button type="button" class="mv" data-mvl="'+i+'" title="Move left">◀</button>':'')+esc(x)+'<button type="button" data-rmc="'+i+'" title="Remove">✕</button></span>'; });
       h2+='</div><div class="chipadd"><input class="in" data-addfor="'+esc(bk)+'" placeholder="Add…" autocomplete="off"><button type="button" data-addbtn="'+esc(bk)+'">Add</button></div>';
       return h2; }
-    if(m.t==='int') return '<input type="number" class="in" data-bk="'+esc(bk)+'" value="'+esc(v)+'"'+(m.min!=null?' min="'+m.min+'"':'')+(m.max!=null?' max="'+m.max+'"':'')+'>';
+    if(m.t==='int') return numIn('class="in" data-bk="'+esc(bk)+'"', v, m.min, m.max);
     return '<input class="in" data-bk="'+esc(bk)+'" value="'+esc(v)+'">';
   }
   function setting(bk){
@@ -1063,7 +1102,7 @@
         +'<div class="sthead"><span class="stdot"></span><input class="stname" data-sn="1" value="'+esc(r[0])+'" placeholder="Status name" spellcheck="false">'
         +'<button type="button" class="stdel" data-stdel="'+i+'" title="Remove status">'+ICONS.x+'</button></div>'
         +'<div class="stkind">'+kb('TIER','TIER')+kb('LEAVE','LEAVE')+kb('PROTECTED','PROT.')+'</div>'
-        +(isTier?'<div class="strow">Min hours<input type="number" class="in" data-smin="1" value="'+esc(r[2])+'" min="0" placeholder="req."></div>':'')
+        +(isTier?'<div class="strow">Min hours'+numIn('class="in" data-smin="1" placeholder="req."', r[2], 0, null)+'</div>':'')
         +'<div class="strow">Color<span class="cswatch" style="background:'+esc(hex||'#39414d')+'"><input type="color" data-scol="1" value="'+esc(hex||'#39414d')+'"></span></div>'
         +'<div class="strow">Announce<label class="tgl"><input type="checkbox" data-sann="1"'+(boolOn(r[4])?' checked':'')+'><span class="tr"></span></label></div>'
         +'</div>';
@@ -1091,7 +1130,7 @@
       } else {
         h+='<div class="ladder">';
         steps.forEach(function(s,si){
-          h+='<span class="lstep">'+dd({ls:String(si)}, tierNames(), s.name, false)+'<span class="ge">≥</span><input type="number" data-lm="'+si+'" value="'+esc(s.min)+'" min="0"><span class="ge">hrs</span><button type="button" class="lx" data-lx="'+si+'" title="Remove step">✕</button></span>';
+          h+='<span class="lstep">'+dd({ls:String(si)}, tierNames(), s.name, false)+'<span class="ge">≥</span>'+numIn('data-lm="'+si+'"', s.min, 0, null)+'<span class="ge">hrs</span><button type="button" class="lx" data-lx="'+si+'" title="Remove step">✕</button></span>';
         });
         h+='<button type="button" class="ladd" data-laddstep="'+i+'">+ step</button></div>';
       }
@@ -1734,6 +1773,22 @@
   $('saveBtn').addEventListener('click',saveAll);
   $('discardBtn').addEventListener('click',function(){ if(DATA) fromData(DATA); });
 
+  /* One step per click, clamped to min/max. Dispatching `input` is the whole point: assigning .value from
+     script fires nothing, and `input` is what onKv and both table editors already listen for — so a press
+     travels exactly the path typing a digit does. */
+  $('content').addEventListener('click',function(e){
+    var b=e.target.closest?e.target.closest('.stepper button'):null; if(!b) return;
+    var wrap=b.closest('.numwrap'); if(!wrap) return;
+    var inp=wrap.querySelector('input'); if(!inp) return;
+    var step=Number(inp.step)||1;
+    var cur=Number(inp.value); if(!isFinite(cur)) cur=0;
+    var next=cur+(b.classList.contains('stup')?step:-step);
+    if(inp.min!=='' && isFinite(Number(inp.min))) next=Math.max(Number(inp.min), next);
+    if(inp.max!=='' && isFinite(Number(inp.max))) next=Math.min(Number(inp.max), next);
+    if(next===cur) return;
+    inp.value=String(next);
+    inp.dispatchEvent(new Event('input',{bubbles:true}));
+  });
   $('content').addEventListener('scroll',closeDD);
   $('content').addEventListener('input',function(e){
     var t=e.target;
