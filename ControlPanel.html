@@ -312,7 +312,10 @@
   .pv-empty{padding:20px 14px;text-align:center;font-size:12px;color:rgba(255,255,255,.35);line-height:1.5;}
   /* The slot picker as a macOS POP-UP button: 24px, with the accent chevron chip that distinguishes a pop-up
      (choose one of N) from a plain push button. */
-  .fctl .sdrop{flex:1 1 auto;min-width:0;max-width:none;}
+  /* Grows to fill, but CAPS like every other field — flex:1 1 auto let it run the full width of the wide
+     Add-member panel, which made one control twice the length of the ones under it. Slightly wider than a text
+     field because it carries "S-72 · Police Officer I", and it still shrinks in the narrow Signups column. */
+  .fctl .sdrop{flex:1 1 240px;min-width:0;max-width:340px;}
   .fctl .sdrop-btn{height:24px;padding:0 3px 0 9px;border-radius:6px;font-size:12.5px;gap:8px;
                    background:var(--ctl);box-shadow:var(--ctl-ring);}
   .fctl .sdrop-btn:hover{background:var(--ctl-hi);}
