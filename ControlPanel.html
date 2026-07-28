@@ -622,6 +622,8 @@
            background:rgba(255,69,58,.15);box-shadow:0 0 0 .5px rgba(255,69,58,.32) inset;color:#ff6961;}
   .pdanger:hover{background:rgba(255,69,58,.22);}
   .pdanger .pkbd{color:#ff6961;opacity:.55;}
+  /* The undo strip has ten seconds to be noticed, so it arrives rather than appears. */
+  .pundo{animation:rise .19s var(--ease) both;}
   .pundo{display:flex;align-items:center;gap:9px;margin-top:10px;padding:9px 11px;border-radius:8px;
          background:rgba(255,255,255,.05);box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;font-size:12.5px;
          color:rgba(255,255,255,.85);}
@@ -693,6 +695,8 @@
   .bulkbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.05);
            border:none;border-radius:9px;padding:6px 10px;margin-top:14px;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;}
   .bulkbar[hidden]{display:none;}
+  /* Rises the moment a checkbox is ticked, from the direction of the list it belongs to. */
+  .bulkbar{animation:rise .19s var(--ease) both;}
   .bulkbar .bsel{font-size:12.5px;font-weight:500;color:var(--txt);white-space:nowrap;}
   .bulkbar .bbtns{display:flex;gap:6px;flex-wrap:wrap;flex:1;}
   /* In the selection bar these are discrete ACTIONS, one per status — not one exclusive choice — so they take the
@@ -916,10 +920,22 @@
      rather than its contents reflowing into a smaller box. */
   .mdetail{display:none;overflow:hidden;}
   .mrow.exp .mdetail{display:block;animation:slide .24s var(--ease);}
+  /* Fades from the accent back to nothing — the row is left exactly as the renderer drew it, so this
+     cannot fight the hover or expanded backgrounds once it finishes. */
+  @keyframes saved{from{background:rgba(10,132,255,.28);}to{background:transparent;}}
+  .mhead.saved{animation:saved .75s var(--ease);}
   @keyframes slide{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:none;}}
   /* The close is driven by the Web Animations API in toggleDetail, not by a class — see the note there. */
   .mrow.closing .mdetail{animation:none;}
-  @media (prefers-reduced-motion:reduce){ .mrow.exp .mdetail{animation:none;} }
+  @media (prefers-reduced-motion:reduce){
+    .mrow.exp .mdetail{animation:none;}
+    /* Keep the fade, drop the travel — and stop the breathing dot outright, which is the one piece of
+       motion here that never ends. */
+    .bulkbar,.pundo{animation-name:fadeonly;}
+    .audit-on::before{animation:none;}
+    .mhead.saved{animation-duration:.4s;}
+  }
+  @keyframes fadeonly{from{opacity:0;}to{opacity:1;}}
   .pc{background:rgba(255,255,255,.05);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;
       padding:18px 20px 20px;margin:2px 0 6px;}
   .pc-head .nm b{font-size:15px;font-weight:700;} .pc-head .nm span{display:block;font-size:11px;opacity:.85;margin-top:1px;}
@@ -936,6 +952,9 @@
   .copybtn.ok:hover{color:var(--green-f);}
   .copybtn.ok svg{animation:cpop .22s var(--ease);}
   @keyframes cpop{from{transform:scale(.5);opacity:0;}to{transform:scale(1);opacity:1;}}
+  /* The dot beside "Audit log: on". Declared since the tab was built but the keyframe was missing,
+     so it never moved. A slow breath, never a blink — this reports a steady state, not an alert. */
+  @keyframes livedot{0%,100%{opacity:1;}50%{opacity:.45;}}
   .pc-sec{background:rgba(255,255,255,.035);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.08) inset;
           padding:13px 14px 14px;}
   .pc-lbl{display:flex;align-items:center;gap:6px;font-size:10px;color:rgba(255,255,255,.4);text-transform:uppercase;letter-spacing:.08em;margin-bottom:11px;font-weight:600;}
@@ -1924,10 +1943,18 @@
         +'</div>'; }).join('');
     return '<div class="chkrow">'+chips+'</div>';
   }
+  /* Point at the row a write just landed on. The list has been rebuilt by the time this runs, so it
+     re-queries; removing the class and reading offsetWidth restarts the animation when the same row
+     is changed twice in a row (an animation does not replay just because the class is re-added). */
+  function flashRow(row){
+    var el=document.querySelector('.mrow[data-row="'+row+'"] .mhead'); if(!el) return;
+    el.classList.remove('saved'); void el.offsetWidth; el.classList.add('saved');
+    setTimeout(function(){ el.classList.remove('saved'); }, 800);
+  }
   function setStatus(row,st){
     api(function(m){
       for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===m.row){ STATE.members[i]=m; break; } }
-      renderMembers(); toast(m.name+' → '+m.status,'ok'); refreshStatsOnly();
+      renderMembers(); flashRow(m.row); toast(m.name+' → '+m.status,'ok'); refreshStatsOnly();
     }, onError, "cpSetStatus", row, st, discordOf(row)); // send the ID so a shifted row can't hit the wrong member (F-002)
   }
   function refreshStatsOnly(){ api(function(s){ renderStats(s.stats||{}); }, function(){}, "cpRefresh"); }
