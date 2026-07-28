@@ -61,6 +61,7 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpAssignMember: (req) => cpAssignMember(req),
   cpMoveMember: (req) => cpMoveMember(req),
   cpRunAction: (act) => cpRunAction(act),
+  cpRunLog: () => cpRunLog(),
   cpJumpTo: (row) => cpJumpTo(row),
   cpSystemInfo: () => cpSystemInfo(),
   cpColumnsInfo: () => cpColumnsInfo(),
@@ -1119,11 +1120,68 @@ function cpJumpTo(row) {
  * ACTIONS — call the existing cores directly, return a status string
  * ------------------------------------------------------------------------- */
 
+/* ── RUN LOG ──────────────────────────────────────────────────────────────────────────────────────────────
+ * Every maintenance action reports what it changed, and until now that report went to a toast and vanished.
+ * A toast is not a place. These entries give the results a permanent home so you can see what the engine has
+ * been doing without reading the audit sheet. Same shape as the promotions store: a capped JSON list in a
+ * document property, newest first. */
+const RUNLOG_PROP_ = 'RE_RUNLOG';
+const RUNLOG_MAX_ = 42;
+
+/** Classify a result line so the panel can colour it: found something / failed / nothing notable. */
+function runLogLevel_(name, msg, failed) {
+  if (failed) return 'err';
+  const m = String(msg || '');
+  // "2 duplicates", "3 responses", "1 leave started" — a number greater than zero means it DID something.
+  if (/\b(cancel|skipp?ed|locked)\b/i.test(m)) return 'warn';
+  if (/\b(0|no)\b\s+(new|change|duplicate|response|member|leave)/i.test(m)) return 'ok';
+  return /\d/.test(m) ? 'warn' : 'ok';
+}
+
+/** Record one run. Never throws into the action — a log that can break the thing it logs is worse than none. */
+function runLogAdd_(name, label, msg, failed) {
+  try {
+    const P = PropertiesService.getDocumentProperties();
+    let list; try { list = JSON.parse(P.getProperty(RUNLOG_PROP_) || '[]'); } catch (e) { list = []; }
+    if (!Array.isArray(list)) list = [];
+    list.unshift({ t: Date.now(), a: String(name || ''), l: String(label || name || ''),
+      r: clamp_(String(msg || ''), 300), lv: runLogLevel_(name, msg, failed) });
+    if (list.length > RUNLOG_MAX_) list.length = RUNLOG_MAX_;
+    P.setProperty(RUNLOG_PROP_, JSON.stringify(list));
+  } catch (e) { log_('runLogAdd_', e); }
+}
+
+/** Panel: the run log, newest first. */
+function cpRunLog() {
+  try {
+    const raw = PropertiesService.getDocumentProperties().getProperty(RUNLOG_PROP_) || '[]';
+    const list = JSON.parse(raw);
+    return { runs: Array.isArray(list) ? list : [], total: Array.isArray(list) ? list.length : 0 };
+  } catch (e) { return { runs: [], total: 0 }; }
+}
+
 function cpRunAction(name) {
-  const msg = cpRunActionCore_(name);
+  let msg;
+  try {
+    msg = cpRunActionCore_(name);
+  } catch (e) {
+    runLogAdd_(name, CP_ACTION_LABELS_[name], (e && e.message) || String(e), true);
+    throw e;
+  }
   cpAudit_('action', '', msg, '', '');
+  runLogAdd_(name, CP_ACTION_LABELS_[name], msg, false);
   return msg;
 }
+
+/** The human name for each action, so the log reads as a sentence and not as a function name. */
+const CP_ACTION_LABELS_ = Object.freeze({
+  updateStatuses: 'Update all statuses',
+  processLeaves: 'Run schedule check',
+  syncForms: 'Sync leave forms',
+  fixUnits: 'Fix callsign numbers',
+  checkDuplicates: 'Check duplicate IDs',
+  purgeWebhooks: 'Remove all webhooks',
+});
 function cpRunActionCore_(name) {
   switch (name) {
     case 'purgeWebhooks': {

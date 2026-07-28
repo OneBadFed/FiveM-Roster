@@ -255,6 +255,20 @@ function runtimeStub(configPayload, boot) {
     cpSetWebhook: { channel: 'AUDIT', channels: { AUDIT: true, LOA: true, PATROL: false, SIGNUP: false, ERRORS: false } },
     cpTestWebhook: true,
     cpRunAction: 'Preview: no server behind this button.',
+    cpPromoList: (() => { const D=Date.now(); const P=[['David Delgado','Police Cadet',4],['Chen Bennett','Reserve Officer I',7],['Kwame Kowalski','Reserve Officer III',9],['Diego Lindqvist','Senior Corporal',10],['Maria Nguyen','Corporal',12],['Kwame Moreau','Senior Corporal',14],['David Okafor','Police Commander',16],['Elena Moreau','Police Officer III',21],['Owen Haddad','Reserve Officer II',22]];
+      return P.map(([name,rank,ago],i)=>({ i, t: D-ago*86400000, name, rank,
+        when: new Date(D-ago*86400000).toLocaleDateString('en-GB',{day:'numeric',month:'short'}) })); })(),
+    cpPromoRemove: { removed: 'entry' },
+    cpRunLog: (() => { const NOW = Date.now(); const mk=(m,a,l,r,lv)=>({t:NOW-m*60000,a,l,r,lv});
+      return { total: 7, runs: [
+        mk(3,'syncForms','Sync leave forms','3 responses pulled','warn'),
+        mk(140,'updateStatuses','Update all statuses','12 members changed','warn'),
+        mk(460,'processLeaves','Run schedule check','1 leave started, 2 expired','warn'),
+        mk(1500,'checkDuplicates','Check duplicate IDs','2 duplicates found','warn'),
+        mk(1600,'fixUnits','Fix callsign numbers','Cancelled — 4 slots locked','err'),
+        mk(2900,'syncForms','Sync leave forms','No new responses','ok'),
+        mk(4300,'updateStatuses','Update all statuses','4 members changed','warn'),
+      ] }; })(),
   };
   return `
 <script>

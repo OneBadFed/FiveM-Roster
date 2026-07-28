@@ -142,6 +142,18 @@
   .tab .cnt{margin-left:auto;font-family:var(--mono);font-size:11px;font-weight:500;color:rgba(255,255,255,.4);flex:0 0 auto;}
   .tab.active .cnt{color:rgba(255,255,255,.75);}
   .tab .cnt:empty{display:none;}
+  /* A parent that is a HEADING, not a target — its children are the destinations. The triangle and the icon
+     say "these belong to me"; there is nothing to click here. */
+  .navparent{display:flex;align-items:center;gap:8px;height:28px;padding:0 8px;font-size:13px;font-weight:400;
+             color:rgba(255,255,255,.84);white-space:nowrap;user-select:none;}
+  .navparent .nico{width:15px;height:15px;display:flex;align-items:center;justify-content:center;flex:0 0 auto;
+                   color:rgba(255,255,255,.52);}
+  .navparent .nico svg{width:15px;height:15px;stroke-width:1.7;}
+  .navtri{width:0;height:0;flex:0 0 auto;border-left:5px solid rgba(255,255,255,.5);
+          border-top:4px solid transparent;border-bottom:4px solid transparent;transform:rotate(90deg);opacity:.5;}
+  /* Children: two pixels shorter than the parent, indented to sit under its LABEL rather than its icon. */
+  .tab.sub{height:26px;min-height:26px;padding-left:31px;font-size:12.5px;}
+  .tab.sub .cnt{font-size:11px;}
   .tab.active .nico{color:#fff;}
   .tab .nico svg{width:15px;height:15px;stroke-width:1.7;}
   .sfoot{padding:10px;display:flex;flex-direction:column;gap:0;box-shadow:none;}
@@ -481,6 +493,69 @@
   .btn.su-flag,.linkbtn.su-flag{color:#ffb340;background:rgba(255,159,10,.13);box-shadow:0 0 0 .5px rgba(255,159,10,.25) inset;}
   .linkbtn.su-flag:hover{background:rgba(255,159,10,.2);color:#ffc266;}
   .linkbtn.su-flag.on{background:linear-gradient(180deg,#ff9f0a,#e08a00);color:#1a1a1a;font-weight:500;box-shadow:0 .5px 0 rgba(255,255,255,.25) inset;}
+
+  /* ══ TOOLS ▸ MAINTENANCE — an action list with somewhere for the results to land ══════════════════════
+     THE grouped box. Every panel in the panel is this same object: a 4% film with a .5px hairline ring, drawn
+     as a box-shadow rather than a border because sub-pixel borders are unreliable and shadow spread is not. */
+  .gbox{background:rgba(255,255,255,.04);border-radius:9px;box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;overflow:hidden;}
+  /* Separators are per-row inset shadows, not borders: no doubling at the seam, no :last-child rules. */
+  .gbox>*+*{box-shadow:0 -.5px 0 rgba(255,255,255,.07) inset;}
+  .ghead{display:flex;align-items:center;gap:8px;padding:9px 12px 8px;font-size:10px;font-weight:600;
+         letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);}
+  .ghead-r{margin-left:auto;font-weight:400;letter-spacing:0;text-transform:none;font-size:11px;color:rgba(255,255,255,.3);}
+  .gempty{padding:18px 12px;font-size:11.5px;color:rgba(255,255,255,.3);text-align:center;}
+  .tcols{display:grid;grid-template-columns:minmax(0,1fr) 288px;gap:16px;align-items:start;}
+  @media (max-width:900px){ .tcols{grid-template-columns:1fr;} }
+  .tmain{min-width:0;} .tside{min-width:0;}
+  .arow{display:flex;align-items:center;gap:11px;padding:9px 12px;}
+  /* A labelled placeholder is honest; a bad hand-drawn icon is worse than none. Drop 16px symbols in the same
+     box later and nothing else moves. */
+  .atile{width:24px;height:24px;flex:0 0 auto;border-radius:6px;background:rgba(255,255,255,.07);
+         box-shadow:0 0 0 .5px rgba(255,255,255,.11) inset;display:flex;align-items:center;justify-content:center;
+         font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.5);letter-spacing:.02em;}
+  .att{flex:1;min-width:0;}
+  .att b{display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.88);}
+  .att span{display:block;font-size:11.5px;font-weight:400;color:rgba(255,255,255,.42);margin-top:4px;}
+  /* One glyph, three states: green ran cleanly, grey never run, amber ran and found something. */
+  .alast{display:flex;align-items:center;gap:6px;font-size:11.5px;color:rgba(255,255,255,.3);white-space:nowrap;flex:0 0 auto;}
+  .alast .d{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.25);flex:0 0 auto;}
+  .alast.ok{color:rgba(255,255,255,.45);} .alast.ok .d{background:#30d158;}
+  .alast.warn{color:rgba(255,255,255,.6);} .alast.warn .d{background:#ff9f0a;}
+  .alast.err{color:#ff6961;} .alast.err .d{background:#ff6961;}
+  .tfoot{margin:10px 2px 0;font-size:11.5px;line-height:1.5;color:rgba(255,255,255,.38);}
+  /* Subordinate to the toolbar's button, so two pixels shorter than it. */
+  .runbtn{flex:0 0 auto;height:22px;padding:0 11px;border-radius:6px;border:none;cursor:pointer;
+          background:linear-gradient(180deg,#4a4a4e,#3c3c40);color:rgba(255,255,255,.9);
+          box-shadow:0 0 0 .5px rgba(255,255,255,.16) inset,0 1px 1.5px rgba(0,0,0,.28);
+          font-family:inherit;font-size:12px;font-weight:500;transition:filter var(--t) var(--ease);}
+  .runbtn:hover{filter:brightness(1.12);transform:none;}
+  .runbtn:disabled{opacity:.5;cursor:default;}
+  /* The run log — the whole point of the right pane: results get a home instead of a toast. */
+  .lrow{display:flex;gap:10px;padding:8px 12px;}
+  .ltime{flex:0 0 52px;font-family:var(--mono);font-size:10.5px;color:rgba(255,255,255,.32);padding-top:1px;}
+  .ltt{flex:1;min-width:0;}
+  .ltt b{display:block;font-size:12px;font-weight:400;color:rgba(255,255,255,.78);}
+  .ltt span{display:block;font-size:11.5px;margin-top:2px;color:rgba(255,255,255,.45);}
+  .ltt span.warn{color:#ffb340;} .ltt span.err{color:#ff6961;}
+  .lmore{display:block;width:100%;background:none;border:none;text-align:left;padding:9px 12px;cursor:pointer;
+         font-family:inherit;font-size:11.5px;color:#4aa8ff;}
+  /* ── Promotions: roster data with its own lifecycle, so a table rather than a stack of cards ── */
+  .ptable{max-width:640px;}
+  .prow{display:grid;grid-template-columns:64px minmax(0,1fr) minmax(0,auto);align-items:center;gap:12px;
+        padding:0 12px;height:26px;font-size:12px;}
+  .phead{height:24px;font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:rgba(255,255,255,.4);}
+  .prow .pdate{font-family:var(--mono);font-size:10.5px;color:rgba(255,255,255,.4);}
+  .prow .pname{color:rgba(255,255,255,.88);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* Right-aligned so the column has an edge to read down. */
+  .prow .pto{text-align:right;color:rgba(255,255,255,.5);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .prow.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);color:#fff;}
+  .prow.sel .pdate,.prow.sel .pname,.prow.sel .pto{color:#fff;}
+  #promoFeed .prow{cursor:pointer;}
+  #promoFeed .prow:nth-child(odd){background:rgba(255,255,255,.018);}
+  #promoFeed .prow.sel{background:linear-gradient(180deg,#0f8cff,#0a7ae8);}
+  .sfoot-link{background:none;border:none;color:rgba(255,255,255,.45);font-family:inherit;font-size:11.5px;
+              text-align:left;padding:0 8px 8px;cursor:pointer;transition:color var(--t) var(--ease);}
+  .sfoot-link:hover{color:rgba(255,255,255,.8);}
   /* ── signups pane ── */
   .ro{width:100%;background:var(--ctl);color:var(--txt);border-radius:var(--r-md);padding:10px 13px;font-size:13px;box-shadow:var(--hi),var(--sh-1);min-height:39px;display:flex;align-items:center;word-break:break-word;}
   .ro.mono{font-family:var(--mono);font-size:12.5px;} .ro.empty{color:var(--txt-3);}
@@ -982,12 +1057,18 @@
       <button class="tab" data-tab="add" data-title="Add member" data-sub="Seats a person into an existing open slot — never inserts a row"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/></svg></span>Add member</button>
       <button class="tab" data-tab="signups" data-title="Signups"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg></span>Signups<span class="cnt" id="navSignupCount"></span></button>
       <div class="ngroup">Operations</div>
-      <button class="tab" data-tab="tools" data-title="Tools"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</button>
+      <div class="navparent"><span class="navtri"></span><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L4 14h6l-1 8 9-12h-6z"/></svg></span>Tools</div>
+      <button class="tab sub" data-tab="tools" data-title="Maintenance" data-sub="Engine actions — each one reports what it changed">Maintenance</button>
+      <button class="tab sub" data-tab="promos" data-title="Promotions feed" data-sub="What the RECENT PROMOTIONS tables are built from">Promotions feed<span class="cnt" id="navPromoCount"></span></button>
+      <button class="tab sub" data-tab="conns" data-title="Connections" data-sub="Discord webhooks and the linked admin file">Connections</button>
       <button class="tab" data-tab="columns" data-title="Columns"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M15 3v18"/></svg></span>Columns</button>
       <div class="ngroup">System</div>
       <button class="tab" data-tab="system" data-title="System"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>System</button>
     </div>
     <div class="sfoot">
+      <!-- Settings are reachable from anywhere, not buried among the maintenance actions — a Mac opens them
+           with ⌘, rather than making you find a button inside a page. This is the nearest thing a dialog has. -->
+      <button class="sfoot-link" id="openSettingsBtn">Engine settings…</button>
       <button class="hpill2" id="healthPill" hidden aria-label="System health"></button>
       <div style="display:flex;align-items:baseline;gap:6px"><span class="ver" id="verLbl">…</span><div class="foot" id="foot" style="text-align:left;flex:1">Roster Control Panel</div></div>
     </div>
@@ -1009,6 +1090,7 @@
         <button class="search-clear" id="searchClear" aria-label="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <button class="btn-primary" id="tbAdd">+ Add</button>
+      <button class="linkbtn" id="runAll" hidden>Run all</button>
       <span class="tb-nav" id="suNav" hidden><button class="icon-btn" id="suPrev" title="Previous applicant" aria-label="Previous applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="icon-btn" id="suNext" title="Next applicant" aria-label="Next applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></span>
     </div>
     <div class="filterbar" id="filterbar">
@@ -1116,27 +1198,38 @@
       <button class="linkbtn" id="suSkip">Skip</button>
       <button class="btn-primary" id="suSeat">Approve &amp; seat</button>
     </div>
+  </div>
 
   <div class="pane" id="pane-tools">
-    <div class="tsec">
-      <div class="tsec-h"><b>Maintenance</b><small>one-click engine actions — each reports what it changed</small></div>
-      <div class="tgrid">
-        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 21V11M12 21V5M19 21v-7"/></svg></span><span class="tt"><b>Update all statuses</b><small>Recompute every member from hours</small></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
-        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4"/></svg></span><span class="tt"><b>Run schedule check</b><small>Start due leaves, expire ended ones</small></span><button class="runbtn" data-act="processLeaves">Run</button></div>
-        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a4 4 0 0 0 5.66 0l3-3a4 4 0 0 0-5.66-5.66L11 6"/><path d="M14 11a4 4 0 0 0-5.66 0l-3 3a4 4 0 1 0 5.66 5.66L13 18"/></svg></span><span class="tt"><b>Sync leave forms</b><small>Pull new form responses to the tracker</small></span><button class="runbtn" data-act="syncForms">Run</button></div>
-        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 9h14M5 15h14M10 4L8 20M16 4l-2 16"/></svg></span><span class="tt"><b>Fix callsign numbers</b><small>Renumber S-01, S-02, …</small></span><button class="runbtn" data-act="fixUnits">Run</button></div>
-        <div class="tcard"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg></span><span class="tt"><b>Check duplicate IDs</b><small>Find repeated or malformed IDs</small></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
-        <div class="tcard" style="--a:var(--gray)"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.55 1H21a2 2 0 1 1 0 4h-.09a1.7 1.7 0 0 0-1.51 1z"/></svg></span><span class="tt"><b>Engine settings</b><small>Open the Settings Studio (replaces this dialog)</small></span><button class="runbtn" id="openSettingsBtn">Open</button></div>
+    <div class="tcols">
+      <div class="tmain">
+        <div class="gbox" id="actionList">
+          <div class="arow" data-arow="updateStatuses"><span class="atile">STAT</span><span class="att"><b>Update all statuses</b><span>Recompute every member from logged hours</span></span><span class="alast" id="al-updateStatuses"></span><button class="runbtn" data-act="updateStatuses">Run</button></div>
+          <div class="arow" data-arow="processLeaves"><span class="atile">CAL</span><span class="att"><b>Run schedule check</b><span>Start due leaves, expire ended ones</span></span><span class="alast" id="al-processLeaves"></span><button class="runbtn" data-act="processLeaves">Run</button></div>
+          <div class="arow" data-arow="syncForms"><span class="atile">SYNC</span><span class="att"><b>Sync leave forms</b><span>Pull new form responses into the tracker</span></span><span class="alast" id="al-syncForms"></span><button class="runbtn" data-act="syncForms">Run</button></div>
+          <div class="arow" data-arow="fixUnits"><span class="atile">S##</span><span class="att"><b>Fix callsign numbers</b><span>Renumber S-01, S-02 … to close gaps</span></span><span class="alast" id="al-fixUnits"></span><button class="runbtn" data-act="fixUnits">Run</button></div>
+          <div class="arow" data-arow="checkDuplicates"><span class="atile">DUP</span><span class="att"><b>Check duplicate IDs</b><span>Find repeated or malformed unique IDs</span></span><span class="alast" id="al-checkDuplicates"></span><button class="runbtn" data-act="checkDuplicates">Run</button></div>
+        </div>
+        <p class="tfoot">Every action is reversible from the Edit Log for 24 hours. Runs are queued, so two of them can never touch the roster at once.</p>
       </div>
+      <aside class="tside">
+        <div class="gbox">
+          <div class="ghead">Recent runs<span class="ghead-r" id="runWhen"></span></div>
+          <div id="runLog"><div class="gempty">Nothing has been run yet.</div></div>
+        </div>
+      </aside>
     </div>
+  </div>
 
-    <div class="tsec">
-      <div class="tsec-h"><b>Promotions feed</b><small>the RECENT PROMOTIONS entries — remove one and every table repaints without it</small></div>
-      <div id="promoFeed"><div class="sdesc">Loading…</div></div>
+  <div class="pane" id="pane-promos">
+    <div class="gbox ptable">
+      <div class="prow phead"><span>Date</span><span>Member</span><span class="pto">Promoted to</span></div>
+      <div id="promoFeed"><div class="gempty">Loading…</div></div>
     </div>
+    <p class="tfoot" id="promoFoot"></p>
+  </div>
 
-    <div class="tsec">
-      <div class="tsec-h"><b>Connections</b><small>services and data sources</small></div>
+  <div class="pane" id="pane-conns">
       <div class="tconns">
         <div class="conn">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><b>Discord integration</b></div>
@@ -1167,7 +1260,6 @@
           <p class="hint">A separate spreadsheet that stores your Discord webhook URLs. <b>Google file sharing is the access control</b> — only accounts the file is shared with can view, change or post through them.</p>
         </div>
       </div>
-    </div>
   </div>
 
   <div class="pane" id="pane-system">
@@ -2204,23 +2296,90 @@
   document.addEventListener('input',function(e){ if(e.target&&e.target.id==='suSlotQ') suFilterSlots(); if(e.target&&e.target.id==='slotQ') filterSlotMenu(); });
 
   /* ── Promotions feed manager (Tools tab): list the RE_PROMOS entries, remove one → every table repaints ── */
+  /* A table, and the row is the target — 18 red crosses sitting at rest are 18 chances to destroy data.
+     Select a row and press Delete; the keyboard is the verb. */
+  var PROMOS={list:[],sel:null};
+  /* The run log. "Each reports what it changed" had nowhere to report; this is that place. */
+  var RUNS={list:[],loaded:false};
+  function runAgo(t){
+    var d=new Date(Number(t)); if(isNaN(d.getTime())) return '';
+    var mins=Math.floor((Date.now()-d.getTime())/60000);
+    if(mins<1) return 'just now';
+    if(mins<60) return mins+' min ago';
+    var hrs=Math.floor(mins/60); if(hrs<24) return hrs+' hour'+(hrs===1?'':'s')+' ago';
+    var days=Math.floor(hrs/24); if(days===1) return 'Yesterday';
+    if(days<7) return d.toLocaleDateString(undefined,{weekday:'short'});
+    return d.toLocaleDateString(undefined,{day:'numeric',month:'short'});
+  }
+  function runClock(t){ var d=new Date(Number(t)); return isNaN(d.getTime())?'':d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'}); }
+  function loadRunLog(){
+    api(function(d){ RUNS.list=(d&&d.runs)||[]; RUNS.loaded=true; renderRunLog(); }, function(){ RUNS.loaded=true; renderRunLog(); }, 'cpRunLog');
+  }
+  function renderRunLog(){
+    var el=$('runLog'); if(!el) return;
+    var list=RUNS.list||[];
+    var when=$('runWhen'); if(when) when.textContent=list.length?runAgo(list[0].t):'';
+    if(!list.length){ el.innerHTML='<div class="gempty">Nothing has been run yet.</div>'; }
+    else {
+      var show=list.slice(0,6);
+      el.innerHTML=show.map(function(r){
+        var cls=(r.lv==='err')?'err':(r.lv==='warn'?'warn':'');
+        return '<div class="lrow"><span class="ltime">'+esc(runClock(r.t))+'</span>'
+          +'<span class="ltt"><b>'+esc(r.l||r.a)+'</b><span class="'+cls+'">'+esc(r.r||'')+'</span></span></div>';
+      }).join('')
+      +(list.length>show.length?('<button type="button" class="lmore" id="runMore">Show all '+list.length+' runs</button>'):'');
+    }
+    // the per-action status dot lives off the SAME data, so the list and the log can never disagree
+    var seen={};
+    list.forEach(function(r){ if(!seen[r.a]) seen[r.a]=r; });
+    document.querySelectorAll('#actionList .arow').forEach(function(row){
+      var k=row.dataset.arow, last=seen[k], cell=row.querySelector('.alast'); if(!cell) return;
+      if(!last){ cell.className='alast'; cell.innerHTML='<span class="d"></span>Never run'; return; }
+      cell.className='alast '+(last.lv==='err'?'err':(last.lv==='warn'?'warn':'ok'));
+      cell.innerHTML='<span class="d"></span>'+esc(runAgo(last.t));
+    });
+  }
   function loadPromos(){
     var el=$('promoFeed'); if(!el) return;
-    el.innerHTML='<div class="sdesc">Loading…</div>';
+    el.innerHTML='<div class="gempty">Loading…</div>';
     api(function(list){
-      if(!list||!list.length){ el.innerHTML='<div class="sdesc">No promotions recorded yet — a member moving UP the roster to a new rank lands here.</div>'; return; }
-      el.innerHTML=list.map(function(p){
-        return '<div class="promo-r"><span class="promo-d">'+esc(p.when)+'</span><b class="promo-n">'+esc(p.name)+'</b><span class="promo-k">'+esc(p.rank)+'</span>'
-          +'<button type="button" class="promo-x" title="Remove this entry from the feed" data-promorm="'+p.i+'" data-promot="'+esc(String(p.t))+'" data-promon="'+esc(p.name)+'">✕</button></div>';
-      }).join('');
-    }, function(e){ el.innerHTML='<div class="sdesc">Couldn\'t load the feed: '+esc((e&&e.message)||'')+'</div>'; }, 'cpPromoList');
+      PROMOS.list=list||[];
+      var badge=$('navPromoCount'); if(badge) badge.textContent=PROMOS.list.length||'';
+      renderPromos();
+    }, function(e){ el.innerHTML='<div class="gempty">Couldn\'t load the feed: '+esc((e&&e.message)||'')+'</div>'; }, 'cpPromoList');
+  }
+  function renderPromos(){
+    var el=$('promoFeed'), foot=$('promoFoot'); if(!el) return;
+    var list=PROMOS.list;
+    if(!list.length){
+      el.innerHTML='<div class="gempty">No promotions recorded yet — a member moving UP the roster to a new rank lands here.</div>';
+      if(foot) foot.textContent=''; return;
+    }
+    if(PROMOS.sel!=null && !list.some(function(x){ return String(x.t)===String(PROMOS.sel); })) PROMOS.sel=null;
+    el.innerHTML=list.map(function(x){
+      return '<div class="prow'+(String(x.t)===String(PROMOS.sel)?' sel':'')+'" data-promot="'+esc(String(x.t))+'" data-promoi="'+x.i+'" data-promon="'+esc(x.name)+'" tabindex="0">'
+        +'<span class="pdate">'+esc(x.when)+'</span><span class="pname">'+esc(x.name)+'</span><span class="pto">'+esc(x.rank)+'</span></div>';
+    }).join('');
+    if(foot) foot.innerHTML=list.length+' entr'+(list.length===1?'y':'ies')
+      +(PROMOS.sel!=null?' &middot; 1 selected &middot; press <b>Delete</b> to remove it from the feed':' &middot; select a row to remove it');
+  }
+  function promoRemoveSelected(){
+    if(PROMOS.sel==null) return;
+    var row=null; for(var i=0;i<PROMOS.list.length;i++){ if(String(PROMOS.list[i].t)===String(PROMOS.sel)){ row=PROMOS.list[i]; break; } }
+    if(!row) return;
+    if(!confirm('Remove '+row.name+' from the RECENT PROMOTIONS feed?\n\nEvery promotions table repaints without them. This does not undo the transfer itself.')) return;
+    api(function(r){ toast('Removed '+((r&&r.removed)||'entry')+' from the promotions feed.','ok'); PROMOS.sel=null; loadPromos(); },
+      function(err){ onError(err); loadPromos(); }, 'cpPromoRemove', {index:Number(row.i), t:String(row.t), name:row.name});
   }
   document.addEventListener('click',function(e){
-    var b=e.target.closest('[data-promorm]'); if(!b) return;
-    if(!confirm('Remove '+b.dataset.promon+' from the RECENT PROMOTIONS feed?\n\nEvery promotions table repaints without them. This does not undo the transfer itself.')) return;
-    b.disabled=true;
-    api(function(r){ toast('Removed '+((r&&r.removed)||'entry')+' from the promotions feed.','ok'); loadPromos(); },
-      function(err){ b.disabled=false; onError(err); loadPromos(); }, 'cpPromoRemove', {index:Number(b.dataset.promorm), t:b.dataset.promot, name:b.dataset.promon});
+    var r=e.target.closest('#promoFeed .prow'); if(!r) return;
+    PROMOS.sel=(String(PROMOS.sel)===r.dataset.promot)?null:r.dataset.promot; renderPromos();
+  });
+  document.addEventListener('keydown',function(e){
+    if(e.key!=='Delete' && e.key!=='Backspace') return;
+    var pane=$('pane-promos'); if(!pane || !pane.classList.contains('active') || PROMOS.sel==null) return;
+    if(/^(INPUT|TEXTAREA|SELECT)$/.test((e.target.tagName||''))) return; // never hijack a field
+    e.preventDefault(); promoRemoveSelected();
   });
   function suSetSlot(row){
     SU.slot=(row==null?null:Number(row));
@@ -2289,8 +2448,8 @@
       btn.disabled=false; btn.classList.remove('busy');
       btn.classList.add('ok2'); btn.textContent='Done ✓';
       setTimeout(function(){ btn.classList.remove('ok2'); btn.textContent='Run'; },1800);
-      toast(msg||'Done.','ok'); refresh();
-    }, function(e){ btn.disabled=false; btn.classList.remove('busy'); onError(e); }, "cpRunAction", act);
+      toast(msg||'Done.','ok'); refresh(); loadRunLog();
+    }, function(e){ btn.disabled=false; btn.classList.remove('busy'); onError(e); loadRunLog(); }, "cpRunAction", act);
   }
 
   /* system tab */
@@ -2429,7 +2588,7 @@
   function setAuditBtn(on){ /* audit is always-on; the indicator is a static pill */ }
 
 
-  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
+  document.querySelectorAll('.tab').forEach(function(t){ t.addEventListener('click',function(){ document.querySelectorAll('.tab').forEach(function(x){x.classList.remove('active');}); document.querySelectorAll('.pane').forEach(function(x){x.classList.remove('active');}); t.classList.add('active'); $('pane-'+t.dataset.tab).classList.add('active'); var onMembers=(t.dataset.tab==='members'); $('stats').style.display=onMembers?'':'none'; $('filterbar').style.display=onMembers?'':'none'; $('searchWrap').style.display=onMembers?'':'none'; $('tbAdd').style.display=onMembers?'':'none'; $('suNav').hidden=(t.dataset.tab!=='signups'); $('suScopeWrap').hidden=(t.dataset.tab!=='signups'); $('runAll').hidden=(t.dataset.tab!=='tools'); $('tbTitle').textContent=t.dataset.title||(t.textContent||'').trim(); /* data-title, not textContent — the Signups row now carries a count badge */ tbSub(); if(t.dataset.tab==='system' && !STATE.systemLoaded) loadSystem(); if(t.dataset.tab==='columns' && !STATE.columnsLoaded) loadColumns(); if(t.dataset.tab==='signups') loadSignups(!SU.loaded); if(t.dataset.tab==='tools' && !RUNS.loaded) loadRunLog(); if(t.dataset.tab==='promos' && !STATE.promosLoaded){ STATE.promosLoaded=true; loadPromos(); } }); });
   $('recols').addEventListener('click',function(){ loadColumns(); });
   $('colBody').addEventListener('click',function(e){ var seg=e.target.closest('.cseg'); if(!seg||seg.classList.contains('on')) return; var tog=seg.closest('.coltog'); var header=tog.getAttribute('data-header'); var k=seg.getAttribute('data-k'); tog.querySelectorAll('.cseg').forEach(function(s){ s.classList.remove('on'); }); seg.classList.add('on'); api(function(d){ renderColumns(d); toast('“'+header+'” → '+(k==='MEMBER'?'Member':'Slot'),'ok'); }, function(ev){ onError(ev); loadColumns(); }, "cpSetColumnClass", header, k); });
   $('refreshBtn').addEventListener('click',refresh);
@@ -2527,6 +2686,22 @@
     var head=e.target.closest('.mhead'); if(head){ toggleDetail(Number(head.closest('.mrow').dataset.row)); }
   });
   document.querySelectorAll('.runbtn[data-act]').forEach(function(b){ b.addEventListener('click',function(){ runAction(b.dataset.act,b); }); });
+  document.addEventListener('click',function(e){ if(e.target&&e.target.id==='runMore'){ RUNS.showAll=true; var el=$('runLog');
+    el.innerHTML=(RUNS.list||[]).map(function(r){ var cls=(r.lv==='err')?'err':(r.lv==='warn'?'warn':'');
+      return '<div class="lrow"><span class="ltime">'+esc(runClock(r.t))+'</span><span class="ltt"><b>'+esc(r.l||r.a)+'</b><span class="'+cls+'">'+esc(r.r||'')+'</span></span></div>'; }).join(''); } });
+  /* Run all: sequential, not parallel — these actions take the same script lock, so firing them together just
+     makes four of them fail on 'another operation is running'. Each waits for the last. */
+  $('runAll').addEventListener('click',function(){
+    var btns=[].slice.call(document.querySelectorAll('#actionList .runbtn[data-act]'));
+    if(!btns.length) return;
+    var self=this; self.disabled=true; self.textContent='Running…';
+    var i=0;
+    (function next(){
+      if(i>=btns.length){ self.disabled=false; self.textContent='Run all'; loadRunLog(); refresh(); toast('All actions finished.','ok'); return; }
+      var b=btns[i++]; b.disabled=true;
+      api(function(){ b.disabled=false; next(); }, function(e){ b.disabled=false; onError(e); next(); }, 'cpRunAction', b.dataset.act);
+    })();
+  });
   $('openSettingsBtn').addEventListener('click',function(){ var b=this; b.disabled=true; api(function(){ /* the Settings Studio replaces this dialog */ }, function(e){ b.disabled=false; onError(e); }, "cpOpenSettings"); });
   var WH_LABELS={AUDIT:'Audit log',LOA:'LOAs',PATROL:'Patrol logs',ERRORS:'Errors'};
   function whStatus(map){
