@@ -124,10 +124,17 @@
   .ph-ico svg{width:17px;height:17px;stroke-width:1.7;}
   @keyframes rise{from{opacity:1;transform:none;}to{opacity:1;transform:none;}}
 
+  /* Square at the top: a callout spans the card edge to edge directly under the header, so a radius
+     there leaves two notches against the card's straight sides. */
+  .card>.callout{border-top-left-radius:0;border-top-right-radius:0;}
   .callout{background:var(--amber-soft);border-radius:var(--r-card);padding:10px 13px;margin-bottom:16px;
         font-size:11.5px;color:#ffb340;line-height:1.55;box-shadow:0 0 0 .5px rgba(255,159,10,.24) inset;animation:none;}
   .callout.err{background:var(--red-soft);color:#ff6961;box-shadow:0 0 0 .5px rgba(255,69,58,.26) inset;}
-  .callout b{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;font-weight:600;opacity:.85;}
+  /* Only a TAGGED title is a heading. The old rule block-ified every <b> in a callout, and several of
+     these use <b> for inline emphasis mid-sentence — which is what broke Activity, Leave engine and
+     Ranks into one word per line. */
+  .callout b{font-weight:600;color:rgba(255,255,255,.9);}
+  .callout b.ct{display:block;font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px;font-weight:600;opacity:.85;color:inherit;}
   .callout .mono{font-size:10.5px;opacity:.9;}
 
   /* card → grouped panel. Label sits ABOVE the box, macOS-style. */
@@ -142,7 +149,8 @@
   .card-h b{font-size:13px;font-weight:600;letter-spacing:0;color:rgba(255,255,255,.88);}
   .card-h small{margin-left:auto;font-size:10.5px;font-family:var(--mono);color:var(--txt-3);letter-spacing:0;}
   .card>.grid2,.card>.stgrid,.card>.gtbl,.card>.rkgrid,.card>.ovcard,.card>.ovadd,.card>.rlhead,.card>.rlrow,
-  .card>.pv-lbl,.card>.pv,.card>.dcwrow,.card>.dcsec,.card>.dcst,.card>.dcev,.card>.tagrow,.card>.fmtex,.card>.gtadd,.card>.gtempty,.card>.dcseg{margin-left:14px;margin-right:14px;}
+  .card>.pv-lbl,.card>.pv,.card>.dcwrow,.card>.dcsec,.card>.dcst,.card>.dcev,.card>.tagrow,.card>.fmtex,.card>.gtadd,.card>.gtempty,.card>.dcseg,
+  .card>.sdesc{margin-left:14px;margin-right:14px;}
   .card>.grid2,.card>.stgrid,.card>.gtbl,.card>.rkgrid{margin-top:14px;margin-bottom:14px;}
 
   .grid2{display:grid;grid-template-columns:repeat(auto-fill,minmax(268px,1fr));gap:16px 26px;}
@@ -211,7 +219,9 @@
   .ddbtn:active{transform:none;background:linear-gradient(180deg,#5c5c62,#4c4c52);}
   .ddbtn.open{background:var(--btn);box-shadow:var(--btnring),var(--focus);}
   .ddbtn .ddlab{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
-  .ddbtn .ddlab.ph{color:var(--txt-3);font-weight:400;}
+  /* ddph, not ph: .ph is the PAGE HEADER block and carries margin-bottom:20px, which this label was
+     inheriting — a 20px margin on a flex item in a 24px centred button lifts its text 10px. */
+  .ddbtn .ddlab.ddph{color:var(--txt-3);font-weight:400;}
   /* the chevron gets the accent chip, as on a real NSPopUpButton */
   .ddbtn svg{width:9px;height:9px;color:#fff;flex:0 0 auto;transition:none;box-sizing:content-box;padding:3.5px;border-radius:4px;background:var(--blue);}
   .ddbtn.open svg{transform:none;}
@@ -899,7 +909,7 @@
     var lab=cur?cur.l:(DD[id].value===''?(allowEmpty?DD[id].emptyLabel:'— choose —'):DD[id].value+' (current)');
     var isPh=(DD[id].value===''&&!cur);
     var extra=''; for(var k in attrs){ extra+=' data-'+k+'="'+esc(attrs[k])+'"'; }
-    return '<button type="button" class="ddbtn" data-ddkey="'+id+'"'+extra+'><span class="ddlab'+(isPh?' ph':'')+'">'+esc(lab)+'</span>'+ICONS.chev+'</button>';
+    return '<button type="button" class="ddbtn" data-ddkey="'+id+'"'+extra+'><span class="ddlab'+(isPh?' ddph':'')+'">'+esc(lab)+'</span>'+ICONS.chev+'</button>';
   }
   function closeDD(){ if(DDOPEN){ DDOPEN.menu.remove(); DDOPEN.btn.classList.remove('open'); DDOPEN=null; } }
   function openDD(btn){
@@ -966,6 +976,11 @@
       if(bk==='SHEETS.PATROL_LOG') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— off (no patrol log tab) —');
       if(bk==='SHEETS.SIGNUPS') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Roster Signups) —');
       if(bk==='SHEETS.SIGNUP_FORM_RESPONSES') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— off (no signup form) —');
+      if(bk==='SHEETS.AUDIT') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Edit Log) —');
+      if(bk==='SHEETS.HOURS_HISTORY') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (_Hours History) —');
+      if(bk==='SHEETS.COVERAGE') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Leave Coverage) —');
+      if(bk==='SHEETS.INTEGRITY') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Integrity Log) —');
+      if(bk==='SHEETS.SNAPSHOTS') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (_Snapshots) —');
       if(bk==='SHEETS.WELCOME') return dd({bk:bk}, DATA.sheetNames||[], v, true, '— default (Welcome Page) —'); // pick your Welcome/dashboard tab so the publish protects + mirrors it
       return '<input class="in" data-bk="'+esc(bk)+'" value="'+esc(v)+'" spellcheck="false" placeholder="'+esc(m.def)+'" autocomplete="off">';
     }
@@ -1155,7 +1170,7 @@
     var gcs='grid-template-columns:repeat('+cols.length+',minmax(0,1fr)) 34px';
     var h='<div class="card" style="--a:'+(accent||'var(--accent)')+'"><div class="card-h"><span class="cico">'+ICONS.table+'</span><b>'+esc(TBLTITLE[name]||prettyBlock(name))+'</b><small>['+esc(name)+']</small></div>';
     var thelp=TBLHELP[name]; if(typeof thelp==='function') thelp=thelp(); thelp=thelp||meta.help;
-    if(thelp) h+='<div class="sdesc" style="margin:-8px 0 14px;max-width:74ch;-webkit-line-clamp:3" title="'+esc(meta.help)+'">'+esc(thelp)+'</div>';
+    if(thelp) h+='<div class="sdesc" style="margin-top:-8px;margin-bottom:14px;max-width:74ch;-webkit-line-clamp:3" title="'+esc(meta.help)+'">'+esc(thelp)+'</div>';
     h+='<div class="gtbl">';
     if(rows.length){
       h+='<div class="gthead" style="'+gcs+'">'; cols.forEach(function(c){ h+='<span>'+esc(c)+'</span>'; }); h+='</div>';
@@ -1175,14 +1190,12 @@
     var saved=relTime(LASTSAVED);
     var h='<div class="ph"><div class="ph-top"><span class="ph-ico" style="--a:'+g.a+'">'+(ICONS[g.id]||ICONS.table)+'</span>'
       +'<div class="ph-tx"><h1>'+esc(g.title)+'</h1><p class="pdesc">'+esc(g.desc)+'</p></div></div>'
-      +'<div class="pmeta"><span class="pill">'+ICONS.check+'<b>'+esc(DATA.engine||'')+'</b></span>'
-      +'<span class="pill">'+(DATA.fromTab?(ICONS.sheets+'source: <b>'+esc(DATA.sheetName)+'</b>'):'built-in defaults')+'</span>'
-      +(saved?'<span class="pill">'+ICONS.clock+'saved <b>'+esc(saved)+'</b></span>':'')+'</div></div>';
+      +'</div>';
     h+='<div id="issues"></div>';
     if(g.custom==='rankicons'){ h+=rankIconsShell(); $('content').innerHTML=h; $('content').scrollTop=0; loadRankIcons(); return; }
     if(g.custom==='ranklabels'){ h+=rankLabelsShell(); $('content').innerHTML=h; $('content').scrollTop=0; loadRanksList(); return; }
     if(g.custom==='discord'){ h+=discordShell(g); $('content').innerHTML=h; $('content').scrollTop=0; renderDiscordSec(g); return; }
-    if(g.warn) h+='<div class="callout"><b>Advanced — validated, but handle with care</b>These map the engine onto your sheet. A save is refused when it is invalid, but a valid-but-wrong value can still stop parsing or notifications.</div>';
+    if(g.warn) h+='<div class="callout"><b class="ct">Advanced — validated, but handle with care</b>These map the engine onto your sheet. A save is refused when it is invalid, but a valid-but-wrong value can still stop parsing or notifications.</div>';
     if(g.note) h+='<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+esc(g.note)+'</div>';
     if(g.id==='leave') h+='<div class="callout" id="leaveStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+leaveStoryText()+'</div>';
     if(g.id==='theme') h+=sheetPreview();
@@ -1193,7 +1206,7 @@
         var rows=''; c.keys.forEach(function(bk){ rows+=setting(bk); });
         h+='<div class="card" style="--a:'+g.a+'"><div class="card-h"><span class="cico">'+cardIcon(c.t,g.id)+'</span><b>'+esc(c.t)+'</b>'
           +'<small>'+esc(c.keys.map(function(k){return '['+k.split('.')[0]+']';}).filter(function(x,i,a){return a.indexOf(x)===i;}).join(' · '))+'</small></div>'
-          +(c.t==='Patrol logs → hours'?'<div class="callout" id="patrolOffNote" hidden><b>Patrol form sync is off</b>Pick a PATROL FORM RESPONSES tab under Google Form links to turn it on (the manual Patrol Log tab works either way).</div>':'')
+          +(c.t==='Patrol logs → hours'?'<div class="callout" id="patrolOffNote" hidden><b class="ct">Patrol form sync is off</b>Pick a PATROL FORM RESPONSES tab under Google Form links to turn it on (the manual Patrol Log tab works either way).</div>':'')
           +'<div class="grid2">'+rows+'</div>'
           +(c.preview==='embed'?embedPreview():'')
           +(c.preview==='sheet'?sheetPreview():'')
@@ -1226,8 +1239,8 @@
     var errs=problems.filter(function(p){return p.sev==='ERROR';});
     var warns=problems.filter(function(p){return p.sev==='WARN';});
     var h='';
-    if(errs.length) h+='<div class="callout err"><b>'+(isRefusal?'Save refused — nothing was written':'The sheet has config errors')+'</b>'+errs.map(function(p){return '<div class="mono">'+esc(p.key)+' = "'+esc(p.value)+'" — expected: '+esc(p.expected)+'</div>';}).join('')+'</div>';
-    if(warns.length && !isRefusal) h+='<div class="callout"><b>'+warns.length+' advisor'+(warns.length===1?'y':'ies')+' from the sheet</b>'+warns.map(function(p){return '<div class="mono">'+esc(p.key)+': '+esc(p.expected)+'</div>';}).join('')+'</div>';
+    if(errs.length) h+='<div class="callout err"><b class="ct">'+(isRefusal?'Save refused — nothing was written':'The sheet has config errors')+'</b>'+errs.map(function(p){return '<div class="mono">'+esc(p.key)+' = "'+esc(p.value)+'" — expected: '+esc(p.expected)+'</div>';}).join('')+'</div>';
+    if(warns.length && !isRefusal) h+='<div class="callout"><b class="ct">'+warns.length+' advisor'+(warns.length===1?'y':'ies')+' from the sheet</b>'+warns.map(function(p){return '<div class="mono">'+esc(p.key)+': '+esc(p.expected)+'</div>';}).join('')+'</div>';
     el.innerHTML=h;
     document.querySelectorAll('.setting.err').forEach(function(r){ r.classList.remove('err'); });
     errs.forEach(function(p){
@@ -1246,7 +1259,7 @@
     var types=listOf(KV['LEAVE.LEAVE_TYPES']&&KV['LEAVE.LEAVE_TYPES'].value), ty=types.join(' / ')||'LOA';
     var ap=gv('APPROVED_STATUS','Approved'), ex=gv('EXPIRED_STATUS','Expired');
     var auto=boolOn(KV['LEAVE.AUTO_EXPIRE']&&KV['LEAVE.AUTO_EXPIRE'].value);
-    return '<b>How it flows right now</b>A request arrives on the tracker as <b>'+esc(first)+'</b> → set it to <b>'+esc(ap)
+    return '<b class="ct">How it flows right now</b>A request arrives on the tracker as <b>'+esc(first)+'</b> → set it to <b>'+esc(ap)
       +'</b> and the member becomes <b>'+esc(ty)+'</b> on their start date → after the end date '
       +(auto?('the nightly job ends it and marks the row <b>'+esc(ex)+'</b>.')
              :('it stays until ended by hand (auto-end is OFF); ended rows are marked <b>'+esc(ex)+'</b>.'));
@@ -1258,7 +1271,7 @@
     var add=function(nm){ var k=String(nm||'').replace(/[^A-Za-z]/g,'').toLowerCase(); if(k&&tags.indexOf(k)===-1) tags.push(k); };
     tierNames().forEach(add);
     (TBL.DASHBOARD_GROUPS||[]).forEach(function(r){ add(r[0]); });
-    return '<b>Type any of these in a cell — the engine keeps the number live</b><div class="tagrow">'
+    return '<b class="ct">Type any of these in a cell — the engine keeps the number live</b><div class="tagrow">'
       +tags.map(function(t){ return '<span class="rlt" data-tagcopy="#'+esc(t)+'" title="Click to copy">#'+esc(t)+'</span>'; }).join('')+'</div>';
   }
   function refreshTagCheat(){ var el=$('tagCheat'); if(el) el.innerHTML=tagCheatText(); }
@@ -1275,7 +1288,7 @@
     else if(day==='OFF' && cad!=='MONTHLY') reset='The hours reset is <b>OFF</b> (reset day is OFF)';
     else if(cad==='MONTHLY') reset='Hours reset <b>monthly on day '+esc(dom)+'</b> at <b>'+t12(hr)+'</b> — history is saved first';
     else reset='Hours reset <b>'+(cad==='BIWEEKLY'?'every second ':'every ')+esc(DAYN[day]||day)+'</b> at <b>'+t12(hr)+'</b> — history is saved first';
-    return '<b>What runs when</b>'+reset+' · the nightly leave check runs at <b>'+t12(nh)+'</b>.';
+    return '<b class="ct">What runs when</b>'+reset+' · the nightly leave check runs at <b>'+t12(nh)+'</b>.';
   }
   function refreshSchedStory(){ var el=$('schedStory'); if(el) el.innerHTML=schedStoryText(); }
   function applySchedVis(){
@@ -1616,7 +1629,7 @@
   /* ── ranks & labels (a friendlier editor over [DASHBOARD_GROUPS] rank entries) ── */
   var RANKLIST=null;
   function rankLabelsShell(){
-    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Toggle a label on every rank it covers — a rank may carry several labels, but headcounts put each member under their FIRST label. <b>Icons and Colours save immediately; label changes save with the Save button.</b> A square PNG with transparency looks best; images are resized automatically. <b>Colour</b> tints that rank\'s profile cards in the Control Panel (accent bar, avatar glow) — without one, cards fall back to the rank cell\'s colour on your roster.</div>'
+    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Toggle a label on every rank it covers — a rank may carry several labels, but headcounts put each member under their <b>first</b> label. Icons save immediately; label changes wait for <b>Save</b>. A square PNG with transparency looks best — images are resized automatically.</div>'
       +'<div id="ranklabelsHost"><div class="rkloading">Loading ranks…</div></div>';
   }
   function loadRanksList(){
