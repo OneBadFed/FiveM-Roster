@@ -347,11 +347,12 @@
   .ladd{background:var(--ctl);border:none;color:var(--txt-2);border-radius:5px;padding:4px 10px;font-size:11.5px;font-weight:400;cursor:pointer;
       box-shadow:var(--ctlring);transition:background var(--t),color var(--t);}
   .ladd:hover{color:var(--txt);background:var(--ctl-h);border-color:transparent;}
-  .ovadd{width:100%;border:none;border-radius:8px;background:rgba(255,255,255,.03);box-shadow:0 0 0 .5px rgba(255,255,255,.07) inset;
-      display:flex;align-items:center;justify-content:center;gap:8px;padding:12px;color:var(--txt-3);cursor:pointer;font-size:12.5px;font-weight:400;
+  /* A button, matching .gtadd — full width and pale it read as another empty panel, not an action. */
+  .ovadd{width:auto;height:24px;padding:0 11px;border:none;border-radius:6px;background:var(--ctl);box-shadow:var(--ctlring);
+      display:inline-flex;align-items:center;justify-content:center;gap:6px;color:var(--txt-2);cursor:pointer;font-family:inherit;font-size:12.5px;font-weight:400;
       transition:background var(--t),color var(--t);}
-  .ovadd:hover{color:var(--txt);background:rgba(255,255,255,.06);border-color:transparent;transform:none;}
-  .ovadd svg{width:14px;height:14px;stroke-width:1.9;}
+  .ovadd:hover{color:var(--txt);background:var(--ctl-h);border-color:transparent;transform:none;}
+  .ovadd svg{width:11px;height:11px;stroke-width:2;}
 
   /* ─── generic table editor ─── */
   .gtbl{display:flex;flex-direction:column;gap:0;background:var(--panel-2);border-radius:8px;box-shadow:var(--hairline);overflow:hidden;}
@@ -726,7 +727,7 @@
   // Display-only overrides for table cards (title / help), same idea as LABELS/HELPS for kv settings.
   var TBLTITLE={'DASHBOARD_GROUPS':'Headcount groups · priority order'};
   var TBLHELP={
-    'STATUS_RULES':'Extra rules layered on top of the status tiers. Each row reads "when a member is SOURCE and their hours OP HOURS, set them to TARGET" — use * for any status or always. First match wins, and the result depends only on hours, so re-running never stacks up. Leave empty to use the tiers alone. Protected statuses are skipped unless a rule names one directly.',
+    'STATUS_RULES':'Extra rules on top of the tiers: "when a member is SOURCE and their hours OP HOURS, set them to TARGET". Use * for any status, or always. First match wins; protected statuses are skipped unless a rule names one.',
     'SECTION_TAGS':'Colours + type for each divider keyword — a divider matches when its text CONTAINS the keyword. Tone must be one of: exec, admin, super, cadet, training, patrol, aux.',
     'DASHBOARD_GROUPS':'Rows are PRIORITY ORDER — each member counts under the first group matching their rank or section. Everyday label editing is easier in the Ranks section; each group is also a #tag.',
     'FORM_MAP':'The leave form\'s question keywords — ONLY applied when First-Run Setup builds the form. Edits here do nothing until the form is rebuilt.',
@@ -1160,7 +1161,7 @@
   function overridesCard(){
     var rows=TBL.STATUS_OVERRIDES||[];
     var h='<div class="card" style="--a:var(--purple)"><div class="card-h"><span class="cico">'+ICONS.advanced+'</span><b>Per-rank ladders</b><small>[STATUS_OVERRIDES]</small></div>'
-      +'<div class="sdesc" style="margin:-8px 0 14px">Give a rank its own activity ladder — each step reads “status at ≥ hours”; exactly one step must be 0.</div>';
+      +'<div class="sdesc" style="margin-top:-8px;margin-bottom:14px;max-width:74ch">Give a rank its own activity ladder — each step reads “status at ≥ hours”; exactly one step must be 0.</div>';
     rows.forEach(function(r,i){
       var isSection=String(r[0]).toUpperCase()==='SECTION';
       var steps=parseLadderStr(r[2]);
