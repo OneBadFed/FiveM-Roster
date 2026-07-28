@@ -77,8 +77,12 @@
   html,body{margin:0;padding:0;height:100%;}
   /* Flat. The three coloured radial washes that used to sit here were the loudest decoration in the panel and
      carried no information — the first thing to go. Depth now comes from the surface ladder alone. */
+  /* A desktop for the window to sit on. Google draws the dialog's own white chrome and we cannot remove it —
+     but inside that frame this is what turns "a page filling a modal" into "a window": something for the
+     shadow to fall on, and something for a translucent sidebar to be translucent AGAINST. */
   body{color:var(--txt);font-family:'Inter',Arial,sans-serif;font-size:var(--f2);line-height:1.47;
-       -webkit-font-smoothing:antialiased;overflow:hidden;background:var(--bg);
+       -webkit-font-smoothing:antialiased;overflow:hidden;
+       background:radial-gradient(120% 130% at 18% 0%,#22242c 0%,#14151a 45%,#0e0f12 100%);
        font-feature-settings:'cv02','cv03','cv04','cv11'; /* Inter's SF-like alternates: single-storey a/g, straighter l */
        letter-spacing:-.01em;}
   .mono{font-family:var(--mono);}
@@ -92,13 +96,23 @@
   svg{display:block;}
 
   /* ─── app shell: sidebar + content (Studio pattern) ─── */
-  .app{display:grid;grid-template-columns:218px 1fr;height:100vh;}
+  /* Four stacked shadows, no border. The first — 1px of light along the TOP edge only — is the bevel catching
+     light from above, and is the single most "Mac" detail here. */
+  .app{display:grid;grid-template-columns:218px 1fr;height:calc(100vh - 24px);margin:12px;border-radius:11px;
+       overflow:hidden;background:var(--bg);
+       box-shadow:0 1px 0 rgba(255,255,255,.13) inset,
+                  0 0 0 1px rgba(0,0,0,.55),
+                  0 32px 70px -12px rgba(0,0,0,.75),
+                  0 8px 22px rgba(0,0,0,.4);}
   /* The sidebar sits LIGHTER than the content — that tonal split is what vibrancy actually looks like on a Mac,
      and it does the separating that a border would otherwise have to do. */
   .side{display:flex;flex-direction:column;background:var(--sidebar);
         -webkit-backdrop-filter:blur(42px) saturate(180%);backdrop-filter:blur(42px) saturate(180%);
         border-right:1px solid rgba(0,0,0,.42);}
-  .brand{display:flex;align-items:center;gap:9px;padding:14px 12px 12px 14px;}
+  .tlights{height:52px;flex:0 0 auto;display:flex;align-items:center;gap:8px;padding-left:19px;pointer-events:none;}
+  .tl{width:12px;height:12px;border-radius:50%;flex:0 0 auto;box-shadow:0 0 0 .5px rgba(0,0,0,.25) inset;}
+  .tl.r{background:#ff5f57;} .tl.y{background:#febc2e;} .tl.g{background:#28c840;}
+  .brand{display:flex;align-items:center;gap:9px;padding:2px 12px 12px 14px;}
   .badge{width:28px;height:28px;border-radius:7px;background:linear-gradient(180deg,#3a3a3e,#2c2c30);
         box-shadow:0 0 0 .5px rgba(255,255,255,.14) inset,0 1px 2px rgba(0,0,0,.35);
         color:rgba(255,255,255,.72);display:flex;align-items:center;justify-content:center;flex:0 0 auto;}
@@ -514,8 +528,8 @@
          box-shadow:0 0 0 .5px rgba(255,255,255,.11) inset;display:flex;align-items:center;justify-content:center;
          font-family:var(--mono);font-size:9px;color:rgba(255,255,255,.5);letter-spacing:.02em;}
   .att{flex:1;min-width:0;}
-  .att b{display:block;font-size:13px;font-weight:500;color:rgba(255,255,255,.88);}
-  .att span{display:block;font-size:11.5px;font-weight:400;color:rgba(255,255,255,.42);margin-top:4px;}
+  .att b{display:block;font-size:13px;line-height:1;font-weight:500;color:rgba(255,255,255,.88);}
+  .att span{display:block;font-size:11.5px;line-height:1;font-weight:400;color:rgba(255,255,255,.42);margin-top:4px;}
   /* One glyph, three states: green ran cleanly, grey never run, amber ran and found something. */
   .alast{display:flex;align-items:center;gap:6px;font-size:11.5px;color:rgba(255,255,255,.3);white-space:nowrap;flex:0 0 auto;}
   .alast .d{width:5px;height:5px;border-radius:50%;background:rgba(255,255,255,.25);flex:0 0 auto;}
@@ -524,6 +538,15 @@
   .alast.err{color:#ff6961;} .alast.err .d{background:#ff6961;}
   .tfoot{margin:10px 2px 0;font-size:11.5px;line-height:1.5;color:rgba(255,255,255,.38);}
   /* Subordinate to the toolbar's button, so two pixels shorter than it. */
+  /* The standard push button. Toolbar gets 24px, rows get 22 — subordinate to the one above them. */
+  .pushbtn{display:inline-flex;align-items:center;gap:6px;flex:0 0 auto;height:24px;padding:0 10px;border-radius:6px;
+           border:none;cursor:pointer;background:linear-gradient(180deg,#4a4a4e,#3c3c40);color:rgba(255,255,255,.9);
+           box-shadow:0 0 0 .5px rgba(255,255,255,.16) inset,0 1px 1.5px rgba(0,0,0,.28);
+           font-family:inherit;font-size:12.5px;font-weight:500;transition:filter var(--t) var(--ease);}
+  .pushbtn:hover{filter:brightness(1.12);}
+  .pushbtn:disabled{opacity:.5;cursor:default;}
+  .pushbtn svg{width:12px;height:12px;}
+  .pushbtn[hidden]{display:none;}
   .runbtn{flex:0 0 auto;height:22px;padding:0 11px;border-radius:6px;border:none;cursor:pointer;
           background:linear-gradient(180deg,#4a4a4e,#3c3c40);color:rgba(255,255,255,.9);
           box-shadow:0 0 0 .5px rgba(255,255,255,.16) inset,0 1px 1.5px rgba(0,0,0,.28);
@@ -1046,6 +1069,9 @@
 <body>
 <div class="app">
   <div class="side">
+    <!-- Decorative: Google's own × is the working control, so these do not pretend to be buttons. They are
+         here because the 52px strip is what makes the sidebar read as running the full height of the window. -->
+    <div class="tlights" aria-hidden="true"><i class="tl r"></i><i class="tl y"></i><i class="tl g"></i></div>
     <div class="brand">
       <div class="badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.6-3 7.7-7 9-4-1.3-7-4.4-7-9V6l7-3z"/></svg></div>
       <div class="ttl"><div class="r1"><b id="sysName">Roster System</b></div><div class="sub">Control panel</div></div>
@@ -1066,9 +1092,6 @@
       <button class="tab" data-tab="system" data-title="System"><span class="nico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>System</button>
     </div>
     <div class="sfoot">
-      <!-- Settings are reachable from anywhere, not buried among the maintenance actions — a Mac opens them
-           with ⌘, rather than making you find a button inside a page. This is the nearest thing a dialog has. -->
-      <button class="sfoot-link" id="openSettingsBtn">Engine settings…</button>
       <button class="hpill2" id="healthPill" hidden aria-label="System health"></button>
       <div style="display:flex;align-items:baseline;gap:6px"><span class="ver" id="verLbl">…</span><div class="foot" id="foot" style="text-align:left;flex:1">Roster Control Panel</div></div>
     </div>
@@ -1090,7 +1113,8 @@
         <button class="search-clear" id="searchClear" aria-label="Clear search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg></button>
       </div>
       <button class="btn-primary" id="tbAdd">+ Add</button>
-      <button class="linkbtn" id="runAll" hidden>Run all</button>
+      <button class="pushbtn" id="runAll" hidden><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>Run all</button>
+      <button class="icon-btn" id="openSettingsBtn" title="Engine settings" aria-label="Engine settings"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.7 1.7 0 0 0 15 19.4a1.7 1.7 0 0 0-1 1.55V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 9 19.4a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.55-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.55V3a2 2 0 1 1 4 0v.09a1.7 1.7 0 0 0 1 1.51 1.7 1.7 0 0 0 1.87-.34l.06.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.4 9z"/></svg></button>
       <span class="tb-nav" id="suNav" hidden><button class="icon-btn" id="suPrev" title="Previous applicant" aria-label="Previous applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M15 6l-6 6 6 6"/></svg></button><button class="icon-btn" id="suNext" title="Next applicant" aria-label="Next applicant"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M9 6l6 6-6 6"/></svg></button></span>
     </div>
     <div class="filterbar" id="filterbar">
@@ -1368,6 +1392,18 @@
      1.5s. It used to live inside the member-list click handler alone, so the identical-looking buttons on the
      Signups tab did nothing at all when pressed.
      @return {boolean} true when the click WAS a copy button, so a caller can stop the event going further. */
+  /* The sidebar is 218px wide, so the footer gets the shortest true form: today is a time, this year drops the
+     year, anything older keeps it. It was rendering a full timestamp and truncating mid-word. */
+  function shortWhen(v){
+    var t=String(v||'').trim(); var d=suDate(t); if(!d) return t;
+    var now=new Date(), sameDay=d.toDateString()===now.toDateString();
+    try{
+      if(sameDay) return d.toLocaleTimeString(undefined,{hour:'numeric',minute:'2-digit'});
+      var opts={day:'numeric',month:'short'};
+      if(d.getFullYear()!==now.getFullYear()) opts.year='numeric';
+      return d.toLocaleDateString(undefined,opts);
+    }catch(e){ return t; }
+  }
   function copyClick(e){
     var cp=e.target.closest('[data-copy]'); if(!cp) return false;
     if(copyText(cp.getAttribute('data-copy'))){
@@ -1442,7 +1478,7 @@
     api(applyBoot, onError, "cpBootstrap");
   }
   function refresh(){ setLoading(true); api(function(s){ apply(s); if(STATE.systemLoaded) loadSystem(true); setLoading(false); toast('Refreshed.','ok'); }, onError, "cpRefresh"); }
-  function apply(s){ STATE.members=s.members||[]; STATE.selected={}; renderStats(s.stats||{}); renderRankFilter(); renderShiftFilter(); renderMembers(); renderSlots(); if(s.updatedAt) $('foot').textContent='Updated '+s.updatedAt; } // version lives in the #verLbl pill — don't repeat it here // F-027: clear stale selections on refresh (rows may have shifted)
+  function apply(s){ STATE.members=s.members||[]; STATE.selected={}; renderStats(s.stats||{}); renderRankFilter(); renderShiftFilter(); renderMembers(); renderSlots(); if(s.updatedAt) $('foot').textContent='Updated '+shortWhen(s.updatedAt); } // version lives in the #verLbl pill — don't repeat it here // F-027: clear stale selections on refresh (rows may have shifted)
   /* "All shifts" / "All districts" / "All watches" — the department's own word, lowered and pluralised, so the
      control reads as a sentence rather than echoing a shouted sheet header. */
   function pluralLower(s){
