@@ -1,6 +1,6 @@
 # Roster Engine — System Documentation
 
-> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 40 whitelisted endpoints
+> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 43 whitelisted endpoints
 > **Updated:** 2026-07-27
 >
 > A white-label, schema-driven personnel-management engine for Google Sheets, built in Google Apps Script.
