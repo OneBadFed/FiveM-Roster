@@ -120,7 +120,13 @@
   .ph-ico{width:34px;height:34px;flex:0 0 auto;border-radius:8px;display:flex;align-items:center;justify-content:center;margin-top:2px;
         color:rgba(255,255,255,.6);background:rgba(255,255,255,.06);box-shadow:0 0 0 .5px rgba(255,255,255,.11) inset;}
   .ph-ico svg{width:17px;height:17px;stroke-width:1.7;}
-  @keyframes rise{from{opacity:1;transform:none;}to{opacity:1;transform:none;}}
+  @keyframes rise{from{opacity:0;transform:translateY(6px);}to{opacity:1;transform:none;}}
+  /* Only while .switched is on the container — the nav handler adds it, then takes it off once the
+     entrance is done, so a re-render caused by typing in the search box never animates. The stagger
+     stops at the third child: past that it stops reading as assembly and starts reading as lag. */
+  #content.switched>*{animation:rise .22s var(--ease) both;}
+  #content.switched>*:nth-child(2){animation-delay:.03s;}
+  #content.switched>*:nth-child(n+3){animation-delay:.06s;}
 
   /* Square at the top: a callout spans the card edge to edge directly under the header, so a radius
      there leaves two notches against the card's straight sides. */
@@ -268,7 +274,6 @@
   .chip{display:inline-flex;align-items:center;gap:5px;height:20px;font-size:11.5px;font-weight:400;color:var(--txt);
       background:var(--ctl);padding:0 5px 0 9px;border-radius:5px;box-shadow:var(--ctlring);transition:none;animation:none;}
   .chip:hover{transform:none;box-shadow:var(--ctlring);background:var(--ctl-h);}
-  @keyframes chipin{from{opacity:1;}to{opacity:1;}}
   .chip button{background:none;border:none;color:var(--txt-3);cursor:pointer;padding:0 2px;font-size:11px;line-height:1;border-radius:3px;transition:color var(--t);}
   .chip button:hover{color:#ff6961;}
   .chip .mv:hover{color:var(--accent-2);}
@@ -577,7 +582,7 @@
       transition:transform .26s var(--ease),opacity .26s;opacity:0;pointer-events:none;}
   .savepill.show{transform:translateY(0);opacity:1;pointer-events:auto;}
   .savepill .spdot{width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:none;animation:none;flex:0 0 auto;}
-  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:1;}}
+  @keyframes pulse{0%,100%{opacity:1;}50%{opacity:.35;}}
   .savepill .sptxt{font-size:12.5px;font-weight:400;white-space:nowrap;color:var(--txt-2);margin-right:auto;}
   .spbtn{background:var(--btn);border:none;color:var(--txt);border-radius:var(--r-in);height:26px;padding:0 14px;font-size:13px;font-weight:400;cursor:pointer;
       box-shadow:var(--btnring);transition:background var(--t);}
@@ -587,7 +592,7 @@
   .spsave:hover{transform:none;background:linear-gradient(180deg,#1e95ff,#1183f0);}
   .spsave:active{transform:none;}
   .spsave svg{width:13px;height:13px;}
-  .savepill.saving .spdot{background:var(--amber);}
+  .savepill.saving .spdot{background:var(--amber);animation:pulse 1s var(--ease) infinite;}
   .savepill.saving .spsave{pointer-events:none;opacity:.7;}
   .savepill.saved{box-shadow:0 -8px 24px -12px rgba(0,0,0,.6);}
   .savepill.saved .spdot{background:var(--green);animation:none;box-shadow:none;}
@@ -608,6 +613,15 @@
   .sk{border-radius:var(--r-card);background:rgba(255,255,255,.05);box-shadow:none;margin-bottom:18px;overflow:hidden;position:relative;}
   .sk::after{content:"";position:absolute;inset:0;background:linear-gradient(90deg,transparent,rgba(255,255,255,.035),transparent);transform:translateX(-100%);animation:shimmer 1.5s infinite;}
   @keyframes shimmer{to{transform:translateX(100%);}}
+  /* Nothing here loops or travels when the OS asks it not to. The entrance keeps its fade: a section
+     appearing with no transition at all is the jump this setting is meant to prevent. */
+  @media (prefers-reduced-motion:reduce){
+    #content.switched>*{animation-name:fadein;animation-duration:.14s;}
+    .savepill.saving .spdot{animation:none;}
+    .sk::after{animation:none;}
+    .ddmenu{animation:none;}
+  }
+  @keyframes fadein{from{opacity:0;}to{opacity:1;}}
   .sk-h{height:24px;width:34%;margin:24px 0 9px;border-radius:6px;}
   .sk-l{height:12px;width:52%;margin-bottom:22px;border-radius:6px;}
 </style>
@@ -1815,7 +1829,15 @@
   $('content').addEventListener('click',function(e){
     var d=e.target.closest&&e.target.closest('[data-rankdel]'); if(d){ handleRankDelete(d.getAttribute('data-rankdel')); return; }
   });
-  $('nav').addEventListener('click',function(e){ var b=e.target.closest('[data-sec]'); if(!b) return; CUR=b.dataset.sec; renderNav(); renderSection(); });
+  $('nav').addEventListener('click',function(e){ var b=e.target.closest('[data-sec]'); if(!b) return; CUR=b.dataset.sec; renderNav(); renderSection(); sectionEntered(); });
+  /* One-shot: the class goes on, the fresh children animate, and it comes off again so the next
+     render — a search keystroke, a toggle changing what is visible — repaints silently. */
+  var entT;
+  function sectionEntered(){
+    var c=$('content'); if(!c) return;
+    c.classList.remove('switched'); void c.offsetWidth; c.classList.add('switched');
+    clearTimeout(entT); entT=setTimeout(function(){ c.classList.remove('switched'); }, 320);
+  }
   var qT; $('q').addEventListener('input',function(){ Q=this.value; clearTimeout(qT); qT=setTimeout(function(){ renderNav(); renderSection(); },170); });
   document.addEventListener('keydown',function(e){
     if((e.ctrlKey||e.metaKey) && String(e.key).toLowerCase()==='k'){ e.preventDefault(); $('q').focus(); $('q').select(); return; }
