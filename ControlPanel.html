@@ -575,8 +575,10 @@
   .lmore{display:block;width:100%;background:none;border:none;text-align:left;padding:9px 12px;cursor:pointer;
          font-family:inherit;font-size:11.5px;color:#4aa8ff;}
   /* ── Promotions: roster data with its own lifecycle, so a table rather than a stack of cards ── */
-  .ptable{max-width:660px;display:flex;flex-direction:column;max-height:calc(100vh - 190px);}
-  .prow{display:grid;grid-template-columns:78px minmax(0,1fr) 122px;align-items:center;gap:10px;
+  .ptable{display:flex;flex-direction:column;max-height:calc(100vh - 190px);}
+  /* 104px, because "20 Jul. 2026" in 11.5px mono does not fit 78 — it wrapped to two lines and took the row
+     height with it. nowrap below makes that impossible to reintroduce. */
+  .prow{display:grid;grid-template-columns:104px minmax(0,1fr) 160px;align-items:center;gap:10px;
         padding:0 11px;height:26px;font-size:12px;}
   /* Header sticks, footer is pinned, the ROWS scroll between them — the box never grows past the window. */
   .phead{height:22px;flex:0 0 auto;background:rgba(255,255,255,.03);border-bottom:1px solid rgba(255,255,255,.09);
@@ -588,9 +590,15 @@
                    border-top:4px solid currentColor;}
   .sortp.on.asc::after{border-top:none;border-bottom:4px solid currentColor;}
   .pscroll{flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;}
-  .prow .pdate{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.42);}
-  .prow .pname{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
-  .prow .pto{font-size:12px;color:rgba(255,255,255,.55);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* Scoped to #promoFeed: .prow also matches the HEADER, so an unscoped ".prow .pto" was restyling the
+     "Promoted to" label to the row's 12px while its siblings stayed at the header's 10px — which is exactly
+     why one column header looked bigger and bolder than the other two. */
+  #promoFeed .prow .pdate{font-family:var(--mono);font-size:11.5px;color:rgba(255,255,255,.42);white-space:nowrap;}
+  #promoFeed .prow .pname{font-size:12.5px;font-weight:500;color:rgba(255,255,255,.88);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  #promoFeed .prow .pto{font-size:12px;color:rgba(255,255,255,.55);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  /* One format for every column header, whichever cell it sits in. */
+  .phead .sortp{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;
+                color:rgba(255,255,255,.42);white-space:nowrap;}
   #promoFeed .prow{cursor:default;}
   #promoFeed .prow:nth-child(odd){background:rgba(255,255,255,.018);}
   /* NO radius on a selected row: a contiguous run has to read as one unbroken block, which is how a range
@@ -606,24 +614,17 @@
   .psel{display:flex;align-items:baseline;gap:5px;}
   .psel b{font-size:11.5px;font-weight:500;color:rgba(255,255,255,.88);}
   .psel span{font-size:11.5px;color:rgba(255,255,255,.35);}
-  /* A joined pair, split by a dark hairline — one control, two halves. */
-  .pmpair{display:inline-flex;height:20px;border-radius:5px;overflow:hidden;background:rgba(255,255,255,.07);
-          box-shadow:0 0 0 .5px rgba(255,255,255,.11) inset;}
-  .pmbtn{width:27px;border:none;background:none;color:rgba(255,255,255,.8);font-family:inherit;font-size:13px;
-         line-height:1;cursor:pointer;padding:0;transition:background var(--t) var(--ease);}
-  .pmbtn+.pmbtn{box-shadow:-1px 0 0 rgba(0,0,0,.32);}
-  .pmbtn:hover{background:rgba(255,255,255,.09);}
-  /* The minus states its own precondition: dimmed until something is selected. */
-  .pmbtn:disabled{opacity:.3;cursor:default;}
-  .pmbtn:disabled:hover{background:none;}
   /* Tinted, not filled. A solid red button is the default action in a confirm sheet; a bar action must not
      outrank the content it sits under. */
+  /* Deselect is a .linkbtn (24px) and Remove is a .pdanger (22px) — side by side in a 32px bar, the 2px
+     difference reads as a mistake. Both are bar actions, so both take the bar's size. */
+  .pbar-act .linkbtn{height:22px;padding:0 9px;font-size:11.5px;font-weight:500;}
   .pdanger{height:22px;padding:0 9px;border:none;border-radius:6px;cursor:pointer;font-family:inherit;
            font-size:11.5px;font-weight:500;display:inline-flex;align-items:center;gap:6px;
            background:rgba(255,69,58,.15);box-shadow:0 0 0 .5px rgba(255,69,58,.32) inset;color:#ff6961;}
   .pdanger:hover{background:rgba(255,69,58,.22);}
   .pdanger .pkbd{color:#ff6961;opacity:.55;}
-  .pundo{display:flex;align-items:center;gap:9px;margin-top:10px;max-width:660px;padding:9px 11px;border-radius:8px;
+  .pundo{display:flex;align-items:center;gap:9px;margin-top:10px;padding:9px 11px;border-radius:8px;
          background:rgba(255,255,255,.05);box-shadow:0 0 0 .5px rgba(255,255,255,.09) inset;font-size:12.5px;
          color:rgba(255,255,255,.85);}
   .pundo svg{width:14px;height:14px;color:rgba(255,255,255,.5);flex:0 0 auto;}
@@ -1320,7 +1321,6 @@
       <!-- Always present, never appearing or disappearing: this is the one place list editing happens. -->
       <div class="pbar" id="promoBar">
         <div class="pbar-idle" id="pbarIdle">
-          <span class="pmpair"><button type="button" class="pmbtn" id="promoAdd" title="Add an entry">+</button><button type="button" class="pmbtn" id="promoDel" title="Remove the selected entries">&minus;</button></span>
           <span class="pbar-r" id="promoCount"></span>
         </div>
         <div class="pbar-act" id="pbarAct" hidden>
@@ -2505,7 +2505,6 @@
     var n=promoSelCount(), bar=$('promoBar');
     if(bar) bar.classList.toggle('on', n>0);
     $('pbarIdle').hidden=n>0; $('pbarAct').hidden=n===0;
-    $('promoDel').disabled=n===0;
     $('promoCount').textContent=PROMOS.list.length+' entr'+(PROMOS.list.length===1?'y':'ies');
     $('promoSelN').textContent=n+' selected';
     $('promoSelOf').textContent='of '+PROMOS.list.length;
@@ -2582,9 +2581,7 @@
   });
   $('promoDeselect').addEventListener('click',promoDeselect);
   $('promoRemove').addEventListener('click',promoRemoveSelected);
-  $('promoDel').addEventListener('click',promoRemoveSelected);
   $('promoUndoBtn').addEventListener('click',promoUndo);
-  $('promoAdd').addEventListener('click',function(){ toast('Adding an entry by hand is not built yet.','err'); });
   document.addEventListener('keydown',function(e){
     var pane=$('pane-promos'); if(!pane || !pane.classList.contains('active')) return;
     if(/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName||'')) return;
