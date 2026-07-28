@@ -288,7 +288,7 @@
   .idtick{position:absolute;right:8px;top:50%;transform:translateY(-50%);color:#30d158;font-size:12px;line-height:1;pointer-events:none;}
   .idtick[hidden]{display:none;}
   /* Footer bar — the commit point, pinned to the bottom of the pane the way a sheet's buttons are. */
-  .fbar{display:flex;align-items:center;gap:10px;height:52px;flex:0 0 auto;margin:14px -14px -28px;padding:0 14px;
+  .fbar{display:flex;align-items:center;gap:10px;height:52px;flex:0 0 auto;margin:0 -14px -28px;padding:0 14px;
         position:sticky;bottom:-28px;background:var(--bg);box-shadow:0 -1px 0 var(--hair);}
   .fbar-gap{flex:1;}
   .fstatus{display:flex;align-items:center;gap:7px;font-size:11.5px;color:rgba(255,255,255,.42);min-width:0;}
@@ -415,7 +415,7 @@
   .sucols{display:grid;grid-template-columns:236px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
   /* Its OWN scrolling region, and air at both ends: the list used to grow the whole pane instead, so with more
    than a handful of signups the first and last rows ran flush against the header and the action bar. */
-  .suqueue{min-width:0;min-height:0;margin-left:-14px;padding:14px 14px 18px;background:var(--queue);
+  .suqueue{min-width:0;min-height:0;margin:-14px 0 0 -14px;padding:28px 14px 18px;background:var(--queue);
            box-shadow:1px 0 0 var(--hair);align-self:stretch;overflow-y:auto;overscroll-behavior:contain;}
   .sudetail{min-height:0;overflow-y:auto;}
   /* In the toolbar the scope control sits OVER the column it filters, and the rule between them continues the
