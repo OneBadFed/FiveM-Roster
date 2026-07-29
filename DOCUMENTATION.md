@@ -1,7 +1,7 @@
 # Roster Engine — System Documentation
 
 > **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 36 whitelisted endpoints
-> **Updated:** 2026-07-27
+> **Updated:** 2026-07-28
 >
 > A white-label, schema-driven personnel-management engine for Google Sheets, built in Google Apps Script.
 > Everything below describes the code in this folder; the live project is these files synced into the Apps Script
@@ -12,8 +12,8 @@
 ## 1 · Architecture
 
 **The bound workbook IS the internal roster.** It holds everything private: the member roster (including the
-private EMAIL / DATE OF BIRTH / PHONE columns), the LOA Tracker, the Patrol Log, Roster Signups, the Disciplinary
-Log, Webhooks, ⚙️ Config, and the system logs. Google file sharing is the access control — only staff are ever
+private EMAIL / DATE OF BIRTH / PHONE columns), the LOA Tracker, the Patrol Log, Roster Signups, Webhooks,
+⚙️ Config, and the system logs. Google file sharing is the access control — only staff are ever
 invited to this file. Members read a **separate public spreadsheet** that receives a ONE-WAY publish (§9); nothing
 ever flows back. There is no separate "admin file" — `adminFile_()` resolves to the active spreadsheet.
 
@@ -25,7 +25,7 @@ ever flows back. There is no separate "admin file" — `adminFile_()` resolves t
 | `RosterSystem.gs` | The engine: CONFIG bridge, header-resolved columns, status engine, transfers, leave lifecycle, Patrol Log crediting, dashboard + #tags, promotions feed, derived-tab rebuilds, menus, First-Run wizard |
 | `RosterControlPanel.gs` | Control Panel server: the D5 `dispatch()` whitelist gateway and every `cp*` endpoint; signup sync + approval; the public-roster publish pipeline; webhooks; rank-icon storage |
 | `RosterTrust.gs` | Snapshots/restore, the always-on Edit Log audit (with editor-name resolution), health & schema checks |
-| `RosterExtras.gs` | Integrity scan, leave coverage board, the Activity Panel board (§5a), hours history + cadence-aware reset, helper-column tools, full-lifecycle demo seeder |
+| `RosterExtras.gs` | Integrity scan, leave coverage board, the Activity Panel board (§5a), hours history + cadence-aware reset + period archive, group / Police Academy tab builders, full-lifecycle demo seeder |
 | `RosterDevQA.gs` | The QA suite — 23 sections, sandbox-only, run in three parts (or all / per-section) from the 🧪 menu |
 | `ControlPanel.html` | Control Panel UI (single HtmlService dialog, Studio design system, deep-linkable tabs) |
 | `SettingsPanel.html` | Settings Studio UI (full-screen config editor incl. the per-channel Discord embed builder) |
@@ -73,7 +73,8 @@ absent-block case IS the pre-move sheet, and skipping it silently reset every mo
 `SIGNUP_FORM_RESPONSES`, `ACTIVITY` — the Activity Panel board (§5a), and `WELCOME` — the Welcome/dashboard tab
 the publish keep/force ranges resolve
 against; roles must resolve to distinct tabs) · ROSTER_LAYOUT (header/data rows, divider mode,
-`UNIT_FORMAT` callsign template, `LAST_ACTIVITY_COLS` + style) · COLUMNS *(table — SLOT vs MEMBER classes)* ·
+`UNIT_FORMAT` callsign template, `ID_TYPE` + digit range, the SHIFT column's header/values/ownership) ·
+COLUMNS *(table — SLOT vs MEMBER classes)* ·
 SECTION_TAGS *(table)* · STATUSES / STATUS_OVERRIDES / STATUS_RULES *(tables — tier ladder,
 per-rank overrides, fixed-point transition rules)* · RANKS *(table)* · LEAVE · FORM_MAP *(table)* · DISCORD ·
 NOTIFICATIONS (opt-in event embeds) · EMBEDS *(table — per-event embed overrides from the Settings builder)* ·
@@ -390,15 +391,14 @@ client sends each row's Unique ID so a shifted row can't hit the wrong member (`
 members, `signupResolveRow_` for signups).
 
 **Tabs:** Members (search/filter/sort, bulk status — one batched read + one RangeList write per selection,
-expandable profile cards with move/transfer, leave scheduling, private-details link, discipline history) ·
-Add member (rank-grouped slot dropdown + live preview) · **Signups** (§6) · Dividers (per-section styling) ·
+expandable profile cards with move/transfer, leave scheduling, hours trend, leave history) ·
+Add member (rank-grouped slot dropdown + live preview) · **Signups** (§6) ·
 Tools (one-click actions, webhook setup, the Promotions-feed manager — §3b) · Columns (SLOT/MEMBER toggles) ·
 System (health checks, snapshots, audit timeline).
 
-**Rank icons & colours:** uploaded/picked in Settings, stored in Document Properties (icons chunked `REICON:`,
-colours one small value each `RKCOLOR:`), lazy-loaded after first paint. A member card's accent resolves:
-explicit rank colour → the roster rank-cell's background → neutral, so colouring the sheet's rank cells still
-works where no explicit colour is set.
+**Rank icons:** uploaded in Settings, stored chunked in Document Properties (`REICON:`) and lazy-loaded after
+first paint. A member card's accent comes from the roster's own rank-cell background, so colouring those cells
+on the sheet is what drives it.
 
 **Testing pattern:** every mutating endpoint has an injectable `_`-core taking sheet objects, driven by DevQA
 against sandbox tabs; the live wrapper adds lock/audit/notify.
@@ -497,7 +497,7 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
   finishes the leftover tabs within a minute. The menu/trigger publish chunks the same way but never yields —
   an explicit publish runs every tab.
 - **Interactive writes outrank the publisher:** every interactive path — panel saves (`cpWithLock_`), transfers,
-  Approve & seat, discipline appends, menu actions — stamps `PUBLISH_BACKOFF` *before* waiting on the lock, so
+  Approve & seat, menu actions — stamps `PUBLISH_BACKOFF` *before* waiting on the lock, so
   no new publish pass starts against it and an in-flight pass yields at its next tab boundary. The dirty flag
   still queues the publish, so the public copy catches up right after via catch-up/sweep. The publisher also
   steps aside for member transfers at the trigger level (Unique-ID-column edits defer; EDIT/OTHER/FORMAT
@@ -532,7 +532,7 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
 - **Audit (always-on):** the installable `auditEdit` trigger logs who/what/when to the Edit Log; panel and menu
   actions log semantically via `auditEvent_`. **Editor identity resolves to a member name:** `auditWho_(email)`
   matches the editing account's email against the roster's private EMAIL column — a match shows the member's
-  NAME everywhere (Edit Log, Discord audit embeds, webhook set-by stamps, discipline "Issued by"); no match
+  NAME everywhere (Edit Log, Discord audit embeds, webhook set-by stamps); no match
   keeps the raw email. Memoized to one roster read per execution. Installable onEdit triggers are per-user —
   every admin who opens the panel installs their own `auditEdit`, and ALL of them fire on each edit — so a
   trigger that can't identify the editor (blank cross-account email) bails: the editor's own trigger logs it by
@@ -541,13 +541,14 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
 - **Snapshots:** hidden `_Snapshots` tab, keeps the last `SNAPSHOT_KEEP`; restore is identity-mapped (a row
   shift since the snapshot can't drop data on the wrong member) with an ID-precision guard; pruning deletes
   contiguous runs. Optional weekly auto-snapshot.
-- **Discipline:** the Disciplinary Log is append-only under the script lock (concurrent panels can't overwrite
-  each other), `'@'`-formatted before every write.
 - **Integrity scan:** duplicate/malformed IDs, status-vs-hours mismatches, orphaned leaves, and assignment
   typos — a group-column value matching no group tab but within 2 edits of a declared value (bounded
   Levenshtein, near-miss only so tab-less assignments never false-positive, capped at 10/scan) names the
   member, the typo, and the tab they're missing from. Logged + posted.
 - **Health check:** config validity first, then structure/triggers/webhooks; drives the panel health pill.
+  Every roster read in it is header-resolved (member count included), and the leave-form check asks
+  `leaveFormCols_` whether the headers resolve rather than testing fixed column positions — a reordered form or
+  roster is supported by the engine, so it must not fail its own health check.
 - **Coded errors:** `REGISTRY_` defines every code with a hint; `runAction_` wraps menu commands with coded-modal
   handling and success audit.
 
@@ -644,9 +645,13 @@ publish) is part of every release.
 **Local static validation** (no Apps Script needed): Node `new Function(src)` syntax check + zero-control-byte
 scan per file; HTML script blocks are extracted, GAS scriptlets stubbed, and `node --check`ed the same way.
 **`tools/cfgcheck.js` goes further — it EXECUTES the config pipeline** (`node tools/cfgcheck.js RosterConfig.gs`):
-GAS services stubbed, then real assertions over `validateConfig_`/`materialize_` — empty-config = zero ERRORs,
-legacy bridge values, `aka` alias precedence, list/enum/int coercion, schema self-consistency. Run it after any
-config-layer change. (`tools/**` is clasp-ignored — it must never reach the Apps Script project.)
+GAS services stubbed, then **65 real assertions** over `parseBlocks_` / `validateConfig_` / `materialize_` —
+empty-config = zero ERRORs, legacy bridge values, `aka` alias precedence (same-block and cross-block),
+list/enum/int coercion, schema self-consistency, `BLOCK_ORDER_` ↔ `BLOCK_SPECS_` parity, nothing both retired and
+live, block boundaries surviving a hand-deleted separator row, every `[SHEETS]` role colliding loudly,
+status-name membership, the silent-failure guards (list overflow, unreadable colour), and that the two leave
+ending switches reach a real consumer. Run it after any config-layer change.
+(`tools/**` is clasp-ignored — it must never reach the Apps Script project.)
 
 ---
 

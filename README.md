@@ -15,7 +15,7 @@ There are **two spreadsheets**:
 
 | | Who sees it | What's in it |
 |---|---|---|
-| **This workbook** (the internal roster) | **Staff only** — people you invite by share | Everything: the roster with private member details (email, DOB, phone), LOA tracker, patrol log, signups, discipline, webhooks, config |
+| **This workbook** (the internal roster) | **Staff only** — people you invite by share | Everything: the roster with private member details (email, DOB, phone), LOA tracker, patrol log, signups, webhooks, config, system logs |
 | **The public roster** (a separate file) | Your members — read-only link | A live, one-way mirror of the tabs you choose, with private columns automatically stripped |
 
 **Never share the internal workbook with members.** Google's share list *is* the security — anyone who can view
@@ -40,7 +40,8 @@ within seconds of any change here.
    history. ⚠️ It **overwrites the roster**, so only use it on a fresh copy, never after real data exists.
 6. **Publish the public roster:** 👥 Roster ▸ **🌐 Set Up Public Roster**, then copy the tabs you want public
    into that file (the public file's tab list is the allow-list). From then on it stays current by itself;
-   🌐 Publish Public Roster forces a pass any time.
+   🌐 Publish Public Roster forces a pass any time. Rows that land past the styled area of a public tab are
+   dressed to match the rows above them, so a growing roster keeps its banding and status chips.
 
 ---
 
@@ -49,11 +50,10 @@ within seconds of any change here.
 **👥 Roster ▸ 🎛️ Open Control Panel** is where day-to-day management happens:
 
 - **Members** — search, filter, bulk status changes, and expandable profile cards: move/transfer a member,
-  schedule a leave, see hours and history, record discipline.
+  schedule a leave, see their hours trend and leave history.
 - **Add member** — pick an open slot (grouped by rank), type a name and ID, done.
 - **Signups** — the applicant queue (see below). Pick an applicant, pick an open slot, **Approve & seat**.
-- **Dividers** — style your roster's section headers (pills, tones, icons).
-- **Tools** — one-click actions and Discord webhook setup.
+- **Tools** — one-click maintenance actions and Discord webhook setup.
 - **Columns** — tell the engine which columns belong to the *person* (move with them) vs the *slot* (stay put).
 - **System** — health checks, snapshots/restore, and the audit timeline.
 
@@ -76,8 +76,13 @@ You can also just **work directly on the sheet** — the engine watches for it:
 
 Members submit the LOA form → the request appears at the top of the **LOA Tracker** as *Pending* → you set it
 *Approved*. The engine does the rest: starts the leave on its start date (roster status flips automatically),
-expires it on its end date, and posts the Discord embeds you've enabled. The countdown/length columns compute
+ends it on its end date, and posts the Discord embeds you've enabled. The countdown/length columns compute
 themselves.
+
+Two switches under ⚙️ Engine Settings ▸ Leave ▸ *Ending* control the automatic half. **Auto-end leaves** off
+means nothing is ever ended on a schedule — a leave stays live until you change its status by hand (due leaves
+still start). **Expire unapproved too** additionally ends a request still sitting on *Pending* once its end date
+has gone by. Anything an admin has explicitly set — Denied, or your own terminal status — is never touched.
 
 ## 🚔 Patrol hours
 
@@ -95,7 +100,9 @@ treat it as read-only: statuses are managed on the Patrol Log, and hand edits on
 ## 📸 Activity cycles
 
 **👥 Roster ▸ 📸 Capture & Reset Activity** archives everyone's hours to history and zeroes the week (cadence —
-weekly, biweekly, monthly — is configurable in Settings, and can run itself on schedule).
+weekly, biweekly, monthly — is configurable in Settings, and can run itself on schedule). It also rolls your
+PREVIOUS-ACTIVITY columns one period older and re-applies their colouring per ⚙️ Engine Settings ▸ Sheets &
+layout ▸ *Previous-activity style* (match the status colours, or a calm grey).
 
 Prefer to close periods by hand? ⚙️ Engine Settings ▸ Automation & logging ▸ Hours reset ▸ **Auto-reset
 activity** turns the scheduled reset off entirely — nothing is ever zeroed until you run the menu item yourself.
@@ -110,7 +117,7 @@ It applies immediately; the rest of the schedule fields hide while it's off.
 - **Statuses & tiers** — your status names, your hour thresholds, per-rank ladders, colors.
 - **Sheets & layout** — rename any tab; tell the engine where your headers and data start.
 - **Callsign format** — `S-{00}` → S-01, S-02… any prefix/padding you like.
-- **Discord** — one section per channel (Audit log · LOAs · Patrol logs · Errors). Paste a webhook URL, toggle
+- **Discord** — one section per channel (Audit log · LOAs · Patrol logs · Signups · Errors). Paste a webhook URL, toggle
   events, and design every embed in the builder with a live preview. One webhook can feed several channels.
   URLs are write-only secrets: the panel never shows them back.
 - **Theme** — the colors the engine paints with.
