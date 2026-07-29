@@ -294,6 +294,7 @@ const DEV_PART_ENDS_ = [8, 16]; // Part 1 = sections 1..8, Part 2 = 9..16, Part 
 
 /** Runs DEV_GROUPS[from..to] (1-based, inclusive) with preflight, guaranteed teardown, and a labeled report. */
 function devRunRange_(from, to, partLabel) {
+  try { DEV_WEBHOOKS_OFF_ = true; } catch (e) { /* engine file missing → the suite can't run anyway */ } // NO Discord posts / live Edit Log writes from sandbox activity (resets when this execution ends)
   const collectors = [];
   // PREFLIGHT (F-028) — runs before every section so a customized live config is flagged up front, not as mystery reds.
   try { collectors.push(devConfigPreflight_()); }
@@ -326,6 +327,7 @@ function devRunAllTestsPart3() { devRunRange_(DEV_PART_ENDS_[1] + 1, DEV_GROUPS.
  * ====================================================================== */
 /** Runs one group fn with guaranteed sandbox teardown, then writes results + popup. */
 function devRunOne_(label, fn) {
+  try { DEV_WEBHOOKS_OFF_ = true; } catch (e) { /* engine file missing → the section can't run anyway */ } // same suppression as the part runners
   let collector;
   try {
     try {
@@ -648,7 +650,7 @@ function devNumberSheet_(sheet) {
   sheet.getRange(CONFIG.rosterStartRow, CONFIG.roster.unit, n, 1).setValues(units);
 }
 
-/** Mirror of checkDuplicateDiscordIds against a sandbox sheet (uses the REAL isValidMemberValues_). */
+/** Duplicate/malformed-ID scan against a sandbox sheet (uses the REAL isValidMemberValues_ + isValidId_). */
 function devScanDuplicateIds_(roster) {
   const last = roster.getLastRow();
   const n = Math.max(0, last - CONFIG.rosterStartRow + 1);
@@ -747,11 +749,6 @@ function devUnitTests_() {
   devEq_(R, 'isValidMemberValues_ "Rank" placeholder -> false', isValidMemberValues_('Rank', 'x'), false);
   devEq_(R, 'isValidMemberValues_ "UNIT" (4-caps divider)+name -> false', isValidMemberValues_('UNIT', 'x'), false);
 
-  // --- training-divider label detection (default keywords TRAINING / CADET) ---
-  devEq_(R, 'isTrainingDividerLabel_ "STAFF IN TRAINING" -> true', isTrainingDividerLabel_('STAFF IN TRAINING'), true);
-  devEq_(R, 'isTrainingDividerLabel_ "POLICE CADETS" -> true', isTrainingDividerLabel_('POLICE CADETS'), true);
-  devEq_(R, 'isTrainingDividerLabel_ "EXECUTIVE COMMAND" -> false', isTrainingDividerLabel_('EXECUTIVE COMMAND'), false);
-
   // --- dash_ / clamp_ ---
   devEq_(R, 'dash_ "" -> em-dash', dash_(''), '—');
   devEq_(R, 'dash_ null -> em-dash', dash_(null), '—');
@@ -814,6 +811,17 @@ function devUnitTests_() {
   devEq_(R, 'webhookChannel_ "errors" -> ERRORS', webhookChannel_('errors'), 'ERRORS');
   devEq_(R, 'webhookChannel_ unknown -> LOA', webhookChannel_('nope'), 'LOA');
   devEq_(R, 'webhookChannel_ empty -> LOA', webhookChannel_(''), 'LOA');
+  devEq_(R, 'webhookChannel_ "signup" -> SIGNUP (own channel)', webhookChannel_('signup'), 'SIGNUP');
+
+  // --- tabKey_ (publish keep/force tab matching): a LEADING emoji never breaks the match, and it stays EXACT ---
+  devEq_(R, 'tabKey_ strips a leading emoji ("👋 Welcome Page" = "Welcome Page")', tabKey_('👋 Welcome Page'), tabKey_('Welcome Page'));
+  devEq_(R, 'tabKey_ "*" (all-tabs) passes through', tabKey_('*'), '*');
+  devCheck_(R, 'tabKey_ never substring-matches ("Roster" ≠ "Roster Signups")', tabKey_('Roster') !== tabKey_('Roster Signups'));
+
+  // --- levDist_ (integrity scan's assignment-typo near-miss) ---
+  devEq_(R, 'levDist_ exact -> 0', levDist_('district 1 patrol', 'district 1 patrol'), 0);
+  devEq_(R, 'levDist_ one-letter typo -> 1 ("distict")', levDist_('distict 1 patrol', 'district 1 patrol'), 1);
+  devCheck_(R, 'levDist_ unrelated values early-exit above the threshold', levDist_('office', 'district 1 patrol') > 2);
 
   // --- fill_ template interpolation ---
   devEq_(R, 'fill_ replaces a known token', fill_('Hi {name}', { name: 'Bob' }), 'Hi Bob');
@@ -1250,6 +1258,30 @@ function devSyncTests_() {
     devEq_(R, 'sortTracker_ prepend -> total is now 5 rows', devDataRows_(tr, CONFIG.trackerStartRow), 5);
   })();
 
+  // Inside a status group the NEWEST leave sits on top (KEY-timestamp recency; START date is the key-less fallback).
+  (() => {
+    const tr = devBuildTracker_([
+      { name: 'OldP', id: devId_(486), start: devDay_(1), end: devDay_(5), status: 'Pending' },
+      { name: 'NewP', id: devId_(487), start: devDay_(3), end: devDay_(6), status: 'Pending' },
+    ]);
+    sortTracker_(null, tr);
+    devEq_(R, 'newest-first: the later leave sits on top of its group', tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.name).getDisplayValue(), 'NewP');
+    devEq_(R, 'newest-first: the older leave below it', tr.getRange(CONFIG.trackerStartRow + 1, CONFIG.tracker.name).getDisplayValue(), 'OldP');
+  })();
+
+  // SUBMISSION recency (the millis in the dedup KEY — the form's Timestamp) OUTRANKS the start-date fallback: a leave
+  // SUBMITTED later tops its group even when its start date is earlier.
+  (() => {
+    const tr = devBuildTracker_([
+      { name: 'SubOld', id: devId_(488), start: devDay_(5), end: devDay_(9), status: 'Pending' }, // newer START…
+      { name: 'SubNew', id: devId_(489), start: devDay_(1), end: devDay_(9), status: 'Pending' }, // …but SubNew was SUBMITTED later
+    ]);
+    tr.getRange(CONFIG.trackerStartRow, 1).setValue('KEY|' + devId_(488) + '|' + new Date(2026, 0, 10).getTime());
+    tr.getRange(CONFIG.trackerStartRow + 1, 1).setValue('KEY|' + devId_(489) + '|' + new Date(2026, 0, 12).getTime());
+    sortTracker_(null, tr);
+    devEq_(R, 'KEY recency: newest SUBMITTED on top (beats a newer start date)', tr.getRange(CONFIG.trackerStartRow, CONFIG.tracker.name).getDisplayValue(), 'SubNew');
+  })();
+
   // Deleting a leave (clearing its row) leaves a blank gap; sortTracker_ compacts the survivors up to the top with no gap.
   (() => {
     const tr = devBuildTracker_([
@@ -1311,7 +1343,7 @@ function devSyncTests_() {
  * ====================================================================== */
 function devMaintenanceTests_() {
   const R = devNewResults_('Roster maintenance (sandbox)');
-  devInfo_(R, 'unit numbering + dup scan run via mirrors (updateUnitNumbers_/checkDuplicateDiscordIds are UI-bound; the mirrors call the REAL isMemberSlot_/formatUnit_/isValidMemberValues_)', '');
+  devInfo_(R, 'unit numbering + dup scan run via mirrors (updateUnitNumbers_ is UI-bound; the mirrors call the REAL isMemberSlot_/formatUnit_/isValidMemberValues_)', '');
 
   // Unit numbering: continuous S-01.. across dividers (divider rows stay blank).
   (() => {
@@ -1727,13 +1759,11 @@ function devPanelTests_() {
     devCheck_(R, 'cpDetectMove_ null for a malformed ID', cpDetectMove_(ro, CONFIG.rosterStartRow + 1, devBadId_()) === null);
   })();
 
-  // cpRosterHeaderIssues_ (header-resolved) + cpHeaderIssues_ (fixed-position tracker)
+  // cpRosterHeaderIssues_ — the roster's required labels resolve on its own header row
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'A', id: devId_(60), activity: 'Active', hours: 5 }]);
     devEq_(R, 'cpRosterHeaderIssues_ clean roster -> no issues', cpRosterHeaderIssues_(ro).length, 0);
     devEq_(R, 'rosterCols_ default ACTIVITY resolves (non-zero)', rosterCols_(ro).activity > 0, true);
-    devEq_(R, 'cpHeaderIssues_ clean spec -> no issues', cpHeaderIssues_(ro, 'Roster', 5, { 2: 'RANK', 3: 'NAME' }).length, 0);
-    devCheck_(R, 'cpHeaderIssues_ flags a header drift', cpHeaderIssues_(ro, 'Roster', 5, { 2: 'HOURS' }).length > 0);
   })();
 
   return R;
@@ -1875,14 +1905,13 @@ function devTrustTests_() {
     devEq_(R, 'cpApplyRestore_ restores the status', devActivity_(ro, 0), 'Active');
   })();
 
-  // Tracker schema check: the new 16-col LOA layout resolves cleanly; a drift is flagged.
+  // Tracker schema check: every column cpSchemaCheck_ requires resolves by HEADER on the shipped layout.
   (() => {
     const tr = devBuildTracker_([]);
-    const labelRow = Math.max(1, CONFIG.trackerStartRow - 2);
-    const clean = cpHeaderIssues_(tr, 'Tracker', labelRow, { 2: 'RANK', 5: 'NAME', 6: 'DISCORD', 8: 'START', 9: 'END', 14: 'STATUS' });
-    devEq_(R, 'tracker schema (new 16-col layout) -> no issues', clean.length, 0);
-    const drift = cpHeaderIssues_(tr, 'Tracker', labelRow, { 14: 'RANK' }); // STATUS col should not read "RANK"
-    devCheck_(R, 'tracker schema flags a header drift', drift.length > 0);
+    const TC = trackerCols_(tr);
+    devCheck_(R, 'tracker schema (16-col layout) -> every required column resolves',
+      !!(TC.rank && TC.name && TC.discord && TC.start && TC.end && TC.status));
+    devEq_(R, 'tracker STATUS resolves to its own column, not RANK', TC.status === TC.rank, false);
   })();
 
   return R;
@@ -1957,6 +1986,17 @@ function devConfigDispatchTests_() {
     devCheck_(R, 'dispatch rejects an unknown endpoint', unknownThrew);
   })();
 
+  // Every endpoint the panel's client code calls is REGISTERED in the whitelist — the E-506 class of bug (endpoint
+  // shipped, whitelist line forgotten) fails here instead of in a user's dialog. Membership only for the mutating
+  // ones; the read-only cpPromoList also round-trips through the real dispatcher.
+  (() => {
+    ['cpSignupList', 'cpSignupApprove', 'cpSignupPostSeat', 'cpPromoList', 'cpPromoRemove'].forEach((n) => {
+      devCheck_(R, `whitelist: ${n} is dispatchable`, typeof DISPATCH_ENDPOINTS_[n] === 'function');
+    });
+    let promoOk = false; try { promoOk = Array.isArray(dispatch('cpPromoList')); } catch (e) { promoOk = false; }
+    devCheck_(R, 'whitelist: cpPromoList round-trips (read-only)', promoOk);
+  })();
+
   // Additive migration: an absent block materializes to its spec defaults (no ERROR).
   (() => {
     const v = validateConfig_({}); // no [PATROL], no [SHEETS] etc.
@@ -1980,10 +2020,10 @@ function devWhiteLabelTests_() {
   const NO_HOOK = { sendWebhooks: false };
 
   const RENAMED = {
-    STATUSES: { kind: 'table', header: ['Status', 'Kind', 'MinHours', 'Color', 'Announce'], rows: [
-      ['Duty', 'TIER', '10', '', ''], ['Light', 'TIER', '6', '', ''], ['Off', 'TIER', '0', '', ''],
-      ['Vacation', 'LEAVE', '', '', ''], ['Returning', 'LEAVE', '', '', ''], ['Medical', 'LEAVE', '', '', ''],
-      ['Standby', 'PROTECTED', '', '', ''],
+    STATUSES: { kind: 'table', header: ['Status', 'Kind', 'MinHours', 'Color'], rows: [
+      ['Duty', 'TIER', '10', ''], ['Light', 'TIER', '6', ''], ['Off', 'TIER', '0', ''],
+      ['Vacation', 'LEAVE', '', ''], ['Returning', 'LEAVE', '', ''], ['Medical', 'LEAVE', '', ''],
+      ['Standby', 'PROTECTED', '', ''],
     ] },
     LEAVE: { kind: 'kv', kv: {
       LEAVE_TYPES: 'Vacation, Returning, Medical', STATUS_FLOW: 'New, Greenlit, Rejected, Closed',
@@ -2060,12 +2100,11 @@ function devIdentityWriteTests_() {
       { rank: 'Sergeant', name: '', id: '', activity: '', hours: '' },
     ]);
     const RC = rosterCols_(ro);
-    const wiped = moveMemberColumns_(ro, CONFIG.rosterStartRow, CONFIG.rosterStartRow + 1);
+    moveMemberColumns_(ro, CONFIG.rosterStartRow, CONFIG.rosterStartRow + 1);
     devEq_(R, 'moveMemberColumns_ MEMBER col (hours) followed', ro.getRange(CONFIG.rosterStartRow + 1, RC.hours).getValue(), 42);
     devEq_(R, 'moveMemberColumns_ MEMBER col (name) followed', ro.getRange(CONFIG.rosterStartRow + 1, RC.name).getDisplayValue(), 'Mv');
     devEq_(R, 'moveMemberColumns_ SLOT col (rank) stayed at destination', ro.getRange(CONFIG.rosterStartRow + 1, RC.rank).getDisplayValue(), 'Sergeant');
     devEq_(R, 'moveMemberColumns_ source name cleared', ro.getRange(CONFIG.rosterStartRow, RC.name).getDisplayValue(), '');
-    devEq_(R, 'moveMemberColumns_ same-section move -> nothing wiped', wiped, false);
   })();
 
   // cpApplyRestore_ restores by IDENTITY: a member relocated since the snapshot gets their data on their CURRENT row.
@@ -2338,6 +2377,25 @@ function devNewLayoutTests_() {
     devEq_(R, 'archive shift: left col took the next period (JUN=6)', sh.getRange(CONFIG.rosterStartRow, 11).getValue(), 6);
   })();
 
+  // PERIOD_BUCKET=MONTH: a check whose label matches the rightmost column ADDS into it instead of rolling —
+  // four weekly 5-hour checks must read 20 in one month column, not roll four columns away.
+  (() => {
+    const sh = buildNL('NLAccum');
+    const r0 = CONFIG.rosterStartRow;
+    const rolled = shiftArchiveColumns_(sh, 'JUL HOURS', true);   // label differs from the sheet's → normal roll
+    devEq_(R, 'bucket=MONTH: a NEW label still rolls', rolled, 2);
+    devEq_(R, 'bucket=MONTH: rolled col holds the closed hours (12)', sh.getRange(r0, 12).getValue(), 12);
+    sh.getRange(r0, 9).setValue(5);                                // next check earns 5 more in the SAME month
+    const again = shiftArchiveColumns_(sh, 'JUL HOURS', true);
+    devEq_(R, 'bucket=MONTH: same label does NOT roll', again, 0);
+    devEq_(R, 'bucket=MONTH: hours ACCUMULATE (12 + 5 = 17)', sh.getRange(r0, 12).getValue(), 17);
+    devEq_(R, 'bucket=MONTH: the older column is untouched', sh.getRange(r0, 11).getValue(), 6);
+    devEq_(R, 'bucket=MONTH: header unchanged while accumulating', sh.getRange(6, 12).getDisplayValue(), 'JUL HOURS');
+    sh.getRange(r0, 9).setValue(4);
+    devEq_(R, 'bucket=RESET (no flag): same label rolls as before', shiftArchiveColumns_(sh, 'JUL HOURS'), 2);
+    devEq_(R, 'bucket=RESET: rolled col took the current hours (4)', sh.getRange(r0, 12).getValue(), 4);
+  })();
+
   return R;
 }
 
@@ -2402,10 +2460,26 @@ function devPatrolLogTests_() {
   flagCase('end<=start', { startDate: devDay_(-1), startTime: devTime_(12, 0), endDate: devDay_(-1), endTime: devTime_(9, 0) }, 'not after');
   flagCase('over-max', { startDate: devDay_(-1), startTime: devTime_(2, 0), endDate: devDay_(-1), endTime: devTime_(22, 0) }, 'max'); // 20h: advisory
   flagCase('over-a-day', { startDate: devDay_(-3), startTime: devTime_(0, 0), endDate: devDay_(-1), endTime: devTime_(0, 0) }, '24'); // 48h: blocking
-  flagCase('future', { startDate: devDay_(1), startTime: devTime_(9, 0), endDate: devDay_(1), endTime: devTime_(12, 0) }, 'future');
+  flagCase('future', { startDate: devDay_(2), startTime: devTime_(9, 0), endDate: devDay_(2), endTime: devTime_(12, 0) }, 'future'); // +2 days: beyond any sane FUTURE_GRACE_HOURS setting
   flagCase('unknown-id', { id: devId_(999), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }, 'roster');
 
-  // Admin override: an ADVISORY flag (over-max / future) is approved by moving STATUS to Processed → the hours credit.
+  // evaluatePatrolLog_ is PURE on time — inject "now" and pin the future rule: a patrol must END in the past, with a
+  // configurable grace ([PATROL].FUTURE_GRACE_HOURS, pinned to 6 here) so members ABROAD entering THEIR local times
+  // never false-flag (a UK member on a US-East sheet runs ~5h ahead). Beyond the grace still flags (advisory).
+  (() => {
+    devWithConfig_({ PATROL: { kind: 'kv', kv: { FUTURE_GRACE_HOURS: 6 } } }, () => {
+      const now = new Date(2026, 0, 15, 12, 0, 0);
+      const at = (h, m) => new Date(2026, 0, 15, h, m, 0);
+      devEq_(R, 'evaluate: ended in the past -> clean', evaluatePatrolLog_(5, at(9, 0), at(11, 0), 2, now).reason, '');
+      devEq_(R, 'evaluate: +5h end INSIDE the 6h grace -> clean (UK member, US-East sheet)', evaluatePatrolLog_(5, at(13, 0), at(17, 0), 4, now).reason, '');
+      const fut = evaluatePatrolLog_(5, at(13, 0), at(20, 0), 7, now); // ends +8h past "now" — beyond the grace
+      devCheck_(R, 'evaluate: end BEYOND the grace -> flagged "future"', String(fut.reason).toLowerCase().indexOf('future') !== -1);
+      devEq_(R, 'evaluate: the future flag is ADVISORY (an admin can Approve it)', fut.blocking, false);
+    });
+  })();
+
+  // Admin terminals (five-state): APPROVED is the credit terminal for an ADVISORY flag — the engine credits and never
+  // re-flags it. Hand-setting PROCESSED is NOT an override (engine-owned; it recomputes straight back to Flagged).
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Over', id: devId_(80), activity: 'Active', hours: 6 }]);
     const pl = devBuildPatrolLog_([{ id: devId_(80), startDate: devDay_(-1), startTime: devTime_(2, 0), endDate: devDay_(-1), endTime: devTime_(22, 0) }]); // 20h → over-max
@@ -2413,11 +2487,28 @@ function devPatrolLogTests_() {
     processPatrolLog_(pl, PS, PC, ro);
     devEq_(R, 'override: over-max starts Flagged', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
     devEq_(R, 'override: nothing credited while Flagged (stays 6)', rosterHrs(ro), 6);
-    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.processedStatus); // admin reviews + approves by processing
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.processedStatus); // NOT an override — engine-owned status
     processPatrolLog_(pl, PS, PC, ro);
-    devEq_(R, 'override: processing credits 20 hrs (6 -> 26)', rosterHrs(ro), 26);
-    devEq_(R, 'override: status stays Processed', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
+    devEq_(R, 'override: hand-set Processed snaps back to Flagged (advisory recomputes)', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
+    devEq_(R, 'override: still not credited (stays 6)', rosterHrs(ro), 6);
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.approvedStatus); // the REAL override: admin reviews + Approves
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'override: Approved credits 20 hrs (6 -> 26)', rosterHrs(ro), 26);
+    devEq_(R, 'override: status stays Approved (admin-owned terminal)', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.approvedStatus);
     devCheck_(R, 'override: NOTES keeps an "Override" trace', String(pl.getRange(PS, PC.notes).getDisplayValue()).toLowerCase().indexOf('override') !== -1);
+  })();
+
+  // DENIED is the rejection terminal: it REVERSES an already-landed credit and the engine leaves the status alone.
+  (() => {
+    const ro = devBuildRoster_([{ rank: 'Trooper', name: 'Deny', id: devId_(82), activity: 'Active', hours: 8 }]);
+    const pl = devBuildPatrolLog_([{ id: devId_(82), startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(12, 0) }]); // clean 3h
+    const PC = patrolLogCols_(pl);
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'denied: a clean log auto-Processes + credits (8 -> 11)', rosterHrs(ro), 11);
+    pl.getRange(PS, PC.status).setValue(CONFIG.patrol.deniedStatus); // admin rejects it after the fact
+    processPatrolLog_(pl, PS, PC, ro);
+    devEq_(R, 'denied: the credit is REVERSED (back to 8)', rosterHrs(ro), 8);
+    devEq_(R, 'denied: status stays Denied (admin-owned terminal)', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.deniedStatus);
   })();
 
   // A BLOCKING flag (end<=start) can NOT be approved by processing — the data must be fixed first.
@@ -2461,25 +2552,33 @@ function devPatrolLogTests_() {
     devEq_(R, 'delete: cleared row reverses the credit (back to 4)', rosterHrs(ro), 4);
   })();
 
-  // Status sort: Pending -> Flagged -> Processed.
+  // Status sort: Pending -> Flagged -> Processed — and INSIDE a group, the newest start date+time sits on top.
   (() => {
     const pl = devBuildPatrolLog_([
-      { id: devId_(74), name: 'Proc', status: CONFIG.patrol.processedStatus },
+      { id: devId_(74), name: 'ProcOld', status: CONFIG.patrol.processedStatus, startDate: devDay_(-3), startTime: devTime_(9, 0), endDate: devDay_(-3), endTime: devTime_(11, 0) },
       { id: devId_(75), name: 'Flag', status: CONFIG.patrol.flaggedStatus },
+      { id: devId_(577), name: 'ProcNew', status: CONFIG.patrol.processedStatus, startDate: devDay_(-1), startTime: devTime_(9, 0), endDate: devDay_(-1), endTime: devTime_(11, 0) },
       { id: devId_(76), name: 'Pend', status: CONFIG.patrol.pendingStatus },
     ]);
     sortPatrolLog_(pl);
     const PC = patrolLogCols_(pl);
     devEq_(R, 'sort: row0 = Pending', String(pl.getRange(PS, PC.status).getDisplayValue()).trim(), CONFIG.patrol.pendingStatus);
     devEq_(R, 'sort: row1 = Flagged', String(pl.getRange(PS + 1, PC.status).getDisplayValue()).trim(), CONFIG.patrol.flaggedStatus);
-    devEq_(R, 'sort: row2 = Processed', String(pl.getRange(PS + 2, PC.status).getDisplayValue()).trim(), CONFIG.patrol.processedStatus);
+    devEq_(R, 'sort: newest Processed sits ABOVE the older one', String(pl.getRange(PS + 2, PC.name).getDisplayValue()).trim(), 'ProcNew');
+    devEq_(R, 'sort: oldest Processed last', String(pl.getRange(PS + 3, PC.name).getDisplayValue()).trim(), 'ProcOld');
+    // SUBMISSION recency (marker 3rd field) OUTRANKS start time: ProcOld submitted later → it climbs above ProcNew.
+    pl.getRange(PS + 2, 1).setNumberFormat('@').setValue('||' + new Date(2026, 0, 20).getTime()); // ProcNew: older submission
+    pl.getRange(PS + 3, 1).setNumberFormat('@').setValue('||' + new Date(2026, 0, 22).getTime()); // ProcOld: NEWER submission
+    sortPatrolLog_(pl);
+    devEq_(R, 'sort: newest SUBMITTED tops the group (beats a newer start time)', String(pl.getRange(PS + 2, PC.name).getDisplayValue()).trim(), 'ProcOld');
+    devCheck_(R, 'sort: the submission stamp travels with its row', String(pl.getRange(PS + 2, 1).getDisplayValue()).indexOf(String(new Date(2026, 0, 22).getTime())) !== -1);
   })();
 
   return R;
 }
 
 /* ======================================================================
- * SECTION 23 — ROSTER SIGNUPS (sandbox): header resolution, the Pending →
+ * SECTION 22 — ROSTER SIGNUPS (sandbox): header resolution, the Pending →
  * Approved → Processed sort, the review queue, and approveSignup_ — including
  * its refusals and the "Processed is stamped LAST" guarantee.
  * ====================================================================== */
@@ -2517,16 +2616,54 @@ function devSignupTests_() {
     devEq_(R, 'sort: the blank-status submission is the one stamped Pending', g(sh, 2, S.name), 'P1');
   })();
 
+  // The sort follows the tab's OWN STATUS dropdown order when one exists (operator-customized flow — e.g. a Flagged
+  // status the engine doesn't ship). Without a dropdown it falls back to the engine's built-in order (test above).
+  (() => {
+    const sh = devBuildSignups_([
+      { name: 'F1', id: devId_(88), status: 'Flagged' },
+      { name: 'D3', id: devId_(89), status: 'Processed' },
+      { name: 'P0', id: devId_(90), status: 'Pending' },
+    ]);
+    const SC = signupCols_(sh);
+    devEq_(R, 'dropdown order: no dropdown -> null (engine fallback)', statusDropdownOrder_(sh, SC.dataStart, SC.status), null);
+    const rule = SpreadsheetApp.newDataValidation().requireValueInList(['Pending', 'Approve', 'Flagged', 'Processed'], true).setAllowInvalid(true).build();
+    sh.getRange(SC.dataStart, SC.status, 3, 1).setDataValidation(rule);
+    devEq_(R, 'dropdown order: reads the operator\'s list', (statusDropdownOrder_(sh, SC.dataStart, SC.status) || []).join(','), 'Pending,Approve,Flagged,Processed');
+    sortSignups_(sh);
+    devEq_(R, 'dropdown sort: Pending first', g(sh, 2, S.name), 'P0');
+    devEq_(R, 'dropdown sort: Flagged BELOW Pending (the dropdown\'s order, not the engine\'s)', g(sh, 3, S.name), 'F1');
+    devEq_(R, 'dropdown sort: Processed last', g(sh, 4, S.name), 'D3');
+  })();
+
+  // Inside a status group the NEWEST submission sits on top (the form Timestamp the sync copies to column 1).
+  (() => {
+    const sh = devBuildSignups_([
+      { name: 'Old', id: devId_(585), status: 'Pending' },
+      { name: 'New', id: devId_(586), status: 'Pending' },
+      { name: 'Mid', id: devId_(587), status: 'Pending' },
+    ]);
+    sh.getRange(2, 1).setValue(new Date(2026, 0, 1, 9, 0, 0));
+    sh.getRange(3, 1).setValue(new Date(2026, 0, 3, 9, 0, 0));
+    sh.getRange(4, 1).setValue(new Date(2026, 0, 2, 9, 0, 0));
+    sortSignups_(sh);
+    devEq_(R, 'newest-first: latest submission on top', g(sh, 2, S.name), 'New');
+    devEq_(R, 'newest-first: middle next', g(sh, 3, S.name), 'Mid');
+    devEq_(R, 'newest-first: oldest last', g(sh, 4, S.name), 'Old');
+  })();
+
   // The review queue shows what still needs action and hides what's done.
   (() => {
-    const q = signupQueue_(devBuildSignups_([
+    const split = signupSplit_(devBuildSignups_([
       { name: 'Q1', id: devId_(94), status: 'Pending' },
       { name: 'Q2', id: devId_(95), status: 'Processed' },
       { name: 'Q3', id: devId_(96), status: 'Approved' },
-    ]), 50);
+    ]), 50, 12);
+    const q = split.queue;
     devEq_(R, 'queue: 2 signups awaiting action', q.length, 2);
     devCheck_(R, 'queue: Processed is excluded', q.every((x) => x.name !== 'Q2'));
     devCheck_(R, 'queue: carries the private details through', q.some((x) => x.name === 'Q1'));
+    devEq_(R, 'queue: `waiting` counts every row needing action, cap or no cap', split.waiting, 2);
+    devEq_(R, 'queue: Processed rows land in `recent`', split.recent.length, 1);
   })();
 
   // Approve: member lands in the slot, PII lands on the Internal Roster, signup flips to Processed.
@@ -2753,6 +2890,33 @@ function devPublishTests_() {
       devEq_(R, 'keep-range: public subtitle untouched', g(dest, 2, 2), 'public sub');
       devEq_(R, 'keep-range: the header row still published', g(dest, 1, 1), 'TITLE');
     });
+  })();
+
+  // MIRROR-WINS (header-matched tabs): a formula sitting in a MIRRORED public column is residue from the old
+  // formula-copying publishes — with mirrorWins the internal VALUE overwrites it (the "46227 days" ghosts heal).
+  (() => {
+    const dest = devFreshSheet_('PubMirrorDest');
+    dest.getRange(1, 1, 1, 2).setValues([['TIME IN RANK', 'NAME']]);
+    dest.getRange(2, 1).setFormula('=UPPER("stale")'); // residue formula in a mirrored column
+    const keepDef = publishKeepMask_(dest, 1, 1, 2, 2);
+    devCheck_(R, 'mirrorWins off: the formula is kept (wholesale rule unchanged)', keepDef[1][0] === true);
+    const keepMw = publishKeepMask_(dest, 1, 1, 2, 2, null, true);
+    devCheck_(R, 'mirrorWins on: the formula is NOT kept', keepMw[1][0] === false);
+    writeValuesSafe_(dest, 1, 1, [['TIME IN RANK', 'NAME'], ['', 'Alice']], keepMw);
+    devEq_(R, 'mirrorWins: the residue formula healed to the internal value', dest.getRange(2, 1).getFormula(), '');
+    devEq_(R, 'mirrorWins: neighbouring value published normally', g(dest, 2, 2), 'Alice');
+  })();
+
+  // VALUES-ONLY read (header-matched path): a source formula publishes as its COMPUTED value — a copied formula's
+  // relative refs would point at the wrong column on a narrower public layout.
+  (() => {
+    const src = devFreshSheet_('PubValSrc');
+    src.getRange(1, 1).setValue('HDR');
+    src.getRange(2, 1).setFormula('=UPPER("live")');
+    const vals = publishReadCells_(src.getRange(1, 1, 2, 1), true);
+    devEq_(R, 'valuesOnly: the computed VALUE, never the formula', String(vals[1][0]), 'LIVE');
+    const fx = publishReadCells_(src.getRange(1, 1, 2, 1));
+    devCheck_(R, 'default read: still carries the live formula (wholesale path)', String(fx[1][0]).indexOf('=UPPER') === 0);
   })();
 
   // A SOURCE formula is carried across as a formula, so live clocks/counters keep recalculating publicly.
