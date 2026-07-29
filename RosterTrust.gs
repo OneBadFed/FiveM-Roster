@@ -3,12 +3,12 @@
  * ROSTER TRUST — health checks, in-sheet snapshots/restore, and audit-log read.
  * ----------------------------------------------------------------------------
  * Powers the Control Panel's "System" tab. Paste alongside RosterSystem.gs +
- * RosterControlPanel.gs. Reuses CONFIG + helpers (isValidMemberValues_,
- * isMemberSlot_, getWebhookUrl_, ssTz_, DISCORD_ID_RE).
+ * RosterControlPanel.gs. Reuses CONFIG + helpers (rosterCols_, columnRegistry_,
+ * isValidMemberValues_, isMemberSlot_, isValidId_, logRowCap_, fmtTs_).
  *
  * Snapshots are stored on a hidden "_Snapshots" tab — a lightweight, in-sheet
  * replacement for the removed Drive backup. The audit viewer reads the "Edit Log"
- * tab produced by RosterExtras.gs (recordEdit); if it's absent, the viewer just
+ * tab produced by auditEdit below; if it's absent, the viewer just
  * says so.
  * ============================================================================
  */
@@ -16,7 +16,7 @@
 const TRUST = Object.freeze({
   // v1.0 — tab names resolve LIVE from [SHEETS] on ⚙️ Config (getters → zero call-site churn; blank = shipped default).
   get snapshotSheet() { return cfgSheetName_('snapshots', '_Snapshots'); },
-  get auditSheet() { return cfgSheetName_('audit', 'Edit Log'); },   // matches RosterExtras EXTRAS.auditSheet
+  get auditSheet() { return cfgSheetName_('audit', 'Edit Log'); },   // the Edit Log tab — auditEdit writes it, cpAuditTail reads it
   get keepSnapshots() { try { return cfg_().kv.LIMITS.SNAPSHOT_KEEP || 20; } catch (e) { return 20; } }, // v1.0: configurable
 });
 
@@ -71,7 +71,7 @@ function cpHealthCheck_() {
     add('⚙️ Config valid', false, e.message);
     // Everything below reads CONFIG (which resolves through the broken config) — report what we know and stop
     // instead of dying mid-check. Fixing the Config tab is the one action that unblocks the rest.
-    return { checks };
+    return { ok: false, checks }; // same shape as every other return — this path used to omit `ok` entirely
   }
 
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
@@ -83,9 +83,13 @@ function cpHealthCheck_() {
 
   let memberCount = 0;
   if (roster && roster.getLastRow() >= CONFIG.rosterStartRow) {
+    // Columns 2 and 3 were assumed to be RANK and NAME. Every other roster read in this file resolves them by
+    // header, so a reordered roster reported "0 member(s) found" while working perfectly.
+    const RCm = rosterCols_(roster);
     const n = roster.getLastRow() - CONFIG.rosterStartRow + 1;
-    const v = roster.getRange(CONFIG.rosterStartRow, 2, n, 2).getDisplayValues();
-    v.forEach((r) => { if (isValidMemberValues_(r[0], r[1])) memberCount++; });
+    const ranks = roster.getRange(CONFIG.rosterStartRow, RCm.rank, n, 1).getDisplayValues();
+    const names = roster.getRange(CONFIG.rosterStartRow, RCm.name, n, 1).getDisplayValues();
+    for (let i = 0; i < n; i++) { if (isValidMemberValues_(ranks[i][0], names[i][0])) memberCount++; }
   }
   add('Roster has members', memberCount > 0, `${memberCount} member(s) found.`);
 
@@ -135,26 +139,6 @@ function cpColLetter_(n) {
   return s;
 }
 
-/**
- * Injectable core: checks a sheet's header row against an expected {col:keyword} map.
- * Each header (uppercased) must CONTAIN its keyword. @return {string[]} human-readable issues.
- */
-function cpHeaderIssues_(sheet, label, headerRow, colsSpec) {
-  if (!sheet) return []; // a missing tab is reported by the main health check, not here
-  const issues = [];
-  if (sheet.getLastRow() < headerRow) { issues.push(`${label}: header row ${headerRow} is missing.`); return issues; }
-  const hdr = sheet.getRange(headerRow, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0];
-  Object.keys(colsSpec).forEach((colStr) => {
-    const col = Number(colStr);
-    const want = colsSpec[colStr];
-    const got = String(hdr[col - 1] || '').toUpperCase().trim();
-    if (got.indexOf(want) === -1) {
-      issues.push(`${label} col ${cpColLetter_(col)}: expected a "${want}" header, found "${hdr[col - 1] || '(blank)'}"`);
-    }
-  });
-  return issues;
-}
-
 /** Roster columns are header-resolved, so verify the required columns resolve on the roster's ACTUAL label row (auto-detected). */
 function cpRosterHeaderIssues_(roster) {
   if (!roster) return [];
@@ -194,8 +178,17 @@ function cpSchemaCheck_() {
     [['RANK', TC.rank], ['NAME', TC.name], ['UNIQUE ID / DISCORD', TC.discord], ['START DATE', TC.start], ['END DATE', TC.end], ['STATUS', TC.status]]
       .forEach((x) => { if (!x[1]) issues.push(`${CONFIG.sheets.tracker}: no ${x[0]} column found — the tracker resolves columns by header, so a ${x[0]} label is required.`); });
   }
-  issues = issues.concat(cpHeaderIssues_(ss.getSheetByName(CONFIG.sheets.form), CONFIG.sheets.form, 1,
-    { 1: 'TIME', 3: 'DISCORD', 6: 'STATUS', 7: 'START', 8: 'END' }));
+  // The leave-form tab resolves BY HEADER (leaveFormCols_), with the classic fixed columns only as a fallback —
+  // so pinning TIME/DISCORD/STATUS/START/END to columns 1/3/6/7/8 reported a perfectly working reordered form as
+  // broken. Ask the resolver the question the sync actually asks: did the headers resolve, or did it fall back?
+  const form = ss.getSheetByName(CONFIG.sheets.form);
+  if (form && typeof leaveFormCols_ === 'function') {
+    try {
+      if (!leaveFormCols_(form).byHeader) {
+        issues.push(`${CONFIG.sheets.form}: row-1 headers don't resolve Timestamp / Name / Unique ID / Start / End — the sync is falling back to the fixed column order 1–8.`);
+      }
+    } catch (e) { log_('cpSchemaCheck_.form', e); }
+  }
   return issues;
 }
 
@@ -312,12 +305,10 @@ function cpSnapshotRows_(roster, id, when) {
   const rows = [];
   if (roster.getLastRow() >= CONFIG.rosterStartRow) {
     const RC = rosterCols_(roster);
-    // Extra = MEMBER columns beyond the four captured explicitly (name/discord/status/hours), excluding any
-    // section-specific columns opted into trainingCheckboxCols (none by default). Keyed by header so restore is
-    // column-order-independent. Auto-captures new columns like LAST ACTIVITY.
+    // Extra = MEMBER columns beyond the four captured explicitly (name/discord/status/hours). Keyed by header so
+    // restore is column-order-independent. Auto-captures new columns like LAST ACTIVITY.
     const core = {}; [RC.name, RC.discord, RC.activity, RC.hours].forEach((c) => { core[c] = true; });
-    const cbox = {}; CONFIG.columns.trainingCheckboxCols.forEach((c) => { cbox[c] = true; });
-    const extraCols = columnRegistry_(roster).filter((c) => c.klass === 'MEMBER' && !core[c.col] && !cbox[c.col]);
+    const extraCols = columnRegistry_(roster).filter((c) => c.klass === 'MEMBER' && !core[c.col]);
     const n = roster.getLastRow() - CONFIG.rosterStartRow + 1;
     const v = roster.getRange(CONFIG.rosterStartRow, 1, n, roster.getLastColumn()).getDisplayValues(); // full width; index by RC
     for (let i = 0; i < n; i++) {
@@ -472,7 +463,9 @@ function cpAuditTail(n) {
     if (lastRow >= CONFIG.rosterStartRow) {
       names = roster.getRange(CONFIG.rosterStartRow, RC.name, lastRow - CONFIG.rosterStartRow + 1, 1).getDisplayValues();
     }
-    const hdr = roster.getRange(5, 1, 1, roster.getLastColumn()).getDisplayValues()[0]; // column labels live on row 5
+    // The label row is RESOLVED, never assumed. rosterHeaderLabels_ also falls back to the banner cell above a
+    // blank label (a column merged across banner+label, e.g. RANK GROUP), which is exactly what a field name wants.
+    const hdr = rosterHeaderLabels_(roster, RC.headerRow || rosterLabelRow_(roster));
     for (let c = 0; c < hdr.length; c++) headers[c + 1] = String(hdr[c]).trim();
   }
   const FRIENDLY = {};
@@ -553,6 +546,15 @@ function auditEdit(e) {
     const skip = [TRUST.snapshotSheet, TRUST.auditSheet, CONFIG.sheets.hoursHistory, CONFIG.sheets.coverage, CONFIG.sheets.integrity, SYS_LOG_SHEET];
     if (skip.indexOf(sheetName) !== -1) return;
 
+    // WHO fired this? Installable onEdit triggers are PER USER, and every admin who has opened the panel installs their
+    // own — so all of them fire on each edit. A trigger owned by the EDITING account resolves that editor's email; a
+    // trigger owned by a DIFFERENT account can't see a cross-account editor and gets blank. If we can't identify the
+    // editor, DON'T log: the editor's OWN trigger logs the same edit WITH their name, so a blank pass here is pure
+    // duplicate ("unknown" alongside the named entry). Bailing here is what removes those duplicates from the AUDIT feed.
+    let email = '';
+    try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* cross-account: not available */ }
+    if (!email) return;
+
     // A member move (an existing roster ID entered into another row) is logged as a transfer.
     if (sheetName === CONFIG.sheets.roster && e.range.getColumn() === rosterCols_(e.range.getSheet()).discord) {
       const mv = cpDetectMove_(e.range.getSheet(), e.range.getRow(), e.value === undefined ? '' : String(e.value));
@@ -566,9 +568,6 @@ function auditEdit(e) {
       log.appendRow(['Time', 'Editor', 'Sheet', 'Cell', 'Old', 'New', 'Type', 'Member']);
       log.setFrozenRows(1);
     }
-    let email = '';
-    try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* cross-account: not available */ }
-
     const multi = e.range.getNumRows() * e.range.getNumColumns() > 1;
     const oldV = multi ? '(multi-cell)' : (e.oldValue === undefined ? '' : e.oldValue);
     const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
@@ -576,8 +575,42 @@ function auditEdit(e) {
     log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV, '', '']);
     const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v1.0: config cap)
     auditNotify_(who, sheetName, e.range.getA1Notation(), oldV, newV, 'edit', ''); // AUDIT channel mirror (webhook presence = opt-in)
+    try { stampPendingUpdatedBy_(who); } catch (e2) { log_('auditEdit.updatedBy', e2); } // authoritative UPDATED BY stamp (reliable email in this installable trigger)
   } catch (err) {
     log_('auditEdit', err);
+  }
+}
+
+/**
+ * The RELIABLE-email half of the tracker's UPDATED BY stamp. A SIMPLE onEdit can't read the editor's email on a
+ * consumer account, so it captures the just-edited leaves' IDENTITIES into RE_UPDATEDBY_PENDING (before its sort);
+ * THIS runs from the INSTALLABLE auditEdit (email available), relocates each leave by its Unique ID / name (so a
+ * status re-sort can't put the stamp on the wrong row), and writes the resolved name into APPROVED/UPDATED BY.
+ * Idempotent + self-clearing; stale markers (>60s) are ignored.
+ */
+function stampPendingUpdatedBy_(who) {
+  const props = PropertiesService.getDocumentProperties();
+  const raw = props.getProperty('RE_UPDATEDBY_PENDING');
+  if (!raw) return;
+  props.deleteProperty('RE_UPDATEDBY_PENDING'); // consume once
+  if (!who) return;
+  let p; try { p = JSON.parse(raw); } catch (e) { return; }
+  if (!p || !Array.isArray(p.idents) || (Date.now() - (p.at || 0)) > 60000) return;
+  const tracker = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.tracker);
+  if (!tracker) return;
+  const TRC = trackerCols_(tracker);
+  if (!TRC.approvedBy) return;
+  const start = CONFIG.trackerStartRow, lastRow = tracker.getLastRow();
+  if (lastRow < start) return;
+  const n = lastRow - start + 1;
+  const ids = TRC.discord ? tracker.getRange(start, TRC.discord, n, 1).getDisplayValues() : null;
+  const names = TRC.name ? tracker.getRange(start, TRC.name, n, 1).getDisplayValues() : null;
+  const wantId = {}, wantName = {};
+  p.idents.forEach((it) => { const i = String((it && it.id) || '').trim(); const nm = String((it && it.name) || '').trim(); if (i) wantId[i] = true; else if (nm) wantName[norm_(nm)] = true; }); // ID preferred; name only when the leave has no ID
+  for (let i = 0; i < n; i++) {
+    const idv = ids ? String(ids[i][0]).trim() : '';
+    const nmv = names ? String(names[i][0]).trim() : '';
+    if ((idv && wantId[idv]) || (!idv && nmv && wantName[norm_(nmv)])) tracker.getRange(start + i, TRC.approvedBy).setValue(who);
   }
 }
 
@@ -588,6 +621,8 @@ function auditEdit(e) {
  */
 function auditEvent_(type, oldText, newText, cellA1, member) {
   try {
+    // DevQA run → sandbox actions (patrol credits, snapshots, …) must not pollute the live Edit Log or post to Discord.
+    if (typeof DEV_WEBHOOKS_OFF_ !== 'undefined' && DEV_WEBHOOKS_OFF_) return;
     const ss = SpreadsheetApp.getActive();
     let log = ss.getSheetByName(TRUST.auditSheet);
     if (!log) {
@@ -621,15 +656,15 @@ function auditNotify_(editor, sheetName, cellA1, oldV, newV, type, member) {
     if (!webhookFor_('AUDIT')) return; // memoized per execution — cheap when unset
     const fields = [];
     const add = (n, v) => { if (String(v == null ? '' : v).trim() !== '') fields.push({ name: n, value: clamp_(dash_(String(v)), 1000), inline: true }); };
-    add('👤 Editor', editor);
-    add('📄 Sheet', sheetName);
-    add('📍 Cell', cellA1);
-    add('🧾 Member', member);
-    add('◀️ Old', oldV);
-    add('▶️ New', newV);
+    add('`👤` Editor', editor);
+    add('`📄` Sheet', sheetName);
+    add('`📍` Cell', cellA1);
+    add('`👮` Member', member);
+    add('`◀️` Old', oldV);
+    add('`▶️` New', newV);
     const vars = { editor, sheet: sheetName, cell: cellA1, member, old: oldV, 'new': newV, action: auditTypeLabel_(type) };
-    const fallback = {
-      title: `📝 ${auditTypeLabel_(type)}`,
+    const fallback = { // house style: "# " heading in the description with a boxed `emoji` (native titles can't render it)
+      description: clamp_(`# \`📝\` ${auditTypeLabel_(type)}`, 4000),
       color: 5793266,
       fields,
       footer: { text: `${CONFIG.systemName} • audit` },
@@ -656,13 +691,16 @@ function cpEnsureAuditTrigger() {
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(8000)) return false; // someone else is already ensuring it
   try {
-    let hasAudit = false;
+    let kept = false;
     ScriptApp.getProjectTriggers().forEach((t) => {
       const fn = t.getHandlerFunction();
-      if (fn === 'auditEdit' && String(t.getEventType()) === 'ON_EDIT') hasAudit = true;
-      else if (fn === 'recordEdit' && String(t.getEventType()) === 'ON_EDIT') ScriptApp.deleteTrigger(t);
+      if (fn === 'auditEdit' && String(t.getEventType()) === 'ON_EDIT') {
+        if (kept) ScriptApp.deleteTrigger(t); else kept = true; // keep exactly ONE of my auditEdit triggers; extras just double-log
+      } else if (fn === 'recordEdit' && String(t.getEventType()) === 'ON_EDIT') {
+        ScriptApp.deleteTrigger(t); // legacy handler — must never run alongside auditEdit
+      }
     });
-    if (!hasAudit) ScriptApp.newTrigger('auditEdit').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
+    if (!kept) ScriptApp.newTrigger('auditEdit').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
     return true;
   } finally {
     lock.releaseLock();
