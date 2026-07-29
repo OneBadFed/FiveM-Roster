@@ -425,7 +425,7 @@ const BLOCK_SPECS_ = Object.freeze({
     APPROVED_STATUS: { t: 'string', d: 'Approved', req: false, help: 'Patrol Log: the ADMIN override. Setting a flagged (or corrected) log to this credits its hours and the engine stops re-flagging it. BLANK = disabled (use PROCESSED to credit, as before).' },
     DENIED_STATUS: { t: 'string', d: 'Denied', req: false, help: 'Patrol Log: the ADMIN rejection. Setting a log to this reverses any credit and the engine leaves it alone. BLANK = disabled.' },
     PROCESSED_STATUS: { t: 'string', d: 'Processed', req: false, help: 'Patrol Log: the engine\'s "verified clean and credited" status, set automatically when a complete log passes every parameter.' },
-    COL_DISCORD: { t: 'string', d: 'Discord', req: false, help: 'Form-header keyword for the Discord-ID column (primary match key).' },
+    COL_DISCORD: { t: 'string', d: 'Discord', req: false, help: 'Form-header keyword for the unique-ID column (primary match key). Shown in Settings as UNIQUE ID COLUMN — the key keeps its original name so existing ⚙️ Config tabs keep resolving.' },
     COL_CALLSIGN: { t: 'string', d: 'Callsign', req: false, help: 'Form-header keyword for the callsign column (fallback match key when the ID is blank/unmatched).' },
     COL_START: { t: 'string', d: 'Start', req: false, help: 'START_END mode: header keyword for the on-duty / start-time column.' },
     COL_END: { t: 'string', d: 'End', req: false, help: 'START_END mode: header keyword for the off-duty / end-time column.' },
