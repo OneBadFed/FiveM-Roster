@@ -2351,6 +2351,75 @@ function publishStatusCol_(dest, dh, width) {
 }
 
 /**
+ * Re-dress any data row that doesn't look like the tab's OWN styled rows.
+ *
+ * This is the case neither existing repair can see. publishFitRows_ grows the public tab with
+ * insertRowsBefore, and an inserted row inherits its neighbour's DATA VALIDATION — so a row can arrive
+ * carrying the STATUS dropdown while wearing none of the banding. healUnstyledRows_ keys off that dropdown
+ * and reads the row as already dressed; styleTailRows_ compares the blank tail against the last data row and,
+ * with both of them raw, concludes there is nothing to do. Between them the row is invisible, which is exactly
+ * how a published Patrol Log row stays black.
+ *
+ * The reference is the TOP of the data block — one row per parity, so alternating banding stays alternating.
+ * Deliberately not the most COMMON look: raw rows arrive at the bottom as the roster grows, and a mode would
+ * flip to the raw look the moment the unstyled run outnumbered the styled one, repainting the whole tab wrong.
+ * The two reference rows must themselves carry the dropdown, or there is nothing trustworthy to copy and this
+ * does nothing at all.
+ *
+ * Only the CONTIGUOUS TRAILING RUN is repaired — the scan walks up from the last data row and stops at the first
+ * row that already matches its parity reference. That bound is what makes this safe on the roster, whose data
+ * block has the operator's SECTION DIVIDERS interleaved in it: a divider's look differs from a data row's by
+ * design, and a whole-block sweep would repaint every one of them. healUnstyledRows_ is safe there for free
+ * (a divider has no STATUS dropdown, so it is never a candidate); working off backgrounds, this one has to be
+ * bounded explicitly. Merged rows — how these layouts build a divider — end the scan for the same reason.
+ * @return {number} rows re-dressed.
+ */
+function publishMatchRowLook_(sheet, dataStart, lastData, statusCol, width) {
+  try {
+    const n = lastData - dataStart + 1;
+    if (n < 3) return 0;                                   // need two reference rows plus something below them
+    if (statusCol) {
+      const dv = sheet.getRange(dataStart, statusCol, 2, 1).getDataValidations();
+      if (!dv[0][0] || !dv[1][0]) return 0;                // the top rows aren't dressed either → copy nothing
+    }
+    const block = sheet.getRange(dataStart, 1, n, width);
+    const bgs = block.getBackgrounds();
+    const sig = (r) => bgs[r - dataStart].join('|');
+    const refOf = {};                                      // row parity → the row to copy that parity's look from
+    refOf[dataStart % 2] = dataStart;
+    refOf[(dataStart + 1) % 2] = dataStart + 1;
+    if (sig(dataStart) === sig(dataStart + 1)) refOf[(dataStart + 1) % 2] = dataStart; // no band → one look for all
+    const merged = {};                                     // section dividers: the operator's, never a data row's peer
+    try {
+      block.getMergedRanges().forEach((m) => {
+        const a = m.getRow(), b = a + m.getNumRows() - 1;
+        for (let r = a; r <= b; r++) merged[r] = 1;
+      });
+    } catch (e2) { /* merge lookup is best-effort; the contiguity bound still holds */ }
+    let first = lastData + 1;
+    for (let r = lastData; r >= dataStart + 2; r--) {
+      if (merged[r] || sig(r) === sig(refOf[r % 2])) break; // a divider, or a row already wearing the right look
+      first = r;
+    }
+    if (first > lastData) return 0;
+    const CAP = 200;
+    const last = Math.min(lastData, first + CAP - 1);
+    if (last < lastData) logWarn_('publishMatchRowLook_', `${sheet.getName()}: ${lastData - first + 1} rows differ from the tab's own look — re-dressed ${CAP} this pass; the next publish continues.`);
+    for (let r = first; r <= last; r++) {
+      const src = sheet.getRange(refOf[r % 2], 1, 1, width), dst = sheet.getRange(r, 1, 1, width);
+      src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+      src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+      try { const h = sheet.getRowHeight(refOf[r % 2]); if (sheet.getRowHeight(r) !== h) sheet.setRowHeight(r, h); } catch (e3) { /* height is best-effort */ }
+    }
+    logInfo_('publishMatchRowLook_', `${sheet.getName()}: re-dressed ${last - first + 1} row(s) that carried the dropdown but none of the banding (rows ${first}-${last}).`);
+    return last - first + 1;
+  } catch (e) { logWarn_('publishMatchRowLook_', 'row look-match skipped: ' + ((e && e.message) ? e.message : e)); return 0; }
+}
+
+/** Per-tab note from the last publishDressRows_ call — surfaced in the publish report so a miss is diagnosable. */
+let _dressNote_ = '';
+
+/**
  * Dress the rows this publish just landed on the public copy.
  *
  * BOTH repairs, in the order tidyTailRows_ uses them on the internal tabs — the publish ran only the second one,
@@ -2360,7 +2429,8 @@ function publishStatusCol_(dest, dh, width) {
  * these tabs carries and no raw row does, so it catches precisely the case the background test is blind to.
  */
 function publishDressRows_(dest, dh, lastData, width) {
-  if (!(dh > 0)) return;
+  _dressNote_ = '';
+  if (!(dh > 0)) { _dressNote_ = 'dress: no header row found'; return; }
   // `lastData` arrives from the SOURCE (the FULL path passes src.getLastRow()), and the two sheets do not have to
   // end on the same row. Clamp it to the DESTINATION before either repair runs:
   //   • getMaxRows() - 1 — the public tab's final row is its closing bar, and dressing it as a data row would
@@ -2370,11 +2440,19 @@ function publishDressRows_(dest, dh, lastData, width) {
   //   • getLastRow() — never claim rows the destination does not actually hold.
   const last = Math.min(Number(lastData) || 0, dest.getLastRow(), dest.getMaxRows() - 1);
   const ds = publishDataStart_(dest.getName(), dh);
-  if (!(last > ds)) return; // need at least one row above to copy the look from
-  try { if (typeof healUnstyledRows_ === 'function') healUnstyledRows_(dest, ds, last, publishStatusCol_(dest, dh, width), width); }
+  if (!(last > ds)) { _dressNote_ = `dress: no rows in range (${ds}-${last})`; return; } // need a row above to copy from
+  const col = publishStatusCol_(dest, dh, width);
+  let healed = 0, matched = 0;
+  // 1) rows carrying no dropdown at all — they were never dressed, whatever colour they happen to be.
+  try { if (typeof healUnstyledRows_ === 'function') healed = healUnstyledRows_(dest, ds, last, col, width) || 0; }
   catch (e) { log_('publishDressRows_.heal', e); }
+  // 2) rows that INHERITED the dropdown from an insert but none of the banding — invisible to both of the others.
+  try { matched = publishMatchRowLook_(dest, ds, last, col, width) || 0; }
+  catch (e) { log_('publishDressRows_.look', e); }
+  // 3) the blank tail, so the next published row lands on a dressed one.
   try { if (typeof styleTailRows_ === 'function') styleTailRows_(dest, ds, last, Math.max(0, dest.getMaxRows() - 1 - last), width); }
   catch (e) { log_('publishDressRows_.tail', e); }
+  _dressNote_ = `dress ${ds}-${last} col ${col || 'none'} · healed ${healed} · matched ${matched}`;
 }
 
 /**
@@ -2548,9 +2626,10 @@ function publishPublicRoster_(onlyTab, opts) {
       const sg = src.getMaxColumns(), dg = dest.getMaxColumns();
       const mode = (sg === dg) ? 'FULL' : 'match';
       try {
+        _dressNote_ = '';
         const n = publishMirrorTab_(src, dest, !yieldOn); // explicit publish → re-sync every row height; background → tail only
         out.tabs.push(name); out.rows += n;
-        out.detail.push(`${name}: ${mode} · ${n} row(s) · grid ${sg}/${dg} · src rows ${src.getLastRow()}`);
+        out.detail.push(`${name}: ${mode} · ${n} row(s) · grid ${sg}/${dg} · src rows ${src.getLastRow()}${_dressNote_ ? ' · ' + _dressNote_ : ''}`);
       } catch (e) {
         log_('publishMirrorTab_.' + name, e);
         out.skipped.push(name);

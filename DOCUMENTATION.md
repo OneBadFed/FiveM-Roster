@@ -475,11 +475,19 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
   publish (menu / setup) re-syncs every row of the block, while the frequent background catch-ups check only the
   last few rows — exactly where a new submission lands. Data rows only; the banner keeps its own sizing, and only
   rows that actually differ are written.
-- **Published rows are styled** (`publishStyleableTab_` → `styleTailRows_`): a row landing where the public tab
+- **Published rows are styled** (`publishStyleableTab_` → `publishDressRows_`): a row landing where the public tab
   was never styled came out raw. The publish now propagates the **public tab's own** look onto it, exactly as the
   internal side does. Restricted to the banded data tabs (roster · LOA Tracker · Patrol Log), where every row is
   a peer of the one above it — dashboards are deliberately excluded, since a Welcome Page's rows are bespoke and
-  copying a neighbour's format there would wreck the design.
+  copying a neighbour's format there would wreck the design. **Three repairs, in order**, because each is blind to
+  the others' case: `healUnstyledRows_` takes rows with no STATUS dropdown; `publishMatchRowLook_` takes rows that
+  have one but none of the banding (`publishFitRows_` grows the tab with `insertRowsBefore`, and an inserted row
+  inherits its neighbour's data validation — so it arrives dressed by that one test and raw by every other, which
+  is how a published Patrol Log row stayed black through two rounds of fixes); `styleTailRows_` finishes the blank
+  tail. The middle one works off backgrounds, so it is bounded to the **contiguous trailing run** and stops at a
+  merged row — the roster's section dividers are inside its data block, and an unbounded sweep would repaint every
+  one of them. Each tab's outcome (`dress 8-91 col 12 · healed 0 · matched 4`) is appended to that tab's line in
+  the publish report, so a miss says which repair bailed instead of needing another round of guessing.
 - **All block writes are merge-safe** (`writeValuesSafe_` — plain `setValues` across merged cells throws), and
   in-cell images/chips (CellImage values, which `setValues` can never overwrite) are detected by
   `publishKeepMask_` and kept cleanly — an image always wins the mask, even over a FORCE range.
