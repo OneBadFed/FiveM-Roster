@@ -1759,13 +1759,11 @@ function devPanelTests_() {
     devCheck_(R, 'cpDetectMove_ null for a malformed ID', cpDetectMove_(ro, CONFIG.rosterStartRow + 1, devBadId_()) === null);
   })();
 
-  // cpRosterHeaderIssues_ (header-resolved) + cpHeaderIssues_ (fixed-position tracker)
+  // cpRosterHeaderIssues_ — the roster's required labels resolve on its own header row
   (() => {
     const ro = devBuildRoster_([{ rank: 'Trooper', name: 'A', id: devId_(60), activity: 'Active', hours: 5 }]);
     devEq_(R, 'cpRosterHeaderIssues_ clean roster -> no issues', cpRosterHeaderIssues_(ro).length, 0);
     devEq_(R, 'rosterCols_ default ACTIVITY resolves (non-zero)', rosterCols_(ro).activity > 0, true);
-    devEq_(R, 'cpHeaderIssues_ clean spec -> no issues', cpHeaderIssues_(ro, 'Roster', 5, { 2: 'RANK', 3: 'NAME' }).length, 0);
-    devCheck_(R, 'cpHeaderIssues_ flags a header drift', cpHeaderIssues_(ro, 'Roster', 5, { 2: 'HOURS' }).length > 0);
   })();
 
   return R;
@@ -1907,14 +1905,13 @@ function devTrustTests_() {
     devEq_(R, 'cpApplyRestore_ restores the status', devActivity_(ro, 0), 'Active');
   })();
 
-  // Tracker schema check: the new 16-col LOA layout resolves cleanly; a drift is flagged.
+  // Tracker schema check: every column cpSchemaCheck_ requires resolves by HEADER on the shipped layout.
   (() => {
     const tr = devBuildTracker_([]);
-    const labelRow = Math.max(1, CONFIG.trackerStartRow - 2);
-    const clean = cpHeaderIssues_(tr, 'Tracker', labelRow, { 2: 'RANK', 5: 'NAME', 6: 'DISCORD', 8: 'START', 9: 'END', 14: 'STATUS' });
-    devEq_(R, 'tracker schema (new 16-col layout) -> no issues', clean.length, 0);
-    const drift = cpHeaderIssues_(tr, 'Tracker', labelRow, { 14: 'RANK' }); // STATUS col should not read "RANK"
-    devCheck_(R, 'tracker schema flags a header drift', drift.length > 0);
+    const TC = trackerCols_(tr);
+    devCheck_(R, 'tracker schema (16-col layout) -> every required column resolves',
+      !!(TC.rank && TC.name && TC.discord && TC.start && TC.end && TC.status));
+    devEq_(R, 'tracker STATUS resolves to its own column, not RANK', TC.status === TC.rank, false);
   })();
 
   return R;

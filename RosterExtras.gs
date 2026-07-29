@@ -30,7 +30,6 @@ const EXTRAS = Object.freeze({
   get coverageSheet() { return cfgSheetName_('coverage', 'Leave Coverage'); },
   get activitySheet() { return cfgSheetName_('activity', ''); }, // '' = OFF (config default is 'Activity Panel'; the operator blanks the row to disable)
   get integritySheet() { return cfgSheetName_('integrity', 'Integrity Log'); },
-  get auditSheet() { return cfgSheetName_('audit', 'Edit Log'); },
 });
 
 /* ======================================================================

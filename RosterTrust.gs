@@ -3,8 +3,8 @@
  * ROSTER TRUST — health checks, in-sheet snapshots/restore, and audit-log read.
  * ----------------------------------------------------------------------------
  * Powers the Control Panel's "System" tab. Paste alongside RosterSystem.gs +
- * RosterControlPanel.gs. Reuses CONFIG + helpers (isValidMemberValues_,
- * isMemberSlot_, getWebhookUrl_, ssTz_, DISCORD_ID_RE).
+ * RosterControlPanel.gs. Reuses CONFIG + helpers (rosterCols_, columnRegistry_,
+ * isValidMemberValues_, isMemberSlot_, isValidId_, logRowCap_, fmtTs_).
  *
  * Snapshots are stored on a hidden "_Snapshots" tab — a lightweight, in-sheet
  * replacement for the removed Drive backup. The audit viewer reads the "Edit Log"
@@ -16,7 +16,7 @@
 const TRUST = Object.freeze({
   // v1.0 — tab names resolve LIVE from [SHEETS] on ⚙️ Config (getters → zero call-site churn; blank = shipped default).
   get snapshotSheet() { return cfgSheetName_('snapshots', '_Snapshots'); },
-  get auditSheet() { return cfgSheetName_('audit', 'Edit Log'); },   // matches RosterExtras EXTRAS.auditSheet
+  get auditSheet() { return cfgSheetName_('audit', 'Edit Log'); },   // the Edit Log tab — auditEdit writes it, cpAuditTail reads it
   get keepSnapshots() { try { return cfg_().kv.LIMITS.SNAPSHOT_KEEP || 20; } catch (e) { return 20; } }, // v1.0: configurable
 });
 
@@ -71,7 +71,7 @@ function cpHealthCheck_() {
     add('⚙️ Config valid', false, e.message);
     // Everything below reads CONFIG (which resolves through the broken config) — report what we know and stop
     // instead of dying mid-check. Fixing the Config tab is the one action that unblocks the rest.
-    return { checks };
+    return { ok: false, checks }; // same shape as every other return — this path used to omit `ok` entirely
   }
 
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
@@ -83,9 +83,13 @@ function cpHealthCheck_() {
 
   let memberCount = 0;
   if (roster && roster.getLastRow() >= CONFIG.rosterStartRow) {
+    // Columns 2 and 3 were assumed to be RANK and NAME. Every other roster read in this file resolves them by
+    // header, so a reordered roster reported "0 member(s) found" while working perfectly.
+    const RCm = rosterCols_(roster);
     const n = roster.getLastRow() - CONFIG.rosterStartRow + 1;
-    const v = roster.getRange(CONFIG.rosterStartRow, 2, n, 2).getDisplayValues();
-    v.forEach((r) => { if (isValidMemberValues_(r[0], r[1])) memberCount++; });
+    const ranks = roster.getRange(CONFIG.rosterStartRow, RCm.rank, n, 1).getDisplayValues();
+    const names = roster.getRange(CONFIG.rosterStartRow, RCm.name, n, 1).getDisplayValues();
+    for (let i = 0; i < n; i++) { if (isValidMemberValues_(ranks[i][0], names[i][0])) memberCount++; }
   }
   add('Roster has members', memberCount > 0, `${memberCount} member(s) found.`);
 
@@ -135,26 +139,6 @@ function cpColLetter_(n) {
   return s;
 }
 
-/**
- * Injectable core: checks a sheet's header row against an expected {col:keyword} map.
- * Each header (uppercased) must CONTAIN its keyword. @return {string[]} human-readable issues.
- */
-function cpHeaderIssues_(sheet, label, headerRow, colsSpec) {
-  if (!sheet) return []; // a missing tab is reported by the main health check, not here
-  const issues = [];
-  if (sheet.getLastRow() < headerRow) { issues.push(`${label}: header row ${headerRow} is missing.`); return issues; }
-  const hdr = sheet.getRange(headerRow, 1, 1, Math.max(sheet.getLastColumn(), 1)).getDisplayValues()[0];
-  Object.keys(colsSpec).forEach((colStr) => {
-    const col = Number(colStr);
-    const want = colsSpec[colStr];
-    const got = String(hdr[col - 1] || '').toUpperCase().trim();
-    if (got.indexOf(want) === -1) {
-      issues.push(`${label} col ${cpColLetter_(col)}: expected a "${want}" header, found "${hdr[col - 1] || '(blank)'}"`);
-    }
-  });
-  return issues;
-}
-
 /** Roster columns are header-resolved, so verify the required columns resolve on the roster's ACTUAL label row (auto-detected). */
 function cpRosterHeaderIssues_(roster) {
   if (!roster) return [];
@@ -194,8 +178,17 @@ function cpSchemaCheck_() {
     [['RANK', TC.rank], ['NAME', TC.name], ['UNIQUE ID / DISCORD', TC.discord], ['START DATE', TC.start], ['END DATE', TC.end], ['STATUS', TC.status]]
       .forEach((x) => { if (!x[1]) issues.push(`${CONFIG.sheets.tracker}: no ${x[0]} column found — the tracker resolves columns by header, so a ${x[0]} label is required.`); });
   }
-  issues = issues.concat(cpHeaderIssues_(ss.getSheetByName(CONFIG.sheets.form), CONFIG.sheets.form, 1,
-    { 1: 'TIME', 3: 'DISCORD', 6: 'STATUS', 7: 'START', 8: 'END' }));
+  // The leave-form tab resolves BY HEADER (leaveFormCols_), with the classic fixed columns only as a fallback —
+  // so pinning TIME/DISCORD/STATUS/START/END to columns 1/3/6/7/8 reported a perfectly working reordered form as
+  // broken. Ask the resolver the question the sync actually asks: did the headers resolve, or did it fall back?
+  const form = ss.getSheetByName(CONFIG.sheets.form);
+  if (form && typeof leaveFormCols_ === 'function') {
+    try {
+      if (!leaveFormCols_(form).byHeader) {
+        issues.push(`${CONFIG.sheets.form}: row-1 headers don't resolve Timestamp / Name / Unique ID / Start / End — the sync is falling back to the fixed column order 1–8.`);
+      }
+    } catch (e) { log_('cpSchemaCheck_.form', e); }
+  }
   return issues;
 }
 
@@ -470,7 +463,9 @@ function cpAuditTail(n) {
     if (lastRow >= CONFIG.rosterStartRow) {
       names = roster.getRange(CONFIG.rosterStartRow, RC.name, lastRow - CONFIG.rosterStartRow + 1, 1).getDisplayValues();
     }
-    const hdr = roster.getRange(5, 1, 1, roster.getLastColumn()).getDisplayValues()[0]; // column labels live on row 5
+    // The label row is RESOLVED, never assumed. rosterHeaderLabels_ also falls back to the banner cell above a
+    // blank label (a column merged across banner+label, e.g. RANK GROUP), which is exactly what a field name wants.
+    const hdr = rosterHeaderLabels_(roster, RC.headerRow || rosterLabelRow_(roster));
     for (let c = 0; c < hdr.length; c++) headers[c + 1] = String(hdr[c]).trim();
   }
   const FRIENDLY = {};
