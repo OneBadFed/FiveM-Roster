@@ -2315,6 +2315,53 @@ function publishStyleableTab_(name) {
 }
 
 /**
+ * The destination's first real DATA row: its own header row plus the header→data gap THIS tab's role uses (these
+ * layouts put a divider between the two). Styling must start below that divider — dressing it like a data row
+ * would repaint the operator's section separator.
+ */
+function publishDataStart_(destName, dh) {
+  try {
+    const C = cfg_().legacy, n = norm_(destName), hdr = C.headerRow || 6;
+    let start = C.rosterStartRow;
+    if (C.sheets.tracker && norm_(C.sheets.tracker) === n) start = C.trackerStartRow;
+    else if (C.sheets.patrolLog && norm_(C.sheets.patrolLog) === n) start = C.patrolStartRow;
+    return dh + Math.max(1, (Number(start) || 0) - hdr);
+  } catch (e) { return dh + 1; }
+}
+
+/**
+ * The dropdown-bearing column on a styleable tab, read from the DESTINATION's own header row — STATUS on the
+ * tracker and Patrol Log, ACTIVITY on the roster. healUnstyledRows_ uses it to tell a dressed row from an
+ * undressed one; 0 (not found) makes it a no-op.
+ */
+function publishStatusCol_(dest, dh, width) {
+  try {
+    const hdr = dest.getRange(dh, 1, 1, Math.max(width, 1)).getDisplayValues()[0].map((h) => norm_(h));
+    for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('STATUS') !== -1) return c + 1; }
+    for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('ACTIVITY') !== -1) return c + 1; }
+  } catch (e) { /* unreadable header → no-op */ }
+  return 0;
+}
+
+/**
+ * Dress the rows this publish just landed on the public copy.
+ *
+ * BOTH repairs, in the order tidyTailRows_ uses them on the internal tabs — the publish ran only the second one,
+ * which is why a freshly published row stayed black. styleTailRows_ compares BACKGROUNDS, and a row published into
+ * never-styled space looks exactly like the blank tail below it, so its "already consistent" check reads as
+ * nothing-to-do and returns. healUnstyledRows_ keys off the STATUS DROPDOWN instead, which every dressed row on
+ * these tabs carries and no raw row does, so it catches precisely the case the background test is blind to.
+ */
+function publishDressRows_(dest, dh, lastData, width) {
+  if (!(dh > 0) || !(lastData >= dh)) return;
+  const ds = publishDataStart_(dest.getName(), dh);
+  try { if (typeof healUnstyledRows_ === 'function') healUnstyledRows_(dest, ds, lastData, publishStatusCol_(dest, dh, width), width); }
+  catch (e) { log_('publishDressRows_.heal', e); }
+  try { if (typeof styleTailRows_ === 'function') styleTailRows_(dest, ds, lastData, Math.max(0, dest.getMaxRows() - 1 - lastData), width); }
+  catch (e) { log_('publishDressRows_.tail', e); }
+}
+
+/**
  * Mirror ROW HEIGHTS from this tab onto the public copy for the block just published. Height is a SHEET property:
  * no value write, no format paste and no row insert carries it, so a published row could sit at the wrong height
  * even wearing the right skin. Apps Script has no bulk height API (getRowHeight is one call per row), so the cost
@@ -2378,9 +2425,7 @@ function publishMirrorTab_(src, dest, deep) {
     publishFitRows_(src, dest, sRows, true); // now the trailing rows are empty, shrink to data + the closing bar
     // A published row landing where the public tab was never styled came out raw (reported: the newest patrol row
     // was black on the public copy). Propagate the PUBLIC tab's own look onto it, banded data tabs only.
-    if (dh > 0 && publishStyleableTab_(dest.getName()) && typeof styleTailRows_ === 'function') {
-      styleTailRows_(dest, dh + 1, sRows, Math.max(0, dest.getMaxRows() - 1 - sRows), sCols);
-    }
+    if (publishStyleableTab_(dest.getName())) publishDressRows_(dest, dh, sRows, sCols);
     // Heights last, so they win over anything the styling pass normalised to the PUBLIC tab's own rows: the
     // internal is the source of truth for how tall a row is. Data rows only — the banner keeps its own sizing.
     if (sh > 0 && dh > 0) publishMirrorHeights_(src, dest, sh + 1, dh + 1, sRows - sh, deep);
@@ -2427,9 +2472,7 @@ function publishMirrorTab_(src, dest, deep) {
     dest.getRange(destStart + n, 1, dLast - (destStart + n) + 1, widest).clearContent();
   }
   publishFitRows_(src, dest, need, true); // shrink to data + the closing bar now the leftovers are cleared
-  if (publishStyleableTab_(dest.getName()) && typeof styleTailRows_ === 'function') { // see the same-width path
-    styleTailRows_(dest, destStart, need, Math.max(0, dest.getMaxRows() - 1 - need), Math.max(1, dest.getLastColumn()));
-  }
+  if (publishStyleableTab_(dest.getName())) publishDressRows_(dest, dh, need, Math.max(1, dest.getLastColumn())); // see the same-width path
   publishMirrorHeights_(src, dest, srcStart, destStart, n, deep); // the internal decides how tall a row is
   return n;
 }
