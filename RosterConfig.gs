@@ -60,8 +60,10 @@ const REGISTRY_ = Object.freeze({
   'E-205': { sev: 'ERROR', msg: 'Engine attempted to write role-less column "{header}".', hint: 'Every engine-written column needs an explicit [COLUMNS] role. This is an engine bug — report it.' },
   'E-301': { sev: 'WARN', msg: 'Row {row}: "{value}" is not a pingable Discord ID.', hint: 'Discord @mention pings need a 17-19 digit snowflake; pings are skipped for this member (identity still works with the configured ID length).' },
   'E-501': { sev: 'INFO', msg: 'Another run holds the lock; this one exited.', hint: 'Normal under concurrency — retry shortly.' },
+  'E-502': { sev: 'WARN', msg: 'Discord webhook post failed: HTTP {code}.', hint: 'Check the webhook row on the admin file\'s Webhooks tab — the message was dropped, the run itself continued.' },
   'E-506': { sev: 'ERROR', msg: 'Unknown panel endpoint "{name}".', hint: 'Only whitelisted endpoints may be dispatched (brief D5 — enforced in Phase 2).' },
   'E-601': { sev: 'ERROR', msg: 'Unexpected error in {fn}: {msg}', hint: 'Open the SYS Log tab (or script editor → Executions) for the stack.' },
+  'PERF': { sev: 'INFO', msg: '{label} took {ms}ms.', hint: 'Timing lines only appear while [LOGGING].PERF_TIMING is TRUE.' },
 });
 
 /** Render a registry template with real values. Unknown params render as "?" so a bad call still surfaces. */
@@ -116,6 +118,7 @@ function getErrorsWebhookUrl_() {
 function maybeErrorWebhook_(ae, fnName) {
   try {
     if (!ae || ae.sev !== 'ERROR') return;
+    if (typeof DEV_WEBHOOKS_OFF_ !== 'undefined' && DEV_WEBHOOKS_OFF_) return; // DevQA-raised errors (adversarial cases) stay in the SYS Log only
     const key = 'errwh:' + (ae.code || 'E-601') + ':' + (fnName || ''); // F-045: throttle per code AND function, not code alone
     const cache = CacheService.getScriptCache();
     if (cache.get(key)) return; // throttle FIRST — the URL now lives in the admin file, so don't open it during a storm
@@ -123,11 +126,12 @@ function maybeErrorWebhook_(ae, fnName) {
     if (!url) return;
     cache.put(key, '1', 300);
     const sysName = (CFG_ && CFG_.legacy) ? CFG_.legacy.systemName : 'Roster System';
-    let desc = String(ae.message || '');
-    if (ae.hint) desc += `\n\n**Fix:** ${ae.hint}`;
+    let desc = `# \`🚨\` Engine Error · ${ae.code}`; // house style: "# " heading in the description with a boxed \`emoji\`
+    desc += `\n\`📄\` **Message:** ${ae.message || ''}`;
+    if (ae.hint) desc += `\n\`🛠️\` **Fix:** ${ae.hint}`;
+    desc += `\n\`📍\` **Where:** \`${fnName || 'engine'}\``;
     desc = desc.slice(0, 1500) + '\n\n_See SYS Log for the complete record._'; // F-044: one safe bound on the whole description + pointer
     const fallbackEmbed = {
-      title: `⚠️ ${ae.code} — ${fnName || 'engine'}`,
       description: desc,
       color: 14702415, // #e0574f — semantic red
       footer: { text: `${sysName} • ${ENGINE_VERSION}` },
@@ -149,7 +153,7 @@ function maybeErrorWebhook_(ae, fnName) {
     });
     // F-044: surface an otherwise-muted delivery failure (never throw — mirrors the "never fatal" contract). slog_ reads CFG_.
     const code = res.getResponseCode();
-    if (code < 200 || code >= 300) slog_('WARN', 'E-501', 'maybeErrorWebhook_', `errors-webhook post returned HTTP ${code}`, { code });
+    if (code < 200 || code >= 300) slog_('WARN', 'E-502', 'maybeErrorWebhook_', `errors-webhook post returned HTTP ${code}`, { code });
   } catch (e) {
     try { console.error(`maybeErrorWebhook_ failed (never fatal): ${e && e.message}`); } catch (e2) { /* nothing left */ }
   }
@@ -211,7 +215,11 @@ function slog_(sev, code, fn, message, ctx) {
     // cfg_() from here would recurse infinitely. Before the memo exists we simply use the defaults.
     let maxRows = 500, minLevel = 'INFO';
     if (CFG_) { maxRows = CFG_.logging.maxRows; minLevel = CFG_.logging.level; }
-    if ((LOG_ORDER_[sev] || 1) < (LOG_ORDER_[minLevel] || 1)) return;
+    // == null, not || : LOG_ORDER_.DEBUG is 0, and `|| INFO` quietly promoted every DEBUG line to INFO — so a
+    // DEBUG entry was never filtered out at the default level, and LOG_LEVEL=DEBUG revealed nothing extra.
+    const sevRank = (LOG_ORDER_[sev] == null) ? LOG_ORDER_.INFO : LOG_ORDER_[sev];
+    const minRank = (LOG_ORDER_[minLevel] == null) ? LOG_ORDER_.INFO : LOG_ORDER_[minLevel];
+    if (sevRank < minRank) return;
     const ss = SpreadsheetApp.getActive();
     if (!_sysLogSheet || _sysLogSheet.getParent().getId() !== ss.getId()) {
       _sysLogSheet = ss.getSheetByName(SYS_LOG_SHEET);
@@ -246,7 +254,7 @@ function slog_(sev, code, fn, message, ctx) {
 const THEME_DEFAULTS = Object.freeze({
   CANVAS: '#1c1c1c', BANNER: '#1f2933', GRID: '#2a2f37', ACCENT: '#3f86e6',
   TEXT: '#eceef2', TEXT_STRONG: '#ffffff', SUBHEAD: '#222831', SUBHEAD_TEXT: '#aeb6c0',
-  PASS: '#1e6b3a', FAIL: '#7a1f2b', INFO: '#236995', PROCESSING: '#6b531f',
+  PASS: '#1e6b3a', FAIL: '#7a1f2b', INFO: '#236995',
 });
 
 function theme_(key) {
@@ -268,13 +276,11 @@ const BLOCK_SPECS_ = Object.freeze({
   SYSTEM: { type: 'kv', keys: {
     SCHEMA_VERSION: { t: 'int', d: ENGINE_SCHEMA, req: true, min: 1, max: 999, help: 'Engine-managed. Do not edit.' },
     SYSTEM_NAME: { t: 'string', d: 'Roster System', req: true, help: 'Shown in Discord embed footers.' },
-    DEV_MODE: { t: 'bool', d: true, req: true, help: 'Phase 1: informational (Dev/QA menu still appears when RosterDevQA.gs is pasted).' },
-    MAINTENANCE_MODE: { t: 'bool', d: false, req: true, help: 'Phase 1: validated only; write-refusal ships in Phase 2.' },
   } },
   SHEETS: { type: 'kv', keys: {
     ROSTER: { t: 'string', d: 'Member Information', req: true, help: 'The roster tab name.' },
     TRACKER: { t: 'string', d: 'LOA/ROA Tracker', req: true, help: 'The leave-tracker tab name.' },
-    FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: true, help: 'The Google Form responses tab name.' },
+    LEAVE_FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: true, aka: 'FORM_RESPONSES', help: 'The LEAVE (LOA/ROA) Google Form\'s responses tab. Each submission is validated and added to the TRACKER as Pending.' },
     // v1.0 — the system/log tab names are now editable too (every role must resolve to a DISTINCT tab).
     // NOTE: "SYS Log" (engine diagnostics) is intentionally NOT here — slog_/theme_ must resolve it without cfg_() (re-entrancy).
     AUDIT: { t: 'string', d: 'Edit Log', req: false, help: 'The who/what/when audit-log tab. Blank = "Edit Log".' },
@@ -282,7 +288,8 @@ const BLOCK_SPECS_ = Object.freeze({
     COVERAGE: { t: 'string', d: 'Leave Coverage', req: false, help: 'Leave-coverage view tab. Blank = "Leave Coverage".' },
     INTEGRITY: { t: 'string', d: 'Integrity Log', req: false, help: 'Integrity-scan log tab. Blank = "Integrity Log".' },
     SNAPSHOTS: { t: 'string', d: '_Snapshots', req: false, help: 'Hidden snapshot/restore tab. Blank = "_Snapshots".' },
-    PATROL_RESPONSES: { t: 'string', d: '', req: false, help: 'Patrol-log Google Form responses tab name. BLANK = patrol-hours sync OFF. Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
+    WELCOME: { t: 'string', d: 'Welcome Page', req: false, help: 'The Welcome Page / dashboard tab (the front page with the title banner + Department Statistics). Blank = "Welcome Page". A leading emoji is matched automatically, so "👋 Welcome Page" works even at the default; set the exact name here only if you renamed it to something else. Used so the publish protects its title block (F6:W7 reads differently public vs internal) and force-mirrors the header cells (F40:H41, AE6) from the internal.' },
+    PATROL_FORM_RESPONSES: { t: 'string', d: '', req: false, aka: 'PATROL_RESPONSES', help: 'The PATROL Google Form\'s responses tab. BLANK = patrol-form sync OFF (the manual Patrol Log tab still works). Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
     PATROL_LOG: { t: 'string', d: 'Patrol Log', req: false, help: 'Manual Patrol Log tracker tab (like the LOA Tracker). Enter Unique ID + start/end date + start/end time; the engine auto-fills member info, computes TOTAL TIME, credits the hours to the roster, and sorts Pending → Flagged → Processed. BLANK = OFF. Activates only if a tab with this name exists.' },
     SIGNUPS: { t: 'string', d: 'Roster Signups', req: false, help: 'Roster Signup REVIEW tab (like the LOA Tracker): the engine adds field-matched form submissions here (from SIGNUP_FORM_RESPONSES) for admins to review — STATUS + NOTES are admin-owned. Lay it out with a header row (NAME / OOC NAME / UNIQUE ID / DOB / EMAIL / STATUS / NOTES…) anywhere in the top rows. Approving adds the member to a slot and writes their private details to the Internal Roster.' },
     SIGNUP_FORM_RESPONSES: { t: 'string', d: '', req: false, help: 'The Google Form\'s OWN responses tab for roster signups (Forms own row 1, so it is separate from the themed Signups tab). BLANK = signup sync OFF. Point this at the tab your signup form writes to; each submission is matched by header name and added to the SIGNUPS review tab. Name the form questions to match: Name, OOC Name, Unique ID, DOB (or Date of Birth), Email.' },
@@ -295,22 +302,24 @@ const BLOCK_SPECS_ = Object.freeze({
     DIVIDER_MODE: { t: 'enum', d: 'ALLCAPS_RANK', req: true, enum: ['ALLCAPS_RANK', 'EXPLICIT_LIST'], help: 'How ranks/section-dividers are detected. ALLCAPS_RANK = the all-caps heuristic (default). EXPLICIT_LIST = consult the [RANKS] table, falling back to the heuristic for anything unlisted.' },
     TRAINING_KEYWORDS: { t: 'list', d: 'TRAINING, CADET', req: true, help: 'Divider labels containing these words are TRAINING sections.' },
     UNIT_FORMAT: { t: 'string', d: 'S-{00}', req: true, help: 'Callsign/unit-number template. The {0…} token is the slot number zero-padded to that many digits — "S-{00}" → S-01, "TRP-{000}" → TRP-001. Text outside the token is literal (prefix/suffix). No token → the number is appended.' },
-    LAST_ACTIVITY_STYLE: { t: 'enum', d: 'MATCH', req: false, enum: ['MATCH', 'NEUTRAL'], help: 'How the LAST ACTIVITY column is coloured. MATCH = mirror CURRENT ACTIVITY\'s status colours (default). NEUTRAL = a calm grey chip so only CURRENT ACTIVITY is colour-coded. Applied by 📸 Capture Last Activity.' },
     ID_TYPE: { t: 'enum', d: 'DISCORD', req: true, enum: ['DISCORD', 'COMMUNITY', 'CUSTOM'], help: 'THE Unique-ID switch for this department. DISCORD = a 17-19 digit Discord ID (default). COMMUNITY = a short 1-8 digit Community ID / CID. CUSTOM = use the ID_MIN_DIGITS…ID_MAX_DIGITS range below. NOTE: Discord @mention pings only fire for a real 17-19 digit ID, so a COMMUNITY department simply gets no pings.' },
     ID_MIN_DIGITS: { t: 'int', d: 17, req: true, min: 1, max: 30, help: 'Shortest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 17, COMMUNITY forces 1).' },
     ID_MAX_DIGITS: { t: 'int', d: 19, req: true, min: 1, max: 30, help: 'Longest accepted Unique ID length in digits. ONLY used when ID_TYPE = CUSTOM (DISCORD forces 19, COMMUNITY forces 8).' },
+    SHIFT_HEADER: { t: 'list', d: 'SHIFT, ASSIGNMENT, DISTRICT, DIVISION, WATCH', req: false, help: 'Header keyword(s) for the shift / assignment / district column — a header MATCHES if it CONTAINS any one of them (case/space-proof). Every department names this column differently, so put yours first. ONE list drives both the roster and the LOA Tracker: they used to carry separate hardcoded lists, and a department on "DISTRICT" got a tracker column the roster could never fill, so the value synced across blank. BLANK = this department has no such column.' },
+    SHIFT_VALUES: { t: 'list', d: '', req: false, help: 'The shifts/assignments this department actually uses — e.g. "Days, Swings, Mids" or "Alpha Watch, Bravo Watch, Charlie Watch, Traffic". ONLY used when SHIFT_ASSIGNED_BY = MEMBER: the Add-member form offers exactly these instead of a free-text box, so nobody invents "day"/"Day Shift"/"DAYS" as three different values. BLANK = free text (type anything). Ignored under SHIFT_ASSIGNED_BY = RANK, where the value belongs to the slot and is read off the roster row.' },
+    SHIFT_ASSIGNED_BY: { t: 'enum', d: 'MEMBER', req: false, enum: ['MEMBER', 'RANK'], help: 'How that column is filled, and what happens to it on a transfer. MEMBER = it belongs to the PERSON: blank on an empty slot, set when someone is seated, and it FOLLOWS them when they move rank. RANK = it belongs to the SLOT: pre-filled on the rank row and it STAYS with the position when the member moves out. This sets the column\'s default SLOT/MEMBER class — an explicit per-header row in [COLUMNS] (or Control Panel ▸ Columns) still wins over it.' },
   } },
-  COLUMNS: { type: 'table', cols: ['Role', 'Match', 'Class', 'Required'],
+  // The old 4th column, "Required", was decorative: nothing read it, and the roles the engine genuinely cannot
+  // start without are the fixed requiredRoles list in validateConfig_ (they are an engine contract, not a setting).
+  COLUMNS: { type: 'table', cols: ['Role', 'Match', 'Class'],
     seed: [
-      ['RANK', 'RANK', 'SLOT', 'TRUE'], ['NAME', 'NAME', 'MEMBER', 'TRUE'],
-      ['UNIT', 'UNIT, CALLSIGN', 'SLOT', 'FALSE'], ['DISCORD_ID', 'DISCORD', 'MEMBER', 'TRUE'],
-      ['JOIN_DATE', 'JOIN', 'MEMBER', 'FALSE'], ['LAST_PROMOTION', 'PROMOT', 'MEMBER', 'FALSE'],
-      ['ACTIVITY', 'ACTIVITY', 'MEMBER', 'TRUE'], ['LAST_ACTIVITY', 'LAST ACTIVITY', 'MEMBER', 'FALSE'],
-      ['HOURS', 'HOURS', 'MEMBER', 'TRUE'], ['NOTES', 'NOTES', 'MEMBER', 'FALSE'],
+      ['RANK', 'RANK', 'SLOT'], ['NAME', 'NAME', 'MEMBER'],
+      ['UNIT', 'UNIT, CALLSIGN', 'SLOT'], ['DISCORD_ID', 'DISCORD', 'MEMBER'],
+      ['JOIN_DATE', 'JOIN', 'MEMBER'], ['LAST_PROMOTION', 'PROMOT', 'MEMBER'],
+      ['ACTIVITY', 'ACTIVITY', 'MEMBER'], ['LAST_ACTIVITY', 'LAST ACTIVITY', 'MEMBER'],
+      ['HOURS', 'HOURS', 'MEMBER'], ['NOTES', 'NOTES', 'MEMBER'],
     ],
     help: 'Role rows: Match = keyword the header CONTAINS (case/space-proof). Rows with a blank Role are exact-header class overrides (managed by the Control Panel Columns tab). Class: SLOT stays with the position on transfer, MEMBER follows the person.' },
-  SECTIONS: { type: 'table', cols: ['Section', 'CertSlots', 'Labels', 'SkipOnTransfer'], seed: [],
-    help: 'Per-section cert-slot repurposing (opt-in). Ships EMPTY: carrying all member data on transfer is the safe default.' },
   SECTION_TAGS: { type: 'table', cols: ['Label', 'Keywords', 'Tone'],
     seed: [
       ['Executive', 'EXECUTIVE', 'exec'], ['Administrative', 'ADMINISTRATIV', 'admin'],
@@ -319,13 +328,13 @@ const BLOCK_SPECS_ = Object.freeze({
       ['Auxiliary', 'AUXILIAR', 'aux'], ['Command', 'COMMAND', 'aux'],
     ],
     help: 'Informational tags for the Dividers view. FIRST match wins — order specific → general.' },
-  STATUSES: { type: 'table', cols: ['Status', 'Kind', 'MinHours', 'Color', 'Announce'],
+  STATUSES: { type: 'table', cols: ['Status', 'Kind', 'MinHours', 'Color'],
     seed: [
-      ['Active', 'TIER', '10', '#57b85a', 'FALSE'], ['Semi-Active', 'TIER', '5', '#e0a52c', 'FALSE'],
-      ['Inactive', 'TIER', '0', '#e0574f', 'FALSE'], ['LOA', 'LEAVE', '', '#4ea7d6', 'FALSE'],
-      ['ROA', 'LEAVE', '', '#e0a52c', 'FALSE'], ['Reserve', 'PROTECTED', '', '#9d8cf2', 'FALSE'],
+      ['Active', 'TIER', '10', '#57b85a'], ['Semi-Active', 'TIER', '5', '#e0a52c'],
+      ['Inactive', 'TIER', '0', '#e0574f'], ['LOA', 'LEAVE', '', '#4ea7d6'],
+      ['ROA', 'LEAVE', '', '#e0a52c'], ['Reserve', 'PROTECTED', '', '#9d8cf2'],
     ],
-    help: 'TIER = computed from hours (highest tier whose MinHours is met; exactly one TIER must have MinHours 0). LEAVE = set/cleared by the leave engine. PROTECTED = never auto-overwritten. Announce wiring ships in Phase 2.' },
+    help: 'TIER = computed from hours (highest tier whose MinHours is met; exactly one TIER must have MinHours 0). LEAVE = set/cleared by the leave engine. PROTECTED = never auto-overwritten. Color is the pill colour shown on the Control Panel.' },
   STATUS_OVERRIDES: { type: 'table', cols: ['Scope', 'Match', 'Ladder'],
     seed: [['RANK', 'Auxiliary Trooper', 'Active:5, Inactive:0']],
     help: 'Per-rank tier ladders layered over the global tiers. Ladder = "Status:MinHours, …" with exactly one 0. SECTION scope is validated but not applied until Phase 2.' },
@@ -333,32 +342,43 @@ const BLOCK_SPECS_ = Object.freeze({
     help: 'Optional STATELESS override matrix layered on the [STATUSES] tiers. Each rule reroutes a computed status: Source = a status name or * (any); Op = < · <= · > · >= · == (or * for "always"); Hours = the threshold; Target = the resulting status. Rules apply first-match-wins and iterate to a FIXED POINT, so the result depends only on hours (idempotent — never a per-run "strike"). EMPTY (the default) = the tier ladder alone. Protected statuses are never rerouted unless named as a Source.' },
   RANKS: { type: 'table', cols: ['Value', 'Kind'], seed: [],
     help: 'Explicit rank/divider list. Value = the exact rank or divider label. Kind = RANK (a member slot), DIVIDER (a section header), or TRAINING (a member rank that ALSO lands on the Police Academy — e.g. Police Cadet, Probationary Officer). RANK/DIVIDER rows are only consulted for divider detection when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST (unlisted labels fall back to the all-caps heuristic, so a partial list is safe). TRAINING rows are read for the Academy regardless of DIVIDER_MODE.' },
+  ACTIVITY: { type: 'kv', help: 'The activity cycle — how often activity is checked, what each period column holds, how previous periods are kept, and the Activity Panel board. These keys moved here from [SCHEDULE] / [ROSTER_LAYOUT] / [SHEETS]; an existing sheet migrates its values automatically and the old rows retire.', keys: {
+    AUTO_RESET: { t: 'bool', d: true, req: false, aka: 'SCHEDULE.AUTO_RESET', help: 'Master switch for the automatic activity reset. OFF = hours are NEVER zeroed on a schedule — the period only closes when you run 👥 Roster ▸ 📸 Capture & Reset Activity yourself. Everything else (hours crediting, statuses, history) is unaffected. Takes effect immediately; no need to re-run Install Triggers.' },
+    RESET_CADENCE: { t: 'enum', d: 'WEEKLY', req: true, aka: 'SCHEDULE.RESET_CADENCE', enum: ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'MANUAL'], help: 'How often the hours reset runs. WEEKLY = the classic behavior. BIWEEKLY = every 14 days. MONTHLY = on RESET_DOM. MANUAL = no auto-reset trigger.' },
+    WEEKLY_HOURS_RESET: { t: 'enum', d: 'SUN', req: true, aka: 'SCHEDULE.WEEKLY_HOURS_RESET', enum: ['OFF', 'SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], help: 'Weekday for WEEKLY/BIWEEKLY reset (captures history BEFORE zeroing — resolved G1). OFF disables the reset regardless of cadence.' },
+    WEEKLY_RESET_HOUR: { t: 'int', d: 23, req: true, aka: 'SCHEDULE.WEEKLY_RESET_HOUR', min: 0, max: 23, help: 'Hour of day for the reset trigger.' },
+    RESET_DOM: { t: 'int', d: 1, req: true, aka: 'SCHEDULE.RESET_DOM', min: 1, max: 28, help: 'Day of month the reset runs under MONTHLY cadence (1–28, v1.0).' },
+    PERIOD_BUCKET: { t: 'enum', d: 'RESET', req: false, aka: 'SCHEDULE.PERIOD_BUCKET', enum: ['RESET', 'MONTH'], help: 'What ONE period column represents. RESET (default) = one column per activity check — a weekly check fills a new column every week. MONTH = columns are MONTHLY totals: checks inside the same month ADD into the current month\'s column, and the columns only roll when the month changes. So with a weekly check and 5 hrs a week, the month column reads 5 → 10 → 15 → 20, then a fresh column opens in the new month. Hours still zero on every check either way — this only changes how the archive columns are grouped.' },
+    PERIOD_LABEL_FORMAT: { t: 'string', d: '', req: false, aka: 'SCHEDULE.PERIOD_LABEL_FORMAT', help: 'Header written on the period column each 📸 Capture & Reset closes — a Java date pattern (d=day, MMM=Jul, MMMM=July, yyyy=2026; quote literal words like \'WEEK OF\' d MMM). BLANK = automatic from your reset frequency: MONTHLY gives "JUL HOURS", WEEKLY/BIWEEKLY give the period-ending date, "27 JUL HOURS". The word HOURS is always appended if your pattern omits it — the engine finds these columns by that word, and a header without it would drop out of the rolling set.' },
+    LAST_ACTIVITY_COLS: { t: 'list', d: '', req: false, aka: 'ROSTER_LAYOUT.LAST_ACTIVITY_COLS', help: 'PREVIOUS-ACTIVITY columns, NEWEST FIRST, up to 3 — e.g. "AB, AC, AD" (column letters) or "LAST ACTIVITY, 2 PERIODS AGO, 3 PERIODS AGO" (header names). Each 📸 Capture & Reset shifts the chain: the 2nd column takes what the 1st held, the 3rd takes the 2nd, and the 1st takes everyone\'s closing ACTIVITY — so you keep a rolling history of the last periods. Blank = the classic single column found by its "LAST ACTIVITY" header. The header row and first member row come from HEADER_ROW / DATA_START_ROW above.' },
+    LAST_ACTIVITY_STYLE: { t: 'enum', d: 'MATCH', req: false, aka: 'ROSTER_LAYOUT.LAST_ACTIVITY_STYLE', enum: ['MATCH', 'NEUTRAL'], help: 'How the LAST ACTIVITY column is coloured. MATCH = mirror CURRENT ACTIVITY\'s status colours (default). NEUTRAL = a calm grey chip so only CURRENT ACTIVITY is colour-coded. Applied on every 📸 Capture & Reset Activity.' },
+    PANEL_TAB: { t: 'string', d: 'Activity Panel', req: false, aka: 'SHEETS.ACTIVITY', help: 'The Activity Panel board tab: one row per patrol form submission (member, start/end, patrol length, live status from the Patrol Log) under a filter row — search and sort by any column. Engine-built VIEW, rebuilt on every patrol sync: hand edits do not survive; statuses are managed on the Patrol Log itself. BLANK = OFF.' },
+  } },
   LEAVE: { type: 'kv', keys: {
     LEAVE_TYPES: { t: 'list', d: 'LOA, ROA', req: true, help: 'Each must be a LEAVE-kind status in [STATUSES].' },
-    RETURN_TYPE: { t: 'string', d: '', req: false, help: 'Form value meaning "I am back" (closes leave early). EMPTY = disabled — ROA is a leave TYPE here, not a return.' },
     STATUS_FLOW: { t: 'list', d: 'Pending, Approved, Denied, Expired', req: true, help: 'Tracker status dropdown values. First = default on sync.' },
     APPROVED_STATUS: { t: 'string', d: 'Approved', req: false, help: 'The STATUS_FLOW value that ACTIVATES a leave. The nightly job starts/expires only leaves in this state.' },
     EXPIRED_STATUS: { t: 'string', d: 'Expired', req: false, help: 'The STATUS_FLOW value the nightly job writes when a leave END date passes.' },
     RETURN_STATUS: { t: 'string', d: 'ROA', req: false, help: 'The "returning" leave status: protected, but auto-downgrades to a computed tier when hours stay below the semi threshold. EMPTY = no returning status.' },
-    AUTO_EXPIRE: { t: 'bool', d: true, req: true, help: 'Nightly job expires Approved leaves past END.' },
-    EXPIRE_NEVER_APPROVED: { t: 'bool', d: false, req: true, help: 'FALSE = Pending leaves are never auto-expired.' },
-    MAX_DAYS_WARN: { t: 'int', d: 30, req: false, min: 1, max: 365, help: 'Longer requests get a WARN in the sync summary (Phase 2 wiring).' },
+    AUTO_EXPIRE: { t: 'bool', d: true, req: true, help: 'The nightly schedule check ends leaves whose END date has passed (writing EXPIRED_STATUS and recomputing the member from their hours). OFF = leaves are never ended on a schedule; a leave then stays live until an admin changes its status by hand. Starting a due leave is unaffected either way.' },
+    EXPIRE_NEVER_APPROVED: { t: 'bool', d: false, req: true, help: 'Also end a leave that is still on the FIRST status in STATUS_FLOW (Pending by default) once its END date has passed — a request nobody ever got to, whose dates have already gone by. FALSE (default) = only APPROVED_STATUS leaves are ended automatically; a stale Pending row is left for a human. Requires AUTO_EXPIRE.' },
+    MAX_DAYS_WARN: { t: 'int', d: 30, req: false, min: 1, max: 365, help: 'A synced leave longer than this many days is flagged for review (see FLAGGED_STATUS). 0/blank = no length check.' },
+    FLAGGED_STATUS: { t: 'string', d: '', req: false, help: 'Status stamped on a synced leave that needs review — Unique ID not on the roster, end before start, a leave entirely in the past, or longer than MAX_DAYS_WARN. The reason is written to NOTES either way. BLANK = off (questionable rows sync as Pending, reason still in NOTES). Add the same status to STATUS_FLOW so the tracker groups it.' },
+    FORM_TYPE_POLICY: { t: 'enum', d: 'MATCH', req: false, enum: ['MATCH', 'ANY'], help: 'What the leave sync does with a form "type" answer that is not the tracker\'s leave type. MATCH (default) = reject the row (red, retryable) — protects a form whose choices should be LOA/ROA. ANY = accept every submission onto the tracker; the submitted type is recorded in NOTES so nothing is lost. Use ANY when your form offers its own vocabulary (Emergency leave, Vacation, …) and one tracker handles them all.' },
   } },
   FORM_MAP: { type: 'table', cols: ['Role', 'Header'],
     seed: [
       ['TIMESTAMP', 'Timestamp'], ['NAME', 'Name'], ['DISCORD_ID', 'Discord'], ['CALLSIGN', 'Callsign'],
       ['RANK', 'Rank'], ['TYPE', 'Status'], ['START', 'Start'], ['END', 'End'],
     ],
-    help: 'Role → form-question keyword (header CONTAINS it, case/space-proof). Phase 1: used only when ALL 8 resolve on row 1; otherwise the engine falls back to the classic fixed column order with a WARN.' },
+    help: 'Role → leave-form question keyword (header CONTAINS it, case/space-proof). The sync resolves the responses tab\'s columns BY these headers (plus built-in synonyms — UNIQUE/COMMUNITY ID count as the ID), so a reordered or self-made form still files fields correctly. If Timestamp/Name/ID/Type/Start/End don\'t all resolve on row 1, the classic fixed column order 1-8 applies with a WARN.' },
   DISCORD: { type: 'kv', keys: {
     PING_ROLES: { t: 'string', d: '', req: false, help: 'Optional role mentions appended to notifications, e.g. <@&123> <@&456>.' },
-    EMBED_COLOR: { t: 'color', d: '#236995', req: false, help: 'Reserved general embed accent.' },
-    MENTION_MEMBERS: { t: 'bool', d: true, req: true, help: 'Ping <@id> when the Discord ID is valid (currently always on).' },
     SUBMIT_COLOR: { t: 'color', d: '#3498db', req: true, help: 'Colour bar of a new leave-submission embed.' },
     RETURN_COLOR: { t: 'color', d: '#e67e22', req: true, help: 'Colour bar when the submission is the returning-leave type.' },
     EXPIRE_COLOR: { t: 'color', d: '#ed4245', req: true, help: 'Colour bar of a leave-expired embed.' },
-    SUBMIT_TITLE: { t: 'string', d: '📥 New {type} Submission', req: true, help: 'Title of a new leave-submission embed. {type} = the leave type.' },
-    EXPIRE_TITLE: { t: 'string', d: '⏳ {type} Expired', req: true, help: 'Title of a leave-expired embed. {type} = the leave type.' },
+    SUBMIT_TITLE: { t: 'string', d: '`📥` New {type} Submission', req: true, help: 'Title of a new leave-submission embed. {type} = the leave type.' },
+    EXPIRE_TITLE: { t: 'string', d: '`⌛` {type} Expired', req: true, help: 'Title of a leave-expired embed. {type} = the leave type.' },
     EMBED_AUTHOR: { t: 'string', d: '', req: false, help: 'Small author line shown ABOVE the title (e.g. the department name). Blank = off.' },
     EMBED_AUTHOR_ICON: { t: 'string', d: '', req: false, help: 'Author icon image URL (https://…), shown beside the author name. Needs an author.' },
     EMBED_THUMBNAIL: { t: 'string', d: '', req: false, help: 'Thumbnail image URL (https://…) shown at the embed\'s top-right. Blank = off.' },
@@ -367,37 +387,44 @@ const BLOCK_SPECS_ = Object.freeze({
     EMBED_FOOTER_ICON: { t: 'string', d: '', req: false, help: 'Footer icon image URL (https://…), shown beside the footer text. Blank = off.' },
   } },
   NOTIFICATIONS: { type: 'kv', help: 'Optional Discord embeds for roster events. All OFF by default; each posts to the same webhook and reuses the [DISCORD] embed author/thumbnail/image/footer.', keys: {
+    SIGNUP_SUBMITTED: { t: 'bool', d: false, req: false, help: 'Post an embed when a new roster signup lands on the review tab (name + Unique ID only — never DOB/email/phone). Posts to the SIGNUP channel; while no SIGNUP webhook is set it falls back to the AUDIT channel.' },
+    SIGNUP_SUBMITTED_TITLE: { t: 'string', d: '`🧾` New Roster Signup — {name}', req: false, help: 'Title for the signup-submitted embed. {name} = applicant name, {id} = their Unique ID.' },
+    SIGNUP_SUBMITTED_COLOR: { t: 'color', d: '#e0a52c', req: false, help: 'Colour bar of the signup-submitted embed.' },
     MEMBER_ADDED: { t: 'bool', d: false, req: false, help: 'Post an embed when a member is seated into a slot.' },
-    MEMBER_ADDED_TITLE: { t: 'string', d: '➕ {name} joined the roster', req: false, help: 'Title for the member-added embed. {name} = the member name.' },
+    MEMBER_ADDED_TITLE: { t: 'string', d: '`➕` {name} joined the roster', req: false, help: 'Title for the member-added embed. {name} = the member name.' },
     MEMBER_ADDED_COLOR: { t: 'color', d: '#57b85a', req: false, help: 'Colour bar of the member-added embed.' },
     TRANSFER: { t: 'bool', d: false, req: false, help: 'Post an embed when a member moves rows (transfer / promotion / demotion).' },
-    TRANSFER_TITLE: { t: 'string', d: '🔄 {name} — {from} → {to}', req: false, help: 'Title for the transfer embed. {name}, {from} rank, {to} rank.' },
+    TRANSFER_TITLE: { t: 'string', d: '`🔄` {name} — {from} → {to}', req: false, help: 'Title for the transfer embed. {name}, {from} rank, {to} rank.' },
     TRANSFER_COLOR: { t: 'color', d: '#5865f2', req: false, help: 'Colour bar of the transfer embed.' },
     LEAVE_APPROVED: { t: 'bool', d: false, req: false, help: 'Post an embed when a leave is approved on the tracker.' },
-    LEAVE_APPROVED_TITLE: { t: 'string', d: '✅ {type} Approved', req: false, help: 'Title for the leave-approved embed. {type} = the leave type.' },
+    LEAVE_APPROVED_TITLE: { t: 'string', d: '`✅` {type} Approved', req: false, help: 'Title for the leave-approved embed. {type} = the leave type.' },
     LEAVE_APPROVED_COLOR: { t: 'color', d: '#57b85a', req: false, help: 'Colour bar of the leave-approved embed.' },
     LEAVE_STARTED: { t: 'bool', d: false, req: false, help: 'Post an embed when a leave becomes active (its start date arrives).' },
-    LEAVE_STARTED_TITLE: { t: 'string', d: '▶️ {type} Started', req: false, help: 'Title for the leave-started embed. {type} = the leave type.' },
+    LEAVE_STARTED_TITLE: { t: 'string', d: '`▶️` {type} Started', req: false, help: 'Title for the leave-started embed. {type} = the leave type.' },
     LEAVE_STARTED_COLOR: { t: 'color', d: '#4ea7d6', req: false, help: 'Colour bar of the leave-started embed.' },
     WEEKLY_DIGEST: { t: 'bool', d: false, req: false, help: 'Post a roster-summary embed (headcount by status) at each hours reset.' },
-    WEEKLY_DIGEST_TITLE: { t: 'string', d: '📊 Weekly Roster Summary', req: false, help: 'Title for the weekly digest embed.' },
+    WEEKLY_DIGEST_TITLE: { t: 'string', d: '`📊` Weekly Roster Summary', req: false, help: 'Title for the weekly digest embed.' },
     WEEKLY_DIGEST_COLOR: { t: 'color', d: '#5865f2', req: false, help: 'Colour bar of the weekly digest embed.' },
     PATROL_LOGGED: { t: 'bool', d: false, req: false, help: 'Post an embed when a patrol log credits hours to a member.' },
-    PATROL_LOGGED_TITLE: { t: 'string', d: '🚔 {name} logged {hours}h of patrol', req: false, help: 'Title for the patrol-logged embed. Tokens: {name}, {hours} (this log), {total} (new total).' },
+    PATROL_LOGGED_TITLE: { t: 'string', d: '`🚔` {name} logged {hours}h of patrol', req: false, help: 'Title for the patrol-logged embed. Tokens: {name}, {hours} (this log), {total} (new total).' },
     PATROL_LOGGED_COLOR: { t: 'color', d: '#4ea7d6', req: false, help: 'Colour bar of the patrol-logged embed.' },
   } },
-  PUBLISH: { type: 'kv', help: 'Public-roster publishing. Cells on the PUBLIC copy that must never be overwritten. A destination cell containing a FORMULA is always left alone automatically (so its own live date/time/counters keep recalculating) — this list is for STATIC text that should differ, like the public title.', keys: {
+  PUBLISH: { type: 'kv', help: 'Public-roster publishing. Cells on the PUBLIC copy that must never be overwritten. On a SAME-SHAPE (wholesale) tab, a destination cell containing a FORMULA is left alone automatically (its own live date/time/counters keep recalculating). On a HEADER-MATCHED tab (public layout differs), a mirrored column always receives the internal VALUE — even over a formula — so stale copied formulas heal; protect a deliberate public formula there with a KEEP_RANGES entry.', keys: {
     NEVER_PUBLISH: { t: 'list', d: 'EMAIL, DATE OF BIRTH, DOB, PHONE, ADDRESS', req: false, help: 'Column headers whose data is NEVER copied to the public roster, and is wiped there if a tab copy brought it along. Matched case/space-insensitively as a substring, except CID and DOB which must match exactly. Remove an entry to publish that column (e.g. drop "UNIQUE ID" if members should see IDs).' },
     KEEP_RANGES: { t: 'list', d: 'Welcome Page!F6:W7, Member Information!D3:H3', req: false, help: 'Comma-separated Tab!Range entries the publish never writes to, e.g. "Welcome Page!F6:W7, Welcome Page!A1". Use * as the tab name to apply a range to every tab.' },
+    FORCE_RANGES: { t: 'list', d: 'Welcome Page!F40:H40, Welcome Page!F41:H41, Welcome Page!AE6', req: false, help: 'The OPPOSITE of KEEP_RANGES: comma-separated Tab!Range entries the publish ALWAYS mirrors from the internal, even when the public cell holds a formula. A self-contained formula (like a NOW() clock) is copied as-is so it keeps ticking; a formula that references another sheet is copied as its computed VALUE so it can\'t break on the public file. Use * as the tab name to apply a range to every tab.' },
   } },
-  PATROL: { type: 'kv', help: 'Patrol-log form → member hours. Each new submission on the [SHEETS].PATROL_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_RESPONSES is set.', keys: {
+  PATROL: { type: 'kv', help: 'Patrol-log form → member hours. Each new submission on the [SHEETS].PATROL_FORM_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_FORM_RESPONSES is set.', keys: {
     MODE: { t: 'enum', d: 'START_END', req: false, enum: ['START_END', 'DURATION'], help: 'START_END = compute hours from a start + end time. DURATION = read a single "hours patrolled" number.' },
     MAX_HOURS: { t: 'int', d: 16, req: false, min: 1, max: 24, help: 'Reject a single patrol log longer than this many hours (guards typos / bad times).' },
+    FUTURE_GRACE_HOURS: { t: 'int', d: 6, req: false, min: 0, max: 48, help: 'A log is flagged "future" only when it ENDS more than this many hours after now (sheet time). Members abroad enter THEIR local times — e.g. a UK member on a US-East sheet runs ~5h ahead, so the default 6 accepts them while still catching genuinely future-dated logs. 0 = strict.' },
     OVERNIGHT: { t: 'bool', d: true, req: false, help: 'START_END only: if the end time is before the start, treat it as crossing midnight (+24h) instead of an error.' },
     RECOMPUTE: { t: 'bool', d: true, req: false, help: 'Recompute the member\'s activity status from their new hours after crediting a patrol.' },
-    STATUS_FLOW: { t: 'list', d: 'Pending, Flagged, Processed', req: false, help: 'Manual Patrol Log tab: the STATUS dropdown values AND their top-to-bottom sort order (Pending at the top, then Flagged, then Processed).' },
-    FLAGGED_STATUS: { t: 'string', d: 'Flagged', req: false, help: 'Patrol Log: the status auto-set on a log the engine flags (bad time, over-max, unknown ID, future date). The reason is written to NOTES.' },
-    PROCESSED_STATUS: { t: 'string', d: 'Processed', req: false, help: 'Patrol Log: the "reviewed / done" status. Hours credit on entry regardless; this just marks a log as handled.' },
+    STATUS_FLOW: { t: 'list', d: 'Pending, Flagged, Approved, Denied, Processed', req: false, help: 'Manual Patrol Log tab: the STATUS dropdown values AND their top-to-bottom sort order. Roles: PENDING = the engine is still processing / the log is half-entered (no credit). FLAGGED = a parameter failed (unknown ID, bad time, over-max, future — reason in NOTES; no credit). APPROVED = an admin reviewed/corrected a flagged log and credits it (admin-owned; the engine won\'t revert it). DENIED = an admin rejected it (no credit; any prior credit is reversed; admin-owned). PROCESSED = the engine verified it clean and credited it.' },
+    FLAGGED_STATUS: { t: 'string', d: 'Flagged', req: false, help: 'Patrol Log: the status auto-set on a log that fails a parameter (bad time, over-max, unknown ID, future date). The reason is written to NOTES; no hours credit until an admin sets it APPROVED.' },
+    APPROVED_STATUS: { t: 'string', d: 'Approved', req: false, help: 'Patrol Log: the ADMIN override. Setting a flagged (or corrected) log to this credits its hours and the engine stops re-flagging it. BLANK = disabled (use PROCESSED to credit, as before).' },
+    DENIED_STATUS: { t: 'string', d: 'Denied', req: false, help: 'Patrol Log: the ADMIN rejection. Setting a log to this reverses any credit and the engine leaves it alone. BLANK = disabled.' },
+    PROCESSED_STATUS: { t: 'string', d: 'Processed', req: false, help: 'Patrol Log: the engine\'s "verified clean and credited" status, set automatically when a complete log passes every parameter.' },
     COL_DISCORD: { t: 'string', d: 'Discord', req: false, help: 'Form-header keyword for the Discord-ID column (primary match key).' },
     COL_CALLSIGN: { t: 'string', d: 'Callsign', req: false, help: 'Form-header keyword for the callsign column (fallback match key when the ID is blank/unmatched).' },
     COL_START: { t: 'string', d: 'Start', req: false, help: 'START_END mode: header keyword for the on-duty / start-time column.' },
@@ -410,23 +437,17 @@ const BLOCK_SPECS_ = Object.freeze({
   } },
   SCHEDULE: { type: 'kv', keys: {
     NIGHTLY_HOUR: { t: 'int', d: 0, req: true, min: 0, max: 23, help: 'Hour for the daily schedule check trigger (0 = midnight, the live default).' },
-    TIMEZONE: { t: 'enum', d: 'SPREADSHEET', req: true, enum: ['SPREADSHEET'], help: 'Phase 1 supports the spreadsheet timezone.' },
-    RESET_CADENCE: { t: 'enum', d: 'WEEKLY', req: true, enum: ['WEEKLY', 'BIWEEKLY', 'MONTHLY', 'MANUAL'], help: 'How often the hours reset runs. WEEKLY = the classic behavior. BIWEEKLY = every 14 days. MONTHLY = on RESET_DOM. MANUAL = no auto-reset trigger.' },
-    WEEKLY_HOURS_RESET: { t: 'enum', d: 'SUN', req: true, enum: ['OFF', 'SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'], help: 'Weekday for WEEKLY/BIWEEKLY reset (captures history BEFORE zeroing — resolved G1). OFF disables the reset regardless of cadence.' },
-    WEEKLY_RESET_HOUR: { t: 'int', d: 23, req: true, min: 0, max: 23, help: 'Hour of day for the reset trigger.' },
-    RESET_DOM: { t: 'int', d: 1, req: true, min: 1, max: 28, help: 'Day of month the reset runs under MONTHLY cadence (1–28, v1.0).' },
   } },
   LOGGING: { type: 'kv', keys: {
     LOG_LEVEL: { t: 'enum', d: 'INFO', req: true, enum: ['ERROR', 'WARN', 'INFO', 'DEBUG'], help: 'Minimum severity written to the SYS Log.' },
     LOG_MAX_ROWS: { t: 'int', d: 500, req: true, min: 50, max: 10000, help: 'SYS Log ring-buffer cap.' },
-    EMAIL_ON_ERROR: { t: 'bool', d: false, req: true, help: 'Phase 2 wiring (uses the ADMIN_EMAIL Script Property).' },
-    DIAG_INCLUDE_NAMES: { t: 'bool', d: true, req: true, help: 'FALSE redacts member names from diagnostic reports (Phase 2).' },
     PERF_TIMING: { t: 'bool', d: false, req: false, help: 'Log each panel action / trigger duration to the SYS Log. Entries log at INFO — set LOG_LEVEL to INFO while measuring. Turn on briefly to find slow spots, then off.' },
   } },
   LIMITS: { type: 'kv', keys: {
     SNAPSHOT_KEEP: { t: 'int', d: 20, req: true, min: 1, max: 200, help: 'How many in-sheet snapshots to keep before the oldest are pruned.' },
     LOG_ROW_CAP: { t: 'int', d: 5000, req: true, min: 200, max: 50000, help: 'Row cap for the Edit Log, Integrity Log and hours-history tabs before the oldest rows are trimmed.' },
     VALIDATION_BUFFER: { t: 'int', d: 50, req: true, min: 0, max: 1000, help: 'Extra rows below the live data that entry-time data-validation covers; re-run First-Run Setup after big growth.' },
+    BLANK_TAIL_ROWS: { t: 'int', d: 0, req: false, min: -1, max: 100, help: 'Auto-rows for the LOA Tracker / Patrol Log / Signup review tabs: how many blank rows to keep between the last entry and the tab\'s closing row. 0 (default) = none — the data runs right up to your end-bar, and each submission grows the sheet by exactly one row, styled like the row above it. A positive number keeps that many spare blank rows there instead. Your sheet\'s FINAL row is always left alone (the black end-bar on themed tabs). -1 = off: the engine never adds, removes or restyles rows on these tabs.' },
   } },
   THEME: { type: 'kv', keys: {
     CANVAS: { t: 'color', d: THEME_DEFAULTS.CANVAS, req: true, help: 'Dark canvas below engine tables.' },
@@ -440,33 +461,49 @@ const BLOCK_SPECS_ = Object.freeze({
     PASS: { t: 'color', d: THEME_DEFAULTS.PASS, req: true, help: 'Semantic green (PASS / done).' },
     FAIL: { t: 'color', d: THEME_DEFAULTS.FAIL, req: true, help: 'Semantic red (FAIL / error).' },
     INFO: { t: 'color', d: THEME_DEFAULTS.INFO, req: true, help: 'Semantic blue (INFO).' },
-    PROCESSING: { t: 'color', d: THEME_DEFAULTS.PROCESSING, req: true, help: 'Form-row "processing" tint.' },
   } },
   DASHBOARD: { type: 'kv', keys: {
-    ENABLE: { t: 'bool', d: true, req: true, help: 'Master switch for the KPI-box + #stat-tag renderer.' },
-    SEARCH_ROWS: { t: 'int', d: 60, req: true, min: 1, max: 500, help: 'How many top rows are scanned for KPI labels.' },
+    ENABLE: { t: 'bool', d: true, req: true, help: 'Master switch for the #stat-tag renderer: type #members, #active, #hours (or any group name) into a cell and the engine keeps it live.' },
   } },
   DASHBOARD_GROUPS: { type: 'table', cols: ['Group', 'Categories'],
     seed: [['Supervisors', 'Executive, Administrative, Supervisor'], ['Troopers', 'Patrol, Training, Cadet'], ['Auxiliary', 'Auxiliary']],
     help: 'Headcount buckets: section-tag labels (from [SECTION_TAGS]) and/or exact rank names rolled into named groups. An entry that matches no section tag counts members by RANK (case-insensitive) wherever they sit, and beats the section — list "Sergeant and up" by name for a rank-based group. Each group is also a #tag.' },
-  DASHBOARD_CELLS: { type: 'table', cols: ['Label', 'Dir', 'Stat'],
-    seed: [
-      ['TOTAL HOURS', 'below', 'totalHours'], ['CURRENT LOAS/ROAS', 'below', 'leaves'],
-      ['SUPERVISORS', 'right', 'group:Supervisors'], ['TROOPERS', 'right', 'group:Troopers'],
-      ['AUXILIARY', 'right', 'group:Auxiliary'], ['TOTAL', 'right', 'total'],
-    ],
-    help: 'Fixed KPI boxes: the engine finds each Label by text and writes the Stat value below/right of it.' },
   EMBEDS: { type: 'table', cols: ['Event', 'Json'], seed: [],
     help: 'Per-event Discord embed templates (JSON), managed by Engine Settings ▸ Discord. EMPTY = the built-in embeds. Edit through the builder — hand-broken JSON rows are ignored.' },
 });
 
-const BLOCK_ORDER_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'RANKS', 'COLUMNS', 'SECTIONS', 'SECTION_TAGS',
-  'STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'LEAVE', 'FORM_MAP', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME',
-  'DASHBOARD', 'DASHBOARD_GROUPS', 'DASHBOARD_CELLS', 'EMBEDS']);
+const BLOCK_ORDER_ = Object.freeze(['SYSTEM', 'SHEETS', 'ROSTER_LAYOUT', 'RANKS', 'COLUMNS', 'SECTION_TAGS',
+  'STATUSES', 'STATUS_OVERRIDES', 'STATUS_RULES', 'ACTIVITY', 'LEAVE', 'FORM_MAP', 'DISCORD', 'NOTIFICATIONS', 'PATROL', 'PUBLISH', 'FORMATS', 'SCHEDULE', 'LOGGING', 'LIMITS', 'THEME',
+  'DASHBOARD', 'DASHBOARD_GROUPS', 'EMBEDS']);
+
+/**
+ * RETIRED — blocks and keys that USED to be in the schema. Dropping something from BLOCK_SPECS_ is only half the
+ * job: an existing sheet still carries the row, so validateConfig_ would WARN "unknown key/block — preserved,
+ * ignored" on every single load and seedConfigTab_ would faithfully re-emit it forever. Listing it here retires it
+ * quietly — the WARN is suppressed and the next seed drops the row. Same idea as the per-key `aka` retirement
+ * (retiredAka_ in seedConfigTab_), for things that went away entirely rather than moving.
+ */
+const RETIRED_ = Object.freeze({
+  blocks: Object.freeze(['SECTIONS', 'DASHBOARD_CELLS']),
+  keys: Object.freeze({
+    SYSTEM: ['DEV_MODE', 'MAINTENANCE_MODE'],
+    LEAVE: ['RETURN_TYPE'],
+    DISCORD: ['EMBED_COLOR', 'MENTION_MEMBERS'],
+    SCHEDULE: ['TIMEZONE'],
+    LOGGING: ['EMAIL_ON_ERROR', 'DIAG_INCLUDE_NAMES'],
+    DASHBOARD: ['SEARCH_ROWS'],
+    THEME: ['PROCESSING'],
+  }),
+});
+function isRetiredBlock_(b) { return RETIRED_.blocks.indexOf(b) !== -1; }
+function isRetiredKey_(b, k) { return !!RETIRED_.keys[b] && RETIRED_.keys[b].indexOf(k) !== -1; }
 
 /* ======================================================================
  * PARSING — one bulk read of the Config tab into raw blocks.
  * ====================================================================== */
+
+/** The one spelling of a block marker — every walker in this file stops at it. */
+const MARKER_RE_ = /^\[([A-Z_]+)\]$/;
 
 /** Locate the Config tab: by name, else rescue-scan every sheet for the A1 marker. @return {Sheet|null} */
 function findConfigSheet_(ss) {
@@ -488,11 +525,11 @@ function parseBlocks_(sheet) {
   const out = {};
   const lastRow = sheet.getLastRow();
   if (lastRow < 1) return out;
-  const v = sheet.getRange(1, 1, lastRow, Math.max(sheet.getLastColumn(), 5)).getDisplayValues(); // 5 = widest block ([STATUSES])
+  const v = sheet.getRange(1, 1, lastRow, Math.max(sheet.getLastColumn(), 5)).getDisplayValues(); // 5 = the A–E grid seedConfigTab_ owns
   let i = 0;
   while (i < v.length) {
     const a = String(v[i][0]).trim();
-    const m = a.match(/^\[([A-Z_]+)\]$/);
+    const m = a.match(MARKER_RE_);
     if (!m) { i++; continue; }
     const name = m[1];
     const spec = BLOCK_SPECS_[name];
@@ -501,7 +538,9 @@ function parseBlocks_(sheet) {
       const header = (i < v.length) ? v[i].map((x) => String(x).trim()) : [];
       i++; // past the table header row
       const rows = [];
-      while (i < v.length && v[i].some((x) => String(x).trim() !== '')) { rows.push(v[i].map((x) => String(x).trim())); i++; }
+      // Stop at a blank row OR the next [BLOCK] marker. Without the marker test a hand-deleted separator
+      // let this block eat the following one whole (same guard the write-side walkers already carry).
+      while (i < v.length && v[i].some((x) => String(x).trim() !== '') && !MARKER_RE_.test(String(v[i][0]).trim())) { rows.push(v[i].map((x) => String(x).trim())); i++; }
       out[name] = { kind: 'table', header, rows, truncated: blankTruncates_(v, i) };
     } else {
       const kv = {};
@@ -521,7 +560,7 @@ function parseBlocks_(sheet) {
  */
 function blankTruncates_(v, i) {
   for (let j = i; j < v.length; j++) {
-    if (String(v[j][0]).trim().match(/^\[([A-Z_]+)\]$/)) return false; // clean end — reached the next block
+    if (MARKER_RE_.test(String(v[j][0]).trim())) return false; // clean end — reached the next block
     if (v[j].some((x) => String(x).trim() !== '')) return true;        // real content after the blank gap
   }
   return false;
@@ -603,10 +642,39 @@ function checkLadder_(ladder, label, problems) {
  * @return {{config:Object, problems:Array}}
  */
 function validateConfig_(raw) {
+  // KEY ALIASES: a schema key with `aka` was RENAMED at some point (e.g. FORM_RESPONSES → LEAVE_FORM_RESPONSES),
+  // or MOVED to another block ("SCHEDULE.AUTO_RESET" → [ACTIVITY].AUTO_RESET — an aka containing a dot).
+  // A sheet seeded before the change still carries the old row — honour its value under the new name (an explicit
+  // new-name row wins) and drop the old one so it can't double-report. Seeding migrates the row itself.
+  // Without the cross-block form, relocating a key would silently reset every operator's saved value to the
+  // default on the next seed, so the two must always ship together.
+  Object.keys(BLOCK_SPECS_).forEach((name) => {
+    const spec = BLOCK_SPECS_[name];
+    if (spec.type !== 'kv' || !raw) return;
+    // A block that MOVED keys in from elsewhere has to be considered even when the sheet has no such block yet —
+    // that IS the pre-move sheet, the only case the migration exists for. (Skipping it silently reset every
+    // moved setting to its default.) Blocks without cross-block aliases keep the cheap absent-block skip.
+    if (!raw[name] || !raw[name].kv) {
+      const inbound = Object.keys(spec.keys).some((k) => spec.keys[k].aka && String(spec.keys[k].aka).indexOf('.') !== -1);
+      if (!inbound) return;
+      raw[name] = { kind: 'kv', kv: {} };
+    }
+    const kv = raw[name].kv;
+    Object.keys(spec.keys).forEach((key) => {
+      const aka = spec.keys[key].aka;
+      if (!aka) return;
+      const dot = String(aka).indexOf('.');
+      const src = (dot === -1) ? kv : ((raw[aka.slice(0, dot)] || {}).kv);   // same block, or the block it came FROM
+      const srcKey = (dot === -1) ? aka : aka.slice(dot + 1);
+      if (!src || !Object.prototype.hasOwnProperty.call(src, srcKey)) return;
+      if (!Object.prototype.hasOwnProperty.call(kv, key)) kv[key] = src[srcKey];
+      delete src[srcKey];
+    });
+  });
   const problems = [];
   const c = { kv: {}, tables: {} };
 
-  Object.keys(raw || {}).forEach((b) => { if (!BLOCK_SPECS_[b]) problems.push({ sev: 'WARN', code: 'E-103', key: `[${b}]`, value: 'unknown block', type: 'block', expected: 'a known block (preserved, ignored)' }); });
+  Object.keys(raw || {}).forEach((b) => { if (!BLOCK_SPECS_[b] && !isRetiredBlock_(b)) problems.push({ sev: 'WARN', code: 'E-103', key: `[${b}]`, value: 'unknown block', type: 'block', expected: 'a known block (preserved, ignored)' }); });
   // F-013: a blank row inside a block truncates it — WARN so the dropped rows aren't lost silently.
   Object.keys(raw || {}).forEach((b) => { if (raw[b] && raw[b].truncated) problems.push({ sev: 'WARN', code: 'E-103', key: `[${b}]`, value: 'blank row inside the block', type: 'truncation', expected: 'no blank rows within a block — rows after the first blank were dropped' }); });
 
@@ -620,7 +688,7 @@ function validateConfig_(raw) {
         kv[key] = present ? coerce_(`[${name}].${key}`, rawBlock.kv[key], spec.keys[key], problems)
                           : (spec.keys[key].t === 'list' ? String(spec.keys[key].d).split(',').map((x) => x.trim()).filter(Boolean) : spec.keys[key].d);
       });
-      if (rawBlock && rawBlock.kv) Object.keys(rawBlock.kv).forEach((k) => { if (!spec.keys[k]) problems.push({ sev: 'WARN', code: 'E-103', key: `[${name}].${k}`, value: rawBlock.kv[k], type: 'key', expected: 'a known key (preserved, ignored)' }); });
+      if (rawBlock && rawBlock.kv) Object.keys(rawBlock.kv).forEach((k) => { if (!spec.keys[k] && !isRetiredKey_(name, k)) problems.push({ sev: 'WARN', code: 'E-103', key: `[${name}].${k}`, value: rawBlock.kv[k], type: 'key', expected: 'a known key (preserved, ignored)' }); });
       c.kv[name] = kv;
     } else {
       // F-013: if a header row is PRESENT but doesn't match the schema columns, a deleted/renamed header has shifted
@@ -646,6 +714,7 @@ function validateConfig_(raw) {
   if (c.kv.SYSTEM.SCHEMA_VERSION > ENGINE_SCHEMA) problems.push({ sev: 'ERROR', code: 'E-104', key: '[SYSTEM].SCHEMA_VERSION', value: c.kv.SYSTEM.SCHEMA_VERSION, type: 'schema', expected: `<= ${ENGINE_SCHEMA}`, sheet: c.kv.SYSTEM.SCHEMA_VERSION, engine: ENGINE_SCHEMA });
   if (c.kv.ROSTER_LAYOUT.DATA_START_ROW <= c.kv.ROSTER_LAYOUT.HEADER_ROW) problems.push({ sev: 'ERROR', code: 'E-103', key: '[ROSTER_LAYOUT].DATA_START_ROW', value: c.kv.ROSTER_LAYOUT.DATA_START_ROW, type: 'int', expected: `> HEADER_ROW (${c.kv.ROSTER_LAYOUT.HEADER_ROW})` });
   if (norm_(c.kv.ROSTER_LAYOUT.ID_TYPE) === 'CUSTOM' && c.kv.ROSTER_LAYOUT.ID_MIN_DIGITS > c.kv.ROSTER_LAYOUT.ID_MAX_DIGITS) problems.push({ sev: 'ERROR', code: 'E-103', key: '[ROSTER_LAYOUT].ID_MIN_DIGITS', value: c.kv.ROSTER_LAYOUT.ID_MIN_DIGITS, type: 'int', expected: `<= ID_MAX_DIGITS (${c.kv.ROSTER_LAYOUT.ID_MAX_DIGITS})` });
+  if ((c.kv.ACTIVITY.LAST_ACTIVITY_COLS || []).length > 3) problems.push({ sev: 'WARN', code: 'E-103', key: '[ACTIVITY].LAST_ACTIVITY_COLS', value: c.kv.ACTIVITY.LAST_ACTIVITY_COLS.join(', '), type: 'list', expected: 'at most 3 columns — the chain keeps the first 3 and ignores the rest' });
   if (!/\{0+\}/.test(String(c.kv.ROSTER_LAYOUT.UNIT_FORMAT || ''))) problems.push({ sev: 'WARN', code: 'E-103', key: '[ROSTER_LAYOUT].UNIT_FORMAT', value: c.kv.ROSTER_LAYOUT.UNIT_FORMAT, type: 'format', expected: 'a {0…} number token (e.g. "S-{00}") — without one every slot gets the same label' });
 
   // [STATUSES]
@@ -657,9 +726,11 @@ function validateConfig_(raw) {
     if (['TIER', 'LEAVE', 'PROTECTED'].indexOf(kind) === -1) { problems.push({ sev: 'ERROR', code: 'E-103', key: `[STATUSES].${row.Status}`, value: row.Kind, type: 'kind', expected: 'TIER · LEAVE · PROTECTED' }); return; }
     if (seen[norm_(row.Status)]) { problems.push({ sev: 'ERROR', code: 'E-103', key: '[STATUSES]', value: row.Status, type: 'status', expected: 'unique status names' }); return; }
     seen[norm_(row.Status)] = true;
+    // WARN, not ERROR: an unreadable colour costs the status its pill on the panel, nothing more.
+    if (row.Color && !/^#[0-9a-fA-F]{6}$/.test(String(row.Color).trim())) problems.push({ sev: 'WARN', code: 'E-103', key: `[STATUSES].${row.Status}`, value: row.Color, type: 'color', expected: 'a #rrggbb hex color — this status renders uncoloured until it is one' });
     const min = (kind === 'TIER') ? parseFloat(row.MinHours) : null;
     if (kind === 'TIER' && (row.MinHours === '' || isNaN(min))) { problems.push({ sev: 'ERROR', code: 'E-103', key: `[STATUSES].${row.Status}`, value: row.MinHours, type: 'number', expected: 'MinHours for a TIER' }); return; }
-    statuses.push({ name: row.Status, kind, min, color: row.Color || '', announce: norm_(row.Announce) === 'TRUE' });
+    statuses.push({ name: row.Status, kind, min, color: row.Color || '' });
   });
   const tiers = statuses.filter((s) => s.kind === 'TIER').sort((a, b) => b.min - a.min);
   if (!tiers.length) problems.push({ sev: 'ERROR', code: 'E-110', key: '[STATUSES]', value: 'no TIER rows', type: 'ladder', expected: 'at least one TIER', reason: 'no TIER statuses defined' });
@@ -726,12 +797,14 @@ function validateConfig_(raw) {
   // [SHEETS] — every tab role must resolve to a DISTINCT tab (a collision silently aliases two roles onto one sheet → data loss).
   (function () {
     const roles = {
-      '[SHEETS].ROSTER': c.kv.SHEETS.ROSTER, '[SHEETS].TRACKER': c.kv.SHEETS.TRACKER, '[SHEETS].FORM_RESPONSES': c.kv.SHEETS.FORM_RESPONSES,
+      '[SHEETS].ROSTER': c.kv.SHEETS.ROSTER, '[SHEETS].TRACKER': c.kv.SHEETS.TRACKER, '[SHEETS].LEAVE_FORM_RESPONSES': c.kv.SHEETS.LEAVE_FORM_RESPONSES,
       '[SHEETS].AUDIT': c.kv.SHEETS.AUDIT || 'Edit Log', '[SHEETS].HOURS_HISTORY': c.kv.SHEETS.HOURS_HISTORY || '_Hours History',
       '[SHEETS].COVERAGE': c.kv.SHEETS.COVERAGE || 'Leave Coverage', '[SHEETS].INTEGRITY': c.kv.SHEETS.INTEGRITY || 'Integrity Log',
-      '[SHEETS].SNAPSHOTS': c.kv.SHEETS.SNAPSHOTS || '_Snapshots', '[SHEETS].PATROL_RESPONSES': c.kv.SHEETS.PATROL_RESPONSES, // '' is skipped below
+      '[SHEETS].SNAPSHOTS': c.kv.SHEETS.SNAPSHOTS || '_Snapshots', '[SHEETS].PATROL_FORM_RESPONSES': c.kv.SHEETS.PATROL_FORM_RESPONSES, // '' is skipped below
       '[SHEETS].PATROL_LOG': c.kv.SHEETS.PATROL_LOG, '[SHEETS].SIGNUPS': c.kv.SHEETS.SIGNUPS || 'Roster Signups', // the manual patrol log + signup feeds each need their OWN tab too ('' skipped)
       '[SHEETS].SIGNUP_FORM_RESPONSES': c.kv.SHEETS.SIGNUP_FORM_RESPONSES, // the signup form's response tab must be distinct from its review tab ('' skipped)
+      '[ACTIVITY].PANEL_TAB': c.kv.ACTIVITY.PANEL_TAB, // the Activity Panel board is engine-BUILT — pointed at a data tab it would overwrite it ('' skipped)
+      '[SHEETS].WELCOME': c.kv.SHEETS.WELCOME || 'Welcome Page', // publish force-mirrors this tab's header cells from the internal — aimed at the roster it would write them onto the roster
     };
     const byName = {};
     Object.keys(roles).forEach((role) => {
@@ -757,13 +830,6 @@ function validateConfig_(raw) {
     if (r.Class !== '' && klass !== 'SLOT' && klass !== 'MEMBER') problems.push({ sev: 'ERROR', code: 'E-103', key: `[COLUMNS].${r.Role || r.Match}`, value: r.Class, type: 'class', expected: 'SLOT · MEMBER' });
   });
 
-  // [DASHBOARD_CELLS] — Dir must be below|right ("no silent failures": a typo would otherwise coerce to 'right').
-  c.tables.DASHBOARD_CELLS.forEach((r) => {
-    if (r.Label && r.Dir !== '' && norm_(r.Dir) !== 'BELOW' && norm_(r.Dir) !== 'RIGHT') {
-      problems.push({ sev: 'WARN', code: 'E-103', key: `[DASHBOARD_CELLS].${r.Label}`, value: r.Dir, type: 'dir', expected: 'below · right (treated as right)' });
-    }
-  });
-
   // [LEAVE] semantics
   c.kv.LEAVE.LEAVE_TYPES.forEach((t) => {
     const st = statuses.filter((s) => norm_(s.name) === norm_(t))[0];
@@ -776,6 +842,25 @@ function validateConfig_(raw) {
       problems.push({ sev: 'ERROR', code: 'E-103', key: `[LEAVE].${k}`, value: v, type: 'status', expected: 'a value listed in [LEAVE].STATUS_FLOW' });
     }
   });
+  // [LEAVE].FLAGGED_STATUS is stamped onto a questionable synced row; its own help says to add it to STATUS_FLOW.
+  if (c.kv.LEAVE.FLAGGED_STATUS && !c.kv.LEAVE.STATUS_FLOW.some((f) => norm_(f) === norm_(c.kv.LEAVE.FLAGGED_STATUS))) {
+    problems.push({ sev: 'WARN', code: 'E-103', key: '[LEAVE].FLAGGED_STATUS', value: c.kv.LEAVE.FLAGGED_STATUS, type: 'status', expected: 'a value listed in [LEAVE].STATUS_FLOW so the tracker groups and sorts it' });
+  }
+  // [PATROL] — the four status names the engine writes onto the Patrol Log must be in that tab's own STATUS_FLOW.
+  // WARN rather than ERROR (which is what the [LEAVE] pair above gets): a mismatch here still credits the hours,
+  // it only leaves the written value outside the dropdown — whereas an APPROVED_STATUS outside [LEAVE].STATUS_FLOW
+  // means no row can ever reach the state the nightly job acts on, so that feature is entirely dead.
+  (function () {
+    const flow = c.kv.PATROL.STATUS_FLOW || [];
+    if (!flow.length) return;
+    ['FLAGGED_STATUS', 'APPROVED_STATUS', 'DENIED_STATUS', 'PROCESSED_STATUS'].forEach((k) => {
+      const val = c.kv.PATROL[k];
+      if (val && !flow.some((f) => norm_(f) === norm_(val))) {
+        problems.push({ sev: 'WARN', code: 'E-103', key: `[PATROL].${k}`, value: val, type: 'status', expected: 'a value listed in [PATROL].STATUS_FLOW — the engine writes this status, so the Patrol Log dropdown must offer it' });
+      }
+    });
+  })();
+
   // RETURN_STATUS (optional) must be a LEAVE-kind status when set.
   if (c.kv.LEAVE.RETURN_STATUS) {
     const rs = statuses.filter((s) => norm_(s.name) === norm_(c.kv.LEAVE.RETURN_STATUS))[0];
@@ -860,7 +945,7 @@ function cfg_() {
   const { config, problems } = validateConfig_(raw);
   const errors = problems.filter((p) => p.sev === 'ERROR');
   if (hasTab && errors.length) {
-    const list = errors.slice(0, 8).map((p) => `${p.key} = "${p.value}" (want ${p.expected})`).join(' · ');
+    const list = errors.slice(0, 8).map((p) => `${p.code} ${p.key} = "${p.value}" (want ${p.expected})`).join(' · ');
     const ae = new AppError('E-102', { n: errors.length, list }, { problems: errors.slice(0, 20) });
     slog_('ERROR', 'E-102', 'cfg_', ae.message, ae.ctx);
     maybeErrorWebhook_(ae, 'cfg_'); // once per 5 min (throttled) — a broken config tab is exactly what the errors channel is for
@@ -888,16 +973,9 @@ function materialize_(c, fromTab) {
                 : idType === 'CUSTOM'    ? { min: kv.ROSTER_LAYOUT.ID_MIN_DIGITS || 1, max: kv.ROSTER_LAYOUT.ID_MAX_DIGITS || 19 }
                 :                          { min: 17, max: 19 }; // DISCORD (default)
 
-  // Legacy slotKeywords = every Match keyword of SLOT-classed role rows (defaults: RANK, UNIT, CALLSIGN).
-  const slotKeywords = [];
-  c.tables.COLUMNS.forEach((r) => {
-    if (r.Role !== '' && norm_(r.Class) === 'SLOT') String(r.Match).split(',').forEach((kw) => { const k = norm_(kw); if (k && slotKeywords.indexOf(k) === -1) slotKeywords.push(k); });
-  });
-
-  // Dashboard groups/cells from their table blocks.
+  // Dashboard headcount buckets from [DASHBOARD_GROUPS] (each is also a #tag).
   const groups = {};
   c.tables.DASHBOARD_GROUPS.forEach((r) => { if (r.Group) groups[r.Group] = String(r.Categories).split(',').map((x) => x.trim()).filter(Boolean); });
-  const cells = c.tables.DASHBOARD_CELLS.filter((r) => r.Label).map((r) => ({ label: r.Label, dir: (norm_(r.Dir) === 'BELOW' ? 'below' : 'right'), stat: r.Stat }));
 
   // Per-event Discord embed templates (the Settings Studio's builder writes valid JSON; a hand-broken row is ignored).
   const embedTpl = {};
@@ -927,37 +1005,51 @@ function materialize_(c, fromTab) {
     webhookProp: 'DISCORD_WEBHOOK_URL', // engine constant (brief A6) — secrets live in Script Properties
     // v1.0 — configurable logic (unit-number format, date formats, embed appearance, retention limits).
     unitFormat: kv.ROSTER_LAYOUT.UNIT_FORMAT || 'S-{00}',
-    lastActivityStyle: kv.ROSTER_LAYOUT.LAST_ACTIVITY_STYLE || 'MATCH', // v1.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
+    // The shift / assignment / district column: what it is CALLED, and who it belongs to. Normalized once here
+    // so every resolver reads the same list instead of keeping its own.
+    shiftKeywords: (kv.ROSTER_LAYOUT.SHIFT_HEADER || []).map((k) => norm_(k)).filter(Boolean),
+    shiftAssignedBy: norm_(kv.ROSTER_LAYOUT.SHIFT_ASSIGNED_BY) === 'RANK' ? 'RANK' : 'MEMBER',
+    // Kept AS TYPED (not normalized) — these are written into the sheet, so their casing is the department's.
+    shiftValues: (kv.ROSTER_LAYOUT.SHIFT_VALUES || []).map((v) => String(v).trim()).filter(Boolean),
+    lastActivityStyle: kv.ACTIVITY.LAST_ACTIVITY_STYLE || 'MATCH', // v1.0: MATCH mirrors CURRENT ACTIVITY colours, NEUTRAL = calm grey
+    lastActivityCols: (kv.ACTIVITY.LAST_ACTIVITY_COLS || []).slice(0, 3), // newest-first previous-activity chain; blank = auto-detect one by header
     formats: { date: kv.FORMATS.DATE_DISPLAY || 'd MMM. yyyy', timestamp: kv.FORMATS.TIMESTAMP_DISPLAY || 'd MMM yyyy, h:mm a' },
     embed: {
       submitColor: kv.DISCORD.SUBMIT_COLOR || '#3498db', returnColor: kv.DISCORD.RETURN_COLOR || '#e67e22', expireColor: kv.DISCORD.EXPIRE_COLOR || '#ed4245',
-      submitTitle: kv.DISCORD.SUBMIT_TITLE || '📥 New {type} Submission', expireTitle: kv.DISCORD.EXPIRE_TITLE || '⏳ {type} Expired',
+      submitTitle: kv.DISCORD.SUBMIT_TITLE || '`📥` New {type} Submission', expireTitle: kv.DISCORD.EXPIRE_TITLE || '`⌛` {type} Expired',
       authorName: kv.DISCORD.EMBED_AUTHOR || '', authorIcon: kv.DISCORD.EMBED_AUTHOR_ICON || '', // v1.0 embed-body chrome (all blank by default)
       thumbnail: kv.DISCORD.EMBED_THUMBNAIL || '', image: kv.DISCORD.EMBED_IMAGE || '',
       footerText: kv.DISCORD.EMBED_FOOTER || '', footerIcon: kv.DISCORD.EMBED_FOOTER_ICON || '',
     },
     notify: { // v1.0 event notifications — all default off
-      memberAdded: N.MEMBER_ADDED === true, memberAddedTitle: N.MEMBER_ADDED_TITLE || '➕ {name} joined the roster', memberAddedColor: N.MEMBER_ADDED_COLOR || '#57b85a',
-      transfer: N.TRANSFER === true, transferTitle: N.TRANSFER_TITLE || '🔄 {name} — {from} → {to}', transferColor: N.TRANSFER_COLOR || '#5865f2',
-      leaveApproved: N.LEAVE_APPROVED === true, approvedTitle: N.LEAVE_APPROVED_TITLE || '✅ {type} Approved', approvedColor: N.LEAVE_APPROVED_COLOR || '#57b85a',
-      leaveStarted: N.LEAVE_STARTED === true, startedTitle: N.LEAVE_STARTED_TITLE || '▶️ {type} Started', startedColor: N.LEAVE_STARTED_COLOR || '#4ea7d6',
-      weeklyDigest: N.WEEKLY_DIGEST === true, digestTitle: N.WEEKLY_DIGEST_TITLE || '📊 Weekly Roster Summary', digestColor: N.WEEKLY_DIGEST_COLOR || '#5865f2',
-      patrolLogged: N.PATROL_LOGGED === true, patrolTitle: N.PATROL_LOGGED_TITLE || '🚔 {name} logged {hours}h of patrol', patrolColor: N.PATROL_LOGGED_COLOR || '#4ea7d6',
+      memberAdded: N.MEMBER_ADDED === true, memberAddedTitle: N.MEMBER_ADDED_TITLE || '`➕` {name} joined the roster', memberAddedColor: N.MEMBER_ADDED_COLOR || '#57b85a',
+      transfer: N.TRANSFER === true, transferTitle: N.TRANSFER_TITLE || '`🔄` {name} — {from} → {to}', transferColor: N.TRANSFER_COLOR || '#5865f2',
+      leaveApproved: N.LEAVE_APPROVED === true, approvedTitle: N.LEAVE_APPROVED_TITLE || '`✅` {type} Approved', approvedColor: N.LEAVE_APPROVED_COLOR || '#57b85a',
+      leaveStarted: N.LEAVE_STARTED === true, startedTitle: N.LEAVE_STARTED_TITLE || '`▶️` {type} Started', startedColor: N.LEAVE_STARTED_COLOR || '#4ea7d6',
+      weeklyDigest: N.WEEKLY_DIGEST === true, digestTitle: N.WEEKLY_DIGEST_TITLE || '`📊` Weekly Roster Summary', digestColor: N.WEEKLY_DIGEST_COLOR || '#5865f2',
+      patrolLogged: N.PATROL_LOGGED === true, patrolTitle: N.PATROL_LOGGED_TITLE || '`🚔` {name} logged {hours}h of patrol', patrolColor: N.PATROL_LOGGED_COLOR || '#4ea7d6',
+      signupSubmitted: N.SIGNUP_SUBMITTED === true, signupSubmittedTitle: N.SIGNUP_SUBMITTED_TITLE || '`🧾` New Roster Signup — {name}', signupSubmittedColor: N.SIGNUP_SUBMITTED_COLOR || '#e0a52c',
     },
-    limits: { snapshotKeep: kv.LIMITS.SNAPSHOT_KEEP, logRowCap: kv.LIMITS.LOG_ROW_CAP, validationBuffer: kv.LIMITS.VALIDATION_BUFFER },
+    // No snapshotKeep alias here — RosterTrust reads [LIMITS].SNAPSHOT_KEEP straight off kv.
+    limits: { logRowCap: kv.LIMITS.LOG_ROW_CAP, validationBuffer: kv.LIMITS.VALIDATION_BUFFER,
+      blankTailRows: (kv.LIMITS.BLANK_TAIL_ROWS == null ? 0 : kv.LIMITS.BLANK_TAIL_ROWS) }, // == null guard: 0 (no spares) is the default, -1 is OFF
     patrol: { // v1.0 patrol-log → hours (all default; feature OFF until sheets.patrol is set)
       mode: P.MODE || 'START_END', maxHours: P.MAX_HOURS || 16, overnight: P.OVERNIGHT !== false, recompute: P.RECOMPUTE !== false,
+      futureGraceHours: (P.FUTURE_GRACE_HOURS == null ? 6 : P.FUTURE_GRACE_HOURS), // == null: 0 is a valid (strict) setting
       colDiscord: P.COL_DISCORD || 'Discord', colCallsign: P.COL_CALLSIGN || 'Callsign',
       colStart: P.COL_START || 'Start', colEnd: P.COL_END || 'End', colDuration: P.COL_DURATION || 'Hours',
       // Manual Patrol Log tab statuses (sort order + the flagged/processed names).
-      statusFlow: (P.STATUS_FLOW && P.STATUS_FLOW.length) ? P.STATUS_FLOW : ['Pending', 'Flagged', 'Processed'],
+      statusFlow: (P.STATUS_FLOW && P.STATUS_FLOW.length) ? P.STATUS_FLOW : ['Pending', 'Flagged', 'Approved', 'Denied', 'Processed'],
       pendingStatus: (P.STATUS_FLOW && P.STATUS_FLOW.length ? P.STATUS_FLOW[0] : 'Pending'),
       flaggedStatus: P.FLAGGED_STATUS || 'Flagged',
+      approvedStatus: (P.APPROVED_STATUS === undefined ? 'Approved' : String(P.APPROVED_STATUS || '').trim()), // admin credit override; blank = disabled
+      deniedStatus: (P.DENIED_STATUS === undefined ? 'Denied' : String(P.DENIED_STATUS || '').trim()),         // admin rejection; blank = disabled
       processedStatus: P.PROCESSED_STATUS || 'Processed',
     },
     sheets: {
-      roster: kv.SHEETS.ROSTER, tracker: kv.SHEETS.TRACKER, form: kv.SHEETS.FORM_RESPONSES, patrol: kv.SHEETS.PATROL_RESPONSES || '',
+      roster: kv.SHEETS.ROSTER, tracker: kv.SHEETS.TRACKER, form: kv.SHEETS.LEAVE_FORM_RESPONSES, patrol: kv.SHEETS.PATROL_FORM_RESPONSES || '',
       patrolLog: kv.SHEETS.PATROL_LOG || '',   // manual Patrol Log tracker tab (blank = OFF; only activates if the tab exists)
+      activity: kv.ACTIVITY.PANEL_TAB || '',      // Activity Panel board tab (blank = OFF; engine-built VIEW of patrol form + log status)
       signups: kv.SHEETS.SIGNUPS || 'Roster Signups', // signup REVIEW/destination tab (engine fills it from the form)
       signupForm: kv.SHEETS.SIGNUP_FORM_RESPONSES || '', // the signup Google Form's own responses tab (blank = signup sync OFF)
       // v1.0 — system/log tab names (blank falls back to the shipped default so older configs keep working).
@@ -966,6 +1058,7 @@ function materialize_(c, fromTab) {
       coverage: kv.SHEETS.COVERAGE || 'Leave Coverage',
       integrity: kv.SHEETS.INTEGRITY || 'Integrity Log',
       snapshots: kv.SHEETS.SNAPSHOTS || '_Snapshots',
+      welcome: kv.SHEETS.WELCOME || 'Welcome Page', // the Welcome Page / dashboard tab (publish keep + force ranges resolve against this)
     },
     rosterStartRow: kv.ROSTER_LAYOUT.DATA_START_ROW,
     trackerStartRow: kv.ROSTER_LAYOUT.TRACKER_START_ROW,
@@ -977,15 +1070,18 @@ function materialize_(c, fromTab) {
     roster: { rank: 2, name: 3, unit: 4, discord: 5, activity: 8, hours: 9 },        // positional FALLBACKS only (header resolution wins)
     tracker: { key: 1, rank: 2, unit: 3, ooc: 4, name: 5, discord: 6, shift: 7, start: 8, end: 9, length: 10, untilStart: 11, timeLeft: 12, returnDate: 13, status: 14, approvedBy: 15, notes: 16 }, // LOA Tracker layout: A key · B rank · C unit · D OOC · E name · F unique-ID · G shift · H start · I end · J len · K until · L left · M return · N status · O approved-by · P notes (LOA-only — no TYPE column)
     form: { timestamp: 1, name: 2, discord: 3, callsign: 4, rank: 5, type: 6, start: 7, end: 8 },
-    bg: { processing: t.PROCESSING, done: t.PASS, error: t.FAIL },
+    bg: { done: t.PASS, error: t.FAIL }, // no "processing" tint: nothing ever painted one
     protectedStatuses,
     // ---- Config-driven status vocabulary (single source of truth; hot paths must read these, not literals) ----
     leaveTypes: kv.LEAVE.LEAVE_TYPES.slice(),                                    // e.g. ['LOA','ROA'] — members on leave
+    formTypePolicy: kv.LEAVE.FORM_TYPE_POLICY || 'MATCH',                        // MATCH = reject unknown form types; ANY = accept + record in NOTES
     statusFlow: kv.LEAVE.STATUS_FLOW.slice(),                                    // tracker dropdown values
     pendingStatus: kv.LEAVE.STATUS_FLOW[0] || 'Pending',                         // default tracker status on sync
     approvedStatus: kv.LEAVE.APPROVED_STATUS || 'Approved',                      // the state the nightly job acts on
     expiredStatus: kv.LEAVE.EXPIRED_STATUS || 'Expired',                         // written when a leave END passes
     returnStatus: kv.LEAVE.RETURN_STATUS || '',                                  // ROA-style auto-downgrading leave ('' = none)
+    autoExpire: kv.LEAVE.AUTO_EXPIRE !== false,                                  // OFF = the nightly job never ends a leave on a schedule
+    expireNeverApproved: kv.LEAVE.EXPIRE_NEVER_APPROVED === true,                // ON = a past-END leave still on pendingStatus is ended too
     tiers: c.tiers.map((x) => ({ name: x.name, min: x.min })),                   // TIER statuses, sorted high→low by MinHours
     tierNames: c.tiers.map((x) => x.name),
     // Thresholds resolve by tier NAME (back-compat), falling back to tier POSITION when a community renames the
@@ -993,14 +1089,13 @@ function materialize_(c, fromTab) {
     thresholds: {
       active: tierOf('Active') != null ? tierOf('Active') : (c.tiers[0] ? c.tiers[0].min : 10),
       semi: tierOf('Semi-Active') != null ? tierOf('Semi-Active') : (c.tiers[1] ? c.tiers[1].min : 5),
-      auxActive: 5,
     },
     trainingDividers: kv.ROSTER_LAYOUT.TRAINING_KEYWORDS.map((k) => norm_(k)),
     sectionCategories,
     dividerMode: kv.ROSTER_LAYOUT.DIVIDER_MODE,                                  // v1.0: ALLCAPS_RANK | EXPLICIT_LIST
     rankList,                                                                    // v1.0: {ranks:[NORM], dividers:[NORM]} — for EXPLICIT_LIST mode
-    columns: { configSheet: '_Columns', slotKeywords, trainingCheckboxCols: [] }, // configSheet retained for the one-time import
-    dashboard: { searchRows: kv.DASHBOARD.SEARCH_ROWS, groups, cells },
+    columns: { configSheet: '_Columns' }, // retained for the one-time import + dashboardSkip_'s hidden-tab list
+    dashboard: { groups },
     embedTpl,
   };
 
@@ -1114,7 +1209,10 @@ function seedConfigTab_(ss) {
   const existing = parseBlocks_(sheet); // preserve every user value; only missing keys/blocks get defaults
   let added = 0;
 
-  const W = 5; // widest table block
+  // The A–E grid this seed OWNS. The widest live table is now 4 columns, but E is deliberately still cleared and
+  // rewritten: a sheet seeded before [STATUSES].Announce / [COLUMNS].Required were retired still holds their values
+  // out there, and narrowing this would strand them on the tab forever.
+  const W = 5;
   // F-014: clear ONLY the core A-E grid we rebuild — NOT sheet.clear(), which also destroys the user's extra
   // columns (F onward), their notes, formats, and validations. Everything past column E is preserved untouched.
   const region = sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), W);
@@ -1130,20 +1228,47 @@ function seedConfigTab_(ss) {
   banners.push(1);
   grid.push(pad([]));
 
+  // Rows another block has CLAIMED via a cross-block `aka` ("SCHEDULE.AUTO_RESET"). Their old block must NOT
+  // re-emit them as "unknown key — preserved", or the sheet would carry a stale duplicate of every moved setting
+  // and an operator editing the old row would see nothing happen.
+  const retiredAka_ = {};
+  Object.keys(BLOCK_SPECS_).forEach((bn) => {
+    const bs = BLOCK_SPECS_[bn];
+    if (bs.type !== 'kv') return;
+    Object.keys(bs.keys).forEach((kn) => {
+      const a = bs.keys[kn].aka, dot = a ? String(a).indexOf('.') : -1;
+      if (dot === -1) return;
+      const fromBlock = a.slice(0, dot);
+      (retiredAka_[fromBlock] = retiredAka_[fromBlock] || {})[a.slice(dot + 1)] = true;
+    });
+  });
+
   BLOCK_ORDER_.forEach((name) => {
     const spec = BLOCK_SPECS_[name];
     grid.push(pad([`[${name}]`, '', spec.help || '']));
     banners.push(grid.length);
     if (spec.type === 'kv') {
       const have = (existing[name] && existing[name].kv) || {};
+      const consumedAka = {}; // legacy names of RENAMED keys — their value is carried into the new row, the old row is retired
       Object.keys(spec.keys).forEach((key) => {
         const k = spec.keys[key];
+        // `aka` is either a legacy name in THIS block, or "BLOCK.KEY" when the key moved between blocks. Both
+        // migrate the operator's value into the new row; the source row is retired (see retiredAka_ below).
+        const dot = k.aka ? String(k.aka).indexOf('.') : -1;
+        const akaFrom = (dot === -1) ? have : ((existing[k.aka.slice(0, dot)] && existing[k.aka.slice(0, dot)].kv) || {});
+        const akaKey = k.aka ? ((dot === -1) ? k.aka : k.aka.slice(dot + 1)) : '';
+        if (k.aka && dot === -1) consumedAka[k.aka] = true;
         let val;
         if (Object.prototype.hasOwnProperty.call(have, key)) val = have[key];
+        else if (k.aka && Object.prototype.hasOwnProperty.call(akaFrom, akaKey)) val = akaFrom[akaKey]; // renamed/moved: the old row's value migrates
         else { val = (k.t === 'bool') ? (k.d ? 'TRUE' : 'FALSE') : String(k.d); added++; }
         grid.push(pad([key, val, k.help || '']));
       });
-      Object.keys(have).forEach((key) => { if (!spec.keys[key]) grid.push(pad([key, have[key], '(unknown key — preserved)'])); });
+      const movedOut = retiredAka_[name] || {};
+      // A key the schema RETIRED is dropped, not preserved — re-emitting it would keep a setting on the tab that
+      // no longer does anything, and an operator editing it would see nothing happen. Genuinely unknown keys (a
+      // future version's, or the operator's own note) are still preserved untouched.
+      Object.keys(have).forEach((key) => { if (!spec.keys[key] && !consumedAka[key] && !movedOut[key] && !isRetiredKey_(name, key)) grid.push(pad([key, have[key], '(unknown key — preserved)'])); });
     } else {
       grid.push(pad(spec.cols));
       subheads.push(grid.length);
@@ -1195,7 +1320,7 @@ function setColumnClassRow_(configSheet, header, klass) {
   for (let r = headerRow + 1; r <= lastRow; r++) {
     const rowVals = configSheet.getRange(r, 1, 1, 4).getDisplayValues()[0];
     if (rowVals.every((x) => String(x).trim() === '')) break;
-    if (/^\[[A-Z_]+\]$/.test(String(rowVals[0]).trim())) break; // next block marker — a hand-deleted separator must not let the walk bleed into it
+    if (MARKER_RE_.test(String(rowVals[0]).trim())) break; // next block marker — a hand-deleted separator must not let the walk bleed into it
     end = r;
     // Update an existing blank-Role class row for this exact header.
     if (String(rowVals[0]).trim() === '' && norm_(rowVals[1]) === norm_(h)) {
@@ -1246,7 +1371,7 @@ function importColumnsFromHiddenTab_(ss) {
  * Set ONE kv value inside a block on the given Config sheet (injectable). Finds the [BLOCK] marker, walks its
  * kv rows (col A = key) until the blank separator or the next marker, and updates col B — or inserts the key
  * at the end of the block if missing. Used by migrations and the wizard (e.g. writing the real form-response
- * tab name into [SHEETS].FORM_RESPONSES). @return {boolean} true if written.
+ * tab name into [SHEETS].LEAVE_FORM_RESPONSES). @return {boolean} true if written.
  */
 function setKvValue_(configSheet, blockName, key, value) {
   const lastRow = configSheet.getLastRow();
@@ -1257,7 +1382,7 @@ function setKvValue_(configSheet, blockName, key, value) {
   let end = markerRow;
   for (let r = markerRow + 1; r <= lastRow; r++) {
     const a = String(colA[r - 1][0]).trim();
-    if (a === '' || /^\[[A-Z_]+\]$/.test(a)) break;
+    if (a === '' || MARKER_RE_.test(a)) break;
     if (norm_(a).replace(/ /g, '_') === norm_(key).replace(/ /g, '_')) {
       configSheet.getRange(r, 2).setValue(String(value));
       cfgInvalidate_();
@@ -1285,7 +1410,7 @@ function setTableRows_(configSheet, blockName, rows) {
   const spec = BLOCK_SPECS_[blockName];
   if (!spec || spec.type !== 'table') throw new Error(`[${blockName}] is not a table block.`);
   if (!Array.isArray(rows) || rows.some((r) => !Array.isArray(r))) throw new Error('Rows must be an array of arrays.');
-  const W = 5; // grid width (widest block)
+  const W = 5; // the A–E grid seedConfigTab_ owns — see the note there on why it stays 5
   const lastRow = configSheet.getLastRow();
   const colA = configSheet.getRange(1, 1, lastRow, 1).getDisplayValues();
   let markerRow = 0;
@@ -1297,7 +1422,7 @@ function setTableRows_(configSheet, blockName, rows) {
   for (let r = dataStart; r <= lastRow; r++) {
     const rowVals = configSheet.getRange(r, 1, 1, W).getDisplayValues()[0];
     if (rowVals.every((x) => String(x).trim() === '')) break;               // blank separator = end of block
-    if (/^\[[A-Z_]+\]$/.test(String(rowVals[0]).trim())) break;             // next marker (separator hand-deleted)
+    if (MARKER_RE_.test(String(rowVals[0]).trim())) break;                   // next marker (separator hand-deleted)
     oldCount++;
   }
   const newCount = rows.length;
