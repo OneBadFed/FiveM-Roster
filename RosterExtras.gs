@@ -40,7 +40,6 @@ const EXTRAS = Object.freeze({
 // The Extras menu is retired — its actions moved into the 👥 Roster menu (Run Integrity Scan) and 🧪 Dev / QA
 // (Load Demo Roster). The functions below still power the daily/6am triggers and those relocated menu items.
 
-/** Creates the extras' time-driven triggers (replacing any duplicates). */
 /**
  * Core: (re)install the extras time-driven triggers from [SCHEDULE] (integrity scan, coverage rebuild, cadence-aware
  * hours reset). No UI — returns a human description of the reset schedule. Shared by 📋 Roster ▸ Install Triggers.
@@ -332,7 +331,15 @@ function doWeeklyReset_() {
     // LAST ACTIVITY must snapshot each member's status AS THE PERIOD CLOSED — i.e. BEFORE the recompute below
     // re-tiers everyone off zeroed hours. (This was the whole point of the column and was never wired in here.)
     let lastAct = -1;
-    try { if (typeof captureLastActivityCore_ === 'function') lastAct = captureLastActivityCore_(roster); } catch (e) { log_('doWeeklyReset_.lastActivity', e); }
+    try {
+      if (typeof captureLastActivityCore_ === 'function') lastAct = captureLastActivityCore_(roster);
+      // [ACTIVITY].LAST_ACTIVITY_STYLE (MATCH / NEUTRAL) is applied HERE, on the capture that actually runs. Its only
+      // caller used to be a "📸 Capture Last Activity" menu item that no longer exists, so the setting did nothing at
+      // all — you could switch it in Settings and the column never changed.
+      if (lastAct >= 0 && typeof ensureLastActivityFormat_ === 'function' && typeof lastActivityCols_ === 'function') {
+        lastActivityCols_(roster).forEach((c) => { try { ensureLastActivityFormat_(roster, c); } catch (e2) { log_('doWeeklyReset_.laStyle', e2); } });
+      }
+    } catch (e) { log_('doWeeklyReset_.lastActivity', e); }
     recomputeStatuses_(roster, true);     // core function: zero + recompute
     const after = readMembers_(roster);
     const prev = {};

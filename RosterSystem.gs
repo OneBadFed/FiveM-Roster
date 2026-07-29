@@ -6,16 +6,13 @@
  * notifications. Single-file by design: every function is global so the menu
  * and installable triggers (which reference functions by name) keep working.
  *
- * TABS (names must match exactly):
- *   CONFIG.sheets.roster   — master roster   (headers row 5, data from row 7)
- *   CONFIG.sheets.tracker  — leave dashboard (headers row 5, data from row 6)
- *   CONFIG.sheets.form     — raw form feed   (headers row 1, data from row 2)
+ * TABS: every tab name and every header/data row is CONFIG — [SHEETS] and [ROSTER_LAYOUT] on the ⚙️ Config
+ * tab. Columns resolve by HEADER (rosterCols_ / trackerCols_ / patrolLogCols_), so a reordered or renamed
+ * layout keeps working; the configured positions are only the fallback.
  *
- * SETUP (once):
- *   1. Paste this file, save.
- *   2. Run setWebhookUrl() once with your Discord webhook (then clear it).
- *   3. Run installTriggers() to create the form-submit + daily-check triggers.
- *   4. Reload the sheet for the "📋 Roster" menu.
+ * SETUP (once): paste the files, save, reload the sheet, then run 👥 Roster ▸ 🚀 First-Run Setup — it seeds
+ * the ⚙️ Config tab, installs every trigger, creates and links the leave form, and reports a checklist.
+ * Discord webhooks are set afterwards in 🎛️ Control Panel ▸ Tools ▸ Discord integration (never in code).
  *
  * DESIGN NOTES:
  *   • Discord IDs are TEXT — 17-19 digits exceed JS's safe-integer range, so
@@ -59,7 +56,6 @@ function isValidId_(id) {
   return s.length >= lo && s.length <= hi;
 }
 
-/** Human label for the accepted ID length, e.g. "17-19" or "8" (used in operator-facing messages). */
 /**
  * Header keywords for the shift / assignment / district column, from [ROSTER_LAYOUT].SHIFT_HEADER.
  * ONE list for the roster AND the tracker — they used to hardcode different ones (the roster knew SHIFT and
@@ -81,6 +77,7 @@ function isShiftHeader_(h) {
   return false;
 }
 
+/** Human label for the accepted ID length, e.g. "17-19" or "8" (used in operator-facing messages). */
 function idDigitsLabel_() {
   let lo = 17, hi = 19;
   try { if (CONFIG.idMinDigits) lo = CONFIG.idMinDigits; if (CONFIG.idMaxDigits) hi = CONFIG.idMaxDigits; } catch (e) {}
@@ -571,7 +568,8 @@ function setupWizard() {
     // 5b. Entry-time data validation — reject malformed Discord IDs, warn on bad dates / dropdown values.
     try {
       const v = installDataValidation_();
-      steps.push(`✅ Data validation applied (${v.roster + v.tracker} rule${(v.roster + v.tracker) === 1 ? '' : 's'}: roster ${v.roster}, tracker ${v.tracker}).`);
+      const nRules = v.roster + v.tracker + v.patrolLog; // patrolLog was counted and then left out of the total
+      steps.push(`✅ Data validation applied (${nRules} rule${nRules === 1 ? '' : 's'}: roster ${v.roster}, tracker ${v.tracker}${v.patrolLog ? `, patrol log ${v.patrolLog}` : ''}).`);
     } catch (e) { steps.push(`⚠️ Data validation: ${e.message}`); }
 
     // 5c. Populate the live summary dashboard (finds the KPI boxes by label and writes current values).
@@ -583,9 +581,9 @@ function setupWizard() {
     // 6. Webhook (manual one-time step).
     steps.push(getWebhookUrl_()
       ? '✅ Discord webhook is set.'
-      : '⏳ Discord webhook NOT set — run setWebhookUrl() once to enable notifications.');
+      : '⏳ Discord webhook NOT set — add one in 🎛️ Control Panel ▸ Tools ▸ Discord integration to enable notifications.');
 
-    // 5. Health summary (RosterTrust).
+    // 7. Health summary (RosterTrust).
     let healthLine = '';
     try {
       if (typeof cpHealthCheck_ === 'function') {
@@ -1016,12 +1014,6 @@ function renderPromotions_(fullScan) {
 }
 
 /**
- * Live wrapper: compute the stats from the member roster, then render the dashboard (#stat tags)
- * onto EVERY visible tab except the data feeds and system/hidden tabs. The banner can live on its own tab — the
- * stats still come from the full roster ("Member Information"); the labels/tags just have to be wherever they are.
- * @return {number} total cells written across all tabs.
- */
-/**
  * v1.0 PERF — remember which tabs actually contain dashboard boxes/#tags (a JSON name-list in Document Properties)
  * so the every-edit refresh renders ONLY those tabs instead of full-sheet-scanning every visible tab. Discovery stays
  * automatic: the onEdit single-sheet path adds a tab the moment a box/#tag first renders there, and the menu Refresh
@@ -1039,6 +1031,12 @@ function dashTabsSet_(names) {
   } catch (e) { /* best-effort — worst case is the classic full scan */ }
 }
 
+/**
+ * Live wrapper: compute the stats from the member roster, then render the dashboard (#stat tags)
+ * onto EVERY visible tab except the data feeds and system/hidden tabs. The banner can live on its own tab — the
+ * stats still come from the full roster ("Member Information"); the labels/tags just have to be wherever they are.
+ * @return {number} total cells written across all tabs.
+ */
 function refreshDashboard_(fullRescan) {
   try { if (!cfg_().dashboardEnabled) return 0; } catch (e) { /* config broken — dashboard stays on (classic behavior) */ }
   const ss = SpreadsheetApp.getActive();
@@ -1084,7 +1082,6 @@ function refreshDashboardOnOneSheet_(sheet) {
   } catch (e) { log_('refreshDashboardOnOneSheet_', e); return 0; }
 }
 
-/** Menu action: recompute the dashboard across all tabs now. */
 /**
  * Menu "Refresh & Update All": one button that brings the whole roster current — pulls new leave-form
  * submissions, starts/expires leaves for today, recomputes every status from hours (leave/protected preserved),
@@ -1166,7 +1163,6 @@ function refreshDashboard() {
   });
 }
 
-/** Simple trigger: routes roster edits (transfer / hours) and tracker approvals. */
 /* ----------------------------------------------------------------------
  * DEFERRED WORK — the Academy/group rebuilds and the dashboard refresh are
  * whole-tab rebuilds. Running them from onEdit meant a single keystroke rebuilt
@@ -1233,6 +1229,7 @@ function syncDerivedNow_(groupHint) {
   try { if (typeof refreshDashboard_ === 'function') refreshDashboard_(); } catch (e) { log_('syncDerivedNow_.dashboard', e); } // self-optimizing (RE_DASH_TABS)
 }
 
+/** Simple trigger: routes roster edits (transfer / hours) and tracker approvals. */
 function onEdit(e) {
   try {
     if (!e?.range) return;
@@ -1693,49 +1690,6 @@ function resolveStatus_(rank, currentStatus, hrs) {
   return computeStatus_(rank, hrs);
 }
 
-/** Menu action: recompute every member's status from current hours, and report exactly what changed. */
-function updateAllStatuses() {
-  runAction_('Update All Statuses', () => {
-    const ui = SpreadsheetApp.getUi();
-    const sheet = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
-    if (!sheet) return;
-    const res = recomputeStatuses_(sheet, false);
-    try { refreshDashboard_(); } catch (e) { log_('updateAllStatuses.dashboard', e); }
-    if (!res.total) { ui.alert('No members found on the roster to update.'); return; }
-    const prot = res.protectedSkipped ? `\n\n🛡️ ${res.protectedSkipped} member(s) on leave/protected were left alone.` : '';
-    if (!res.changed.length) {
-      ui.alert(`✅ All ${res.total} member statuses already match their hours — nothing to change.${prot}`);
-      return;
-    }
-    const CAP = 15;
-    const lines = res.changed.slice(0, CAP).map((c) => `•  ${c.name || ('Row ' + c.row)}:  ${c.from || '—'} → ${c.to}`).join('\n');
-    const more = res.changed.length > CAP ? `\n…and ${res.changed.length - CAP} more` : '';
-    ui.alert(`✅ Recomputed ${res.total} member(s) from their hours.\n\nChanged ${res.changed.length}:\n${lines}${more}${prot}`);
-  });
-}
-
-/** Menu action: zero all hours and recompute (protected statuses preserved). */
-function resetWeeklyStats() {
-  runAction_('Weekly Reset', () => {
-    const ui = SpreadsheetApp.getUi();
-    const resp = ui.alert('🗑️ Weekly Reset',
-      "Save this week's hours to history, then reset ALL member hours to 0?\n\n• Active/Semi-Active → Inactive\n• LOA/ROA/Reserve → protected",
-      ui.ButtonSet.YES_NO);
-    if (resp !== ui.Button.YES) return;
-    const sheet = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
-    if (!sheet) return;
-    // Preserve the week BEFORE zeroing so the panel sparkline / trends survive (was a data-loss gap). Guarded so a
-    // bound project without RosterExtras.gs still resets — it just can't snapshot.
-    let captured = 0;
-    try { if (typeof captureHoursSnapshot_ === 'function') captured = captureHoursSnapshot_() || 0; } catch (e) { log_('resetWeeklyStats.snapshot', e); }
-    const res = recomputeStatuses_(sheet, true);
-    try { refreshDashboard_(); } catch (e) { log_('resetWeeklyStats.dashboard', e); }
-    logInfo_('resetWeeklyStats', `weekly reset: ${res.changed.length} dropped, ${res.protectedSkipped} protected, ${captured} hours-snapshot row(s).`);
-    ui.alert(`✅ Weekly reset complete.\n\n• ${res.total} member(s) recomputed — ${res.changed.length} dropped to the lowest tier\n• ${res.protectedSkipped} on leave/protected preserved` +
-      (captured ? `\n• ${captured} member-hours saved to history first` : '\n\n⚠️ Hours history was NOT captured (the 🛠️ Extras file is not pasted).'));
-  });
-}
-
 /**
  * Batched recompute over the whole roster.
  * @param {boolean} zeroHours - if true, zero every member's hours before recomputing.
@@ -1784,12 +1738,6 @@ function updateStatusFromHours(sheet, row) {
  * LAST ACTIVITY — snapshot of the previous activity-check status (optional column)
  * ====================================================================== */
 
-/** The roster's label row: whatever `rosterCols_` actually resolved, else [ROSTER_LAYOUT].HEADER_ROW. Never hardcoded. */
-function rosterHeaderRow_(sheet) {
-  try { const h = rosterCols_(sheet).headerRow; if (h) return h; } catch (e) { /* fall through to config */ }
-  return ROSTER_HEADER_ROW; // live getter over cfg_().legacy.headerRow
-}
-
 /**
  * The PREVIOUS-ACTIVITY chain, NEWEST FIRST, up to three columns.
  * Source of truth is `[ROSTER_LAYOUT].LAST_ACTIVITY_COLS`: each entry is either a COLUMN LETTER ("AB") or a
@@ -1801,7 +1749,7 @@ function rosterHeaderRow_(sheet) {
 function lastActivityCols_(sheet) {
   const out = [];
   try {
-    const hRow = rosterHeaderRow_(sheet);
+    const hRow = rosterLabelRow_(sheet);
     const lastCol = sheet.getLastColumn();
     if (lastCol < 1) return out;
     const hdr = sheet.getRange(hRow, 1, 1, lastCol).getDisplayValues()[0];
@@ -1845,7 +1793,7 @@ function lastActivityCol_(sheet) {
 function lastActivityDateCol_(sheet) {
   try {
     const lastCol = sheet.getLastColumn();
-    const hdr = sheet.getRange(rosterHeaderRow_(sheet), 1, 1, lastCol).getDisplayValues()[0];
+    const hdr = sheet.getRange(rosterLabelRow_(sheet), 1, 1, lastCol).getDisplayValues()[0];
     for (let c = 0; c < hdr.length; c++) { if (/LAST\s*ACTIVITY\s*DATE/.test(String(hdr[c]).toUpperCase())) return c + 1; }
   } catch (e) { log_('lastActivityDateCol_', e); }
   return -1;
@@ -1959,21 +1907,6 @@ function neutralizeLastActivityCol_(roster, laCol, RC) {
     if (isValidMemberValues_(ranks[i][0], names[i][0])) { bg[i][0] = srcBg[i][0]; fc[i][0] = NEUTRAL_FC; fw[i][0] = 'normal'; }
   }
   rng.setBackgrounds(bg).setFontColors(fc).setFontWeights(fw);
-}
-
-/** Menu: snapshot the current ACTIVITY of every member into LAST ACTIVITY, and ensure LAST ACTIVITY mirrors the ACTIVITY dropdown + colors. */
-function captureLastActivity() {
-  runAction_('Capture Last Activity', () => {
-    const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
-    if (!roster) return;
-    const cols = lastActivityCols_(roster);
-    if (!cols.length) { SpreadsheetApp.getUi().alert(`No previous-activity column found on header row ${rosterHeaderRow_(roster)}.\n\nAdd a "LAST ACTIVITY" header, or name up to three columns under ⚙️ Engine Settings ▸ Sheets & layout ▸ Previous-activity columns, then run this again.`); return; }
-    cols.forEach((c) => { try { ensureLastActivityFormat_(roster, c); } catch (e) { log_('captureLastActivity.format', e); } });
-    const count = captureLastActivityCore_(roster);
-    SpreadsheetApp.getUi().alert(count <= 0
-      ? 'No members found to capture.'
-      : `✅ Previous activity captured for ${count} member(s) across ${cols.length} column${cols.length === 1 ? '' : 's'} — each column shifted one period older, the newest taking each member's closing ACTIVITY.`);
-  });
 }
 
 /**
@@ -2361,15 +2294,6 @@ function buildTrackerRow_(RC, W, f) {
   return row;
 }
 
-/**
- * Group the LOA Tracker by STATUS — order = [LEAVE].STATUS_FLOW (default: Pending → Approved → Denied → Expired) —
- * via a STABLE, VALUE-ONLY rewrite: the cells stay put (your row banding / STATUS dropdown / borders are preserved),
- * only the leave data is reordered into them. Regenerates the four computed columns + the ID/date formats (they
- * reference the physical row, so a reorder must rewrite them). Pass `prepend` (a new leave's 16-value row) to seat a
- * just-added leave at the very TOP first, so it lands at the top of the Pending group. Best-effort; never throws.
- * @param {Array} [prepend] a 16-column value row to add at the top before sorting.
- * @param {Sheet} [trackerSheet] the tracker to sort (defaults to the live tracker tab; the injectable add-cores pass their own so tests + white-label runs stay isolated).
- */
 /** The operator's OWN STATUS-dropdown order for a grouped tab (the VALUE_IN_LIST rule on its first data row), or null
  *  when there's no dropdown — callers then fall back to their config flow. The dropdown is what admins actually SEE
  *  when they pick a status, so grouping mirrors ITS order (same layout-ownership rule as the chip colours); an
@@ -2553,6 +2477,15 @@ function tidyTailRows_(sheet, dataStart, statusCol) {
   } catch (e) { logWarn_('tidyTailRows_', 'auto-rows skipped: ' + ((e && e.message) ? e.message : e)); }
 }
 
+/**
+ * Group the LOA Tracker by STATUS — order = [LEAVE].STATUS_FLOW (default: Pending → Approved → Denied → Expired) —
+ * via a STABLE, VALUE-ONLY rewrite: the cells stay put (your row banding / STATUS dropdown / borders are preserved),
+ * only the leave data is reordered into them. Regenerates the four computed columns + the ID/date formats (they
+ * reference the physical row, so a reorder must rewrite them). Pass `prepend` (a new leave's row) to seat a
+ * just-added leave at the very TOP first, so it lands at the top of the Pending group. Best-effort; never throws.
+ * @param {Array} [prepend] one row of values, or an array of rows, to add at the top before sorting.
+ * @param {Sheet} [trackerSheet] the tracker to sort (defaults to the live tracker tab; the injectable add-cores pass their own so tests + white-label runs stay isolated).
+ */
 function sortTracker_(prepend, trackerSheet) {
   try {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
@@ -2685,13 +2618,6 @@ function patrolCols_(sheet) {
 }
 
 /**
- * Find the member ROW to credit. Safe-by-construction against mis-credits (a patrol must NEVER hit the wrong member):
- *   • If a Discord ID is PROVIDED, it must be valid AND on the roster — else return -1 (flag it; we never "guess" a
- *     member by callsign when the submitter gave an ID, because a typo'd-but-real ID could collide with someone's callsign).
- *   • Only when NO ID is given do we fall back to callsign, and ONLY when it matches EXACTLY ONE member (a reassigned /
- *     stale / duplicated callsign is ambiguous → refuse rather than credit the first row). @return {number} 1-based row, or -1.
- */
-/**
  * Snapshot the four roster columns patrolFindRow_ matches on, so a caller sweeping many rows reads them ONCE instead
  * of once per lookup. Safe to hold for the length of one execution: patrol crediting only ever writes HOURS and
  * ACTIVITY in place (updateStatusFromHours), so no row ever moves under a cached index.
@@ -2709,7 +2635,15 @@ function patrolRosterIndex_(roster) {
     oocs: RC.ooc ? col(RC.ooc, true) : [], shifts: RC.shift ? col(RC.shift, true) : [] }; // full identity so sweeps/fills never re-read per cell
 }
 
-/** @param {Object=} idx optional prebuilt patrolRosterIndex_ — pass it when looking up in a loop. */
+/**
+ * Find the member ROW to credit. Safe-by-construction against mis-credits (a patrol must NEVER hit the wrong member):
+ *   • If a Discord ID is PROVIDED, it must be valid AND on the roster — else return -1 (flag it; we never "guess" a
+ *     member by callsign when the submitter gave an ID, because a typo'd-but-real ID could collide with someone's callsign).
+ *   • Only when NO ID is given do we fall back to callsign, and ONLY when it matches EXACTLY ONE member (a reassigned /
+ *     stale / duplicated callsign is ambiguous → refuse rather than credit the first row).
+ * @param {Object=} idx optional prebuilt patrolRosterIndex_ — pass it when looking up in a loop.
+ * @return {number} 1-based row, or -1.
+ */
 function patrolFindRow_(roster, discord, callsign, idx) {
   const X = idx || patrolRosterIndex_(roster);
   const n = X.n;
@@ -3742,13 +3676,6 @@ function webhookFor_(channel) {
 /** Back-compat shim: the classic "main" webhook is the LOA channel now. */
 function getWebhookUrl_() { return webhookFor_('LOA'); }
 
-/** Retired one-time setup: webhooks live in the admin spreadsheet now. */
-function setWebhookUrl() {
-  runAction_('Set Webhook URL', () => {
-    SpreadsheetApp.getUi().alert('Webhooks are stored in the ADMIN ROSTER now. Open 🎛️ Control Panel ▸ Tools ▸ Discord integration to set the per-channel URLs.');
-  });
-}
-
 function sendDiscordWebhook(name, rank, callsign, type, start, end, duration, discordId) {
   const typeStr = String(type == null ? '' : type).trim() || 'Leave';
   const isReturn = CONFIG.returnStatus && norm_(typeStr) === norm_(CONFIG.returnStatus); // ROA-style returning leave → warmer color
@@ -3824,13 +3751,6 @@ function fill_(template, vars) {
 }
 
 /**
- * v1.0 event notifications: post ONE event embed to the webhook only when its toggle is on. The embed gets a
- * timestamp + the shared [DISCORD] chrome (author/thumbnail/image/footer); `content` optionally pings a member.
- * Never throws — a notification must never break the action that triggered it.
- */
-function notify_(on, embed, content) { notifyCh_('LOA', on, embed, content); }
-
-/**
  * Build an embed from the admin-edited [EMBEDS] template for `event`, with {token} placeholders filled from
  * `vars` — or return `fallback` (the built-in embed) when no template exists or anything at all goes wrong.
  * Templates come from the Settings Studio's builder; every text part is clamped to Discord's limits.
@@ -3863,14 +3783,18 @@ function embedFromTemplate_(event, vars, fallback) {
   } catch (err) { return fallback; } // a broken template (or broken config) must never eat the notification
 }
 
-/** notify_ with an explicit channel first — call-site friendly (the trailing content/mention arg stays last). */
+/**
+ * Post ONE event embed to a channel's webhook, only when its toggle is on. The embed gets a timestamp + the shared
+ * [DISCORD] chrome (author/thumbnail/image/footer); `content` optionally pings a member. Never throws — a
+ * notification must never break the action that triggered it.
+ */
 function notifyCh_(channel, on, embed, content) {
   if (!on) return;
   try {
     const payload = { embeds: [Object.assign({ timestamp: new Date().toISOString() }, embed, embedChrome_())] };
     if (content) payload.content = content;
     sendWebhookPayload_(payload, channel);
-  } catch (e) { log_('notify_', e); }
+  } catch (e) { log_('notifyCh_', e); }
 }
 
 /**
@@ -3934,7 +3858,6 @@ function getRankIcon(rank) {
   return icons[rank] || '';
 }
 
-/** Posts to the configured webhook, logging non-2xx responses and retrying once on 429. */
 /**
  * Low-level: POST a JSON payload to a webhook URL with one 429 retry, and REPORT the outcome so callers can
  * distinguish "delivered" from "no exception thrown" (F-011). Never throws.
@@ -3993,7 +3916,7 @@ function isValidMemberRow(sheet, row) {
  * a divider is an all-caps label longer than 3 chars (e.g. "CADETS", "COMMAND STAFF") — a section header, not a
  * real rank. v1.0 (DIVIDER_MODE = EXPLICIT_LIST): the [RANKS] list wins — a listed DIVIDER is a divider, a listed
  * RANK is a member slot (even if it's ALL-CAPS), and anything unlisted falls back to the heuristic. Used by
- * isValidMemberValues_, isMemberSlot_, and the panel's Dividers list, so every place that
+ * isValidMemberValues_ and isMemberSlot_, so every place that
  * distinguishes a divider from a member agrees by definition. Must NEVER throw (a broken config → heuristic).
  */
 function isDividerValue_(rankValue) {
@@ -4010,12 +3933,6 @@ function isDividerValue_(rankValue) {
     }
   } catch (e) { /* config unavailable/broken → heuristic below */ }
   return s === s.toUpperCase() && s.length > 3;
-}
-
-/** True if a divider's label denotes a TRAINING section (matches a CONFIG.trainingDividers keyword). */
-function isTrainingDividerLabel_(label) {
-  const s = String(label || '').toUpperCase();
-  return CONFIG.trainingDividers.some((kw) => s.indexOf(kw) !== -1);
 }
 
 /**
@@ -4051,11 +3968,6 @@ function isMemberSlot_(rankValue) {
 }
 
 /**
- * Transfers a member to a new row when their Discord ID is entered there.
- * @param {function(string):boolean} [confirmFn] - injectable confirm (tests pass a stub).
- * @param {function(string):void} [notifyFn] - injectable notifier for the result/cancel alerts (tests pass a no-op).
- */
-/**
  * Move a member's MEMBER-class columns from sourceRow → targetRow, keeping SLOT columns (Rank/Callsign) at each
  * position, and clearing the source. Copies with
  * PASTE_NO_BORDERS: value/formula, number format and validation still follow the person (so TIME IN RANK stays a
@@ -4083,6 +3995,11 @@ function moveMemberColumns_(sheet, sourceRow, targetRow) {
   sheet.getRange(targetRow, rosterCols_(sheet).discord).setNumberFormat('@'); // keep the moved ID exact
 }
 
+/**
+ * Transfers a member to a new row when their Discord ID is entered there.
+ * @param {function(string):boolean} [confirmFn] - injectable confirm (tests pass a stub).
+ * @param {function(string):void} [notifyFn] - injectable notifier for the result/cancel alerts (tests pass a no-op).
+ */
 function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) {
   const targetRow = targetRange.getRow();
   const lastRow = sheet.getLastRow();
@@ -4182,7 +4099,6 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   }, mention_(target));
 }
 
-/** Menu action: insert N blank member rows below the cursor (asks how many) and renumber units. */
 /**
  * Fills the TIME IN RANK column with a live "days since LAST PROMOTION" formula for EVERY member slot, so it
  * stays current on its own (TODAY() recalculates daily) and empty / newly-added rows get it too. Divider and
@@ -4210,6 +4126,7 @@ function fillTimeInRank_(roster) {
   return count;
 }
 
+/** Menu action: insert N blank member rows below the cursor (asks how many) and renumber units. */
 function addMemberRow() {
   runAction_('Add Member Row', () => {
     const ui = SpreadsheetApp.getUi();
@@ -4289,35 +4206,3 @@ function updateUnitNumbers_() {
   return counter - 1; // number of member slots that received a callsign
 }
 
-/** Menu action: report duplicate and malformed Discord IDs on the roster. */
-function checkDuplicateDiscordIds() {
-  runAction_('Check Duplicate IDs', () => {
-  const ss = SpreadsheetApp.getActive();
-  const roster = getSheetOrWarn_(ss, CONFIG.sheets.roster);
-  if (!roster) return;
-  const last = roster.getLastRow();
-  if (last < CONFIG.rosterStartRow) { SpreadsheetApp.getUi().alert('Roster is empty.'); return; }
-
-  const RC = rosterCols_(roster);
-  const n = last - CONFIG.rosterStartRow + 1;
-  const ranks = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getValues();
-  const names = roster.getRange(CONFIG.rosterStartRow, RC.name, n, 1).getValues();
-  const ids = roster.getRange(CONFIG.rosterStartRow, RC.discord, n, 1).getDisplayValues();
-
-  const seen = {};
-  const malformed = [];
-  for (let i = 0; i < n; i++) {
-    if (!isValidMemberValues_(ranks[i][0], names[i][0])) continue;
-    const id = String(ids[i][0]).trim();
-    if (id === '') continue;
-    const who = `${names[i][0] || '(no name)'} (row ${CONFIG.rosterStartRow + i})`;
-    if (!isValidId_(id)) malformed.push(`${who}: "${id}"`);
-    (seen[id] = seen[id] || []).push(who);
-  }
-
-  const dup = Object.keys(seen).filter((k) => seen[k].length > 1).map((k) => `ID ${k} → ${seen[k].join(', ')}`);
-  const out = [dup.length ? `DUPLICATE IDs (${dup.length}):\n${dup.join('\n')}` : 'No duplicate Discord IDs found.'];
-  if (malformed.length) out.push(`\nNOT ${idDigitsLabel_()} DIGITS (${malformed.length}):\n${malformed.join('\n')}`);
-  SpreadsheetApp.getUi().alert(out.join('\n'));
-  });
-}

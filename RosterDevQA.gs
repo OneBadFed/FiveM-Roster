@@ -650,7 +650,7 @@ function devNumberSheet_(sheet) {
   sheet.getRange(CONFIG.rosterStartRow, CONFIG.roster.unit, n, 1).setValues(units);
 }
 
-/** Mirror of checkDuplicateDiscordIds against a sandbox sheet (uses the REAL isValidMemberValues_). */
+/** Duplicate/malformed-ID scan against a sandbox sheet (uses the REAL isValidMemberValues_ + isValidId_). */
 function devScanDuplicateIds_(roster) {
   const last = roster.getLastRow();
   const n = Math.max(0, last - CONFIG.rosterStartRow + 1);
@@ -748,11 +748,6 @@ function devUnitTests_() {
   devEq_(R, 'isValidMemberValues_ divider+text -> false', isValidMemberValues_('DEPARTMENT MEMBERS', 'x'), false);
   devEq_(R, 'isValidMemberValues_ "Rank" placeholder -> false', isValidMemberValues_('Rank', 'x'), false);
   devEq_(R, 'isValidMemberValues_ "UNIT" (4-caps divider)+name -> false', isValidMemberValues_('UNIT', 'x'), false);
-
-  // --- training-divider label detection (default keywords TRAINING / CADET) ---
-  devEq_(R, 'isTrainingDividerLabel_ "STAFF IN TRAINING" -> true', isTrainingDividerLabel_('STAFF IN TRAINING'), true);
-  devEq_(R, 'isTrainingDividerLabel_ "POLICE CADETS" -> true', isTrainingDividerLabel_('POLICE CADETS'), true);
-  devEq_(R, 'isTrainingDividerLabel_ "EXECUTIVE COMMAND" -> false', isTrainingDividerLabel_('EXECUTIVE COMMAND'), false);
 
   // --- dash_ / clamp_ ---
   devEq_(R, 'dash_ "" -> em-dash', dash_(''), '—');
@@ -1348,7 +1343,7 @@ function devSyncTests_() {
  * ====================================================================== */
 function devMaintenanceTests_() {
   const R = devNewResults_('Roster maintenance (sandbox)');
-  devInfo_(R, 'unit numbering + dup scan run via mirrors (updateUnitNumbers_/checkDuplicateDiscordIds are UI-bound; the mirrors call the REAL isMemberSlot_/formatUnit_/isValidMemberValues_)', '');
+  devInfo_(R, 'unit numbering + dup scan run via mirrors (updateUnitNumbers_ is UI-bound; the mirrors call the REAL isMemberSlot_/formatUnit_/isValidMemberValues_)', '');
 
   // Unit numbering: continuous S-01.. across dividers (divider rows stay blank).
   (() => {
