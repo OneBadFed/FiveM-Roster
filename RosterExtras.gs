@@ -7,21 +7,17 @@
  * clamp_, computeStatus_, parseHours_, isProtectedStatus_, isValidMemberValues_,
  * recomputeStatuses_, sendWebhookPayload_, footer_, todayInSheetTz_, startOfDay_).
  *
- * Adds: weekly hours history, a leave-coverage view, a data-integrity scan,
- * and a who/what/when audit log.
+ * Adds: the hours-history + period-archive reset, group / Police Academy tab builders, the leave-coverage
+ * view, the Activity Panel board, the data-integrity scan, and the demo-roster seeder.
  *
- * SETUP (after RosterSystem.gs is in and working):
- *   1. Paste this file, save.
- *   2. Run installExtras().
- *   3. Extras menu items are added by the core buildMenus_() — no extra call needed.
- *   4. Reload the sheet for the "🛠️ Extras" menu.
+ * SETUP (after RosterSystem.gs is in and working): paste this file, save, then run
+ * 📋 Roster ▸ 🔌 Install Triggers — the core installer calls installExtrasTriggers_ for the integrity
+ * scan (7am), the coverage rebuild (6am) and the cadence-aware hours reset. There is no separate Extras
+ * menu; its actions live in 👥 Roster (Capture & Reset Activity, Run Integrity Scan) and 🧪 Dev / QA
+ * (Load Demo Roster).
  *
- * NOTE: do NOT install an onEdit trigger for recordEdit — the Control Panel's audit log (auditEdit in
- * RosterTrust.gs) already records edits, and adding recordEdit too would double-log. recordEdit is kept
- * only for installs without RosterTrust.gs.
- *
- * NOTE: the core's "Reset Weekly Hours" does NOT save history; use this file's
- *   "Weekly Reset (saves history)" instead if you want the historical record.
+ * NOTE: edits are audited by auditEdit (RosterTrust.gs), which is always-on and self-installing.
+ *   This file no longer carries a second edit logger — two of them double-logged.
  * ============================================================================
  */
 
@@ -77,14 +73,6 @@ function installExtrasTriggers_() {
   }
   logInfo_('installExtrasTriggers_', `extras triggers installed (reset: ${resetDesc}).`);
   return resetDesc;
-}
-
-/** Kept for direct use / back-compat. The menu now folds this into 📋 Roster ▸ Install Triggers (one installer). */
-function installExtras() {
-  runAction_('Install Extras', () => {
-    const resetDesc = installExtrasTriggers_();
-    SpreadsheetApp.getUi().alert(`✅ Extras triggers installed.\n\nIntegrity scan (7am), coverage rebuild (6am), hours reset — ${resetDesc}.`);
-  });
 }
 
 /* ======================================================================
@@ -337,9 +325,9 @@ function doWeeklyReset_() {
       let acc = false;
       try { acc = String(cfg_().kv.ACTIVITY.PERIOD_BUCKET || 'RESET').toUpperCase() === 'MONTH'; } catch (e2) { /* default RESET */ }
       bucketLabel = periodLabel_();
-      const before = acc ? archiveRightHeader_(roster) : '';
+      const rightHdrBefore = acc ? archiveRightHeader_(roster) : ''; // NOT `before` — that is the member snapshot above
       shifted = shiftArchiveColumns_(roster, bucketLabel, acc);
-      accumulated = acc && !shifted && norm_(before) === norm_(bucketLabel);
+      accumulated = acc && !shifted && norm_(rightHdrBefore) === norm_(bucketLabel);
     } catch (e) { log_('doWeeklyReset_.archive', e); }
     // LAST ACTIVITY must snapshot each member's status AS THE PERIOD CLOSED — i.e. BEFORE the recompute below
     // re-tiers everyone off zeroed hours. (This was the whole point of the column and was never wired in here.)
@@ -410,7 +398,7 @@ function weeklyResetScheduled() {
 function resetDue_() {
   try {
     const sc = cfg_().kv.ACTIVITY;
-    // OFF is authoritative regardless of cadence (matches installExtras + the [SCHEDULE] contract). Enforced HERE at
+    // OFF is authoritative regardless of cadence (matches installExtrasTriggers_ + the [SCHEDULE] contract). Enforced HERE at
     // run time too, so setting WEEKLY_HOURS_RESET=OFF via Settings takes effect immediately even if the operator
     // didn't re-run Install Extras Triggers — the live CONFIG bridge makes that the expected behavior everywhere else.
     if (sc.AUTO_RESET === false) return false; // the master switch — checked FIRST, and at run time so flipping it
@@ -688,7 +676,7 @@ function buildGroupSheets_(hint) { // hint (optional, from a single-cell member 
     let rankTabCol = 0;
     for (let i = 0; i < hdr.headers.length; i++) { const h = hdr.headers[i]; if (h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1) { rankTabCol = i + 1; break; } }
     if (!rankTabCol) rankTabCol = 1;
-    if (!gCol) { skipped.push({ name: nm, why: 'couldn\'t match "' + (marker ? marker.raw : nm) + '" to a roster column' }); return; }
+    if (!gCol) { skipped.push({ name: nm, why: 'couldn\'t match "' + (marker ? marker.raw : nm) + '" to a roster column — try the marker "' + suggestMarker_(nm) + '"' }); return; }
     const dataRow = hdr.row + headerToData; // skip the same divider gap the roster leaves below its header (member rows start there)
     // EDITABLE UPSERT (replaces the old read-only FILTER): mirror the roster's columns onto the tab BY HEADER, keep
     // one row per matching member (matched by UNIQUE ID / NAME so the operator's edits stay put), and PRESERVE every
@@ -1087,8 +1075,10 @@ function buildAcademySheets_() {
     clearMemberCols(dataRow, gradSec ? gradSec.headerRow - 1 : sh.getMaxRows());
     const activeRows = [];
     for (let i = 0; i < rd.length; i++) {
-      const rk = groupNorm_(rd[i][RC.rank - 1]);
-      if (!wanted.some((w) => rk.indexOf(w) === 0)) continue;
+      // isTrainee(), not a second copy of the exact-name test: the banded path above uses it, and the two
+      // deciding membership differently meant the SAME roster filled or emptied depending only on whether the
+      // operator had laid out rank-group bands.
+      if (!isTrainee(rd[i][RC.rank - 1])) continue;
       if (String(rd[i][RC.name - 1] || '').trim() === '') continue;
       const k = keyOfIdx(i); if (k) filled[k] = true;
       activeRows.push(rowForIdx(i, false));
@@ -1127,58 +1117,6 @@ function buildAcademySheets() {
         'To track specific ranks, add a marker in the top-left cell:\n  #academy: Rank in Police Cadet, Probationary Officer';
     }
     ui.alert('🎓 Build / Refresh Police Academy', msg, ui.ButtonSet.OK);
-  });
-}
-
-const HELPER_COLS_PROP = 'RE_HELPER_COLS'; // remembered "hide these" header list (per spreadsheet)
-
-/** Hide each roster column whose header matches a name in `list` (exact header wins, then contains). @return {string[]} headers hidden. */
-function hideHelperColumns_(roster, list) {
-  const RC = rosterCols_(roster);
-  if (!RC.headerRow) return [];
-  const lastCol = roster.getLastColumn();
-  const hdr = roster.getRange(RC.headerRow, 1, 1, lastCol).getDisplayValues()[0];
-  const hdrUp = hdr.map((h) => String(h).toUpperCase().trim());
-  const hidden = [];
-  list.forEach((label) => {
-    const key = String(label).toUpperCase().trim();
-    if (!key) return;
-    let col = 0;
-    for (let c = 0; c < hdrUp.length; c++) { if (hdrUp[c] === key) { col = c + 1; break; } }
-    if (!col) for (let c = 0; c < hdrUp.length; c++) { if (hdrUp[c] && hdrUp[c].indexOf(key) !== -1) { col = c + 1; break; } }
-    if (col) { roster.hideColumns(col); hidden.push(hdr[col - 1]); }
-  });
-  return hidden;
-}
-
-/** Menu action: hide a named set of roster "helper" columns (remembered so it's easy to re-hide). */
-function hideHelperColumns() {
-  runAction_('Hide Helper Columns', () => {
-    const ui = SpreadsheetApp.getUi();
-    const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
-    if (!roster) return;
-    const props = PropertiesService.getDocumentProperties();
-    const cur = props.getProperty(HELPER_COLS_PROP) || '';
-    const resp = ui.prompt('🙈 Hide Helper Columns',
-      'Roster column headers to hide, comma-separated (e.g. Beat, Vehicle, Radio).' + (cur ? '\n\nCurrently: ' + cur : ''),
-      ui.ButtonSet.OK_CANCEL);
-    if (resp.getSelectedButton() !== ui.Button.OK) return;
-    const list = String(resp.getResponseText() || '').split(',').map((s) => s.trim()).filter(Boolean);
-    props.setProperty(HELPER_COLS_PROP, list.join(', '));
-    const hidden = hideHelperColumns_(roster, list);
-    ui.alert(hidden.length
-      ? '✅ Hid ' + hidden.length + ' column' + (hidden.length === 1 ? '' : 's') + ': ' + hidden.join(', ') + '.\n\nUse 👁️ Show All Columns to reveal them.'
-      : 'No matching columns found — check the header names against the roster.');
-  });
-}
-
-/** Menu action: reveal every roster column (undo Hide Helper Columns). */
-function showAllRosterColumns() {
-  runAction_('Show All Columns', () => {
-    const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
-    if (!roster) return;
-    roster.showColumns(1, roster.getMaxColumns());
-    SpreadsheetApp.getUi().alert('✅ All roster columns are visible.');
   });
 }
 
@@ -1370,7 +1308,8 @@ function buildActivityPanel_() {
   const sh = ss.getSheetByName(name) || ss.insertSheet(name);
   const W = ACTIVITY_HEADERS_.length;
   if (sh.getMaxColumns() < W) sh.insertColumnsAfter(sh.getMaxColumns(), W - sh.getMaxColumns());
-  if (sh.getMaxRows() < rows.length + 1) sh.insertRowsAfter(sh.getMaxRows(), rows.length + 1 - sh.getMaxRows());
+  const needRows = Math.max(rows.length + 1, 2); // header + at least one body row: "band" below must never be 0
+  if (sh.getMaxRows() < needRows) sh.insertRowsAfter(sh.getMaxRows(), needRows - sh.getMaxRows());
   const maxRows = sh.getMaxRows();
   const band = maxRows - 1;
   sh.getRange(1, 1, 1, W).setValues([ACTIVITY_HEADERS_.slice()]);
@@ -1533,38 +1472,6 @@ function levDist_(a, b) {
 }
 
 /* ======================================================================
- * AUDIT LOG (installable onEdit → recordEdit)
- * ====================================================================== */
-
-/** Logs who edited what, when. Point an INSTALLABLE onEdit trigger at this. */
-function recordEdit(e) {
-  try {
-    if (!e?.range) return;
-    const sheetName = e.range.getSheet().getName();
-    const systemSheets = [EXTRAS.historySheet, EXTRAS.coverageSheet, EXTRAS.integritySheet, EXTRAS.auditSheet];
-    if (systemSheets.indexOf(sheetName) !== -1) return; // don't audit the script's own tabs
-
-    const ss = SpreadsheetApp.getActive();
-    let log = ss.getSheetByName(EXTRAS.auditSheet);
-    if (!log) {
-      log = ss.insertSheet(EXTRAS.auditSheet);
-      log.appendRow(['Time', 'Editor', 'Sheet', 'Cell', 'Old', 'New']);
-    }
-    let email = '';
-    try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* cross-domain: not available */ }
-
-    const multi = e.range.getNumRows() * e.range.getNumColumns() > 1;
-    const oldV = multi ? '(multi-cell — not captured)' : (e.oldValue === undefined ? '' : e.oldValue);
-    const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
-    const who = (email && typeof auditWho_ === 'function') ? auditWho_(email) : (email || 'unknown'); // member NAME when the email is on their roster row
-    log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV]);
-    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v1.0: config cap)
-  } catch (err) {
-    log_('recordEdit', err);
-  }
-}
-
-/* ======================================================================
  * DEMO / PREVIEW DATA — seedDemoRoster()
  * Fills the MEMBER-INFORMATION columns of the rows you already set up, so a
  * fresh copy looks like a community that is actually running it. The operator
@@ -1638,12 +1545,12 @@ function demoDob_(i) {
 }
 
 /**
- * Build a believable demo member for member-slot index `i` (0-based), given the rank already in the row.
+ * Build a believable demo member for member-slot index `i` (0-based).
  * Deterministic (salted hash, no RNG — reseeding the same layout reproduces the same demo).
  * Hours land inside the intended status's tier band so recompute is a no-op;
  * LOA/ROA carry an active leave; a few active members carry a recently-expired leave for history variety.
  */
-function demoPerson_(i, rank, total) {
+function demoPerson_(i, total) {
   // ≈ 60% top tier / 15% mid / 15% low / 5% + 5% leave, spread by a coprime stride — every name is read from CONFIG,
   // so a renamed OR LOA-only setup never seeds a status that doesn't exist (e.g. ROA). (No "Reserve" in the mix.)
   const tiers = (CONFIG.tierNames && CONFIG.tierNames.length >= 3) ? CONFIG.tierNames : ['Active', 'Semi-Active', 'Inactive'];
@@ -1901,7 +1808,7 @@ function seedDemoRoster() {
 
     // ---- Build a believable person for each member row (some slots stay blank = open positions) ----
     const total = memberRows.length;
-    const people = memberRows.map((m, i) => demoIsOpen_(i, total) ? demoBlank_() : demoPerson_(i, m.rank, total));
+    const people = memberRows.map((m, i) => demoIsOpen_(i, total) ? demoBlank_() : demoPerson_(i, total));
     const filledCount = people.filter((p) => !p.open).length;
 
     // Spread each RANK's filled members as evenly as possible across the 3 shifts (round-robin within the rank), and
@@ -2040,7 +1947,7 @@ function seedDemoRoster() {
  * are skipped — a Chief promoted last Tuesday reads wrong. @return {number} entries seeded (0 without the engine file).
  */
 function seedDemoPromotions_(memberRows, people) {
-  if (typeof promoRecord_ !== 'function') return 0; // RosterSystem.gs owns the feed
+  if (typeof renderPromotions_ !== 'function') return 0; // RosterSystem.gs owns the feed — check what we actually call
   const cands = [];
   memberRows.forEach((m, i) => {
     const p = people[i];

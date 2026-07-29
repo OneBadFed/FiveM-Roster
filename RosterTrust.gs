@@ -8,7 +8,7 @@
  *
  * Snapshots are stored on a hidden "_Snapshots" tab — a lightweight, in-sheet
  * replacement for the removed Drive backup. The audit viewer reads the "Edit Log"
- * tab produced by RosterExtras.gs (recordEdit); if it's absent, the viewer just
+ * tab produced by auditEdit below; if it's absent, the viewer just
  * says so.
  * ============================================================================
  */
