@@ -2360,11 +2360,20 @@ function publishStatusCol_(dest, dh, width) {
  * these tabs carries and no raw row does, so it catches precisely the case the background test is blind to.
  */
 function publishDressRows_(dest, dh, lastData, width) {
-  if (!(dh > 0) || !(lastData >= dh)) return;
+  if (!(dh > 0)) return;
+  // `lastData` arrives from the SOURCE (the FULL path passes src.getLastRow()), and the two sheets do not have to
+  // end on the same row. Clamp it to the DESTINATION before either repair runs:
+  //   • getMaxRows() - 1 — the public tab's final row is its closing bar, and dressing it as a data row would
+  //     repaint the operator's end-of-sheet marker. styleTailRows_ guards its own final row; healUnstyledRows_
+  //     trusts its caller, so the guard has to live here or a source tab whose bar carries text takes the public
+  //     bar with it.
+  //   • getLastRow() — never claim rows the destination does not actually hold.
+  const last = Math.min(Number(lastData) || 0, dest.getLastRow(), dest.getMaxRows() - 1);
   const ds = publishDataStart_(dest.getName(), dh);
-  try { if (typeof healUnstyledRows_ === 'function') healUnstyledRows_(dest, ds, lastData, publishStatusCol_(dest, dh, width), width); }
+  if (!(last > ds)) return; // need at least one row above to copy the look from
+  try { if (typeof healUnstyledRows_ === 'function') healUnstyledRows_(dest, ds, last, publishStatusCol_(dest, dh, width), width); }
   catch (e) { log_('publishDressRows_.heal', e); }
-  try { if (typeof styleTailRows_ === 'function') styleTailRows_(dest, ds, lastData, Math.max(0, dest.getMaxRows() - 1 - lastData), width); }
+  try { if (typeof styleTailRows_ === 'function') styleTailRows_(dest, ds, last, Math.max(0, dest.getMaxRows() - 1 - last), width); }
   catch (e) { log_('publishDressRows_.tail', e); }
 }
 
