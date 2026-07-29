@@ -101,8 +101,8 @@ treat it as read-only: statuses are managed on the Patrol Log, and hand edits on
 
 **👥 Roster ▸ 📸 Capture & Reset Activity** archives everyone's hours to history and zeroes the week (cadence —
 weekly, biweekly, monthly — is configurable in Settings, and can run itself on schedule). It also rolls your
-PREVIOUS-ACTIVITY columns one period older and re-applies their colouring per ⚙️ Engine Settings ▸ Sheets &
-layout ▸ *Previous-activity style* (match the status colours, or a calm grey).
+PREVIOUS-ACTIVITY columns one period older and re-applies their coloring per ⚙️ Engine Settings ▸ Sheets &
+layout ▸ *Previous-activity style* (match the status colors, or a calm grey).
 
 Prefer to close periods by hand? ⚙️ Engine Settings ▸ Automation & logging ▸ Hours reset ▸ **Auto-reset
 activity** turns the scheduled reset off entirely — nothing is ever zeroed until you run the menu item yourself.
