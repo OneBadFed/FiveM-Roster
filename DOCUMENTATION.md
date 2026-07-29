@@ -1,6 +1,6 @@
 # Roster Engine — System Documentation
 
-> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 43 whitelisted endpoints
+> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 36 whitelisted endpoints
 > **Updated:** 2026-07-27
 >
 > A white-label, schema-driven personnel-management engine for Google Sheets, built in Google Apps Script.
@@ -23,7 +23,7 @@ ever flows back. There is no separate "admin file" — `adminFile_()` resolves t
 |---|---|
 | `RosterConfig.gs` | Config layer: ⚙️ Config tab schema (`BLOCK_SPECS_`), parse → validate → materialize (`cfg_()`), error registry + coded errors, SYS Log ring buffer, theme, migrations, cross-execution config cache, `perf_` timing |
 | `RosterSystem.gs` | The engine: CONFIG bridge, header-resolved columns, status engine, transfers, leave lifecycle, Patrol Log crediting, dashboard + #tags, promotions feed, derived-tab rebuilds, menus, First-Run wizard |
-| `RosterControlPanel.gs` | Control Panel server: the D5 `dispatch()` whitelist gateway and every `cp*` endpoint; signup sync + approval; the public-roster publish pipeline; webhooks; rank-icon + divider-style storage |
+| `RosterControlPanel.gs` | Control Panel server: the D5 `dispatch()` whitelist gateway and every `cp*` endpoint; signup sync + approval; the public-roster publish pipeline; webhooks; rank-icon storage |
 | `RosterTrust.gs` | Snapshots/restore, the always-on Edit Log audit (with editor-name resolution), health & schema checks |
 | `RosterExtras.gs` | Integrity scan, leave coverage board, the Activity Panel board (§5a), hours history + cadence-aware reset, helper-column tools, full-lifecycle demo seeder |
 | `RosterDevQA.gs` | The QA suite — 23 sections, sandbox-only, run in three parts (or all / per-section) from the 🧪 menu |
@@ -383,7 +383,7 @@ immediately, with the deferred queue as backstop.
 design system, deep-linkable (`openControlPanel('signups')` lands on a tab directly).
 
 **Security architecture (D5):** the client calls exactly one server function — `dispatch(name, args)` — which
-validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **43 endpoints**; the shim's
+validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **36 endpoints**; the shim's
 `RE_ENDPOINTS` list mirrors it one-for-one (adding an endpoint = one line in each — and a DevQA regression test
 now round-trips the whitelist, so a forgotten registration fails the suite instead of erroring in production). Writes are **identity-keyed**: the
 client sends each row's Unique ID so a shifted row can't hit the wrong member (`cpResolveMemberRow_` for

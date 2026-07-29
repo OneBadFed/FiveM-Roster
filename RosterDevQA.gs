@@ -2661,14 +2661,17 @@ function devSignupTests_() {
 
   // The review queue shows what still needs action and hides what's done.
   (() => {
-    const q = signupQueue_(devBuildSignups_([
+    const split = signupSplit_(devBuildSignups_([
       { name: 'Q1', id: devId_(94), status: 'Pending' },
       { name: 'Q2', id: devId_(95), status: 'Processed' },
       { name: 'Q3', id: devId_(96), status: 'Approved' },
-    ]), 50);
+    ]), 50, 12);
+    const q = split.queue;
     devEq_(R, 'queue: 2 signups awaiting action', q.length, 2);
     devCheck_(R, 'queue: Processed is excluded', q.every((x) => x.name !== 'Q2'));
     devCheck_(R, 'queue: carries the private details through', q.some((x) => x.name === 'Q1'));
+    devEq_(R, 'queue: `waiting` counts every row needing action, cap or no cap', split.waiting, 2);
+    devEq_(R, 'queue: Processed rows land in `recent`', split.recent.length, 1);
   })();
 
   // Approve: member lands in the slot, PII lands on the Internal Roster, signup flips to Processed.

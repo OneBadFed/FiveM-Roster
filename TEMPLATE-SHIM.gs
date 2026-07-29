@@ -36,13 +36,12 @@ const RE_ENDPOINTS = Object.freeze([
   'cpPing', 'cpBootstrap', 'cpRefresh', 'cpGetProfile',
   'cpSetStatus', 'cpSetStatusBulk', 'cpScheduleLeave', 'cpAssignMember', 'cpMoveMember',
   'cpRunAction', 'cpRunLog', 'cpJumpTo', 'cpSystemInfo',
-  'cpColumnsInfo', 'cpSetColumnClass', 'cpDividersInfo',
+  'cpColumnsInfo', 'cpSetColumnClass',
   'cpFixTriggers', 'cpTakeSnapshot', 'cpRestoreSnapshot', 'cpSetSnapshotAuto',
   'cpSetWebhook', 'cpSetWebhookChannels', 'cpTestWebhook', 'cpTestWebhookChannels',
   'cpGetConfig', 'cpApplyConfig', 'cpOpenSettings',
-  'cpRankIcons', 'cpSetRankIcon', 'cpDeleteRankIcon', 'cpSetRankColor',
-  'cpSetDividerStyle', 'cpDeleteDividerStyle',
-  'cpAdminSetup', 'cpAdminInfo', 'cpAddDiscipline', 'cpSignupList', 'cpSignupApprove', 'cpSignupFlag',
+  'cpRankIcons', 'cpSetRankIcon', 'cpDeleteRankIcon',
+  'cpSignupList', 'cpSignupApprove', 'cpSignupFlag',
   'cpSignupPostSeat', 'cpPromoList', 'cpPromoRemove', 'cpPromoRestore',
 ]);
 

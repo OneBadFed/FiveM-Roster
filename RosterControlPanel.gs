@@ -33,7 +33,9 @@ function cpStatusColors_() {
   try {
     (cfg_().statuses || []).forEach((s) => {
       const c = String(s.color || '').trim();
-      if (s.name && /^#[0-9a-fA-F]{3,8}$/.test(c)) out[s.name] = c;
+      // {3,8} also admitted 5- and 7-digit values, which are not CSS colours at all — they reached the panel and
+      // silently produced no pill. Same shapes the rest of the engine accepts.
+      if (s.name && /^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c)) out[s.name] = c;
     });
   } catch (e) { /* config broken — pills fall back to the built-in palette */ }
   return out;
@@ -66,7 +68,6 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpSystemInfo: () => cpSystemInfo(),
   cpColumnsInfo: () => cpColumnsInfo(),
   cpSetColumnClass: (header, klass) => cpSetColumnClass(header, klass),
-  cpDividersInfo: () => cpDividersInfo(),
   cpFixTriggers: () => cpFixTriggers(),
   cpTakeSnapshot: () => cpTakeSnapshot(),
   cpRestoreSnapshot: (id) => cpRestoreSnapshot(id),
@@ -81,12 +82,6 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpRankIcons: () => cpRankIcons(),
   cpSetRankIcon: (rank, dataUri) => cpSetRankIcon(rank, dataUri),
   cpDeleteRankIcon: (rank) => cpDeleteRankIcon(rank),
-  cpSetRankColor: (rank, color) => cpSetRankColor(rank, color),
-  cpSetDividerStyle: (label, style) => cpSetDividerStyle(label, style),
-  cpDeleteDividerStyle: (label) => cpDeleteDividerStyle(label),
-  cpAdminSetup: (p) => cpAdminSetup(p),
-  cpAdminInfo: (id) => cpAdminInfo(id),
-  cpAddDiscipline: (p) => cpAddDiscipline(p),
   cpSignupList: () => cpSignupList(),
   cpSignupApprove: (p) => cpSignupApprove(p),
   cpSignupFlag: (p) => cpSignupFlag(p),
@@ -220,14 +215,23 @@ function cpTestWebhook(channel) {
   return { ok: true, channel: ch, code: res.code };
 }
 
-/** Panel: send a test to each listed channel that has a webhook. @return {ok, tested:[], missing:[]}. */
+/**
+ * Panel: send a test to each listed channel. cpTestWebhook throws for TWO different reasons — no URL saved, and
+ * Discord refusing the post — and folding both into one bucket reported a dead webhook as "not configured yet",
+ * which sends the operator to the wrong fix. They are reported separately.
+ * @return {{ok, tested:string[], missing:string[], failed:Array<{channel,why}>}}
+ */
 function cpTestWebhookChannels(channels) {
   const chans = webhookChannelList_(channels);
   if (!chans.length) throw new Error('Pick at least one channel to test.');
-  const tested = [], missing = [];
-  chans.forEach((c) => { try { cpTestWebhook(c); tested.push(c); } catch (e) { missing.push(c); } }); // cpTestWebhook throws when a channel has no URL
-  if (!tested.length) throw new Error('None of the selected channels have a webhook yet — save one first.');
-  return { ok: true, tested: tested, missing: missing };
+  const tested = [], missing = [], failed = [];
+  chans.forEach((c) => {
+    if (!webhookFor_(c)) { missing.push(c); return; }   // nothing saved — ask them to save one
+    try { cpTestWebhook(c); tested.push(c); }
+    catch (e) { failed.push({ channel: c, why: (e && e.message) ? e.message : String(e) }); } // saved, but Discord said no
+  });
+  if (!tested.length && !failed.length) throw new Error('None of the selected channels have a webhook yet — save one first.');
+  return { ok: true, tested: tested, missing: missing, failed: failed };
 }
 
 /* ----------------------------------------------------------------------------
@@ -325,7 +329,12 @@ function cpGetConfig_(ss) {
     fromTab: !!sheet,
     sheetName: sheet ? sheet.getName() : '',
     engine: ENGINE_VERSION,
-    sheetNames: s.getSheets().map((x) => x.getName()).filter((n) => n.indexOf('🧪') !== 0 && n.indexOf('_') !== 0),
+    // Every tab EXCEPT the ones no role may ever point at: the two reserved engine tabs (validateConfig_ rejects
+    // them anyway) and the DevQA sandboxes. Hidden "_"-prefixed tabs stay IN — [SHEETS].HOURS_HISTORY and
+    // SNAPSHOTS are supposed to point at them, and filtering them out left those two pickers unable to offer
+    // the tab they were already set to.
+    sheetNames: s.getSheets().map((x) => x.getName())
+      .filter((n) => n.indexOf('🧪') !== 0 && norm_(n) !== norm_(CONFIG_SHEET_NAME) && norm_(n) !== norm_(SYS_LOG_SHEET)),
     ranks: cpRosterRanks_(s), // live roster ranks — the override editor offers these as a dropdown instead of free text
     problems: v.problems.map((p) => ({ sev: p.sev, code: p.code, key: p.key, value: String(p.value == null ? '' : p.value), expected: p.expected || '' })),
     webhooks: cpWebhookStatus_(), // per-channel booleans — read via THIS user's admin-file access
@@ -357,9 +366,12 @@ function cpApplyConfig_(configSheet, payload) {
   });
   Object.keys(tableChanges).forEach((name) => {
     if (CP_SETTINGS_TABLES_.indexOf(name) === -1) throw new Error(`Table [${name}] is not editable from the panel.`);
-    // setTableRows_ pads/truncates to the 5-column grid — refuse rows carrying non-empty data beyond it rather than silently dropping it.
+    // Refuse rows carrying non-empty data past the block's OWN width rather than letting setTableRows_ pad them
+    // into the 5-wide grid. This used to compare against a literal 5 — right only while some block actually had 5
+    // columns — so a stray 5th value on a 4-column block was written into column E instead of being refused.
+    const W = BLOCK_SPECS_[name].cols.length;
     (tableChanges[name] || []).forEach((r) => {
-      if (Array.isArray(r) && r.length > 5 && r.slice(5).some((x) => String(x == null ? '' : x).trim() !== '')) {
+      if (Array.isArray(r) && r.length > W && r.slice(W).some((x) => String(x == null ? '' : x).trim() !== '')) {
         throw new Error(`[${name}] rows are limited to ${BLOCK_SPECS_[name].cols.length} columns — extra data would be dropped.`);
       }
     });
@@ -662,35 +674,6 @@ function deleteRankIconStore_(rank) {
   Object.keys(all).forEach((k) => { if (k.indexOf(pfx) === 0) props.deleteProperty(k); });
 }
 
-/* Per-rank PROFILE-CARD COLOUR — same document-property store as the icons (one small value per rank, no
- * chunking needed). The panel resolves a member's accent: explicit rank colour → the roster rank-cell's
- * background → neutral. So an operator can either colour their sheet's rank cells or set colours here. */
-const RANK_COLOR_PREFIX_ = 'RKCOLOR:'; // key: RKCOLOR:<encoded rank> → '#rrggbb'
-
-/** { rank: '#rrggbb' } for every stored profile-card colour. */
-function rankColorsMap_() {
-  const all = rankIconProps_().getProperties();
-  const map = {};
-  Object.keys(all).forEach((k) => {
-    if (k.indexOf(RANK_COLOR_PREFIX_) !== 0) return;
-    let rank; try { rank = decodeURIComponent(k.slice(RANK_COLOR_PREFIX_.length)); } catch (e) { return; }
-    if (rank) map[rank] = String(all[k]);
-  });
-  return map;
-}
-
-/** Panel endpoint: set — or clear, with an empty colour — the profile-card accent for a rank. */
-function cpSetRankColor(rank, color) {
-  rank = String(rank == null ? '' : rank).trim();
-  if (!rank) throw new Error('A rank is required.');
-  color = String(color == null ? '' : color).trim();
-  const key = RANK_COLOR_PREFIX_ + encodeURIComponent(rank);
-  if (!color) { rankIconProps_().deleteProperty(key); return { ok: true, rank: rank, color: '' }; }
-  if (!/^#([0-9a-f]{3}|[0-9a-f]{6})$/i.test(color)) throw new Error('The colour must be a hex value like #3f86e6.');
-  rankIconProps_().setProperty(key, color.toLowerCase());
-  return { ok: true, rank: rank, color: color.toLowerCase() };
-}
-
 /** One-time: move any v1.3.0 sheet-stored icons into document properties, then drop the slow base64-in-cells tab. Idempotent (no-op once the tab is gone). */
 function migrateRankIconSheet_() {
   const ss = SpreadsheetApp.getActive();
@@ -749,10 +732,8 @@ function cpRankIcons() {
     }
   }
   const icons = rankIconsMap_();
-  const colors = rankColorsMap_();
   Object.keys(icons).forEach((r) => { if (!(r in counts)) { counts[r] = 0; order.push(r); } }); // keep icons for ranks no longer on the roster
-  Object.keys(colors).forEach((r) => { if (!(r in counts)) { counts[r] = 0; order.push(r); } });
-  return { ranks: order.map((r) => ({ rank: r, members: counts[r], icon: icons[r] || '', color: colors[r] || '' })) };
+  return { ranks: order.map((r) => ({ rank: r, members: counts[r], icon: icons[r] || '' })) };
 }
 
 /** Panel endpoint: store/replace a rank's icon. `dataUri` is a small data:image/…;base64 string (already downscaled in the browser). */
@@ -1161,7 +1142,7 @@ const RUNLOG_PROP_ = 'RE_RUNLOG';
 const RUNLOG_MAX_ = 42;
 
 /** Classify a result line so the panel can colour it: found something / failed / nothing notable. */
-function runLogLevel_(name, msg, failed) {
+function runLogLevel_(msg, failed) {
   if (failed) return 'err';
   const m = String(msg || '');
   // "2 duplicates", "3 responses", "1 leave started" — a number greater than zero means it DID something.
@@ -1177,7 +1158,7 @@ function runLogAdd_(name, label, msg, failed) {
     let list; try { list = JSON.parse(P.getProperty(RUNLOG_PROP_) || '[]'); } catch (e) { list = []; }
     if (!Array.isArray(list)) list = [];
     list.unshift({ t: Date.now(), a: String(name || ''), l: String(label || name || ''),
-      r: clamp_(String(msg || ''), 300), lv: runLogLevel_(name, msg, failed) });
+      r: clamp_(String(msg || ''), 300), lv: runLogLevel_(msg, failed) });
     if (list.length > RUNLOG_MAX_) list.length = RUNLOG_MAX_;
     P.setProperty(RUNLOG_PROP_, JSON.stringify(list));
   } catch (e) { log_('runLogAdd_', e); }
@@ -1218,7 +1199,7 @@ const CP_ACTION_LABELS_ = Object.freeze({
   scanIntegrity: 'Run integrity scan',
   checkDuplicates: 'Check duplicate IDs',
   publishRoster: 'Publish public roster',
-  fixUnits: 'Fix callsign numbers',        // retired from the panel; the label stays so old run-log rows still read
+  fixUnits: 'Fix callsign numbers',        // no longer a panel action; the label stays so old run-log rows still read
   purgeWebhooks: 'Remove all webhooks',
 });
 /* Every one of these has a MENU twin (buildGroupSheets, scanIntegrity, publishPublicRosterNow …) that wraps the
@@ -1265,10 +1246,6 @@ function cpRunActionCore_(name) {
       return res === false ? 'Another sync is already running.'
         : res > 0 ? `Synced ${res} new leave form${res === 1 ? '' : 's'} to the tracker.`
           : 'No new leave forms to sync.';
-    }
-    case 'fixUnits': {
-      updateUnitNumbers_();
-      return 'Callsign / unit numbers renumbered.';
     }
     case 'checkDuplicates':
       return cpDuplicateReport_();
@@ -1430,116 +1407,14 @@ function cpSetColumnClass(header, klass) {
   return cpColumnsInfo();
 }
 
-/**
- * Injectable core: every SECTION DIVIDER the roster contains, the member/slot counts of the section each one
- * heads, AND the roster of members in it (for the panel's expandable rows). Read-only / informational —
- * auto-discovers dividers the same way isValidMemberValues_ does (an all-caps rank label > 3 chars, via
- * isDividerValue_), and flags training sections via isTrainingDividerLabel_. Scans from the row right under the
- * header (ROSTER_HEADER_ROW + 1) so a divider in the gap above rosterStartRow (e.g. one merged into row 6) is
- * still caught. "members" = filled member rows under the divider (until the next divider or the end); "slots" =
- * numberable slots in that span (filled + open); "people" = those filled members; "category" = the informational
- * section type ({label,tone}) for the colored tag, or null if the label matches no CONFIG.sectionCategories entry.
- * @return {Array<{row,cell,label,training,category,members,slots,people:Array<{rank,name,status,row}>}>}
- */
-function cpDividersInfo_(roster) {
-  const RC = rosterCols_(roster);
-  const scanStart = ROSTER_HEADER_ROW + 1; // dividers can sit in the row directly under the header, above rosterStartRow
-  const n = Math.max(0, roster.getLastRow() - scanStart + 1);
-  if (!n) return [];
-  const block = roster.getRange(scanStart, 1, n, roster.getLastColumn()).getDisplayValues();
-  const letterOf = (c) => (typeof cpColLetter_ === 'function') ? cpColLetter_(c) : String(c);
-  const found = [];
-  for (let i = 0; i < n; i++) {
-    const rank = String(block[i][RC.rank - 1]).trim();
-    if (!isDividerValue_(rank)) continue;
-    const row = scanStart + i;
-    found.push({ idx: i, row, cell: letterOf(RC.rank) + row, label: rank, training: isTrainingDividerLabel_(rank), category: sectionCategory_(rank) });
-  }
-  // Walk the members/slots under each divider (its rows run until the next divider, or the sheet end).
-  return found.map((d, k) => {
-    const endI = (k + 1 < found.length) ? found[k + 1].idx : n;
-    const people = [];
-    let slots = 0;
-    for (let i = d.idx + 1; i < endI; i++) {
-      const rank = String(block[i][RC.rank - 1]).trim();
-      const name = String(block[i][RC.name - 1]).trim();
-      if (isMemberSlot_(rank)) slots++;
-      if (isValidMemberValues_(rank, name)) {
-        people.push({ rank, name, status: String(block[i][RC.activity - 1]).trim(), row: scanStart + i });
-      }
-    }
-    return { row: d.row, cell: d.cell, label: d.label, training: d.training, category: d.category, members: people.length, slots, people };
-  });
-}
-
-/** Panel read: every section divider in the roster with the member/slot counts of the section it heads, plus any per-divider pill/icon overrides. */
-function cpDividersInfo() {
-  const roster = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
-  if (!roster) return { dividers: [], total: 0, error: `Roster tab "${CONFIG.sheets.roster}" not found.`, styles: {} };
-  const dividers = cpDividersInfo_(roster);
-  return { dividers, total: dividers.length, styles: divStyleMap_() };
-}
-
 /* ----------------------------------------------------------------------------
- * DIVIDER STYLES (v1.3.4) — per-divider pill (label + colour tone) + icon overrides,
- * edited on the Control Panel's Dividers page. Stored in DOCUMENT PROPERTIES keyed by
- * the divider label (never the sheet), so they persist without slowing the document.
- * Purely cosmetic — the panel's Dividers view uses them; keyword auto-detection is the
- * fallback for anything not customised.
+ * PROTECTED FILE — there is no separate admin spreadsheet any more: THIS workbook
+ * is the protected one, and the member-facing roster is a one-way published copy
+ * (🌐 Set Up Public Roster). The private tabs — Webhooks, the signup review — live
+ * right here, and Google's file-level ACL on this file is the gate: a panel dialog
+ * executes AS the person who opened it, so someone without access to this workbook
+ * cannot reach them, whatever the panel does or doesn't render.
  * ------------------------------------------------------------------------- */
-const DIVSTYLE_PREFIX_ = 'DIVSTYLE:';
-
-/** { dividerLabel: {pill, tone, icon} } for every stored override. */
-function divStyleMap_() {
-  const all = PropertiesService.getDocumentProperties().getProperties();
-  const map = {};
-  Object.keys(all).forEach((k) => {
-    if (k.indexOf(DIVSTYLE_PREFIX_) !== 0) return;
-    let label; try { label = decodeURIComponent(k.slice(DIVSTYLE_PREFIX_.length)); } catch (e) { return; }
-    let v; try { v = JSON.parse(all[k]); } catch (e) { return; }
-    if (label && v && typeof v === 'object') map[label] = { pill: String(v.pill || ''), tone: String(v.tone || ''), icon: String(v.icon || '') };
-  });
-  return map;
-}
-
-/** Panel endpoint: set a divider's pill (label + colour tone) + icon. Tone/icon are restricted to safe key charsets (the panel maps them to CSS vars / icon lookups). */
-function cpSetDividerStyle(label, style) {
-  label = String(label == null ? '' : label).trim();
-  if (!label) throw new Error('A divider label is required.');
-  style = style || {};
-  const clean = {
-    pill: clamp_(String(style.pill == null ? '' : style.pill).trim(), 40),
-    tone: /^[a-z]{2,12}$/.test(String(style.tone || '')) ? String(style.tone) : 'aux',   // must be a bare token — becomes a CSS var name in the panel
-    icon: /^[a-z0-9]{2,16}$/.test(String(style.icon || '')) ? String(style.icon) : 'person',
-  };
-  PropertiesService.getDocumentProperties().setProperty(DIVSTYLE_PREFIX_ + encodeURIComponent(label), JSON.stringify(clean));
-  return { ok: true, label: label, style: clean };
-}
-
-/** Panel endpoint: clear a divider's override (revert to keyword auto-detection). */
-function cpDeleteDividerStyle(label) {
-  label = String(label == null ? '' : label).trim();
-  if (label) PropertiesService.getDocumentProperties().deleteProperty(DIVSTYLE_PREFIX_ + encodeURIComponent(label));
-  return { ok: true, label: label };
-}
-
-/* ----------------------------------------------------------------------------
- * ADMIN ROSTER (v1.0) — a SEPARATE, admin-only spreadsheet for sensitive
- * member data (email, DOB, private notes, disciplinary history), linked to the
- * roster by Discord ID.
- *
- * SECURITY MODEL: panel dialogs execute AS the person who opened them, so every
- * admin read/write goes through SpreadsheetApp.openById(...) under THAT user's
- * Google permissions — Google's file-level ACL is the gate, not UI hiding. A
- * non-admin invoking these endpoints (even directly via dispatch) gets Google's
- * permission error, never data. The file ID lives in Document Properties (not a
- * secret — access is enforced by Google — but kept out of viewer-readable cells).
- * HARD RULE: admin data NEVER touches the main spreadsheet — no cells, no Edit
- * Log entries (cpAudit_ is deliberately not called here), no property caching.
- * ------------------------------------------------------------------------- */
-
-const ADMIN_SHEET_PROP_ = 'ADMIN_ROSTER_ID';
-const ADMIN_LOG_TAB_ = 'Disciplinary Log';
 
 /** The linked admin spreadsheet, opened AS THE CURRENT USER — throws Google's permission error for non-admins (that's the gate). @return {Spreadsheet|null} null when no file is linked. */
 function adminFile_() {
@@ -1553,34 +1428,7 @@ function cpAdminStatus_() {
   // Always available: the private tabs live in THIS workbook, and anyone who can open the Control Panel can open it.
   let url = '';
   try { url = SpreadsheetApp.getActive().getUrl(); } catch (e) { /* cosmetic */ }
-  return { linked: true, access: true, url: url, linkedBy: '', linkedAt: '', selfHosted: true };
-}
-
-/**
- * Ensure the two admin tabs exist with headers, '@' ID columns and the console theme. Idempotent.
- * SCALABLE FIELDS: on Member Details only the first TWO columns are fixed (Discord ID = the key, Name = auto-filled);
- * every column an admin adds after them becomes a private field that the panel discovers from this header row and
- * renders automatically — the field schema lives IN the admin file (so even the field NAMES stay non-public).
- * A hand-made tab whose fixed prefix doesn't match is refused (reads/writes would misread or clobber it).
- */
-function seedAdminSheet_(file) {
-  const mk = (name, headers, idCol, fixedPrefix) => {
-    let sh = file.getSheetByName(name);
-    if (!sh) sh = file.insertSheet(name);
-    if (sh.getLastRow() === 0) sh.appendRow(headers);
-    else {
-      const need = headers.slice(0, fixedPrefix || headers.length);
-      const have = sh.getRange(1, 1, 1, need.length).getDisplayValues()[0].map((h) => norm_(h));
-      const ok = need.every((h, i) => have[i] === norm_(h));
-      if (!ok) throw new Error(`The "${name}" tab exists but its ${fixedPrefix ? 'first ' + fixedPrefix + ' columns' : 'columns'} don't match (expected: ${need.join(' | ')}${fixedPrefix ? ' | …your own field columns' : ''}). Fix its header row, rename that tab, or link a different file.`);
-    }
-    const width = Math.max(sh.getLastColumn(), headers.length);
-    sh.getRange(1, 1, 1, width).setFontWeight('bold').setBackground(theme_('BANNER')).setFontColor(theme_('TEXT_STRONG'));
-    sh.getRange(1, idCol, sh.getMaxRows(), 1).setNumberFormat('@'); // 17-19 digit IDs stay exact text
-    if (sh.getFrozenRows() < 1) sh.setFrozenRows(1);
-  };
-  mk(ADMIN_LOG_TAB_, ['Date', 'Discord ID', 'Name', 'Action', 'Reason', 'Issued By', 'Status'], 2);
-  ensureWebhookTab_(file);        // per-channel Discord webhooks live here too — the file's ACL gates them
+  return { linked: true, access: true, url: url }; // linkedBy/linkedAt/selfHosted described the old separate-file era and had no reader
 }
 
 /* -------------------------------------------------------------------------
@@ -1887,6 +1735,7 @@ function sortSignups_(sheet) {
  */
 function signupSplit_(sheet, cap, recentCap) {
   const queue = [], recent = [];
+  let waiting = 0; // every row still needing action, including any past the cap — so the panel can say "N of M"
   const SC = signupCols_(sheet);
   const last = sheet.getLastRow();
   if (!SC.status || last < SC.dataStart) return { queue, recent };
@@ -1899,13 +1748,11 @@ function signupSplit_(sheet, cap, recentCap) {
     const rec = { row: SC.dataStart + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
       email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), join: g(SC.join), submitted: g(SC.timestamp) };
     if (signupIsDone_(st)) { if (recent.length < (recentCap || 12)) recent.push(rec); continue; }
+    waiting++;
     if (queue.length < (cap || 100)) queue.push(rec);
   }
-  return { queue, recent };
+  return { queue, recent, waiting };
 }
-
-/** Back-compat wrapper: the review queue alone. */
-function signupQueue_(sheet, cap) { return signupSplit_(sheet, cap, 0).queue; }
 
 /** Resolve the roster's PRIVATE columns (only present on an internal roster). 0 = absent → that detail simply isn't stored. */
 function rosterPiiCols_(roster) {
@@ -2061,10 +1908,22 @@ function publicFile_() {
   return _publicFileMemo_;
 }
 
-/** Tabs that are NEVER mirrored, even if a same-named tab somehow exists in the public file. */
+/**
+ * Tabs that are NEVER mirrored, even if a same-named tab somehow exists in the public file.
+ *
+ * Two layers, because the keyword list alone FAILED OPEN on a rename: [SHEETS].AUDIT, INTEGRITY, SNAPSHOTS,
+ * HOURS_HISTORY and SIGNUPS are all operator-editable, so an Edit Log renamed to "Change History" matched none of
+ * these words and stopped being blocked. The configured names are checked first (exact, like dashboardSkip_ does),
+ * and the keyword list stays as the catch-all for the shipped defaults and for hand-made lookalikes.
+ */
 function publishTabBlocked_(name) {
   const n = norm_(name);
   if (!n) return true;
+  try {
+    const C = cfg_().legacy.sheets;
+    if ([C.audit, C.integrity, C.snapshots, C.hoursHistory, C.signups, C.signupForm].some((t) => t && norm_(t) === n)) return true;
+  } catch (e) { /* config unreadable → the keyword list below still covers the defaults */ }
+  if (norm_(CONFIG_SHEET_NAME) === n || norm_(SYS_LOG_SHEET) === n) return true;
   return ['CONFIG', 'WEBHOOK', 'DISCIPLIN', 'SIGNUP', 'EDIT LOG', 'AUDIT', 'SNAPSHOT', 'HOURS HISTORY',
     'SYS LOG', 'INTEGRITY', 'SYNC STATE'].some((b) => n.indexOf(b) !== -1);
 }
@@ -2095,19 +1954,6 @@ function publishHeaderRow_(sh) {
 }
 
 /**
- * Injectable core: mirror ONE tab into the public copy. Columns are matched BY HEADER, so the public tab keeps its own
- * layout and only receives the columns it actually has — delete a column there and it simply stops being populated.
- * Sensitive headers are never written and are wiped if present. Values only, so formatting survives. @return rows copied.
- */
-
-/**
- * Write a 2D block into `dest` at (top,left) WITHOUT spanning merged cells. A plain setValues over a range containing
- * merges fails with Sheets' generic "Service error: Spreadsheets", and these layouts are full of merged banners/boxes.
- * Merge-free row spans are written in ONE call (so the bulk stays fast); rows containing merges are written as runs,
- * skipping every cell that is inside a merge but is not its top-left (the only writable cell of a merge).
- */
-/** [PUBLISH].KEEP_RANGES parsed into { normalisedTabName: ['F6:W7', ...] }. '*' applies to every tab. */
-/**
  * Read a range as values but with FORMULAS PRESERVED: a source cell holding a formula yields the formula text, which
  * setValues re-creates as a live formula on the public copy. Without this a "=TEXT(NOW(),...)" clock publishes as the
  * frozen string it happened to evaluate to. Self-referential formulas (the tracker's LENGTH / TIME LEFT) therefore keep
@@ -2137,14 +1983,6 @@ function publishReadCells_(range, valuesOnly, force) {
   return v;
 }
 
-/**
- * True when the destination tab COMPUTES ITSELF from other tabs — i.e. it holds a formula referencing another sheet
- * (the shift tabs and Police Academy are FILTER/ARRAY_CONSTRAIN views over 'Member Information').
- *
- * Such tabs must not be published into. Their array formulas SPILL, and writing the source's spilled values into that
- * spill range blocks it, which Sheets reports as #REF!. Left alone they rebuild themselves from the public copy of the
- * tab they reference, which the publish does populate — so they stay correct with no work at all.
- */
 /**
  * Repair a self-computing tab: earlier publishes wrote literal values into the ranges its array formulas need to SPILL
  * into, which blocks them (#REF!). Clear only that residue — for each formula anchor, the cells to its RIGHT and BELOW
@@ -2192,6 +2030,14 @@ function publishFreeSpills_(dest) {
   return cleared;
 }
 
+/**
+ * True when the destination tab COMPUTES ITSELF from other tabs — i.e. it holds a formula referencing another sheet
+ * (the shift tabs and Police Academy are FILTER/ARRAY_CONSTRAIN views over 'Member Information').
+ *
+ * Such tabs must not be published into. Their array formulas SPILL, and writing the source's spilled values into that
+ * spill range blocks it, which Sheets reports as #REF!. Left alone they rebuild themselves from the public copy of the
+ * tab they reference, which the publish does populate — so they stay correct with no work at all.
+ */
 function publishSelfComputing_(dest) {
   try {
     const rows = Math.min(dest.getLastRow(), 300), cols = Math.min(dest.getLastColumn(), 60);
@@ -2414,12 +2260,6 @@ function publishFitRows_(src, dest, dataEnd, allowTrim) {
 }
 
 /**
- * May the publish propagate row STYLING on this tab? Only the banded data tabs — the roster, the LOA Tracker and
- * the Patrol Log — where every row is a peer of the one above it, so copying a neighbour's look onto a freshly
- * published row is right. Deliberately excludes dashboards and any other tab: a Welcome Page's rows are bespoke
- * (KPI boxes, promotion tables), and pushing row N-2's format onto row N there would wreck the design.
- */
-/**
  * Keep the PERIOD (archive) hours headers in step on the public copy — header-matched path only.
  * 📸 Capture & Reset rolls those columns left here and REWRITES their labels (MAY HOURS → JUN HOURS, the
  * rightmost taking the period just closed). The header-matched publish never writes the public header row, so
@@ -2461,6 +2301,12 @@ function publishSyncPeriodHeaders_(src, dest, dh, sHdr, dHdr, deep) {
   } catch (e) { logWarn_('publishSyncPeriodHeaders_', 'period header sync skipped: ' + ((e && e.message) ? e.message : e)); return 0; }
 }
 
+/**
+ * May the publish propagate row STYLING on this tab? Only the banded data tabs — the roster, the LOA Tracker and
+ * the Patrol Log — where every row is a peer of the one above it, so copying a neighbour's look onto a freshly
+ * published row is right. Deliberately excludes dashboards and any other tab: a Welcome Page's rows are bespoke
+ * (KPI boxes, promotion tables), and pushing row N-2's format onto row N there would wreck the design.
+ */
 function publishStyleableTab_(name) {
   try {
     const n = norm_(name), C = cfg_().legacy.sheets;
@@ -2848,7 +2694,6 @@ function setupPublicRoster() {
       file = SpreadsheetApp.openById(m[0]); // throws Google's own permission error if they can't open it
     } else {
       file = SpreadsheetApp.create(`${SpreadsheetApp.getActive().getName()} — Public Roster`);
-      const s1 = file.getSheets()[0];
     }
     PropertiesService.getDocumentProperties().setProperty(PUBLIC_FILE_PROP_, file.getId());
     const sum = publishPublicRoster_();
@@ -2944,7 +2789,7 @@ function cpSignupList() {
   const sh = file.getSheetByName(CONFIG.sheets.signups);
   if (!sh) return Object.assign({ linked: true, ready: false, signups: [], recent: [] }, base);
   const split = signupSplit_(sh, 100, 12);
-  return Object.assign({ linked: true, ready: true, signups: split.queue, recent: split.recent }, base);
+  return Object.assign({ linked: true, ready: true, signups: split.queue, recent: split.recent, waiting: split.waiting }, base);
 }
 
 /**
@@ -3121,90 +2966,6 @@ function cpPromoRemove(payload) {
   try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {} // the public Welcome Page mirrors it
   try { cpAudit_('action', '', `Removed promotions-feed entry: ${p.n} → ${p.r}`, '', p.n); } catch (e) { /* best-effort */ }
   return { ok: true, removed: p.n, left: list.length };
-}
-
-/** Grow the grid when a write would land past the last row (a full 1000-row grid would otherwise throw). */
-function adminEnsureRow_(sheet, r) {
-  if (r > sheet.getMaxRows()) sheet.insertRowsAfter(sheet.getMaxRows(), 100);
-}
-
-/** The admin tabs, seeding them if missing. PII lives on the Internal Roster tab; this resolves the Disciplinary Log. */
-function adminTabs_(file) {
-  let l = file.getSheetByName(ADMIN_LOG_TAB_);
-  if (!l) { seedAdminSheet_(file); l = file.getSheetByName(ADMIN_LOG_TAB_); }
-  return { log: l };
-}
-
-/** Injectable core: one member's disciplinary history (newest first, capped — default 50). Testable. */
-function cpAdminRead_(logSheet, discordId, cap) {
-  cap = (typeof cap === 'number' && cap > 0) ? cap : 50;
-  const out = { discipline: [] }; // PII fields now live on the Internal Roster tab (edited there, synced by Unique ID)
-  const last = logSheet.getLastRow();
-  if (last >= 2) {
-    const id = String(discordId == null ? '' : discordId).trim();
-    const rows = logSheet.getRange(2, 1, last - 1, 7).getDisplayValues();
-    for (let i = rows.length - 1; i >= 0 && out.discipline.length < cap; i--) {
-      if (String(rows[i][1]).trim() !== id) continue;
-      out.discipline.push({ date: String(rows[i][0]), action: String(rows[i][3]), reason: String(rows[i][4]), issuedBy: String(rows[i][5]), status: String(rows[i][6]) });
-    }
-  }
-  return out;
-}
-
-/** Injectable core: append a disciplinary entry (append-only — history is never edited from the panel). Text columns are '@'-formatted before the write (formula-injection guard); the Date column stays a real date. Testable. */
-function cpAppendDiscipline_(logSheet, entry) {
-  const id = String((entry && entry.discordId) || '').trim();
-  if (!isValidId_(id)) throw new Error('Unique ID must be ' + idDigitsLabel_() + ' digits.');
-  const action = clamp_(String((entry && entry.action) || '').trim(), 60);
-  if (action === '') throw new Error('Action is required.');
-  const reason = clamp_(String((entry && entry.reason) || '').trim(), 1000);
-  const name = clamp_(String((entry && entry.name) || '').trim(), 120);
-  const issuedBy = clamp_(String((entry && entry.issuedBy) || '').trim(), 200);
-  const status = clamp_(String((entry && entry.status) || 'Active').trim(), 40) || 'Active';
-  const r = Math.max(logSheet.getLastRow(), 1) + 1;
-  adminEnsureRow_(logSheet, r);
-  logSheet.getRange(r, 2, 1, 6).setNumberFormat('@'); // ID exact + no formula execution from reason/notes text — BEFORE the write
-  logSheet.getRange(r, 1, 1, 7).setValues([[new Date(), id, name, action, reason, issuedBy, status]]);
-  return { row: r };
-}
-
-/** Panel endpoint: create a new admin spreadsheet (owned by the acting admin) or link an existing one by URL/ID. Gated + logged. */
-function cpAdminSetup(payload) {
-  // RETIRED: there is no separate admin file any more. This workbook is the protected one and the PUBLIC roster is a
-  // one-way published copy (🌐 Set Up Public Roster). Refused outright so nobody can repoint a now-unread property.
-  throw new Error('The separate admin file has been retired — this workbook IS the internal roster. Use 👥 Roster ▸ 🌐 Set Up Public Roster to publish the member-facing copy.');
-}
-
-/**
- * Panel endpoint: one member's discipline history + a link to the admin file (Google's ACL gates this — see the
- * section header). PII fields are NOT returned here any more: they live on the Internal Roster tab and are edited
- * there, so the panel links to the file instead of round-tripping DOB/email through the page.
- */
-function cpAdminInfo(discordId) {
-  const file = adminFile_();
-  if (!file) return { linked: false, url: '', discipline: [] };
-  const out = cpAdminRead_(adminTabs_(file).log, discordId);
-  out.linked = true;
-  try { out.url = file.getUrl(); } catch (e) { out.url = ''; }
-  return out;
-}
-
-/** Panel endpoint: record a disciplinary action (append-only) and return the member's refreshed admin info. */
-function cpAddDiscipline(payload) {
-  const file = adminFile_();
-  if (!file) throw new Error('No admin roster is linked yet — set one up on the Tools tab.');
-  const t = adminTabs_(file);
-  let issuedBy = '';
-  try { issuedBy = Session.getActiveUser().getEmail() || ''; } catch (e) { /* consumer-Gmail may hide it */ }
-  if (issuedBy && typeof auditWho_ === 'function') issuedBy = auditWho_(issuedBy); // member NAME when the email is on their roster row
-  // INTERACTIVE-FIRST: stand the publisher down before waiting (see cpWithLock_) — its pass can hold the lock 10s+.
-  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
-  const lock = LockService.getScriptLock(); // two panels appending concurrently compute the same last-row and silently overwrite each other
-  if (!lock.tryLock(30000)) throw new Error('Another roster operation is running — try again in a moment.');
-  try {
-    cpAppendDiscipline_(t.log, Object.assign({}, payload, { issuedBy: issuedBy }));
-  } finally { lock.releaseLock(); }
-  return cpAdminInfo(String((payload && payload.discordId) || ''));
 }
 
 /* ----------------------------------------------------------------------------

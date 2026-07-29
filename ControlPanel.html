@@ -728,16 +728,6 @@
          box-shadow:0 .5px 0 rgba(255,255,255,.25) inset,0 1px 2px rgba(0,0,0,.3);}
   .btn.sf-go:active{transform:none;filter:brightness(.93);}
   .pc-adm>.pc-lbl{color:#e08a84;}
-  .disc-list{display:flex;flex-direction:column;gap:6px;margin:var(--s2) 0;}
-  .disc{background:var(--e2);border-radius:10px;padding:8px 10px;box-shadow:var(--hi);}
-  .disc-h{display:flex;align-items:center;gap:8px;}
-  .disc-h b{font-size:12.5px;}
-  .disc-st{font-size:10px;color:#e0a52c;text-transform:uppercase;letter-spacing:.05em;font-weight:700;}
-  .disc-dt{margin-left:auto;font-size:10.5px;color:var(--txt-3);white-space:nowrap;}
-  .disc-r{font-size:12px;color:var(--txt-2);margin-top:3px;}
-  .disc-by{font-size:10.5px;color:var(--txt-3);margin-top:2px;}
-  .adm-add{display:flex;gap:var(--s2);margin-top:var(--s2);align-items:stretch;}
-  .adm-add .sf-mini{flex:1;}
   .mvrow{display:flex;gap:var(--s2);margin-top:var(--s2);align-items:stretch;}
   .mvrow .mv-trigger{flex:1;min-width:0;width:auto;border:none;border-radius:6px;height:24px;padding:0 4px 0 9px;font-size:12.5px;
                      background:var(--ctl);box-shadow:var(--ctl-ring);}
@@ -1343,7 +1333,7 @@
         <div class="conn">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><b>Admin roster</b></div>
           <div id="admSetup"><span class="muted2">Loading…</span></div>
-          <p class="hint">A separate spreadsheet that stores your Discord webhook URLs. <b>Google file sharing is the access control</b> — only accounts the file is shared with can view, change or post through them.</p>
+          <p class="hint">Webhook URLs and the signup review tab live in <b>this</b> workbook, never in the published public copy. <b>Google file sharing is the access control</b> — only accounts this file is shared with can view, change or post through them.</p>
         </div>
       </div>
   </div>
@@ -1394,7 +1384,7 @@
 <script>
   var EMBED_BOOT = <?!= bootJson ?>; // server-embedded bootstrap (see openControlPanel) — null falls back to the cpBootstrap RPC
   var INIT_TAB = "<?= initialTab ?>"; // deep-link target tab (e.g. 'signups' from 🧾 Review Roster Signups); '' = default
-  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},rankColors:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',filterShift:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,admin:{linked:false,access:false,url:''},admDraft:{},idDigits:null,shiftLabel:'',shiftAssignedBy:'MEMBER',shiftValues:[],addShift:'',addStatus:'',defaultStatus:''};
+  var STATE={members:[],statuses:['Active','Semi-Active','Inactive','LOA','ROA','Reserve'],leaveTypes:['LOA','ROA'],protected:['Reserve'],statusColors:{},rankIcons:{},openRow:null,version:'',filterStatus:'all',filterRank:'all',filterShift:'all',sort:'roster',selected:{},formData:{},formOpen:null,systemLoaded:false,autoSnap:false,auditOn:false,auditAll:[],auditQuery:'',auditType:'all',auditLoggingOn:false,columnsLoaded:false,admin:{linked:false,access:false,url:''},idDigits:null,shiftLabel:'',shiftAssignedBy:'MEMBER',shiftValues:[],addShift:'',addStatus:'',defaultStatus:''};
   function memberByRow(row){ var r=Number(row); for(var i=0;i<STATE.members.length;i++){ if(STATE.members[i].row===r) return STATE.members[i]; } return null; }
   function discordOf(row){ var m=memberByRow(row); return m?(m.discord||''):''; }
   var SVG={
@@ -1440,7 +1430,6 @@
     status:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="currentColor" stroke="none"/></svg>',
     leave:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 9h18M8 3v4M16 3v4M12 13v4M10 15h4"/></svg>',
     trend:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 4v16h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>',
-    history:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h12M8 12h12M8 18h12"/><path d="M3.5 6h.01M3.5 12h.01M3.5 18h.01"/></svg>',
     checks:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>',
     move:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h11M4 8l3-3M4 8l3 3"/><path d="M20 16H9M20 16l-3-3M20 16l-3 3"/></svg>',
     lock:'<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="11" width="16" height="10" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>'
@@ -1497,7 +1486,7 @@
   function skel(n){ var o=''; for(var i=0;i<n;i++) o+='<div class="skel-row"></div>'; return o; }
   function mInitials(n){ var p=String(n||'').replace(/[^A-Za-z0-9 .'-]/g,'').split(/[ .]+/).filter(Boolean); if(!p.length) return '—'; var a=(p[0][0]||''); var b=p.length>1?(p[p.length-1][0]||''):''; return (a+b).toUpperCase()||'—'; }
   function pillClass(st){ var k=String(st||'').replace(/[^A-Za-z]/g,''); return ['Active','SemiActive','Inactive','LOA','ROA','Reserve'].indexOf(k)>=0?'p-'+k:'p-none'; }
-  function cfgColor(st){ var c=(STATE.statusColors||{})[String(st||'')]; return (c&&/^#[0-9a-fA-F]{3,8}$/.test(c))?c:''; } // server already validates; re-checked before any inline style
+  function cfgColor(st){ var c=(STATE.statusColors||{})[String(st||'')]; return (c&&/^#([0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.test(c))?c:''; } // server already validates; re-checked before any inline style
   function pill(st){
     var cls=pillClass(st);
     if(cls==='p-none'){ var c=cfgColor(st); if(c) return '<span class="pill" style="background:'+c+'22;border-color:'+c+'55;color:'+c+'"><span class="pdot" style="background:'+c+'"></span>'+esc(st||'—')+'</span>'; }
@@ -1538,10 +1527,9 @@
     whStatus(b.webhooks||{});
     apply(b); setHealthPill(b.health); setLoading(false);
     api(function(res){ // PERF: heavy base64 icons arrive after first paint; initials → icons swap. Endpoint shape = {ranks:[{rank,icon,color,…}]}
-      var map={}, cmap={};
-      (((res||{}).ranks)||[]).forEach(function(r){ if(!r) return; if(r.icon) map[r.rank]=r.icon; if(r.color) cmap[r.rank]=r.color; });
-      STATE.rankColors=cmap;
-      if(Object.keys(map).length||Object.keys(cmap).length){ STATE.rankIcons=map; renderMembers(); renderSlots(); }
+      var map={};
+      (((res||{}).ranks)||[]).forEach(function(r){ if(!r) return; if(r.icon) map[r.rank]=r.icon; });
+      if(Object.keys(map).length){ STATE.rankIcons=map; renderMembers(); renderSlots(); }
     }, function(){}, "cpRankIcons");
     // Same idea for the signup queue: after first paint, so the sidebar can report how many applicants are
     // waiting without you opening the tab — and the tab then opens instantly. Failure is silent (an operator
@@ -1823,67 +1811,15 @@
         else lv.innerHTML=p.leaves.map(function(l){ return '<div class="lr"><span><b>'+esc(l.type||'—')+'</b> &nbsp;'+esc(l.start||'?')+' → '+esc(l.end||'?')+'</span><span class="ltag"><span class="pdot" style="background:'+leaveDot(l.status)+'"></span>'+esc(l.status||'')+'</span></div>'; }).join(''); }
     }, onError, "cpGetProfile", m.discord);
   }
-  /* admin section — PII (DOB, email, …) now lives on the INTERNAL ROSTER tab of the admin file, edited there and
-     synced two-way by Unique ID. The panel keeps the disciplinary history + "record action" and links to that file. */
-  function admHtml(m,a){
-    if(!a || a.linked===false) return '<span class="muted2">No admin roster linked — set one up on the Tools tab.</span>';
-    var d=STATE.admDraft[m.row]||{};
-    if(d.id && d.id!==m.discord){ delete STATE.admDraft[m.row]; d={}; } // rows shifted since the draft was typed — never rehydrate under a different member
-    var v=function(dv,sv){ return dv!=null?dv:(sv||''); };
-    var fieldsHtml='<span class="muted2">Private details (DOB, email, …) live on the <b>Internal Roster</b> tab of the admin file — they stay keyed to this member\'s Unique ID, so a promotion or re-sort never separates them.</span>'
-      +(a.url?(' <a class="linkbtn" href="'+esc(a.url)+'" target="_blank" rel="noopener">Open Internal Roster</a>'):'');
-    var hist=(a.discipline&&a.discipline.length)
-      ? a.discipline.map(function(x){ return '<div class="disc"><div class="disc-h"><b>'+esc(x.action||'—')+'</b>'+(x.status?('<span class="disc-st">'+esc(x.status)+'</span>'):'')+'<span class="disc-dt">'+esc(x.date||'')+'</span></div>'+(x.reason?('<div class="disc-r">'+esc(x.reason)+'</div>'):'')+(x.issuedBy?('<div class="disc-by">by '+esc(x.issuedBy)+'</div>'):'')+'</div>'; }).join('')
-      : '<span class="muted2">No disciplinary actions on record.</span>';
-    var op=function(x){ return '<option value="'+esc(x)+'"'+(d.act===x?' selected':'')+'>'+esc(x)+'</option>'; };
-    return fieldsHtml
-      +'<div class="pc-lbl" style="margin-top:var(--s3)">'+PIC.history+'Disciplinary history</div><div class="disc-list">'+hist+'</div>'
-      +'<div class="adm-add"><select class="field sf-mini" id="admAct'+m.row+'">'+['Warning','Strike','Suspension','Demotion','Termination','Other'].map(op).join('')+'</select>'
-      +'<input class="field" id="admRe'+m.row+'" value="'+esc(v(d.re,''))+'" placeholder="Reason" autocomplete="off" style="flex:2">'
-      +'<button class="linkbtn" data-admdisc="'+m.row+'">Record action</button></div>';
-  }
-  function admDraftClear(row,keys){ // clear only the keys that form owns — the OTHER form's unsaved edits survive
-    var d=STATE.admDraft[row]; if(!d) return;
-    keys.forEach(function(k){ delete d[k]; });
-    if(Object.keys(d).filter(function(k){return k!=='id';}).length===0) delete STATE.admDraft[row];
-  }
-  function addDiscipline(row,btn){
-    var m=memberByRow(row); if(!m||!m.discord){ toast('This member has no Discord ID.','err'); return; }
-    var act=$('admAct'+row).value, re=$('admRe'+row).value.trim();
-    btn.disabled=true;
-    api(function(a){ btn.disabled=false; admDraftClear(row,['re','act']); var el=$('adm'+row); if(el) el.innerHTML=admHtml(m,a); toast('Recorded: '+act+'.','ok'); },
-        function(e){ btn.disabled=false; onError(e); }, "cpAddDiscipline", {discordId:m.discord,name:m.name,action:act,reason:re});
-  }
   function renderAdminSetup(){
     var el=$('admSetup'); if(!el) return;
     var A=STATE.admin||{};
-    // Status rows first (provenance stays visible — a rogue link must be noticeable), then the link controls.
-    // The controls ALWAYS render: first-time setup uses them, and once linked they double as the recovery /
-    // relink path (the SERVER gate decides who may actually change it: a current admin or the sheet owner).
-    var rows='<div class="crow"><span class="crow-k">Status</span><span class="crow-v"><span class="dot'+(A.linked?' on':'')+'"></span>'+(A.linked?'Linked':'Not linked')+'</span></div>'
-      +(A.linked?('<div class="crow"><span class="crow-k">Your access</span><span class="crow-v"><span class="dot '+(A.access?'on':'off')+'"></span>'+(A.access?'You have access':'No access — ask an admin to share the file')+'</span></div>'):'')
-      +(A.linkedBy?('<div class="crow"><span class="crow-k">Linked by</span><span class="crow-v">'+esc(A.linkedBy)+(A.linkedAt?(' · '+esc(A.linkedAt)):'')+'</span></div>'):'');
-    var verb=A.linked?'Replace with a new admin roster':'Create &amp; link a new admin roster';
-    el.innerHTML=rows
-      +'<div style="display:flex;gap:var(--s2);align-items:stretch;flex-wrap:wrap;margin-top:var(--s3)">'
-      +((A.linked&&A.access&&A.url)?('<a class="linkbtn" href="'+esc(A.url)+'" target="_blank" rel="noopener" style="text-decoration:none">Open spreadsheet</a>'):'')
-      +'<button class="linkbtn" id="admCreate">'+verb+'</button>'
-      +'<input class="field mono" id="admUrl" placeholder="…or paste a sheet URL / ID" autocomplete="off" style="flex:1;min-width:180px">'
-      +'<button class="linkbtn" id="admLinkBtn">'+(A.linked?'Relink':'Link')+'</button></div>'
-      +(A.linked?'<p class="hint" style="margin-top:6px">Relinking is restricted to current admins and the sheet owner; every change is logged.</p>':'');
-    var go=function(payload,btn){
-      btn.disabled=true;
-      api(function(r){ btn.disabled=false; STATE.admin={linked:true,access:true,url:r.url,linkedBy:'you',linkedAt:''};
-        addIdPlaceholder();
-    renderAdminSetup(); renderMembers(); // profile cards gain the Admin section
-        var msg=r.created?'Admin roster created — share it with your admin team only.':'Admin roster linked.';
-        if(r.relinked) msg+=' (Replaced the previously linked file — this change is logged.)';
-        if(r.badIds) msg+=' ⚠️ '+r.badIds+' row(s) in it have invalid Discord IDs — fix them in the admin file.';
-        toast(msg,'ok');
-      }, function(e){ btn.disabled=false; onError(e); }, "cpAdminSetup", payload);
-    };
-    $('admCreate').addEventListener('click',function(){ go({},this); });
-    $('admLinkBtn').addEventListener('click',function(){ var u=$('admUrl').value.trim(); if(!u){ toast('Paste the admin sheet link or ID first.','err'); return; } go({url:u},this); });
+    /* There is no separate admin spreadsheet to create or link any more — THIS workbook is the protected one and
+       the member-facing roster is a one-way published copy. The old Create/Link buttons called an endpoint that had
+       been retired on the server, so both could only ever produce an error. */
+    el.innerHTML='<div class="crow"><span class="crow-k">Private data</span><span class="crow-v"><span class="dot on"></span>Stored in this workbook</span></div>'
+      +'<div class="crow"><span class="crow-k">Who can reach it</span><span class="crow-v">Anyone this file is shared with</span></div>'
+      +(A.url?('<div style="margin-top:var(--s3)"><a class="linkbtn" href="'+esc(A.url)+'" target="_blank" rel="noopener" style="text-decoration:none">Open this spreadsheet</a></div>'):'');
   }
   function sparkline(series,req){
     series=(series||[]).slice(-4); // the last four activity checks — the same set the check cells above show
@@ -2219,7 +2155,7 @@
   }
 
   /* ── Signups pane: approve a pending applicant into an open slot (mirrors Add member) ── */
-  var SU={signups:[],recent:[],slots:[],linked:false,ready:false,loaded:false,cur:null,slot:null,
+  var SU={signups:[],recent:[],waiting:0,slots:[],linked:false,ready:false,loaded:false,cur:null,slot:null,
           scope:'open',statuses:null,status:'',oocCol:false,shiftLabel:'',flagged:'Flagged',shift:'',avMap:null};
   function suApp(row){ for(var i=0;i<SU.signups.length;i++){ if(String(SU.signups[i].row)===String(row)) return SU.signups[i]; } return null; }
   function suSlotObj(row){ for(var i=0;i<SU.slots.length;i++){ if(String(SU.slots[i].row)===String(row)) return SU.slots[i]; } return null; }
@@ -2316,6 +2252,9 @@
         +(suIsFlagged(a)?'<span class="suq-dot" title="Flagged for review"></span>':'')+'</button>';
     }).join('');
     if(!list.length) out+='<div class="suq-done" style="height:auto;padding:14px 8px">Nothing waiting here.</div>';
+    // The server caps the queue at 100 rows. Say so rather than letting the rest go unmentioned.
+    var hidden=Math.max(0,(SU.waiting||0)-(SU.signups||[]).length);
+    if(hidden) out+='<div class="suq-head">'+hidden+' more waiting — work through these first</div>';
     // Recently resolved — what was decided, so the queue does not look like it silently ate them.
     var done=(SU.recent||[]).slice(0,5);
     if(done.length){
@@ -2676,7 +2615,7 @@
     if(SU.loaded && !force){ renderSignups(); return; }
     var el=$('suBody'); if(el) el.innerHTML='<div class="skblk"></div>'; var qb=$('suBar'); if(qb) qb.hidden=true;
     api(function(d){
-      SU.signups=d.signups||[]; SU.recent=d.recent||[]; SU.slots=d.slots||[]; SU.linked=!!d.linked; SU.ready=!!d.ready; SU.loaded=true;
+      SU.signups=d.signups||[]; SU.recent=d.recent||[]; SU.waiting=Number(d.waiting||0); SU.slots=d.slots||[]; SU.linked=!!d.linked; SU.ready=!!d.ready; SU.loaded=true;
       SU.statuses=d.statuses||null; SU.oocCol=!!d.oocCol; SU.shiftLabel=String(d.shiftLabel||'').trim(); SU.flagged=d.flaggedStatus||'Flagged';
       if(!SU.status) SU.status=STATE.defaultStatus||'';
       if(d.rankIcons){ STATE.rankIcons=STATE.rankIcons||{}; for(var k in d.rankIcons) STATE.rankIcons[k]=d.rankIcons[k]; }
@@ -2928,7 +2867,6 @@
     if(mm){ var row=mm[2]; (STATE.formData[row]||(STATE.formData[row]={}))[mm[1]]=e.target.value; return; }
     var am=String(e.target.id||'').match(/^adm(Re|Act)(\d+)$/); if(!am) return; // admin drafts survive a re-render too (F-026 pattern)
     var arow=am[2], key={Re:'re',Act:'act'}[am[1]];
-    var ad=(STATE.admDraft[arow]||(STATE.admDraft[arow]={})); ad[key]=e.target.value;
     var amem=memberByRow(Number(arow)); ad.id=amem?(amem.discord||''):''; // stamp ownership so a shifted row can't rehydrate another member's draft
   });
   $('mlist').addEventListener('click',function(e){
@@ -2936,7 +2874,6 @@
     if(copyClick(e)){ e.stopPropagation(); return; } /* stop here too, or copying an ID would collapse the row */
     var sc=e.target.closest('[data-sched]'); if(sc){ var scr=Number(sc.dataset.sched); STATE.formOpen=(STATE.formOpen===scr?null:scr); renderMembers(); return; } // F-026: drive open-state off STATE so a re-render preserves it
     var sg=e.target.closest('[data-schedgo]'); if(sg){ scheduleLeave(Number(sg.dataset.schedgo),sg); return; }
-    var adc=e.target.closest('[data-admdisc]'); if(adc){ addDiscipline(Number(adc.dataset.admdisc),adc); return; }
     var mvb=e.target.closest('[data-mvbtn]'); if(mvb){ e.stopPropagation(); openMvMenu(); return; }
     var mvo=e.target.closest('[data-mvrow]'); if(mvo){ setMove(Number(mvo.dataset.mvrow)); openMvMenu(false); return; }
     var mvg=e.target.closest('[data-movego]'); if(mvg){ moveMember(Number(mvg.dataset.movego),mvg); return; }
@@ -2990,8 +2927,9 @@
     if(!chans.length){ toast('Tick at least one channel first.','err'); return; }
     btn.disabled=true;
     api(function(r){ btn.disabled=false;
-      var t=(r.tested||[]).length, m=(r.missing||[]).length;
-      toast('Test sent to '+t+' channel'+(t===1?'':'s')+(m?(' · '+m+' had no webhook'):'')+' — check Discord.',"ok");
+      var t=(r.tested||[]).length, m=(r.missing||[]).length, f=(r.failed||[]).length;
+      // "no webhook saved" and "Discord refused the post" send you to different fixes, so they are reported apart.
+      toast('Test sent to '+t+' channel'+(t===1?'':'s')+(m?(' · '+m+' not set up'):'')+(f?(' · '+f+' rejected by Discord'):'')+(t?' — check Discord.':'.'), f?'err':'ok');
       var row=$('whTestRow'); if(row){ row.hidden=false; $('whTestV').innerHTML='<span class="dot on"></span>'+t+' channel'+(t===1?'':'s')+' · sent this session'; }
     }, function(e){ btn.disabled=false; onError(e); }, "cpTestWebhookChannels", chans);
   });

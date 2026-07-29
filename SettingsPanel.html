@@ -1713,8 +1713,8 @@
       var chips=groups.map(function(g,gi){ var g0=String(g[0]||'').trim(); if(!g0) return '';
         var on=listOf(g[1]).some(function(x){return x.toUpperCase()===String(r.rank).toUpperCase();});
         return '<span class="rlt'+(on?' on':'')+'" data-rltog="1" data-gi="'+gi+'" data-rank="'+esc(r.rank)+'">'+esc(g0)+'</span>'; }).join('');
-      return '<div class="rlrow"><span class="rlav"'+(r.color?' style="box-shadow:0 0 0 2px '+esc(r.color)+', 0 0 12px -2px '+esc(r.color)+'"':'')+'>'+av+'</span><span class="rlnm">'+esc(r.rank)
-        +'<small>'+(r.members===1?'1 member':((r.members||0)+' members'))+(r.icon?' · icon set':'')+(r.color?' · colour set':'')+'</small></span>'
+      return '<div class="rlrow"><span class="rlav">'+av+'</span><span class="rlnm">'+esc(r.rank)
+        +'<small>'+(r.members===1?'1 member':((r.members||0)+' members'))+(r.icon?' · icon set':'')+'</small></span>'
         +'<div class="rlchips">'+chips+'</div>'
         +'<div class="rkbtns"><label class="rkbtn rkup">'+(r.icon?'Replace':'Upload')
           +'<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-rankfile="'+esc(r.rank)+'" hidden></label>'
@@ -1745,9 +1745,9 @@
     host.innerHTML='<div class="rkgrid">'+ranks.map(function(r){
       var av=r.icon?('<img src="'+esc(r.icon)+'" alt="">'):('<span class="rkmono">'+esc(rkInitials(r.rank))+'</span>');
       var count=(r.members===1?'1 member':((r.members||0)+' members'));
-      var meta=count+(r.icon?' · icon set':'')+(r.color?' · colour set':'');
+      var meta=count+(r.icon?' · icon set':'');
       return '<div class="rkcard" data-rank="'+esc(r.rank)+'">'
-        +'<div class="rkav'+(r.icon?' has':'')+'"'+(r.color?' style="box-shadow:0 0 0 2px '+esc(r.color)+' inset"':'')+'>'+av+'</div>'
+        +'<div class="rkav'+(r.icon?' has':'')+'">'+av+'</div>'
         +'<div class="rkmeta"><b>'+esc(r.rank)+'</b><span>'+meta+'</span></div>'
         +'<div class="rkbtns"><label class="rkbtn rkup">'+(r.icon?'Replace':'Upload')
           +'<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-rankfile="'+esc(r.rank)+'" hidden></label>'
