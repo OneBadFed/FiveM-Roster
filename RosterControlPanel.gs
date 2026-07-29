@@ -2337,8 +2337,15 @@ function publishDataStart_(destName, dh) {
 function publishStatusCol_(dest, dh, width) {
   try {
     const hdr = dest.getRange(dh, 1, 1, Math.max(width, 1)).getDisplayValues()[0].map((h) => norm_(h));
+    // EXACT first. The roster carries both ACTIVITY and LAST ACTIVITY, and only the former holds the dropdown —
+    // a plain contains-scan hands back whichever sits left, so a roster with LAST ACTIVITY first would have had
+    // its history column treated as the status column and every data row judged undressed.
+    const exact = (want) => { for (let c = 0; c < hdr.length; c++) { if (hdr[c] === want) return c + 1; } return 0; };
+    const hit = exact('STATUS') || exact('ACTIVITY');
+    if (hit) return hit;
     for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('STATUS') !== -1) return c + 1; }
-    for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('ACTIVITY') !== -1) return c + 1; }
+    // LAST ACTIVITY / 2 PERIODS AGO … are the history chain, never the live status.
+    for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('ACTIVITY') !== -1 && hdr[c].indexOf('LAST') === -1) return c + 1; }
   } catch (e) { /* unreadable header → no-op */ }
   return 0;
 }
