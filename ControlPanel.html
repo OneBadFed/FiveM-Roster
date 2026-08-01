@@ -506,7 +506,7 @@
   .su-hero-s{font-size:12px;color:rgba(255,255,255,.45);margin-top:3px;}
   /* The signup card's labels are the operator's OWN sheet headers — "Full First Name, Full Last Name" needs more
      room than the 88px an Assignment row gives its one-word labels. Collapses to stacked on a narrow dialog. */
-  .fpanel.sufields .frow{grid-template-columns:186px minmax(0,1fr);}
+  .fpanel.sufields .frow{grid-template-columns:172px minmax(0,1fr);}
   @media (max-width:640px){ .fpanel.sufields .frow{grid-template-columns:1fr;} }
   .su-ro{padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;}
   .su-ro+.su-ro{box-shadow:0 -1px 0 rgba(255,255,255,.07);}
@@ -516,7 +516,10 @@
      ordinary .field fin controls now — the states have to live on THAT class, not the old read-only row's. */
   .fin.saving{opacity:.55;}
   .fin.saved{border-color:rgba(52,199,89,.55);}
+  /* The input must GROW. Making .fctl a flex row without this left every field at an <input>'s default ~20-character
+     width, so an address truncated with half the row sitting empty beside it. min-width:0 lets it shrink too. */
   .fpanel.sufields .fctl{display:flex;align-items:center;gap:7px;}
+  .fpanel.sufields .fctl .fin{flex:1 1 auto;min-width:0;width:auto;}
   .su-ro-v.blank{color:rgba(255,255,255,.3);}
   .su-slot{display:flex;align-items:center;gap:10px;padding:11px 14px;box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .su-slot .rava{width:30px;height:30px;border-radius:0;background:none;box-shadow:none;}
