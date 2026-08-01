@@ -449,7 +449,10 @@
   .sucols{display:grid;grid-template-columns:194px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
   /* Its OWN scrolling region, and air at both ends: the list used to grow the whole pane instead, so with more
    than a handful of signups the first and last rows ran flush against the header and the action bar. */
-  .suqueue{min-width:0;min-height:0;margin:-14px 0 0 -14px;padding:10px 14px 18px;background:var(--queue);
+  /* Bleeds DOWN as well as up and left. It always cancelled the pane's top and left padding so the queue surface ran
+     into the header, but not the bottom — so the column stopped 14px short of the dialog edge and the list appeared
+     to float above it. padding-bottom keeps the last row off the edge; only the surface extends. */
+  .suqueue{min-width:0;min-height:0;margin:-14px 0 -14px -14px;padding:10px 14px 26px;background:var(--queue);
            box-shadow:1px 0 0 var(--hair);align-self:stretch;overflow-y:auto;overscroll-behavior:contain;}
   /* Air between the cards and the scrollbar. This pane scrolls, so the bar is drawn INSIDE its right edge and sat
      hard against the read-only field values — an address running the full width of the card touched it. */
@@ -462,7 +465,9 @@
   /* The REGION: the queue surface continued up into the header, and the divider that carries on down the page.
      It must not restyle the control inside it — doing exactly that is what flattened the segmented control into
      "some text next to a grey box". */
-  .tb-seg{order:-1;flex:0 0 250px;margin:0 0 0 -14px;padding:0 14px;height:100%;align-self:stretch;
+  /* 194px queue column + the 14px the region bleeds left = 208px, so the control ends exactly where the rows and
+     their scrollbar do. Tied to .sucols first column — change one and this follows. */
+  .tb-seg{order:-1;flex:0 0 208px;margin:0 0 0 -14px;padding:0 14px;height:100%;align-self:stretch;
     display:flex;align-items:center;background:var(--queue);box-shadow:1px 0 0 var(--hair);}
   .tb-seg[hidden]{display:none;}
   /* The CONTROL: one track, two equal halves inside it, spanning the column. */
@@ -1137,7 +1142,7 @@
       <button class="icon-btn" id="sideToggle" title="Hide sidebar" aria-label="Toggle sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 4v16"/></svg></button>
       <div class="tb-seg" id="suScopeWrap" hidden>
         <div class="fchips suq-tabs" id="suScope">
-          <button class="fchip active" data-suscope="open">Pending <span class="suq-n" id="suScopeN"></span></button>
+          <button class="fchip active" data-suscope="open">Pending</button>
           <button class="fchip" data-suscope="all">All</button>
         </div>
       </div>
@@ -2304,7 +2309,10 @@
     var v=String(x.v==null?'':x.v);
     return '<div class="su-ro"><span class="su-ro-k">'+esc(suTitle(x.k))+'</span><span class="su-ro-v">'
       +'<input class="su-ro-in'+(x.id?' mono':'')+'" data-sufield="'+esc(x.k)+'" value="'+esc(v)+'" placeholder="Not provided" autocomplete="off" spellcheck="false">'
-      +(x.copy?copy(v):'')+'</span></div>';
+      /* The copy button is built HERE, not borrowed: suDetailHtml's `copy` is a local var, and reaching for it from
+         this top-level function threw a ReferenceError mid-render — the card came out blank with the queue intact. */
+      +((x.copy&&v)?('<button class="copybtn" data-copy="'+esc(v)+'" title="Copy" aria-label="Copy">'+SVG.copy+'</button>'):'')
+      +'</span></div>';
   }
   function suRoRow(k,v,mono,extra){
     var blank=!String(v||'').trim();
@@ -2374,7 +2382,8 @@
        read 100 while 244 were waiting. Max of the two: 'waiting' is 0 on a tab with no STATUS column. */
     var total=Math.max(Number(SU.waiting)||0,list.length);
     var badge=$('navSignupCount'); if(badge) badge.textContent=(SU.linked&&SU.ready&&total)?String(total):''; // :empty hides it
-    var n=$('suScopeN'); if(n) n.textContent=list.filter(function(a){return !suIsFlagged(a);}).length||'';
+    /* No count on the Pending pill: the nav badge and the header subtitle already carry the real total, and this
+       one could only ever report the loaded page — three numbers on screen, one of them wrong. */
     var blocked=!SU.linked?['No admin file linked','Link the admin roster under the System tab first.']
               :!SU.ready?['No signup review tab','Set it under Engine Settings ▸ Sheets &amp; layout ▸ SIGNUPS.']
               :!list.length?['Nothing to review','Every signup has been processed.']:null;
