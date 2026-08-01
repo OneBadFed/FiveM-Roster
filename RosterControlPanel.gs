@@ -1795,12 +1795,26 @@ function signupSplit_(sheet, cap, recentCap) {
   if (!SC.status || last < SC.dataStart) return { queue, recent };
   const n = last - SC.dataStart + 1;
   const vals = sheet.getRange(SC.dataStart, 1, n, SC.width).getDisplayValues();
+  // Every column the ROLES don't already account for — the operator's own questions (Discord ID, Date of Hire,
+  // Address, whatever else this department asks). The panel showed a fixed five and silently dropped the rest, so an
+  // admin approving from the panel couldn't see answers the applicant had actually given and had to open the sheet.
+  // Resolved ONCE per call, not per row. STATUS and NOTES are excluded: the panel already owns both.
+  const extraCols = [];
+  try {
+    const claimed = {};
+    SIGNUP_SYNC_ROLES_.concat(['status', 'notes']).forEach((r) => { if (SC[r]) claimed[SC[r]] = 1; });
+    sheet.getRange(SC.headerRow, 1, 1, SC.width).getDisplayValues()[0].forEach((h, c) => {
+      const label = String(h || '').trim();
+      if (label && !claimed[c + 1]) extraCols.push({ label: label, col: c + 1 });
+    });
+  } catch (e) { log_('signupSplit_.extraCols', e); }
   for (let i = 0; i < n; i++) {
     const g = (c) => c ? String(vals[i][c - 1] || '').trim() : '';
     if (!g(SC.name) && !g(SC.discord)) continue; // blank scaffolding row on a themed tab → not a submission
     const st = g(SC.status) || SIGNUP_STATUSES_[0];
     const rec = { row: SC.dataStart + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
-      email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), join: g(SC.join), submitted: g(SC.timestamp) };
+      email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), join: g(SC.join), submitted: g(SC.timestamp),
+      extra: extraCols.map((x) => ({ k: x.label, v: g(x.col) })) }; // this tab's own columns, in sheet order
     if (signupIsDone_(st)) { if (recent.length < (recentCap || 12)) recent.push(rec); continue; }
     waiting++;
     if (queue.length < (cap || 100)) queue.push(rec);

@@ -2268,7 +2268,7 @@
   }
   function suRoRow(k,v,mono,extra){
     var blank=!String(v||'').trim();
-    return '<div class="su-ro"><span class="su-ro-k">'+k+'</span>'
+    return '<div class="su-ro"><span class="su-ro-k">'+esc(k)+'</span>' /* k is a SHEET header now, not a literal */
       +'<span class="su-ro-v'+(blank?' blank':'')+''+(mono&&!blank?' mono':'')+'">'+(blank?'Not provided':esc(v))+(blank?'':(extra||''))+'</span></div>';
   }
   /* The editable half of a review, built once and placed full-width under the paired read-only panels. */
@@ -2291,7 +2291,8 @@
     var s=(SU.slot!=null)?suSlotObj(SU.slot):null;
     var cur=s?('<span>'+esc(s.unit||('Row '+SU.slot))+' &middot; '+esc(s.rank)+'</span>'):'';
     var d=suDays(a.submitted);
-    var blanks=['email','dob','phone','join'].filter(function(k){ return !String(a[k]||'').trim(); }).length;
+    var blanks=['email','dob','phone','join'].filter(function(k){ return !String(a[k]||'').trim(); }).length
+      +(a.extra||[]).filter(function(x){ return !String(x.v||'').trim(); }).length; /* this tab's own columns count too */
     var copy=function(v){ return v?('<button class="copybtn" data-copy="'+esc(v)+'" title="Copy" aria-label="Copy">'+SVG.copy+'</button>'):''; };
     // ── slot detail: what they are actually being seated into
     var slotCard=s?('<div class="su-slot">'+rankAvatar(s.rank)
@@ -2320,6 +2321,8 @@
           +suRoRow('Date of birth',a.dob)
           +suRoRow('Phone',a.phone)
           +suRoRow('Dept. join date',a.join)
+          /* Then this review tab's OWN columns, verbatim and in sheet order — whatever else the department asks for. */
+          +(a.extra||[]).map(function(x){ return suRoRow(x.k,x.v); }).join('')
         +'</div>'
         +'<p class="fhint" style="padding:9px 2px 0">Copied onto their profile on approval.'
           +(blanks?(' '+blanks+' field'+(blanks===1?' was':'s were')+' left blank on the form — you can fill '+(blanks===1?'it':'them')+' in later from the Members tab.'):'')+'</p>'
