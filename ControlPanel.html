@@ -520,9 +520,10 @@
   /* The input must GROW. Making .fctl a flex row without this left every field at an <input>'s default ~20-character
      width, so an address truncated with half the row sitting empty beside it. min-width:0 lets it shrink too. */
   .fpanel.sufields .fctl{display:flex;align-items:center;gap:7px;}
-  /* max-width:none is the one that actually mattered: .fin caps at 240px for the engine's short Assignment values,
-     and no amount of flex-grow beats a max-width. These fields hold addresses and full legal names — let them run. */
-  .fpanel.sufields .fctl .fin{flex:1 1 auto;min-width:0;width:auto;max-width:none;}
+  /* .fin caps at 240px for the engine's short Assignment values, and no amount of flex-grow beats a max-width — that
+     cap, not the flex, is what pinned these fields short. Replaced rather than removed: 75% is wide enough for an
+     address or a full legal name while leaving the row some air, instead of running edge to edge. */
+  .fpanel.sufields .fctl .fin{flex:1 1 auto;min-width:0;width:auto;max-width:75%;}
   .su-ro-v.blank{color:rgba(255,255,255,.3);}
   .su-slot{display:flex;align-items:center;gap:10px;padding:11px 14px;box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .su-slot .rava{width:30px;height:30px;border-radius:0;background:none;box-shadow:none;}
