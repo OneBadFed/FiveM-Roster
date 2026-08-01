@@ -146,11 +146,44 @@ function rosterCols_(sheet) {
         Object.keys(match).forEach((k) => {
           for (let c = 0; c < hdr.length; c++) { if (match[k](hdr[c])) { cols[k] = c + 1; break; } }
         });
+        // A department on Community IDs may still keep a DISCORD ID column for its own records. The predicate above
+        // takes whichever of the two sits further left, so which column is THE key came down to column order.
+        cols.discord = uniqueIdCol_(hdr) || cols.discord;
       }
     }
   } catch (e) { log_('rosterCols_', e); }
   _rosterColCache[id] = cols;
   return cols;
+}
+
+/**
+ * Which header is THE Unique ID when a layout carries more than one ID column?
+ *
+ * A department on Community IDs commonly keeps a DISCORD ID column too, purely for its own records — and a signup
+ * form asks for both. Every resolver here used to settle that by KEYWORD ORDER or, worse, by which column happened
+ * to sit further left, so a COMMUNITY department could have its roster, tracker, patrol log or review tab keyed on
+ * the Discord ID while the real key was ignored. It is [ROSTER_LAYOUT].ID_TYPE's call, so ask it.
+ *
+ * An explicit "UNIQUE ID" header still outranks everything: an operator who labelled the column outright has already
+ * answered the question. Otherwise the configured type is preferred and the other kind is the fallback, so a layout
+ * carrying only ONE of the two keeps resolving exactly as before.
+ * @param {string[]} hdr NORMALISED headers (upper-case, trimmed), index 0 = column A
+ * @return {number} 1-based column, or 0 when the layout has no ID column at all.
+ */
+function uniqueIdCol_(hdr) {
+  try {
+    if (!hdr || !hdr.length) return 0;
+    const scan = (test) => { for (let c = 0; c < hdr.length; c++) { const h = String(hdr[c] || ''); if (h && test(h)) return c + 1; } return 0; };
+    const has = (...toks) => (h) => toks.every((t) => h.indexOf(t) !== -1);
+    const explicit = scan((h) => h === 'UNIQUE ID') || scan(has('UNIQUE', 'ID'));
+    if (explicit) return explicit;
+    const community = () => scan(has('COMMUNITY', 'ID')) || scan(has('CID'));
+    const discord = () => scan(has('DISCORD'));
+    let type = 'DISCORD';
+    try { type = norm_(CONFIG.idType || 'DISCORD'); } catch (e2) { /* config unavailable → Discord, the shipped default */ }
+    const first = (type === 'COMMUNITY') ? community() : discord();
+    return first || (type === 'COMMUNITY' ? discord() : community()) || scan(has('MEMBER', 'ID'));
+  } catch (e) { log_('uniqueIdCol_', e); return 0; }
 }
 
 /* ======================================================================
@@ -2288,7 +2321,7 @@ function trackerCols_(tracker) {
       out.unit = find((h) => (h.indexOf('UNIT') !== -1 && h.indexOf('COMMUNITY') === -1) || h.indexOf('CALLSIGN') !== -1);
       out.ooc = find((h) => h.indexOf('OOC') !== -1);
       out.name = find((h) => h === 'NAME' || (h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1));
-      out.discord = find((h) => h.indexOf('UNIQUE') !== -1 || h.indexOf('DISCORD') !== -1 || h.indexOf('CID') !== -1 || h.indexOf('COMMUNITY ID') !== -1);
+      out.discord = uniqueIdCol_(hdr) || find((h) => h.indexOf('UNIQUE') !== -1 || h.indexOf('DISCORD') !== -1 || h.indexOf('CID') !== -1 || h.indexOf('COMMUNITY ID') !== -1);
       out.shift = find((h) => isShiftHeader_(h)); // same config list as the roster — these two used to disagree
       out.start = find((h) => h.indexOf('START') !== -1);
       out.end = find((h) => h.indexOf('END') !== -1);
@@ -2635,7 +2668,7 @@ function patrolCols_(sheet) {
     // The ID column is the one field crediting can't do without — when the configured keyword misses (e.g. the
     // form says "Unique ID" but [PATROL].COL_DISCORD still says "Discord"), try the standard ID synonyms before
     // giving up (a miss silently downgrades every submission to the strict callsign-only match).
-    if (out.discord === -1) { ['UNIQUE ID', 'COMMUNITY ID', 'DISCORD', 'MEMBER ID'].some((kw) => (out.discord = find(kw)) !== -1); }
+    if (out.discord === -1) { out.discord = uniqueIdCol_(hdr) || -1; }
   } catch (e) { log_('patrolCols_', e); }
   return out;
 }
@@ -3076,7 +3109,7 @@ function patrolLogCols_(sheet) {
     out.unit = all('UNIT') || all('CALLSIGN');
     out.ooc = all('OOC');
     for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } // NAME that isn't "OOC NAME"
-    out.discord = all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
+    out.discord = uniqueIdCol_(hdr) || all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
     out.shift = all('SHIFT') || all('DIVISION') || all('DISTRICT') || all('ASSIGNMENT');
     out.startDate = all('START', 'DATE'); out.endDate = all('END', 'DATE');
     out.startTime = all('START', 'TIME'); out.endTime = all('END', 'TIME');
@@ -3478,7 +3511,12 @@ function leaveFormCols_(formSheet) {
     };
     const out = { byHeader: true };
     out.timestamp = find('TIMESTAMP', ['TIMESTAMP']);
-    out.discord = find('DISCORD_ID', ['DISCORD', 'UNIQUE ID', 'COMMUNITY ID', 'MEMBER ID']);
+    // [FORM_MAP]'s own keyword first — an operator who mapped the question outright has already answered this. Then
+    // ID_TYPE, then the legacy synonyms. The middle step has to claim its column by hand: uniqueIdCol_ scans headers
+    // and knows nothing about `claimed`, so without this a later role could resolve onto the same column.
+    out.discord = find('DISCORD_ID', []);
+    if (!out.discord) { const uid = uniqueIdCol_(hdr); if (uid && !claimed[uid]) { claimed[uid] = true; out.discord = uid; } }
+    if (!out.discord) out.discord = find('DISCORD_ID', ['DISCORD', 'UNIQUE ID', 'COMMUNITY ID', 'MEMBER ID']);
     out.start = find('START', ['START']);
     out.end = find('END', ['END']);
     out.type = find('TYPE', ['STATUS', 'TYPE']);
