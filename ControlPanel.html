@@ -504,22 +504,19 @@
   .su-hero-n{display:flex;align-items:center;gap:9px;}
   .su-hero-n b{font-size:19px;font-weight:600;letter-spacing:-.018em;color:rgba(255,255,255,.94);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
   .su-hero-s{font-size:12px;color:rgba(255,255,255,.45);margin-top:3px;}
-  .sugrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:14px;align-items:start;}
-  @media (max-width:960px){ .sugrid{grid-template-columns:1fr;} }
+  /* The signup card's labels are the operator's OWN sheet headers — "Full First Name, Full Last Name" needs more
+     room than the 88px an Assignment row gives its one-word labels. Collapses to stacked on a narrow dialog. */
+  .fpanel.sufields .frow{grid-template-columns:186px minmax(0,1fr);}
+  @media (max-width:640px){ .fpanel.sufields .frow{grid-template-columns:1fr;} }
   .su-ro{padding:9px 14px;display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:38px;}
   .su-ro+.su-ro{box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .su-ro-k{font-size:12.5px;color:rgba(255,255,255,.5);white-space:nowrap;}
   .su-ro-v{font-size:12.5px;color:rgba(255,255,255,.88);text-align:right;min-width:0;display:flex;align-items:center;gap:7px;justify-content:flex-end;}
-  /* Editable value: reads as text until you touch it, so the card still scans as a record rather than a form. */
-  .su-ro-in{flex:1 1 auto;min-width:0;background:none;border:1px solid transparent;border-radius:6px;padding:4px 7px;
-            font-family:inherit;font-size:12.5px;color:rgba(255,255,255,.88);text-align:right;outline:none;
-            transition:background var(--t),border-color var(--t),color var(--t);}
-  .su-ro-in::placeholder{color:rgba(255,255,255,.35);}
-  .su-ro-in:hover{background:rgba(255,255,255,.05);}
-  .su-ro-in:focus{background:var(--field);border-color:rgba(255,255,255,.14);box-shadow:var(--focus);text-align:left;color:#fff;}
-  .su-ro-in.mono{font-family:var(--mono);}
-  .su-ro-in.saving{opacity:.55;}
-  .su-ro-in.saved{border-color:rgba(52,199,89,.55);}
+  /* Save feedback on a signup field. The change handler puts these on the input it just wrote, and those inputs are
+     ordinary .field fin controls now — the states have to live on THAT class, not the old read-only row's. */
+  .fin.saving{opacity:.55;}
+  .fin.saved{border-color:rgba(52,199,89,.55);}
+  .fpanel.sufields .fctl{display:flex;align-items:center;gap:7px;}
   .su-ro-v.blank{color:rgba(255,255,255,.3);}
   .su-slot{display:flex;align-items:center;gap:10px;padding:11px 14px;box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .su-slot .rava{width:30px;height:30px;border-radius:0;background:none;box-shadow:none;}
@@ -2305,34 +2302,31 @@
   }
   /* An editable field on the signup card. Writes straight to the review tab on blur, which is also how the value
      reaches the roster: cpSignupApprove re-reads the row when it seats them, so whatever is saved here is seated. */
+  /* One field per COLUMN on the review tab, rendered as the same labelled control the Assignment rows use.
+     NAME and OOC keep the ids the approve path reads ($('suName').value), so moving them here changed nothing
+     downstream — they are simply two more of the applicant's own answers, edited where the rest of them live. */
   function suEdRow(x){
-    var v=String(x.v==null?'':x.v);
-    return '<div class="su-ro"><span class="su-ro-k">'+esc(suTitle(x.k))+'</span><span class="su-ro-v">'
-      +'<input class="su-ro-in'+(x.id?' mono':'')+'" data-sufield="'+esc(x.k)+'" value="'+esc(v)+'" placeholder="Not provided" autocomplete="off" spellcheck="false">'
-      /* The copy button is built HERE, not borrowed: suDetailHtml's `copy` is a local var, and reaching for it from
-         this top-level function threw a ReferenceError mid-render — the card came out blank with the queue intact. */
+    var v=String(x.v==null?'':x.v), id=x.nm?'suName':(x.oc?'suOoc':'');
+    return '<div class="frow"><label class="flbl"'+(id?(' for="'+id+'"'):'')+'>'+esc(suTitle(x.k))+'</label><div class="fctl">'
+      +'<input class="field fin'+(x.id?' mono':'')+'"'+(id?(' id="'+id+'"'):'')+' data-sufield="'+esc(x.k)+'" value="'+esc(v)+'" placeholder="Not provided" autocomplete="off" spellcheck="false">'
       +((x.copy&&v)?('<button class="copybtn" data-copy="'+esc(v)+'" title="Copy" aria-label="Copy">'+SVG.copy+'</button>'):'')
-      +'</span></div>';
+      +'</div></div>';
   }
-  function suRoRow(k,v,mono,extra){
-    var blank=!String(v||'').trim();
-    return '<div class="su-ro"><span class="su-ro-k">'+esc(k)+'</span>' /* k is a SHEET header now, not a literal */
-      +'<span class="su-ro-v'+(blank?' blank':'')+''+(mono&&!blank?' mono':'')+'">'+(blank?'Not provided':esc(v))+(blank?'':(extra||''))+'</span></div>';
+  /* NAME first whatever column it sits in; everything else keeps sheet order (sort is stable). */
+  function suFieldsHtml(a){
+    return (a.fields||[]).slice().sort(function(p,q){ return (q.nm?1:0)-(p.nm?1:0); }).map(suEdRow).join('');
   }
-  /* The editable half of a review, built once and placed full-width under the paired read-only panels. */
+  /* The Assignment panel's editable rows — shift, then status, directly under the slot picker. Name and OOC moved to
+     the signup card: they are the applicant's own answers, not properties of the seat being assigned. */
   function suEntryHtml(a, s){
-    return '<div class="fglbl">Roster entry</div><div class="fpanel">'
-      +'<div class="frow"><label class="flbl" for="suName">Name</label><div class="fctl"><input class="field fin" id="suName" value="'+esc(a.name||'')+'" autocomplete="off"></div></div>'
-      +(SU.oocCol?('<div class="frow"><label class="flbl" for="suOoc">OOC name</label><div class="fctl"><input class="field fin" id="suOoc" value="'+esc(a.ooc||'')+'" autocomplete="off"><span class="fnote">Optional</span></div></div>'):'')
-      +(function(){ // the same shift control Add member uses — a seat is a seat, however it is created
+    return (function(){ /* the same shift control Add member uses - a seat is a seat, however it is created */
         var mode=addShiftMode(); if(mode==='off') return '';
         return '<div class="frow" id="suShiftRow"><label class="flbl">'+esc(titleish(STATE.shiftLabel))+'</label>'
           +'<div class="fctl" id="suShiftCtl">'+shiftCtlHtml(mode, SU.shift, (mode==='rank'?(s?s.shift:null):null), 'suShift')+'</div></div>';
       })()
       +'<div class="frow"><label class="flbl" for="suStatus2">Status</label><div class="fctl"><select class="field fin" id="suStatus2">'
         +(SU.statuses||STATE.statuses||[]).map(function(x){ return '<option value="'+esc(x)+'"'+(x===(SU.status||STATE.defaultStatus)?' selected':'')+'>'+esc(x)+'</option>'; }).join('')
-        +'</select></div></div>'
-    +'</div>';
+        +'</select></div></div>';
   }
   function suDetail(){
     var a=suApp(SU.cur); if(!a) return '';
@@ -2349,31 +2343,22 @@
       +'<div class="su-hero-t"><div class="su-hero-n"><b>'+esc(a.name||'(no name)')+'</b>'
         +(suIsFlagged(a)?'<span class="pill p-SemiActive"><span class="pdot"></span>Flagged</span>':'<span class="pill p-none"><span class="pdot"></span>'+esc(a.status)+'</span>')+'</div>'
         +'<div class="su-hero-s">'+[ (a.submitted?('Applied '+esc(suWhen(a.submitted))):''), (d!=null?(d+' day'+(d===1?'':'s')+' in queue'):'') ].filter(Boolean).join(' &middot; ')+'</div></div></div>'
-      +'<div class="sugrid">'
-      +'<div>'
-        +'<div class="fgroup"><div class="fglbl">Assignment</div><div class="fpanel">'
-          +'<div class="frow"><label class="flbl">Open slot</label><div class="fctl">'
-            +'<div class="sdrop" id="suSlotDrop"><button type="button" class="sdrop-btn" id="suSlotBtn" aria-haspopup="listbox" aria-expanded="false">'
-            +'<span class="sdrop-cur'+(cur?'':' ph')+'" id="suSlotCur">'+(cur||'Select slot')+'</span>'
-            +'<span class="sdrop-chev-box"><svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></button>'
-            +'<div class="sdrop-menu slotpick" id="suSlotMenu" role="listbox" hidden>'+suSlotMenuHtml()+'</div></div></div></div>'
-          +slotCard
-          +'<div class="frow fspan"><p class="fhint">Rank and callsign come from the slot. Nothing is inserted into your section layout.</p></div>'
-        +'</div></div>'
+      +'<div class="fgroup"><div class="fglbl">Assignment</div><div class="fpanel">'
+        +'<div class="frow"><label class="flbl">Open slot</label><div class="fctl">'
+          +'<div class="sdrop" id="suSlotDrop"><button type="button" class="sdrop-btn" id="suSlotBtn" aria-haspopup="listbox" aria-expanded="false">'
+          +'<span class="sdrop-cur'+(cur?'':' ph')+'" id="suSlotCur">'+(cur||'Select slot')+'</span>'
+          +'<span class="sdrop-chev-box"><svg class="sdrop-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></span></button>'
+          +'<div class="sdrop-menu slotpick" id="suSlotMenu" role="listbox" hidden>'+suSlotMenuHtml()+'</div></div></div></div>'
+        +slotCard
+        +suEntryHtml(a, s)
+        +'<div class="frow fspan"><p class="fhint">Rank and callsign come from the slot. Nothing is inserted into your section layout.</p></div>'
+      +'</div></div>'
+      +'<div class="fgroup"><div class="fglbl">From their signup<span class="su-lblnote">Saves to the tracker</span></div><div class="fpanel sufields">'
+        +suFieldsHtml(a)
       +'</div>'
-      +'<div>'
-        +'<div class="fgroup"><div class="fglbl">From their signup<span class="su-lblnote">Saves to the tracker</span></div><div class="fpanel">'
-          /* One field per COLUMN on the review tab, in sheet order — the headers are the only source of labels. */
-          +(a.fields||[]).map(function(x){ return suEdRow(x); }).join('')
-        +'</div>'
-        +'<p class="fhint" style="padding:9px 2px 0">Copied onto their profile on approval.'
-          +(blanks?(' '+blanks+' field'+(blanks===1?' was':'s were')+' left blank on the form — you can fill '+(blanks===1?'it':'them')+' in later from the Members tab.'):'')+'</p>'
-        +'</div>'
-      +'</div>'
-      +'</div>'
-      // Roster entry sits BELOW the two read-only halves and spans the pane: it is the editable part, and the
-      // shift segmented needs a row wider than half the panel to sit on.
-      +'<div class="fgroup suentry">' + suEntryHtml(a, s) + '</div>';
+      +'<p class="fhint" style="padding:9px 2px 0">Copied onto their profile on approval.'
+        +(blanks?(' '+blanks+' field'+(blanks===1?' was':'s were')+' left blank on the form - you can fill '+(blanks===1?'it':'them')+' in later from the Members tab.'):'')+'</p>'
+      +'</div>';
   }
   function renderSignups(){
     var el=$('suBody'), qhost=$('suQueue'), bar=$('suBar'); if(!el) return;

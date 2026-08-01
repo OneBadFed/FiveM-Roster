@@ -1806,12 +1806,16 @@ function signupSplit_(sheet, cap, recentCap) {
   const fieldCols = [];
   try {
     const skip = {};
-    ['name', 'ooc', 'status', 'notes'].forEach((r) => { if (SC[r]) skip[SC[r]] = 1; });
+    // Only the two the panel genuinely owns. NAME and OOC used to be excluded because the editable half rendered
+    // them separately; they live on the card now, keeping the ids the approve path reads, so they belong here with
+    // the rest of the applicant's answers — and an edit to either saves to the tracker like every other field.
+    ['status', 'notes'].forEach((r) => { if (SC[r]) skip[SC[r]] = 1; });
     sheet.getRange(SC.headerRow, 1, 1, SC.width).getDisplayValues()[0].forEach((h, c) => {
       const label = String(h || '').trim();
       if (!label || skip[c + 1]) return;
       const col = c + 1;
-      fieldCols.push({ label: label, col: col, id: col === SC.discord, copy: col === SC.discord || col === SC.email });
+      fieldCols.push({ label: label, col: col, id: col === SC.discord, copy: col === SC.discord || col === SC.email,
+        nm: col === SC.name, oc: col === SC.ooc }); // nm/oc: the panel gives these the ids approval reads
     });
   } catch (e) { log_('signupSplit_.fieldCols', e); }
   for (let i = 0; i < n; i++) {
@@ -1820,7 +1824,7 @@ function signupSplit_(sheet, cap, recentCap) {
     const st = g(SC.status) || SIGNUP_STATUSES_[0];
     const rec = { row: SC.dataStart + i, status: st, name: g(SC.name), ooc: g(SC.ooc), discord: g(SC.discord),
       email: g(SC.email), dob: g(SC.dob), phone: g(SC.phone), join: g(SC.join), submitted: g(SC.timestamp),
-      fields: fieldCols.map((x) => ({ k: x.label, v: g(x.col), id: x.id, copy: x.copy })) }; // the card, in sheet order
+      fields: fieldCols.map((x) => ({ k: x.label, v: g(x.col), id: x.id, copy: x.copy, nm: x.nm, oc: x.oc })) }; // the card, in sheet order
     if (signupIsDone_(st)) { if (recent.length < (recentCap || 12)) recent.push(rec); continue; }
     waiting++;
     if (queue.length < (cap || 100)) queue.push(rec);
