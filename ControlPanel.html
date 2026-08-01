@@ -451,7 +451,9 @@
    than a handful of signups the first and last rows ran flush against the header and the action bar. */
   .suqueue{min-width:0;min-height:0;margin:-14px 0 0 -14px;padding:10px 14px 18px;background:var(--queue);
            box-shadow:1px 0 0 var(--hair);align-self:stretch;overflow-y:auto;overscroll-behavior:contain;}
-  .sudetail{min-height:0;overflow-y:auto;}
+  /* Air between the cards and the scrollbar. This pane scrolls, so the bar is drawn INSIDE its right edge and sat
+     hard against the read-only field values — an address running the full width of the card touched it. */
+  .sudetail{min-height:0;overflow-y:auto;padding-right:10px;}
   /* In the toolbar the scope control sits OVER the column it filters, and the rule between them continues the
      column divide below — the header is split the same way the body is. */
   /* order:-1 puts it ahead of the sidebar toggle WITHOUT reordering the DOM for every other tab — the toggle's
@@ -2273,13 +2275,16 @@
      not "Unique Id"), minor words drop after the first ("DATE OF HIRE" -> "Date of Hire"), and a header the operator
      already wrote in mixed case is left exactly as they typed it — their casing is a choice, not something to fix. */
   var SU_MINOR={OF:1,THE:1,AND:1,OR:1,FOR:1,TO:1,IN:1,ON:1,AT:1,A:1,AN:1};
-  var SU_ACRO={ID:1,IDS:1,DOB:1,OOC:1,CID:1,UID:1,SSN:1,DL:1,LOA:1,ROA:1,EMS:1,PD:1,FTO:1,IC:1,IRL:1,URL:1,DM:1};
+  var SU_ACRO={ID:1,IDS:1,DOB:1,OOC:1,IC:1,CID:1,UID:1,SSN:1,DL:1,LOA:1,ROA:1,EMS:1,EMT:1,PD:1,SO:1,FTO:1,SWAT:1,K9:1,
+               DOJ:1,DMV:1,VIN:1,CAD:1,MDT:1,IRL:1,URL:1,DM:1,QR:1,PIN:1};
   function suTitle(s){
     return String(s==null?'':s).trim().split(/\s+/).map(function(w,i){
-      if(/[a-z]/.test(w)) return w;
-      var bare=w.replace(/[^A-Za-z]/g,'').toUpperCase();
-      if(SU_ACRO[bare]) return w;
-      if(i>0 && SU_MINOR[bare]) return w.toLowerCase();
+      var bare=w.replace(/[^A-Za-z0-9]/g,'');
+      /* Acronyms are forced UP first, before anything else looks at the word. Whatever casing reached us — a header
+         typed "Discord Id", or a future caller that title-cases before calling — comes out "ID", never "Id". */
+      if(SU_ACRO[bare.toUpperCase()]) return w.replace(/[A-Za-z0-9]+/,bare.toUpperCase());
+      if(/[a-z]/.test(w)) return w; /* mixed case the operator chose — theirs to keep */
+      if(i>0 && SU_MINOR[bare.toUpperCase()]) return w.toLowerCase();
       return w.replace(/[A-Z]+/g,function(m){ return m.charAt(0)+m.slice(1).toLowerCase(); });
     }).join(' ');
   }
