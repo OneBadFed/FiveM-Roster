@@ -1792,7 +1792,7 @@ function signupSplit_(sheet, cap, recentCap) {
   let waiting = 0; // every row still needing action, including any past the cap — so the panel can say "N of M"
   const SC = signupCols_(sheet);
   const last = sheet.getLastRow();
-  if (!SC.status || last < SC.dataStart) return { queue, recent };
+  if (!SC.status || last < SC.dataStart) return { queue, recent, waiting: 0 }; // `waiting` on EVERY path — the panel's badge reads it
   const n = last - SC.dataStart + 1;
   const vals = sheet.getRange(SC.dataStart, 1, n, SC.width).getDisplayValues();
   // The read-only card is driven ENTIRELY by this tab's own header row — one field per column, in sheet order.

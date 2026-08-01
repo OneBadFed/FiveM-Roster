@@ -443,7 +443,10 @@
      page taller and ran straight through the action bar. A definite height bounds the grid row, which is what
      lets each column scroll inside itself — the two panes then behave independently, as they should. */
   #pane-signups.pane.active{display:flex;flex-direction:column;height:100%;}
-  .sucols{display:grid;grid-template-columns:236px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
+  /* The queue is a picker, not a reading column — every row is a short name over one status word. 236px was sized
+     before the detail card grew to carry the review tab's own columns, whose values (an address, a full legal name)
+     are what actually need the room. Narrowed to 194px: still comfortable for the avatar plus a two-line row. */
+  .sucols{display:grid;grid-template-columns:194px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
   /* Its OWN scrolling region, and air at both ends: the list used to grow the whole pane instead, so with more
    than a handful of signups the first and last rows ran flush against the header and the action bar. */
   .suqueue{min-width:0;min-height:0;margin:-14px 0 0 -14px;padding:10px 14px 18px;background:var(--queue);
@@ -1622,7 +1625,7 @@
       return;
     }
     if(at && at.dataset.sub){ el.textContent=at.dataset.sub; return; }
-    if(at && at.dataset.tab==='signups'){ var q=(SU.signups||[]).length, old=null;
+    if(at && at.dataset.tab==='signups'){ var q=Math.max(Number(SU.waiting)||0,(SU.signups||[]).length), old=null; /* the real total, not the capped page */
       (SU.signups||[]).forEach(function(a){ var d=suDays(a.submitted); if(d!=null && (old==null||d>old)) old=d; });
       el.textContent=q?(q+' pending'+(old!=null?(' · oldest '+old+' day'+(old===1?'':'s')):'')):'Nothing waiting'; return; } // a tab that describes itself
     var sel=Object.keys(STATE.selected||{}).filter(function(k){return STATE.selected[k];}).length;
@@ -2344,7 +2347,10 @@
   function renderSignups(){
     var el=$('suBody'), qhost=$('suQueue'), bar=$('suBar'); if(!el) return;
     var list=SU.signups||[];
-    var badge=$('navSignupCount'); if(badge) badge.textContent=(SU.linked&&SU.ready&&list.length)?String(list.length):''; // :empty hides it
+    /* SU.waiting counts EVERY row still needing action; SU.signups stops at the 100-row queue cap, so the badge
+       read 100 while 244 were waiting. Max of the two: 'waiting' is 0 on a tab with no STATUS column. */
+    var total=Math.max(Number(SU.waiting)||0,list.length);
+    var badge=$('navSignupCount'); if(badge) badge.textContent=(SU.linked&&SU.ready&&total)?String(total):''; // :empty hides it
     var n=$('suScopeN'); if(n) n.textContent=list.filter(function(a){return !suIsFlagged(a);}).length||'';
     var blocked=!SU.linked?['No admin file linked','Link the admin roster under the System tab first.']
               :!SU.ready?['No signup review tab','Set it under Engine Settings ▸ Sheets &amp; layout ▸ SIGNUPS.']
