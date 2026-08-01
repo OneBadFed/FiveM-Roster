@@ -1338,6 +1338,11 @@ function onEdit(e) {
       }
       if (statusTouched || deletedRow) {
         try { sortTracker_(null, sheet); } catch (e2) { log_('onEdit.sortTracker', e2); } // re-group by status + compact away any gap left by the delete
+      } else {
+        // Same gap the signups tab has below: a leave typed or pasted in that never touches the STATUS column gets no
+        // sort, so nothing gives it the tab's row treatment. sortTracker_ ends in this pass anyway — run it directly.
+        try { if (TRC.status && typeof tidyTailRows_ === 'function') tidyTailRows_(sheet, CONFIG.trackerStartRow, TRC.status); }
+        catch (e2) { log_('onEdit.dressTracker', e2); }
       }
     }
     // PATROL LOG: entering a Unique ID + start/end date+time auto-fills the member, computes TOTAL TIME, credits the
@@ -1355,15 +1360,26 @@ function onEdit(e) {
     }
     // Roster Signups: setting a row's STATUS to Approved on the review tab pops a slot picker + places the applicant on
     // the roster (sheet-driven approval). LIMITED-safe — every write is in THIS workbook.
-    if (CONFIG.sheets.signups && name === CONFIG.sheets.signups && e.value != null) {
-      if (typeof approveSignupFromSheet_ === 'function') { try { approveSignupFromSheet_(sheet, row, col, e.value, e.oldValue); } catch (e2) { log_('onEdit.approveSignup', e2); } }
-      // Any STATUS change re-groups the tab RIGHT AWAY (dropdown order: e.g. Pending → Approve → Flagged → Processed) —
-      // the sort otherwise only ran when the form sync added rows, so a hand-flagged row stayed put. AFTER the approve
-      // handler, so a just-Processed applicant drops into place too — same pattern as the Patrol Log's edit-sort above.
-      try {
-        const sSC = (typeof signupCols_ === 'function') ? signupCols_(sheet) : null;
-        if (sSC && sSC.status && col === sSC.status && row >= sSC.dataStart && typeof sortSignups_ === 'function') sortSignups_(sheet);
-      } catch (e2) { log_('onEdit.sortSignups', e2); }
+    if (CONFIG.sheets.signups && name === CONFIG.sheets.signups) {
+      let sSC = null;
+      try { sSC = (typeof signupCols_ === 'function') ? signupCols_(sheet) : null; } catch (e2) { log_('onEdit.signupCols', e2); }
+      const inData = !!(sSC && sSC.status && row >= sSC.dataStart);
+      let sorted = false;
+      if (e.value != null) { // a single-cell edit; a multi-cell PASTE leaves e.value undefined, hence the split
+        if (typeof approveSignupFromSheet_ === 'function') { try { approveSignupFromSheet_(sheet, row, col, e.value, e.oldValue); } catch (e2) { log_('onEdit.approveSignup', e2); } }
+        // Any STATUS change re-groups the tab RIGHT AWAY (dropdown order: e.g. Pending → Approve → Flagged → Processed) —
+        // the sort otherwise only ran when the form sync added rows, so a hand-flagged row stayed put. AFTER the approve
+        // handler, so a just-Processed applicant drops into place too — same pattern as the Patrol Log's edit-sort above.
+        try { if (inData && col === sSC.status && typeof sortSignups_ === 'function') { sortSignups_(sheet); sorted = true; } }
+        catch (e2) { log_('onEdit.sortSignups', e2); }
+      }
+      // Applicants TYPED or PASTED straight onto the review tab never pass through the form sync, so nothing has ever
+      // dressed them — they sit on the raw canvas below the styled block with no STATUS dropdown, which is also why the
+      // panel can't offer them (signupSplit_ needs the STATUS column populated). Neither branch above reaches that case:
+      // a bulk paste leaves e.value undefined, and a paste into NAME/UNIQUE ID is not a STATUS edit. Dress whatever just
+      // landed. Skipped when the sort already ran, since sortSignups_ ends in this very pass.
+      try { if (inData && !sorted && typeof tidyTailRows_ === 'function') tidyTailRows_(sheet, sSC.dataStart, sSC.status); }
+      catch (e2) { log_('onEdit.dressSignups', e2); }
     }
     // F-003: refreshing the WHOLE workbook on every keystroke is the biggest recurring cost. Short-circuit:
     //  • roster/tracker edits change the numbers → full refresh (all tag/KPI locations may need updating).
