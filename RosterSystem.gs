@@ -1350,13 +1350,20 @@ function onEdit(e) {
     if (CONFIG.sheets.patrolLog && name === CONFIG.sheets.patrolLog && row >= CONFIG.patrolStartRow) {
       const PC = patrolLogCols_(sheet);
       const rosterSheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
+      let sorted = false;
       if (rosterSheet && PC.status) {
         const rLast = (e.range && e.range.getLastRow) ? e.range.getLastRow() : row;
         const pIdx = patrolRosterIndex_(rosterSheet); // one roster snapshot for the whole edited span (was one per row)
         for (let rr = Math.max(row, CONFIG.patrolStartRow); rr <= rLast; rr++) { try { processPatrolLog_(sheet, rr, PC, rosterSheet, pIdx); } catch (e2) { log_('onEdit.processPatrol', e2); } }
-        try { sortPatrolLog_(sheet); } catch (e2) { log_('onEdit.sortPatrolLog', e2); }
+        try { sortPatrolLog_(sheet); sorted = true; } catch (e2) { log_('onEdit.sortPatrolLog', e2); }
         deferWork_('activity'); // status/credit changed → the Activity Panel board catches up on the 1-minute sweep (cheap property write; a rebuild here would strain the LIMITED budget)
       }
+      // CREDITING needs the roster; DRESSING does not. With the roster tab unresolvable — renamed, [SHEETS].ROSTER
+      // pointing at nothing, or simply not built yet on a fresh department sheet — the whole block above was skipped,
+      // so a pasted log kept the raw canvas look on top of not being credited. Same if the sort itself threw. The
+      // dressing is the one part that can still succeed, so run it either way (sortPatrolLog_ already ends in it).
+      try { if (PC.status && !sorted && typeof tidyTailRows_ === 'function') tidyTailRows_(sheet, CONFIG.patrolStartRow, PC.status); }
+      catch (e2) { log_('onEdit.dressPatrol', e2); }
     }
     // Roster Signups: setting a row's STATUS to Approved on the review tab pops a slot picker + places the applicant on
     // the roster (sheet-driven approval). LIMITED-safe — every write is in THIS workbook.
