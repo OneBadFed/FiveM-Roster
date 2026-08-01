@@ -519,7 +519,9 @@
   /* The input must GROW. Making .fctl a flex row without this left every field at an <input>'s default ~20-character
      width, so an address truncated with half the row sitting empty beside it. min-width:0 lets it shrink too. */
   .fpanel.sufields .fctl{display:flex;align-items:center;gap:7px;}
-  .fpanel.sufields .fctl .fin{flex:1 1 auto;min-width:0;width:auto;}
+  /* max-width:none is the one that actually mattered: .fin caps at 240px for the engine's short Assignment values,
+     and no amount of flex-grow beats a max-width. These fields hold addresses and full legal names — let them run. */
+  .fpanel.sufields .fctl .fin{flex:1 1 auto;min-width:0;width:auto;max-width:none;}
   .su-ro-v.blank{color:rgba(255,255,255,.3);}
   .su-slot{display:flex;align-items:center;gap:10px;padding:11px 14px;box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .su-slot .rava{width:30px;height:30px;border-radius:0;background:none;box-shadow:none;}
@@ -2311,8 +2313,8 @@
   function suEdRow(x){
     var v=String(x.v==null?'':x.v), id=x.nm?'suName':(x.oc?'suOoc':'');
     return '<div class="frow"><label class="flbl"'+(id?(' for="'+id+'"'):'')+'>'+esc(suTitle(x.k))+'</label><div class="fctl">'
+      /* No copy button: the value is selectable text in an input now, so the button only cost the field width it sat in. */
       +'<input class="field fin'+(x.id?' mono':'')+'"'+(id?(' id="'+id+'"'):'')+' data-sufield="'+esc(x.k)+'" value="'+esc(v)+'" placeholder="Not provided" autocomplete="off" spellcheck="false">'
-      +((x.copy&&v)?('<button class="copybtn" data-copy="'+esc(v)+'" title="Copy" aria-label="Copy">'+SVG.copy+'</button>'):'')
       +'</div></div>';
   }
   /* NAME first whatever column it sits in; everything else keeps sheet order (sort is stable). */
