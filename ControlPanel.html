@@ -2266,6 +2266,20 @@
     }
     return out;
   }
+  /* Sheet headers are written in CAPS; the panel reads in Title Case. Acronyms stay whole ("UNIQUE ID" -> "Unique ID",
+     not "Unique Id"), minor words drop after the first ("DATE OF HIRE" -> "Date of Hire"), and a header the operator
+     already wrote in mixed case is left exactly as they typed it — their casing is a choice, not something to fix. */
+  var SU_MINOR={OF:1,THE:1,AND:1,OR:1,FOR:1,TO:1,IN:1,ON:1,AT:1,A:1,AN:1};
+  var SU_ACRO={ID:1,IDS:1,DOB:1,OOC:1,CID:1,UID:1,SSN:1,DL:1,LOA:1,ROA:1,EMS:1,PD:1,FTO:1,IC:1,IRL:1,URL:1,DM:1};
+  function suTitle(s){
+    return String(s==null?'':s).trim().split(/\s+/).map(function(w,i){
+      if(/[a-z]/.test(w)) return w;
+      var bare=w.replace(/[^A-Za-z]/g,'').toUpperCase();
+      if(SU_ACRO[bare]) return w;
+      if(i>0 && SU_MINOR[bare]) return w.toLowerCase();
+      return w.replace(/[A-Z]+/g,function(m){ return m.charAt(0)+m.slice(1).toLowerCase(); });
+    }).join(' ');
+  }
   function suRoRow(k,v,mono,extra){
     var blank=!String(v||'').trim();
     return '<div class="su-ro"><span class="su-ro-k">'+esc(k)+'</span>' /* k is a SHEET header now, not a literal */
@@ -2291,8 +2305,7 @@
     var s=(SU.slot!=null)?suSlotObj(SU.slot):null;
     var cur=s?('<span>'+esc(s.unit||('Row '+SU.slot))+' &middot; '+esc(s.rank)+'</span>'):'';
     var d=suDays(a.submitted);
-    var blanks=['email','dob','phone','join'].filter(function(k){ return !String(a[k]||'').trim(); }).length
-      +(a.extra||[]).filter(function(x){ return !String(x.v||'').trim(); }).length; /* this tab's own columns count too */
+    var blanks=(a.fields||[]).filter(function(x){ return !String(x.v||'').trim(); }).length; /* counts what is on screen */
     var copy=function(v){ return v?('<button class="copybtn" data-copy="'+esc(v)+'" title="Copy" aria-label="Copy">'+SVG.copy+'</button>'):''; };
     // ── slot detail: what they are actually being seated into
     var slotCard=s?('<div class="su-slot">'+rankAvatar(s.rank)
@@ -2316,13 +2329,8 @@
       +'</div>'
       +'<div>'
         +'<div class="fgroup"><div class="fglbl">From their signup<span class="su-lblnote">Read-only</span></div><div class="fpanel">'
-          +suRoRow('Unique ID',a.discord,true,copy(a.discord))
-          +suRoRow('Email',a.email,false,copy(a.email))
-          +suRoRow('Date of birth',a.dob)
-          +suRoRow('Phone',a.phone)
-          +suRoRow('Dept. join date',a.join)
-          /* Then this review tab's OWN columns, verbatim and in sheet order — whatever else the department asks for. */
-          +(a.extra||[]).map(function(x){ return suRoRow(x.k,x.v); }).join('')
+          /* One field per COLUMN on the review tab, in sheet order — the headers are the only source of labels. */
+          +(a.fields||[]).map(function(x){ return suRoRow(suTitle(x.k),x.v,x.id,(x.copy?copy(x.v):'')); }).join('')
         +'</div>'
         +'<p class="fhint" style="padding:9px 2px 0">Copied onto their profile on approval.'
           +(blanks?(' '+blanks+' field'+(blanks===1?' was':'s were')+' left blank on the form — you can fill '+(blanks===1?'it':'them')+' in later from the Members tab.'):'')+'</p>'
