@@ -445,8 +445,9 @@
   #pane-signups.pane.active{display:flex;flex-direction:column;height:100%;}
   /* The queue is a picker, not a reading column — every row is a short name over one status word. 236px was sized
      before the detail card grew to carry the review tab's own columns, whose values (an address, a full legal name)
-     are what actually need the room. Narrowed to 194px: still comfortable for the avatar plus a two-line row. */
-  .sucols{display:grid;grid-template-columns:194px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
+     are what actually need the room. Went to 194px, then back to 224px once those fields were uncapped and stopped
+     competing for it — comfortable for the avatar plus a two-line row without crowding the card. */
+  .sucols{display:grid;grid-template-columns:224px minmax(0,1fr);gap:0;align-items:stretch;flex:1;min-height:0;}
   /* Its OWN scrolling region, and air at both ends: the list used to grow the whole pane instead, so with more
    than a handful of signups the first and last rows ran flush against the header and the action bar. */
   /* Bleeds DOWN as well as up and left. It always cancelled the pane's top and left padding so the queue surface ran
@@ -465,9 +466,9 @@
   /* The REGION: the queue surface continued up into the header, and the divider that carries on down the page.
      It must not restyle the control inside it — doing exactly that is what flattened the segmented control into
      "some text next to a grey box". */
-  /* 194px queue column + the 14px the region bleeds left = 208px, so the control ends exactly where the rows and
+  /* 224px queue column + the 14px the region bleeds left = 238px, so the control ends exactly where the rows and
      their scrollbar do. Tied to .sucols first column — change one and this follows. */
-  .tb-seg{order:-1;flex:0 0 208px;margin:0 0 0 -14px;padding:0 14px;height:100%;align-self:stretch;
+  .tb-seg{order:-1;flex:0 0 238px;margin:0 0 0 -14px;padding:0 14px;height:100%;align-self:stretch;
     display:flex;align-items:center;background:var(--queue);box-shadow:1px 0 0 var(--hair);}
   .tb-seg[hidden]{display:none;}
   /* The CONTROL: one track, two equal halves inside it, spanning the column. */
