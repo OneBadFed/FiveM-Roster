@@ -1485,7 +1485,12 @@ function signupCols_(sheet) {
     out.ooc = exact('OOC NAME') || all('OOC');
     out.name = exact('NAME') || exact('NAME (IN-CHARACTER)') || 0;
     if (!out.name) { for (let c = 0; c < hdr.length; c++) { if (hdr[c].indexOf('NAME') !== -1 && (c + 1) !== out.ooc) { out.name = c + 1; break; } } }
-    out.discord = exact('UNIQUE ID') || all('UNIQUE', 'ID') || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
+    // A signup form can ask for BOTH a Community ID and a Discord ID. Which of them IS the unique key is
+    // [ROSTER_LAYOUT].ID_TYPE's call, not keyword order's — resolving by order alone handed a COMMUNITY department's
+    // review tab the Discord ID and dropped the real key entirely. An explicit "Unique ID" header still outranks both.
+    let idType = 'DISCORD'; try { idType = norm_(CONFIG.idType || 'DISCORD'); } catch (e2) { /* config broken → Discord, the default */ }
+    const byType = (idType === 'COMMUNITY') ? (all('COMMUNITY', 'ID') || all('CID')) : all('DISCORD');
+    out.discord = exact('UNIQUE ID') || all('UNIQUE', 'ID') || byType || all('DISCORD') || all('COMMUNITY', 'ID') || all('CID');
     out.email = exact('EMAIL') || all('EMAIL');
     out.dob = exact('DATE OF BIRTH') || all('BIRTH') || all('DOB');
     out.phone = exact('PHONE') || all('PHONE');
@@ -1516,10 +1521,49 @@ function signupFirstFreeRow_(sheet, SC) {
   return last + 1;
 }
 
+/** Roles the sync understands on both tabs. timestamp: the review tab sorts "newest first" off it when it has one. */
+const SIGNUP_SYNC_ROLES_ = Object.freeze(['timestamp', 'name', 'ooc', 'discord', 'email', 'dob', 'phone', 'join']);
+
+/** Roles that must keep their RAW value — real dates, because the engine reads them back as dates. */
+const SIGNUP_RAW_ROLES_ = Object.freeze({ timestamp: 1, dob: 1, join: 1 });
+
 /**
- * Sync new signup-form submissions into the SIGNUPS review tab, matched by ROLE (name/ooc/id/email/dob/phone). Mirrors
- * syncFormToTracker_: a synced form row is marked "done" (background) so re-scans never double-add. STATUS is stamped
- * Pending; NOTES and any admin-only columns are left untouched. Never throws. @return rows added.
+ * The column pairs the ROLE map cannot express: a review-tab column whose HEADER also exists on the form tab.
+ *
+ * Roles only cover fields whose MEANING the engine knows — that is what lets a form ask "Community ID" while the
+ * review tab calls the same thing UNIQUE ID. Every other question on a signup form is the operator's own: a Discord
+ * ID sitting alongside a Community ID, Date of Hire, a full legal name, Address. None of those carried across —
+ * the sync wrote a blank and the applicant's answer stayed stranded on the responses tab.
+ *
+ * Matched on a punctuation-insensitive header key, so "Phone Number (REQUIRED)" and "PHONE NUMBER" are one column
+ * and a form question can be re-worded without breaking. A ROLE mapping always wins: these pairs fill only columns
+ * no role claimed, so a coincidental header match can never redirect a field the engine already understands.
+ * STATUS and NOTES are excluded outright — they are admin-owned and a form submission must never write them.
+ * @return {Array<{from:number, to:number}>} 1-based form column → review column.
+ */
+function signupHeaderPairs_(formSheet, fSC, signupSheet, sSC) {
+  const pairs = [];
+  try {
+    const key = (h) => norm_(String(h == null ? '' : h).replace(/\([^)]*\)/g, ' ')).replace(/[^A-Z0-9]+/g, ' ').trim();
+    const fHdr = formSheet.getRange(fSC.headerRow, 1, 1, Math.max(formSheet.getLastColumn(), 1)).getDisplayValues()[0];
+    const sHdr = signupSheet.getRange(sSC.headerRow, 1, 1, Math.max(sSC.width, 1)).getDisplayValues()[0];
+    const fBy = {};                                          // header key → form column; FIRST wins, so a duplicated question can't shadow the original
+    fHdr.forEach((h, c) => { const k = key(h); if (k && !(k in fBy)) fBy[k] = c + 1; });
+    const taken = {};
+    SIGNUP_SYNC_ROLES_.concat(['status', 'notes']).forEach((r) => { if (sSC[r]) taken[sSC[r]] = 1; });
+    sHdr.forEach((h, c) => {
+      const col = c + 1, k = key(h);
+      if (k && !taken[col] && fBy[k]) pairs.push({ from: fBy[k], to: col });
+    });
+  } catch (e) { log_('signupHeaderPairs_', e); }
+  return pairs;
+}
+
+/**
+ * Sync new signup-form submissions into the SIGNUPS review tab, matched by ROLE (name/ooc/id/email/dob/phone) and
+ * then by HEADER for every column a role doesn't cover (signupHeaderPairs_). Mirrors syncFormToTracker_: a synced
+ * form row is marked "done" (background) so re-scans never double-add. STATUS is stamped Pending; NOTES and any
+ * admin-only columns are left untouched. Never throws. @return rows added.
  */
 function syncSignupForm_(formSheet, signupSheet) {
   let added = 0;
@@ -1532,9 +1576,15 @@ function syncSignupForm_(formSheet, signupSheet) {
     const width = formSheet.getLastColumn();
     const range = formSheet.getRange(2, 1, formLast - 1, width);
     const values = range.getValues();
+    // DISPLAY text alongside the raw values. A 17-19 digit Unique ID read as a NUMBER loses precision the moment it
+    // leaves the sheet — that is where "9.40457E+17" in the review tab's UNIQUE ID column comes from — and a
+    // date-formatted blank in a text question (phone, address) arrives as the epoch, "31 Dec 1969". Only genuine
+    // date roles keep their raw value; every text field copies exactly what the applicant typed.
+    const disp = range.getDisplayValues();
     const backgrounds = range.getBackgrounds();
     const doneBg = String(CONFIG.bg.done).toLowerCase();
-    const roles = ['timestamp', 'name', 'ooc', 'discord', 'email', 'dob', 'phone', 'join']; // timestamp: the review tab's sort keys "newest first" off it (copied only when the tab HAS a TIMESTAMP column)
+    const roles = SIGNUP_SYNC_ROLES_;
+    const extra = signupHeaderPairs_(formSheet, fSC, signupSheet, sSC); // resolved ONCE — the headers can't change mid-pass
     // Free rows are computed ONCE. Calling signupFirstFreeRow_ inside the loop re-read the whole review tab per
     // added submission (O(n²) on a backfill). Same rule it applies: identity-free rows first, then append past the end.
     const freeRows = [];
@@ -1556,7 +1606,11 @@ function syncSignupForm_(formSheet, signupSheet) {
       const bg = String(backgrounds[i][0] || '').toLowerCase();
       if (bg === doneBg || bg === '#00ff00') continue;       // already synced
       const rowVals = new Array(sSC.width).fill('');
-      roles.forEach((role) => { if (fSC[role] && sSC[role]) rowVals[sSC[role] - 1] = frow[fSC[role] - 1]; });
+      roles.forEach((role) => {
+        if (!fSC[role] || !sSC[role]) return;
+        rowVals[sSC[role] - 1] = SIGNUP_RAW_ROLES_[role] ? frow[fSC[role] - 1] : disp[i][fSC[role] - 1];
+      });
+      extra.forEach((p) => { rowVals[p.to - 1] = disp[i][p.from - 1]; }); // the operator's own questions, matched by header
       rowVals[sSC.status - 1] = SIGNUP_STATUSES_[0];         // new submission → Pending
       const at = freeRows.length ? freeRows.shift() : nextAppend++;
       if (typeof ensureRoomAboveCap_ === 'function') ensureRoomAboveCap_(signupSheet, at); // grow inside the band, never onto the closing bar
