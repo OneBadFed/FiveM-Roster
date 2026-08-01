@@ -1,6 +1,6 @@
 # Roster Engine — System Documentation
 
-> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 36 whitelisted endpoints
+> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 37 whitelisted endpoints
 > **Updated:** 2026-07-28
 >
 > A white-label, schema-driven personnel-management engine for Google Sheets, built in Google Apps Script.
@@ -384,7 +384,7 @@ immediately, with the deferred queue as backstop.
 design system, deep-linkable (`openControlPanel('signups')` lands on a tab directly).
 
 **Security architecture (D5):** the client calls exactly one server function — `dispatch(name, args)` — which
-validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **36 endpoints**; the shim's
+validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **37 endpoints**; the shim's
 `RE_ENDPOINTS` list mirrors it one-for-one (adding an endpoint = one line in each — and a DevQA regression test
 now round-trips the whitelist, so a forgotten registration fails the suite instead of erroring in production). Writes are **identity-keyed**: the
 client sends each row's Unique ID so a shifted row can't hit the wrong member (`cpResolveMemberRow_` for

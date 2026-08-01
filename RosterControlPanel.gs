@@ -85,6 +85,7 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpSignupList: () => cpSignupList(),
   cpSignupApprove: (p) => cpSignupApprove(p),
   cpSignupFlag: (p) => cpSignupFlag(p),
+  cpSignupUpdate: (p) => cpSignupUpdate(p),
   cpSignupPostSeat: (p) => cpSignupPostSeat(p),
   cpPromoList: () => cpPromoList(),
   cpPromoRemove: (p) => cpPromoRemove(p),
@@ -3024,6 +3025,49 @@ function cpSignupFlag(payload) {
   const who = String(sh.getRange(row, SC.name || 1).getDisplayValue()).trim();
   cpAudit_('signup', cur, on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0], sh.getRange(row, SC.status).getA1Notation(), who);
   return { row: row, status: on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0], flagged: on };
+}
+
+/**
+ * Panel: correct ONE field on a signup, in place on the review tab.
+ *
+ * The card used to be read-only, so fixing a mistyped phone number meant leaving the panel, finding the row, editing
+ * it, and coming back. The edit lands on the SHEET, not in panel memory — which is also what makes it reach the
+ * roster: cpSignupApprove reads the row at approval time, so a correction saved here is the value that gets seated.
+ * An applicant who is skipped or flagged keeps the correction too.
+ *
+ * Addressed by HEADER TEXT, not column number: the panel's payload was built when it loaded, and a column inserted
+ * on the sheet since then would silently redirect the write. STATUS is refused outright — Flag and Approve own it,
+ * and a free-text status would break the queue's grouping. A processed signup is refused for the same reason it
+ * cannot be flagged: its roster row already exists and this would not follow it.
+ * @param {{row:number, id:string, k:string, v:string}} payload
+ */
+function cpSignupUpdate(payload) {
+  const file = adminFile_();
+  if (!file) throw new Error('No admin file is linked yet.');
+  const sh = file.getSheetByName(CONFIG.sheets.signups);
+  if (!sh) throw new Error(`"${CONFIG.sheets.signups}" was not found in the admin file.`);
+  const label = String((payload && payload.k) || '').trim();
+  if (!label) throw new Error('No field was named.');
+  const row = signupResolveRow_(sh, Number((payload && payload.row) || 0), String((payload && payload.id) || ''));
+  const SC = signupCols_(sh);
+  if (SC.status) {
+    const cur = String(sh.getRange(row, SC.status).getDisplayValue()).trim();
+    if (signupIsDone_(cur)) throw new Error('That signup is already processed — edit the member on the Members tab instead.');
+  }
+  const hdr = sh.getRange(SC.headerRow, 1, 1, SC.width).getDisplayValues()[0];
+  let col = 0;
+  for (let c = 0; c < hdr.length; c++) { if (String(hdr[c] || '').trim() === label) { col = c + 1; break; } }
+  if (!col) throw new Error(`"${label}" is no longer a column on ${CONFIG.sheets.signups} — reopen the panel.`);
+  if (SC.status && col === SC.status) throw new Error('Status is set with Flag or Approve, not by typing.');
+  const before = String(sh.getRange(row, col).getDisplayValue()).trim();
+  const value = String((payload && payload.v) != null ? payload.v : '').trim();
+  const cell = sh.getRange(row, col);
+  if (col === SC.discord) cell.setNumberFormat('@'); // a 17-19 digit ID must never be stored as a number
+  cell.setValue(value);
+  const who = String(sh.getRange(row, SC.name || 1).getDisplayValue()).trim();
+  cpAudit_('signup', before, value, cell.getA1Notation(), who);
+  // The Unique ID is what every later call re-finds this row by, so hand the panel the new one to carry forward.
+  return { row: row, k: label, value: value, id: SC.discord ? String(sh.getRange(row, SC.discord).getDisplayValue()).trim() : '' };
 }
 
 /**

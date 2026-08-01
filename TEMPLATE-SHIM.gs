@@ -41,7 +41,7 @@ const RE_ENDPOINTS = Object.freeze([
   'cpSetWebhook', 'cpSetWebhookChannels', 'cpTestWebhook', 'cpTestWebhookChannels',
   'cpGetConfig', 'cpApplyConfig', 'cpOpenSettings',
   'cpRankIcons', 'cpSetRankIcon', 'cpDeleteRankIcon',
-  'cpSignupList', 'cpSignupApprove', 'cpSignupFlag',
+  'cpSignupList', 'cpSignupApprove', 'cpSignupFlag', 'cpSignupUpdate',
   'cpSignupPostSeat', 'cpPromoList', 'cpPromoRemove', 'cpPromoRestore',
 ]);
 

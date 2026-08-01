@@ -505,6 +505,16 @@
   .su-ro+.su-ro{box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .su-ro-k{font-size:12.5px;color:rgba(255,255,255,.5);white-space:nowrap;}
   .su-ro-v{font-size:12.5px;color:rgba(255,255,255,.88);text-align:right;min-width:0;display:flex;align-items:center;gap:7px;justify-content:flex-end;}
+  /* Editable value: reads as text until you touch it, so the card still scans as a record rather than a form. */
+  .su-ro-in{flex:1 1 auto;min-width:0;background:none;border:1px solid transparent;border-radius:6px;padding:4px 7px;
+            font-family:inherit;font-size:12.5px;color:rgba(255,255,255,.88);text-align:right;outline:none;
+            transition:background var(--t),border-color var(--t),color var(--t);}
+  .su-ro-in::placeholder{color:rgba(255,255,255,.35);}
+  .su-ro-in:hover{background:rgba(255,255,255,.05);}
+  .su-ro-in:focus{background:var(--field);border-color:rgba(255,255,255,.14);box-shadow:var(--focus);text-align:left;color:#fff;}
+  .su-ro-in.mono{font-family:var(--mono);}
+  .su-ro-in.saving{opacity:.55;}
+  .su-ro-in.saved{border-color:rgba(52,199,89,.55);}
   .su-ro-v.blank{color:rgba(255,255,255,.3);}
   .su-slot{display:flex;align-items:center;gap:10px;padding:11px 14px;box-shadow:0 -1px 0 rgba(255,255,255,.07);}
   .su-slot .rava{width:30px;height:30px;border-radius:0;background:none;box-shadow:none;}
@@ -2288,6 +2298,14 @@
       return w.replace(/[A-Z]+/g,function(m){ return m.charAt(0)+m.slice(1).toLowerCase(); });
     }).join(' ');
   }
+  /* An editable field on the signup card. Writes straight to the review tab on blur, which is also how the value
+     reaches the roster: cpSignupApprove re-reads the row when it seats them, so whatever is saved here is seated. */
+  function suEdRow(x){
+    var v=String(x.v==null?'':x.v);
+    return '<div class="su-ro"><span class="su-ro-k">'+esc(suTitle(x.k))+'</span><span class="su-ro-v">'
+      +'<input class="su-ro-in'+(x.id?' mono':'')+'" data-sufield="'+esc(x.k)+'" value="'+esc(v)+'" placeholder="Not provided" autocomplete="off" spellcheck="false">'
+      +(x.copy?copy(v):'')+'</span></div>';
+  }
   function suRoRow(k,v,mono,extra){
     var blank=!String(v||'').trim();
     return '<div class="su-ro"><span class="su-ro-k">'+esc(k)+'</span>' /* k is a SHEET header now, not a literal */
@@ -2336,9 +2354,9 @@
         +'</div></div>'
       +'</div>'
       +'<div>'
-        +'<div class="fgroup"><div class="fglbl">From their signup<span class="su-lblnote">Read-only</span></div><div class="fpanel">'
+        +'<div class="fgroup"><div class="fglbl">From their signup<span class="su-lblnote">Saves to the tracker</span></div><div class="fpanel">'
           /* One field per COLUMN on the review tab, in sheet order — the headers are the only source of labels. */
-          +(a.fields||[]).map(function(x){ return suRoRow(suTitle(x.k),x.v,x.id,(x.copy?copy(x.v):'')); }).join('')
+          +(a.fields||[]).map(function(x){ return suEdRow(x); }).join('')
         +'</div>'
         +'<p class="fhint" style="padding:9px 2px 0">Copied onto their profile on approval.'
           +(blanks?(' '+blanks+' field'+(blanks===1?' was':'s were')+' left blank on the form — you can fill '+(blanks===1?'it':'them')+' in later from the Members tab.'):'')+'</p>'
@@ -2646,6 +2664,27 @@
   }
   $('suScope').addEventListener('click',function(e){ var b=e.target.closest('[data-suscope]'); if(!b) return;
     SU.scope=b.dataset.suscope; this.querySelectorAll('.fchip').forEach(function(x){ x.classList.toggle('active',x===b); }); renderSignups(); });
+  /* Correcting a signup field writes it to the review tab immediately — the same row cpSignupApprove reads when it
+     seats them, so a fix made here is the value that lands on the roster. Saved on blur, not per keystroke. */
+  $('suBody').addEventListener('change',function(e){
+    var el=e.target.closest('[data-sufield]'); if(!el) return;
+    var a=suApp(SU.cur); if(!a) return;
+    var k=el.dataset.sufield, v=String(el.value||'').trim();
+    var f=(a.fields||[]).filter(function(x){ return x.k===k; })[0]; if(!f) return;
+    if(String(f.v==null?'':f.v).trim()===v){ el.value=String(f.v==null?'':f.v); return; } /* untouched, or only whitespace */
+    var prev=String(f.v==null?'':f.v);
+    el.classList.add('saving'); el.disabled=true;
+    api(function(d){
+      el.classList.remove('saving'); el.disabled=false;
+      el.classList.add('saved'); setTimeout(function(){ el.classList.remove('saved'); },1400);
+      f.v=d.value; el.value=d.value; a.row=d.row;
+      /* The Unique ID is what every later call re-finds this row by — if THAT is what changed, carry the new one. */
+      if(d.id){ a.discord=d.id; if(f.k===k && (a.fields||[]).some(function(x){ return x.id&&x.k===k; })) a.discord=d.value; }
+      toast(suTitle(k)+' saved');
+    },function(err){
+      el.classList.remove('saving'); el.disabled=false; el.value=prev; onError(err);
+    },'cpSignupUpdate',{row:a.row,id:a.discord,k:k,v:v});
+  });
   $('suSkip').addEventListener('click',function(){ suStep(1); });
   $('suPrev').addEventListener('click',function(){ suStep(-1); });
   $('suNext').addEventListener('click',function(){ suStep(1); });
