@@ -1529,8 +1529,13 @@ function styleFormResponses_(sheet) {
     sheet.getRange(lastRow + 1, 1, maxRows - lastRow, lastCol).setBackground(theme_('CANVAS'));
   }
 
-  // Subtle console grid over the populated block, then a brighter accent underline beneath the header.
-  sheet.getRange(1, 1, lastRow, lastCol)
+  // Subtle console grid over the WHOLE sheet, then a brighter accent underline beneath the header.
+  // Not just 1..lastRow: a Forms response tab grows by itself, nothing re-themes it on submit (this runs from
+  // First-Run Setup alone), and Google appends a raw row. Bordering only the populated block therefore dressed
+  // whatever existed that day and left every later submission bare — which is why a tab themed while it was still
+  // empty ends up with a styled header, a coloured canvas and no grid at all. Pre-dressing the empty rows is the
+  // same rule the roster tabs use for their blank tail: the next row to arrive lands already dressed.
+  sheet.getRange(1, 1, maxRows, lastCol)
     .setBorder(true, true, true, true, true, true, theme_('GRID'), SpreadsheetApp.BorderStyle.SOLID);
   header.setBorder(null, null, true, null, null, null, theme_('ACCENT'), SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 
