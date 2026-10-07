@@ -592,9 +592,7 @@ Refresh Police Academy · 📊 Build / Refresh Activity Panel │ 🌐 Set Up Pu
 (Discord / Community) · 🧩 Sync Column
 Config · 🚀 First-Run Setup · 🔌 Install Triggers.
 
-**🧪 Dev / QA:** 🎬 Load Demo Roster · 🎲/🚔/🧾 Add Random LOA / Patrol Log / Signup │ ▶️ Run Tests Part 1
-(1–8) / Part 2 (9–16) / Part 3 (17–23) · ⏱️ Run ALL Tests · 🔬 Run one section (1–23) · 🧹 Delete Sandbox /
-Results Tabs.
+**🧪 Dev / QA:** 🎬 Load Demo Roster · 🗑️ Reset for a new department · 🧹 Delete old Sandbox / Results Tabs. In-sheet test sections and random test generators have been removed.
 
 Every action reports what it actually did (counts, names, changes).
 

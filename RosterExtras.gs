@@ -974,11 +974,13 @@ function academyGradSection_(sh, fromRow, width) {
   if (fromRow > maxR) return null;
   const disp = sh.getRange(fromRow, 1, maxR - fromRow + 1, width).getDisplayValues();
   let hdr = 0;
-  for (let i = 0; i < disp.length; i++) { if (disp[i].some((c) => /GRADUATE/i.test(String(c)))) { hdr = fromRow + i; break; } }
+  // Only a dedicated log banner establishes a fixed boundary. A member's Graduated
+  // status, notes, or our generated divider must not become a header on the next refresh.
+  for (let i = 0; i < disp.length; i++) { if (disp[i].some((c) => /^(?:GRADUATE|GRADUATED|GRADUATES)\s+(?:LOG|HISTORY|RECORDS)$/i.test(String(c).trim()))) { hdr = fromRow + i; break; } }
   if (!hdr) return null;
   const merges = sh.getRange(hdr, 1, Math.min(6, maxR - hdr + 1), width).getMergedRanges(); // banner is usually merged — data starts under it
   let bottom = hdr;
-  merges.forEach((m) => { if (m.getRow() <= hdr + 4) bottom = Math.max(bottom, m.getRow() + m.getNumRows() - 1); });
+  merges.forEach((m) => { if (m.getRow() <= hdr && m.getRow()+m.getNumRows()>hdr) bottom = Math.max(bottom, m.getRow() + m.getNumRows() - 1); });
   return { headerRow: hdr, dataStart: bottom + 1 }; // grow below a final-row banner instead of overwriting it
 }
 
@@ -1082,6 +1084,9 @@ function buildAcademySheetsCore_() {
     const existVals = maxRows >= dataRow ? sh.getRange(dataRow, 1, maxRows - dataRow + 1, width).getValues() : [];
     const existFormulas = maxRows >= dataRow ? sh.getRange(dataRow, 1, maxRows - dataRow + 1, width).getFormulasR1C1() : [];
     const existKeys = maxRows >= dataRow ? sh.getRange(dataRow, keyCol, maxRows - dataRow + 1, 1).getDisplayValues() : [];
+    // Validate and preserve the same exact displayed identity used by the lookup below;
+    // numeric getValues() can round long Discord IDs before duplicate detection.
+    existVals.forEach((row,i)=>{ row[keyCol-1]=String(existKeys[i][0]||'').trim(); });
     const identityProblem = groupIdentityProblem_(rd,useId?RC.discord:RC.name,RC.name) || groupIdentityProblem_(existVals.filter((row)=>String(row[AC.name-1]||'').trim()!==ACADEMY_GRAD_DIVIDER),keyCol,AC.name);
     if(identityProblem){skipped.push({name:sh.getName(),why:identityProblem+' — existing rows left unchanged'});return;}
     existFormulas.forEach((row,r)=>row.forEach((formula,c)=>{if(formula&&!colMap[c])existVals[r][c]={derivedFormula:formula};}));
@@ -1119,11 +1124,17 @@ function buildAcademySheetsCore_() {
     const gradRowsFrom = () => Object.keys(existByKey).filter((k) => !filled[k] && Object.prototype.hasOwnProperty.call(rosterKeys,k)).map((k) => rowForIdx(rosterKeys[k],true));
     const putGrads = (grads, bandBottom, tmplRow) => {
       const top = gradSec ? gradSec.dataStart : bandBottom + 1;
-      clearMemberCols(top, sh.getMaxRows()); // clear the graduate destination first so removed graduates don't linger (banner above untouched)
+      if(gradSec) {
+        // Use the graduate area's own frame, not the academy's active-member bands.
+        // Three initial slots; only grow when more graduates need room. Never consume the closing bar.
+        ensureRoomAboveCap_(sh,top+Math.max(3,grads.length)-1,top);
+        const frame=framedTable_(sh,top);
+        clearMemberCols(top,frame.cap-1);
+        if(AC.id && AC.id>=memberCol1) sh.getRange(top,AC.id,frame.cap-top,1).setNumberFormat('@');
+      } else clearMemberCols(top, sh.getMaxRows());
       if (!grads.length) return;
       let writeAt;
       if (gradSec) {
-        const need = top + grads.length - 1; if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());
         writeBlock(grads, top); writeAt = top;
       } else {
         const need = top + grads.length; if (need > sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(), need - sh.getMaxRows());

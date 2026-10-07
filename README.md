@@ -158,8 +158,7 @@ restructure, or reformat your sheets.
 - Don't edit the hidden first column on the Patrol Log.
 - 🎬 Load Demo Roster is for fresh copies only — it overwrites.
 - To prepare a demo copy for another department, use **🧪 Dev / QA ▸ 🗑️ Reset for a new department…** and type **RESET DEPARTMENT**. This permanently clears members (including custom MEMBER columns), LOAs, patrol logs, signups, linked response-sheet rows, history, snapshots, webhooks, rank icons and saved department configuration. SLOT values such as ranks/callsigns, dividers, borders, formatting, custom tab names and structural column mappings remain. Other settings return to defaults with scheduled activity reset off. The public roster is disconnected before cleanup; no other spreadsheet or Google Form is changed. Engine triggers belonging to the current user are removed; any other trigger owners must remove theirs separately. Run it on a copy, inspect any manually maintained content, then link the new department's own response tabs, configure its connections and run First-Run Setup. The reset is not transactional: if it reports a failure, keep the copy private and retry after resolving the error.
-- After big changes, the 🧪 Dev / QA menu can run the engine's own test suite (Parts 1–3) against sandbox tabs —
-  it never touches your live data.
+- In-sheet Dev/QA test suites and random test-entry generators have been removed. Demo loading, department reset and cleanup of old sandbox/results tabs remain. Repository checks remain available under tools/.
 
 ---
 

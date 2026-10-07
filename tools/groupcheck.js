@@ -30,3 +30,29 @@ console.log('Academy: exact training ranks, refreshed graduate identity, preserv
 sheets=[roster,tab];ctx.isAcademyTab_=()=>false;ctx.rosterBandRanges_=()=>({Officers:{ranges:[{top:3,bottom:4}]}});ctx.tabBandRanges_=()=>[{label:'Officers',top:3,height:1}];roster.rows[3][4]='Day';const groupClears=tab.clears;result=ctx.buildGroupSheets_();assert.equal(result.built,0);assert.equal(tab.clears,groupClears,'full group band cannot silently omit matching members');
 ctx.tabBandRanges_=()=>[];ctx.rosterBandRanges_=()=>({});roster.rows[3][4]='Night';ctx.buildGroupSheets_();tab.formulas['3,7']='=RC[-1]*2';roster.rows[3][4]='Day';const first=roster.rows[2];roster.rows[2]=roster.rows[3];roster.rows[3]=first;ctx.buildGroupSheets_();assert.equal(tab.rows[3][2],'Alex');assert.equal(tab.formulas['4,7'],'=RC[-1]*2','custom formula follows member and retains relative references');
 console.log('Fixed-band overflow and formula relocation passed');
+// Exercise the actual graduate-banner detector, rather than the builder fixture's stub.
+function realFunction(name){const start=source.indexOf('function '+name+'('),end=source.indexOf('\nfunction ',start+1);vm.runInContext(source.slice(start,end<0?undefined:end),ctx)}
+realFunction('academyGradSection_');
+const graduateFixture=new Sheet('Academy',[
+ ['NAME','GRADUATED'],['Alex','Graduated'],['— GRADUATED —',''],['Graduate log','',''],['','','']
+]);
+assert.equal(ctx.academyGradSection_(graduateFixture,2,2).headerRow,4,'member status and generated divider are not fixed banners');
+
+graduateFixture.rows[3][0]='';assert.equal(ctx.academyGradSection_(graduateFixture,2,2),null,'generated graduate divider is movable, not a permanent header');
+// Repeated graduation and re-entry must preserve the training record and relative formula.
+sheets=[roster,academy];ctx.isAcademyTab_=s=>s===academy;ctx.tabBandRanges_=()=>[];
+roster.rows[2]=['','Officer','Alex','1','Day',0];roster.rows[3]=['','Officer','Blair','2','Night',5];
+academy.rows=[['GROUP','RANK','NAME','UNIQUE ID','HOURS','EXAM'],['','','','','',''],['','Cadet','Alex','1',0,'passed'],['','','','','','']];academy.formulas={};
+ctx.buildAcademySheets_();ctx.buildAcademySheets_();
+assert.equal(academy.rows.filter(r=>r[2]==='— GRADUATED —').length,1,'repeat refresh has one graduate divider');
+assert.equal(academy.rows.filter(r=>r[2]==='Alex').length,1);assert.equal(academy.rows.find(r=>r[2]==='Alex')[5],'passed');
+roster.rows[2][1]='Cadet';ctx.buildAcademySheets_();assert.equal(academy.rows[2][2],'Alex');assert.equal(academy.rows[2][5],'passed','returning trainee retains exam');
+roster.rows[2][2]='';ctx.buildAcademySheets_();assert(!academy.rows.some(r=>r[2]==='Alex'),'removed roster member leaves academy');
+console.log('Academy graduate detection, repeated refresh, trainee re-entry and removal passed');
+const panel=fs.readFileSync('RosterControlPanel.gs','utf8');assert(panel.includes("if(trainingChanged)"));assert(panel.includes("['academy','groups','dashboard'].forEach(deferWork_)"),'settings changes queue derived views');
+// Builder integration: a fixed graduate area retains three slots and bounds clearing before its bar.
+let roomArgs=[],gradCap=7;ctx.ensureRoomAboveCap_=(s,need,start)=>{roomArgs.push([need,start]);gradCap=Math.max(gradCap,need+1)};ctx.framedTable_=()=>({cap:gradCap});
+const bounded=new Sheet('Academy',[['GROUP','RANK','NAME','UNIQUE ID','HOURS','EXAM'],['','','','','',''],['','','','','',''],['GRADUATE LOG','','','','',''],['','','','','',''],['','','','','',''],['','','','','',''],['BOTTOM','','','','','']]);
+sheets=[roster,bounded];ctx.isAcademyTab_=s=>s===bounded;ctx.academyGradSection_=()=>({headerRow:4,dataStart:5});roster.rows[2][2]='Alex';roster.rows[2][1]='Officer';
+ctx.buildAcademySheets_();assert.deepEqual(roomArgs[0],[7,5]);assert.equal(bounded.rows[7][0],'BOTTOM','graduate border remains intact');
+console.log('Graduate builder initializes three slots and clears only inside its frame');

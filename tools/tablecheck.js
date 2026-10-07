@@ -43,3 +43,14 @@ vm.runInContext(panel.slice(panel.indexOf('function publishFramedTable_('),panel
 const src=new Sheet('LOA',19),dest=new Sheet('LOA',16);src.parent=owner;dest.parent=publicBook;src.rows[5].v[6]='PRIVATE';seat(src,8,'old','Pending',1700000000001);src.rows[7].v[6]='secret';ctx.publishFramedTable_(src,dest);assert.equal(dest.width,19);assert.equal(dest.rows.length,11);assert.equal(dest.rows[7].v[1],'old');assert.equal(dest.rows[7].v[6],'');assert.equal(dest.rows[7].v[0],'');assert.equal(dest.rows[7].style,'old');assert.equal(dest.rows[10].style,'BORDER');assert.equal(dest.rows[7].height,src.rows[7].height);assert.equal(owner.removed.length,1);assert.equal(publicBook.removed.length,1);console.log('Public mirror: dimensions, styles, height, privacy filtering and carrier cleanup passed');
 
 const wide=new Sheet('LOA',25);for(const r of wide.rows){for(let c=19;c<25;c++)r.bg[c]='#ffffff';r.bg[18]=r.bg[0]}assert.equal(ctx.framedTable_(wide,8).width,19);console.log('Right border detected before unused grid columns: passed');
+// Graduate log framing uses its own start row, unrelated to tracker/signup settings.
+const gradFrame=new Sheet('Police Academy',23);
+gradFrame.rows=Array.from({length:50},(_,i)=>({v:Array(23).fill(''),f:Array(23).fill(''),bg:Array(23).fill(i===43?'#111111':'#eeeeee'),style:i===43?'GRAD_BORDER':'GRAD_TEMPLATE',height:27}));
+for(let i=40;i<44;i++){gradFrame.rows[i].bg[0]=gradFrame.rows[i].bg[22]='#111111';}
+assert.equal(ctx.framedTable_(gradFrame,41).cap,44);
+ctx.ensureRoomAboveCap_(gradFrame,43,41);assert.equal(gradFrame.rows.length,50,'three empty graduate slots need no growth');
+ctx.ensureRoomAboveCap_(gradFrame,45,41);
+assert.equal(ctx.framedTable_(gradFrame,41).cap,46,'two extra graduates move the closing bar down');
+assert.equal(gradFrame.rows[45].style,'GRAD_BORDER');
+for(let r=43;r<45;r++){assert.equal(gradFrame.rows[r].style,'GRAD_TEMPLATE');assert.equal(gradFrame.rows[r].height,27);assert.equal(gradFrame.rows[r].validation,'copied');assert.equal(gradFrame.rows[r].conditional,'copied');}
+console.log('Graduate log: three initial rows, independent frame, dynamic width, growth and border/format preservation passed');

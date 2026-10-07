@@ -447,6 +447,16 @@ function cpApplyConfig(payload) {
       const kvN = res.written.kv; const tbN = res.written.tables;
       cpAudit_('action', '', `Settings updated (${kvN} value${kvN === 1 ? '' : 's'}${tbN ? `, ${tbN} table${tbN === 1 ? '' : 's'}` : ''})`, '', '');
       try { if (typeof cpInvalidateHealth_ === 'function') cpInvalidateHealth_(); } catch (e) { /* Trust.gs may be absent */ }
+      // Training membership can change without a roster edit (rank flags, labels or keywords).
+      // Queue the same derived rebuilds used by member changes so the academy cannot stay stale.
+      const trainingChanged=payload && (Object.keys(payload.tables||{}).some(name=>['RANKS','DASHBOARD_GROUPS','SECTION_TAGS','COLUMNS'].indexOf(name)!==-1)
+        || (payload.kv||[]).some(item=>item.block==='ROSTER_LAYOUT' || item.block==='SHEETS'));
+      if(trainingChanged) {
+        try { if(typeof deferWork_==='function') ['academy','groups','dashboard'].forEach(deferWork_); }
+        catch(e){ log_('cpApplyConfig.derived',e); }
+        try { if(typeof publishMarkDirty_==='function') publishMarkDirty_(); }
+        catch(e){ log_('cpApplyConfig.publish',e); }
+      }
       res.state = cpGetConfig_(); // fresh state so the client can rebase without a second round-trip
     }
     return res;

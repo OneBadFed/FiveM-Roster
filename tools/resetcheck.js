@@ -40,7 +40,7 @@ const ctx={CONFIG:{sheets:{roster:'Custom roster',tracker:'Custom LOAs',form:'Ol
   cfgInvalidate_:()=>{},seedConfigTab_:()=>{},setKvValue_:(sh,b,k,v)=>writes.push([b,k,v]),setTableRows_:(sh,n,r)=>writes.push([n,r]),devDeleteSandbox_:()=>{},SpreadsheetApp:{flush:()=>{}},
 };
 vm.createContext(ctx);
-vm.runInContext(source.slice(source.indexOf('function devDepartmentResetPlan_('),source.indexOf('/**\n * Dev/QA quick tool:',source.indexOf('function devDepartmentResetPlan_('))),ctx);
+vm.runInContext(source.slice(source.indexOf('function devDepartmentResetPlan_('),source.indexOf('function devDeleteSandbox_(')),ctx);
 const plan=ctx.devDepartmentResetPlan_(ss);
 assert.deepEqual(Array.from(plan.rows),[2,4],'only member slots selected; dividers excluded');
 assert.equal(plan.tables[0].end,5,'bottom border excluded');

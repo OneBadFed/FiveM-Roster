@@ -2505,8 +2505,8 @@ function framedTable_(sheet, dataStart) {
   return { start: dataStart, width, cap: values[values.length - 1].every((v) => String(v).trim() === '') ? max : max + 1 };
 }
 
-function ensureRoomAboveCap_(sheet, needRow) {
-  const table = framedTable_(sheet);
+function ensureRoomAboveCap_(sheet, needRow, dataStart) {
+  const table = framedTable_(sheet, dataStart);
   if (needRow < table.cap) return;
   const count = needRow - table.cap + 1;
   const source = Math.max(table.start, table.cap - 1);
