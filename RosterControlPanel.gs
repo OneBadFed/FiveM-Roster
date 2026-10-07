@@ -54,6 +54,7 @@ function cpStatusColors_() {
 
 const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpPing: () => cpPing(),
+  cpStartupInfo: () => cpStartupInfo(),
   cpBootstrap: () => cpBootstrap(),
   cpRefresh: () => cpRefresh(),
   cpGetProfile: (id) => cpGetProfile(id),
@@ -275,7 +276,11 @@ function cpRosterRanks_(ss) {
 
 /** Menu target / panel action: open the Settings Studio (its own full-size dialog). */
 function openSettingsPanel() {
-  const html = HtmlService.createHtmlOutputFromFile('SettingsPanel')
+  const template = HtmlService.createTemplateFromFile('SettingsPanel');
+  let boot = 'null';
+  try { boot = JSON.stringify(cpGetConfig_()).replace(/</g, '\\u003c'); } catch (e) { log_('openSettingsPanel.boot', e); }
+  template.settingsBootJson = boot;
+  const html = template.evaluate()
     .setWidth(1180).setHeight(760);
   // MODELESS, like the Control Panel: the dialog is draggable and the sheet stays usable behind it —
   // change a value, glance at the live tab, save, without closing anything.
@@ -483,7 +488,6 @@ function openSignupsDialog() {
 
 /** First payload the UI requests on load: meta + a full snapshot. */
 function cpBootstrap() {
-  if (typeof cpEnsureAuditTrigger === 'function') { try { cpEnsureAuditTrigger(); } catch (e) { log_('cpBootstrap', e); } } // audit always-on
   const snap = cpSnapshot_();
   const rosterSheet = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);
   const RCadd = rosterSheet ? rosterCols_(rosterSheet) : {};
@@ -513,8 +517,23 @@ function cpBootstrap() {
     updatedAt: snap.updatedAt,
     rankIcons: {},                                                              // PERF: icons are heavy base64 — the panel lazy-loads them via cpRankIcons right after first paint (initials show for a beat)
     adminRoster: cpAdminStatus_(),                                              // { linked, access, url } — access is per-USER (Google ACL), so each opener sees their own answer
-    health: (typeof cpHealthCheck_ === 'function') ? cpHealthCheck_() : null, // null if RosterTrust.gs not pasted
+    health: null, // structural diagnostics load after the first paint
   };
+}
+
+/** Optional diagnostics and queue badge, requested only after the panel paints. */
+function cpStartupInfo() {
+  if (typeof cpEnsureAuditTrigger === 'function') { try { cpEnsureAuditTrigger(); } catch (e) { log_('cpStartupInfo', e); } }
+  const sh = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.signups);
+  let waiting = 0;
+  if (sh) {
+    const SC = signupCols_(sh);
+    const n = sh.getLastRow() - SC.dataStart + 1;
+    if (n > 0 && SC.status) sh.getRange(SC.dataStart, 1, n, SC.width).getDisplayValues().forEach((r) => {
+      if ((SC.name && String(r[SC.name - 1]).trim() || SC.discord && String(r[SC.discord - 1]).trim()) && !signupIsDone_(r[SC.status - 1])) waiting++;
+    });
+  }
+  return { health: typeof cpHealthCheckCached_ === 'function' ? cpHealthCheckCached_() : null, waiting };
 }
 
 /**
@@ -722,13 +741,12 @@ function cpRankIcons() {
     if (last >= CONFIG.rosterStartRow) {
       const n = last - CONFIG.rosterStartRow + 1;
       const RC = rosterCols_(roster);
-      const ranks = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getDisplayValues();
-      const names = roster.getRange(CONFIG.rosterStartRow, RC.name, n, 1).getDisplayValues();
+      const rows = roster.getRange(CONFIG.rosterStartRow, 1, n, Math.max(RC.rank, RC.name)).getDisplayValues();
       for (let i = 0; i < n; i++) {
-        const rank = String(ranks[i][0]).trim();
+        const rank = String(rows[i][RC.rank - 1]).trim();
         if (rank === '' || rank === 'Rank' || !isMemberSlot_(rank)) continue;
         if (!(rank in counts)) { counts[rank] = 0; order.push(rank); }
-        if (String(names[i][0]).trim() !== '') counts[rank]++;
+        if (String(rows[i][RC.name - 1]).trim() !== '') counts[rank]++;
       }
     }
   }
@@ -770,15 +788,14 @@ function cpGetProfile(discordId) {
     if (last >= CONFIG.trackerStartRow) {
       const n = last - CONFIG.trackerStartRow + 1;
       const TC = trackerCols_(tracker);
-      const disp = tracker.getRange(CONFIG.trackerStartRow, 2, n, TC.width - 1).getDisplayValues(); // B..(width)
-      const ids = tracker.getRange(CONFIG.trackerStartRow, TC.discord, n, 1).getDisplayValues();
+      const disp = tracker.getRange(CONFIG.trackerStartRow, 1, n, TC.width).getDisplayValues();
       for (let i = 0; i < n; i++) {
-        if (String(ids[i][0]).trim() !== id) continue;
+        if (String(disp[i][TC.discord - 1]).trim() !== id) continue;
         leaves.push({
           type: trackerLeaveType_(),
-          start: String(disp[i][TC.start - 2]).trim(),
-          end: String(disp[i][TC.end - 2]).trim(),
-          status: String(disp[i][TC.status - 2]).trim(),
+          start: String(disp[i][TC.start - 1]).trim(),
+          end: String(disp[i][TC.end - 1]).trim(),
+          status: String(disp[i][TC.status - 1]).trim(),
         });
       }
     }
@@ -905,11 +922,14 @@ function cpWithLock_(fn) {
   const lock = LockService.getScriptLock();
   // INTERACTIVE-FIRST: stamp the publisher's backoff BEFORE waiting, so no NEW publish pass starts while this
   // write queues — the in-flight pass finishes inside our 30s wait and the lock falls to us. Not cleared on
-  // release (admin sessions come in bursts); it simply expires, and the sweep then carries any pending publish.
+  // release until the write finishes; publishing then runs outside the writer lock.
   try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
   // 30s, not 10s: a colliding save should ride out the publisher's current pass ("Saving…" a little longer), not hard-fail.
   if (!lock.tryLock(30000)) throw new Error('Another roster operation is holding the lock (usually the background publisher) — wait a few seconds and try again.');
-  try { return fn(); } finally { lock.releaseLock(); }
+  try { return fn(); } finally {
+    lock.releaseLock();
+    publishAfterWrite_();
+  }
 }
 
 /**
@@ -1503,6 +1523,7 @@ function signupCols_(sheet) {
     // Data begins below the header. A plain Forms tab (header row 1) → row 2; a themed tab → skip the same header-to-data
     // gap the roster leaves (e.g. header row 6 → data row 8), mirroring the roster's layout convention.
     out.dataStart = (hRow === 1) ? 2 : hRow + Math.max(1, CONFIG.rosterStartRow - (CONFIG.headerRow || 6));
+    if (hRow > 1) out.width = Math.max(lastCol, framedTable_(sheet, out.dataStart).width);
   } catch (e) { log_('signupCols_', e); }
   return out;
 }
@@ -1510,7 +1531,7 @@ function signupCols_(sheet) {
 /** First data row with no applicant IDENTITY (NAME + UNIQUE ID both empty), or the row past the end. NB: a stray STATUS
  *  value (a leftover dropdown pick / template) does NOT count as occupied — only real name/ID data does. */
 function signupFirstFreeRow_(sheet, SC) {
-  const last = sheet.getLastRow();
+  const last = Math.min(sheet.getLastRow(), framedTable_(sheet, SC.dataStart).cap - 1);
   if (last < SC.dataStart) return SC.dataStart;
   const n = last - SC.dataStart + 1;
   const block = sheet.getRange(SC.dataStart, 1, n, SC.width).getDisplayValues();
@@ -1589,9 +1610,10 @@ function syncSignupForm_(formSheet, signupSheet) {
     // Free rows are computed ONCE. Calling signupFirstFreeRow_ inside the loop re-read the whole review tab per
     // added submission (O(n²) on a backfill). Same rule it applies: identity-free rows first, then append past the end.
     const freeRows = [];
-    let nextAppend = Math.max(signupSheet.getLastRow() + 1, sSC.dataStart);
-    if (signupSheet.getLastRow() >= sSC.dataStart) {
-      const blk = signupSheet.getRange(sSC.dataStart, 1, signupSheet.getLastRow() - sSC.dataStart + 1, sSC.width).getDisplayValues();
+    const reviewLast = Math.min(signupSheet.getLastRow(), framedTable_(signupSheet, sSC.dataStart).cap - 1);
+    let nextAppend = Math.max(reviewLast + 1, sSC.dataStart);
+    if (reviewLast >= sSC.dataStart) {
+      const blk = signupSheet.getRange(sSC.dataStart, 1, reviewLast - sSC.dataStart + 1, sSC.width).getDisplayValues();
       for (let r = 0; r < blk.length; r++) {
         const occupied = (sSC.name && String(blk[r][sSC.name - 1] || '').trim()) || (sSC.discord && String(blk[r][sSC.discord - 1] || '').trim());
         if (!occupied) freeRows.push(sSC.dataStart + r);
@@ -1612,11 +1634,16 @@ function syncSignupForm_(formSheet, signupSheet) {
         rowVals[sSC[role] - 1] = SIGNUP_RAW_ROLES_[role] ? frow[fSC[role] - 1] : disp[i][fSC[role] - 1];
       });
       extra.forEach((p) => { rowVals[p.to - 1] = disp[i][p.from - 1]; }); // the operator's own questions, matched by header
+      if (sSC.headerRow > 1 && fSC.timestamp) {
+        const submitted = frow[fSC.timestamp - 1];
+        if (submitted instanceof Date && !isNaN(submitted.getTime())) rowVals[0] = 'SIGNUP|' + fid + '|' + submitted.getTime();
+      }
       rowVals[sSC.status - 1] = SIGNUP_STATUSES_[0];         // new submission → Pending
       const at = freeRows.length ? freeRows.shift() : nextAppend++;
       if (typeof ensureRoomAboveCap_ === 'function') ensureRoomAboveCap_(signupSheet, at); // grow inside the band, never onto the closing bar
       else if (at > signupSheet.getMaxRows()) signupSheet.insertRowsAfter(signupSheet.getMaxRows(), at - signupSheet.getMaxRows());
       writeValuesSafe_(signupSheet, at, 1, [rowVals], null); // merge-safe row write
+      if (sSC.headerRow > 1) signupSheet.getRange(at, 1).setNumberFormat(';;;');
       signupSheet.getRange(at, sSC.discord).setNumberFormat('@'); // keep the Unique ID exact
       formSheet.getRange(i + 2, 1, 1, width).setBackground(CONFIG.bg.done); // mark this form row synced
       newcomers.push({ name: fname, id: fid });
@@ -1710,20 +1737,14 @@ function ensureSignupTab_(file) {
 /** The signup STATUS grouping order = the tab's OWN dropdown list when one exists (the operator may have customized it,
  *  e.g. Pending → Approve → Flagged → Processed — the sort must mirror THEIR order, same layout-ownership rule as the
  *  chip colours). Fallback: the engine's built-in flow. */
-function signupStatusOrder_(sheet, SC) {
-  try {
-    const dd = (typeof statusDropdownOrder_ === 'function') ? statusDropdownOrder_(sheet, SC.dataStart, SC.status) : null; // shared helper (RosterSystem) — same rule as the tracker + Patrol Log sorts
-    if (dd) return dd;
-  } catch (e) { /* no/unreadable dropdown → built-in order */ }
-  return SIGNUP_STATUSES_.slice();
-}
+function signupStatusOrder_(sheet, SC) { return ['Flagged', 'Pending', 'Approved', 'Processed']; }
 
 /** Stamp blank statuses as Pending, then re-group by the STATUS dropdown's own order (value rewrite; keeps formatting). */
 function sortSignups_(sheet) {
   try {
     const SC = signupCols_(sheet), W = SC.width, ds = SC.dataStart;
     if (!SC.status || !W) return 0;
-    const last = sheet.getLastRow();
+    const last = Math.min(sheet.getLastRow(), framedTable_(sheet, ds).cap - 1);
     if (last < ds) return 0;
     const n = last - ds + 1;
     const vals = sheet.getRange(ds, 1, n, W).getValues();
@@ -1735,12 +1756,12 @@ function sortSignups_(sheet) {
       const identity = (SC.name && String(r[SC.name - 1] || '').trim()) || (SC.discord && String(r[SC.discord - 1] || '').trim());
       if (!identity) continue; // no NAME / UNIQUE ID → a blank scaffolding or stray STATUS-only row → drop it (compacted away)
       if (String(r[SC.status - 1] || '').trim() === '') r[SC.status - 1] = SIGNUP_STATUSES_[0]; // new submission → Pending
-      rows.push(r);
+      r._sourceRow = ds + i; rows.push(r);
     }
     if (!rows.length) return 0;
     const flow = signupStatusOrder_(sheet, SC); // the dropdown's order, e.g. Pending → Approve → Flagged → Processed
     const rank = {}; flow.forEach((s, i) => { if (!(norm_(s) in rank)) rank[norm_(s)] = i; });
-    // Within a status group: NEWEST submission first. Recency source, in order: (1) the form's own Timestamp, looked
+    // Within a status group: Oldest submission first. Recency source, in order: (1) the form's own Timestamp, looked
     // up LIVE from the signup form tab by Unique ID — covers every row, including ones synced before recency existed
     // and review tabs with no TIMESTAMP column (no backfill needed); (2) the review tab's own TIMESTAMP column, when
     // it has one; (3) 0 — hand-added applicants keep their prior order.
@@ -1769,8 +1790,9 @@ function sortSignups_(sheet) {
       return (v instanceof Date && !isNaN(v.getTime())) ? v.getTime() : 0;
     };
     const dec = rows.map((r, i) => ({ r: r, i: i, p: (norm_(String(r[SC.status - 1] || '').trim()) in rank) ? rank[norm_(String(r[SC.status - 1]).trim())] : flow.length, t: rec(r) }));
-    dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable
+    dec.sort((a, b) => (a.p - b.p) || (a.t - b.t) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
+    moveTableRecords_(sheet, ds, sorted, W);
     if (SC.discord) sheet.getRange(ds, SC.discord, sorted.length, 1).setNumberFormat('@');
     writeValuesSafe_(sheet, ds, 1, sorted, null); // merge-safe (see sortTracker_)
     if (last > ds + sorted.length - 1) { // survivors slid up → blank the rows they vacated so nothing is duplicated at the bottom
@@ -2554,7 +2576,56 @@ function publishMirrorHeights_(src, dest, srcStart, destStart, n, deep) {
   } catch (e) { logWarn_('publishMirrorHeights_', 'row heights skipped for ' + dest.getName() + ': ' + ((e && e.message) ? e.message : e)); }
 }
 
+/** Copy only a content-free style carrier across workbooks; private data never enters the public carrier. */
+function publishFramedTable_(src, dest) {
+  const start = src.getName() === CONFIG.sheets.tracker ? CONFIG.trackerStartRow : CONFIG.patrolStartRow;
+  const table = framedTable_(src, start), rows = Math.min(table.cap, src.getMaxRows()), width = table.width;
+  const target = dest.getParent(), owner = src.getParent();
+  let local = null, carrier = null;
+  try {
+    local = src.copyTo(owner);
+    local.setName('_table_style_' + Date.now());
+    local.clearContents();
+    local.getRange(1, 1, local.getMaxRows(), local.getMaxColumns()).clearNote();
+    local.getDeveloperMetadata().forEach((m) => m.remove());
+    SpreadsheetApp.flush();
+    carrier = local.copyTo(target);
+    if (dest.getMaxColumns() < width) dest.insertColumnsAfter(dest.getMaxColumns(), width - dest.getMaxColumns());
+    if (dest.getMaxColumns() > width) dest.deleteColumns(width + 1, dest.getMaxColumns() - width);
+    if (dest.getMaxRows() < rows) dest.insertRowsAfter(dest.getMaxRows(), rows - dest.getMaxRows());
+    if (dest.getMaxRows() > rows) dest.deleteRows(rows + 1, dest.getMaxRows() - rows);
+    const source = carrier.getRange(1, 1, rows, width), range = dest.getRange(1, 1, rows, width);
+    range.breakApart();
+    source.copyTo(range, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    source.copyTo(range, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+    const rules = [];
+    src.getConditionalFormatRules().forEach((rule) => {
+      const ranges = rule.getRanges().filter((g) => g.getRow() <= rows && g.getColumn() <= width).map((g) =>
+        dest.getRange(g.getRow(), g.getColumn(), Math.min(g.getNumRows(), rows - g.getRow() + 1), Math.min(g.getNumColumns(), width - g.getColumn() + 1)));
+      if (ranges.length) rules.push(rule.copy().setRanges(ranges).build());
+    });
+    dest.setConditionalFormatRules(rules);
+    source.getMergedRanges().forEach((g) => dest.getRange(g.getA1Notation()).merge());
+    for (let r = 1; r <= rows; r++) dest.setRowHeight(r, src.getRowHeight(r));
+    for (let c = 1; c <= width; c++) dest.setColumnWidth(c, src.getColumnWidth(c));
+    const values = publishReadCells_(src.getRange(1, 1, rows, width), true);
+    const header = publishHeaderRow_(src);
+    if (header) src.getRange(header, 1, 1, width).getDisplayValues()[0].forEach((h, c) => {
+      if (publishSensitiveHeader_(h)) for (let r = header; r < rows; r++) values[r][c] = '';
+    });
+    // Hidden key/credit markers are engine-only bookkeeping in the left border.
+    for (let r = start - 1; r < rows; r++) values[r][0] = '';
+    const failed = writeValuesSafe_(dest, 1, 1, values, null);
+    if (failed) throw new Error('Could not mirror ' + failed + ' table cell(s).');
+    return rows;
+  } finally {
+    if (carrier) target.deleteSheet(carrier);
+    if (local) owner.deleteSheet(local);
+  }
+}
+
 function publishMirrorTab_(src, dest, deep) {
+  if ([CONFIG.sheets.tracker, CONFIG.sheets.patrolLog].indexOf(src.getName()) !== -1) return publishFramedTable_(src, dest);
   const sh = publishHeaderRow_(src), dh = publishHeaderRow_(dest);
   const sRows = src.getLastRow(), sCols = src.getLastColumn();
   if (sRows < 1 || sCols < 1) return 0;
@@ -2672,6 +2743,10 @@ function publishPublicRoster_(onlyTab, opts) {
   const yieldOn = !!(opts && opts.yieldToBackoff);
   const lock = LockService.getScriptLock();
   let aborted = false;
+  [CONFIG.sheets.tracker, CONFIG.sheets.patrolLog].filter(Boolean).forEach((name) => {
+    if ((!onlyTab || norm_(onlyTab) === norm_(name)) && !publishTabBlocked_(name)
+      && ss.getSheetByName(name) && !file.getSheetByName(name)) file.insertSheet(name);
+  });
   file.getSheets().forEach((dest) => {
     const name = dest.getName();
     if (aborted) { out.skipped.push(name); return; }
@@ -2679,7 +2754,7 @@ function publishPublicRoster_(onlyTab, opts) {
     if (publishTabBlocked_(name)) { out.skipped.push(name); out.detail.push(`${name}: BLOCKED (never published)`); return; }
     const src = ss.getSheetByName(name);
     if (!src) { out.skipped.push(name); out.detail.push(`${name}: no tab of that name here`); return; }
-    if (publishSelfComputing_(dest)) { // rebuilds itself from the tabs we DO publish; writing into it blocks its spills
+    if ([CONFIG.sheets.tracker, CONFIG.sheets.patrolLog].indexOf(name) === -1 && publishSelfComputing_(dest)) { // rebuilds itself from the tabs we DO publish; writing into it blocks its spills
       let freed = 0;
       try { freed = publishFreeSpills_(dest); } catch (e) { log_('publishFreeSpills_.' + name, e); }
       out.skipped.push(name);
@@ -2696,6 +2771,7 @@ function publishPublicRoster_(onlyTab, opts) {
       } catch (e) { /* unreadable → keep publishing */ }
     }
     if (!lock.tryLock(yieldOn ? 4000 : 20000)) { // an interactive writer holds the lock → background passes yield
+      out.failed = true;
       out.skipped.push(name); out.detail.push(`${name}: lock busy${yieldOn ? ' — yielded' : ''}`);
       if (yieldOn) { aborted = true; out.aborted = true; }
       return;
@@ -2709,6 +2785,7 @@ function publishPublicRoster_(onlyTab, opts) {
         out.tabs.push(name); out.rows += n;
         out.detail.push(`${name}: ${mode} · ${n} row(s) · grid ${sg}/${dg} · src rows ${src.getLastRow()}${_dressNote_ ? ' · ' + _dressNote_ : ''}`);
       } catch (e) {
+        out.failed = true;
         log_('publishMirrorTab_.' + name, e);
         out.skipped.push(name);
         out.detail.push(`${name}: ERROR ${e && e.message ? e.message : e} | grid ${sg}/${dg} | src ${src.getLastRow()}x${src.getLastColumn()} | dest grid ${dest.getMaxRows()}x${dest.getMaxColumns()}`);
@@ -2725,7 +2802,7 @@ const PUBLISH_MIN_GAP_MS_ = 3000; // burst guard only - small enough that a norm
 const PUBLISH_DIRTY_PROP_ = 'PUBLIC_DIRTY';
 const PUBLISH_LAST_PROP_ = 'PUBLIC_LAST_PUBLISH';
 const PUBLISH_CATCHUP_PROP_ = 'PUBLIC_CATCHUP_AT';
-const PUBLISH_CATCHUP_MS_ = 8000; // trailing publish ~8s after a burst's last deferred edit — so the tail shows in seconds, not on the 1-minute sweep
+const PUBLISH_CATCHUP_MS_ = 3000; // trailing publish ~3s after a burst's last deferred edit — so the tail shows in seconds, not on the 1-minute sweep
 const PUBLISH_BACKOFF_PROP_ = 'PUBLISH_BACKOFF_UNTIL'; // interactive-first: a pending panel write / transfer stamps now+45s here and NEW publish passes stand down until it expires
 const PUBLISH_BACKOFF_MS_ = 45000;
 const PUBLISH_PASS_PROP_ = 'PUBLISH_PASS_UNTIL'; // pass mutex: per-tab locking replaced the whole-pass script lock, so this keeps two passes from interleaving (stale after 5 min — a dead pass can never wedge publishing)
@@ -2754,6 +2831,30 @@ function publishMarkDirty_() {
   try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_, '1'); _pubDirtyMemo_ = true; } catch (e) { /* best-effort */ }
 }
 
+// Execution-local queue: sorting may run under a writer lock, so publish only after its caller releases it.
+let _publishSettledTabs_ = {};
+function publishTableSettled_(name) {
+  if (name) _publishSettledTabs_[name] = true;
+}
+function publishAfterWrite_(names) {
+  try {
+    const props = PropertiesService.getDocumentProperties();
+    const tabs = names || Object.keys(_publishSettledTabs_);
+    props.deleteProperty(PUBLISH_BACKOFF_PROP_);
+    if (!String(props.getProperty(PUBLIC_FILE_PROP_) || '').trim()) return;
+    // Sync Sheets' pending writes before reading the sorted rows for the public copy.
+    SpreadsheetApp.flush();
+    tabs.filter((name, i, all) => name && all.indexOf(name) === i).forEach((name) => {
+      publishPublicRosterQuiet_(name, false); // retain any other queued roster/dashboard changes
+    });
+    _publishSettledTabs_ = {};
+    if (props.getProperty(PUBLISH_DIRTY_PROP_) === '1') scheduleCatchup_();
+  } catch (e) {
+    _pubDirtyMemo_ = false; publishMarkDirty_();
+    log_('publishAfterWrite_', e); // a mirror failure must never fail the completed internal write
+  }
+}
+
 /** Background publish: chunked + preemptible (per-tab locks, yields to interactive stamps mid-pass). Clears the dirty
  *  flag FIRST so an edit landing mid-publish re-marks itself; an aborted pass re-marks it so the sweep resumes. */
 function publishPublicRosterQuiet_(onlyTab, mayClear) {
@@ -2774,9 +2875,12 @@ function publishPublicRosterQuiet_(onlyTab, mayClear) {
       _pubDirtyMemo_ = false;
     }
     const res = publishPublicRoster_(onlyTab, { yieldToBackoff: true });
-    if (res && res.aborted) { props.setProperty(PUBLISH_DIRTY_PROP_, '1'); _pubDirtyMemo_ = true; } // yielded mid-pass → the sweep finishes the leftover tabs
+    if (res && (res.aborted || res.failed)) { props.setProperty(PUBLISH_DIRTY_PROP_, '1'); _pubDirtyMemo_ = true; } // yielded mid-pass → the sweep finishes the leftover tabs
     props.setProperty(PUBLISH_LAST_PROP_, String(Date.now()));
-  } catch (e) { log_('publishPublicRosterQuiet_', e); }
+  } catch (e) {
+    _pubDirtyMemo_ = false; publishMarkDirty_();
+    log_('publishPublicRosterQuiet_', e);
+  }
   finally { publishPassRelease_(); }
 }
 
@@ -2800,7 +2904,7 @@ function publishOnChange(e) {
     // STRUCTURAL changes (INSERT_ROW/REMOVE_ROW/…) don't fire onEdit at all, so let those publish now to stay immediate.
     if (!e || !e.range) {
       const ct = String((e && e.changeType) || '').toUpperCase();
-      if (ct === 'EDIT' || ct === 'OTHER' || ct === 'FORMAT' || ct === '') return; // value/format/unknown → onEdit + sweep cover it
+      if (ct === 'EDIT' || ct === 'OTHER' || ct === 'FORMAT' || ct === '') { scheduleCatchup_(); return; } // value/format/unknown → onEdit + sweep cover it
       // else fall through: a structural change onEdit can't see → publish it (only === '' → full publish)
     }
     // A Unique-ID edit on the roster starts a member TRANSFER (or a roster/tracker autofill) that briefly takes the
@@ -2811,11 +2915,13 @@ function publishOnChange(e) {
       try {
         const RC = rosterCols_(e.range.getSheet());
         const c = e.range.getColumn(), cL = e.range.getLastColumn ? e.range.getLastColumn() : c;
-        if (RC.discord && c <= RC.discord && cL >= RC.discord) { scheduleCatchup_(); return; } // move/ID edit → publish via the ~8s catch-up (checkForMemberMove can't, it's AuthMode.LIMITED)
+        if (RC.discord && c <= RC.discord && cL >= RC.discord) { scheduleCatchup_(); return; } // move/ID edit → publish via the ~3s catch-up (checkForMemberMove can't, it's AuthMode.LIMITED)
       } catch (ig) { /* fall through to a normal publish */ }
     }
+    // The edit handler sorts these tables independently; publish their settled order after it finishes.
+    if ([CONFIG.sheets.tracker, CONFIG.sheets.patrolLog].indexOf(only) !== -1) { scheduleCatchup_(); return; }
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
-    if (Date.now() - last < PUBLISH_MIN_GAP_MS_) { scheduleCatchup_(); return; } // too soon → a trailing catch-up publishes the tail in ~8s (not the 1-minute sweep)
+    if (Date.now() - last < PUBLISH_MIN_GAP_MS_) { scheduleCatchup_(); return; } // too soon → a trailing catch-up publishes the tail in ~3s (not the 1-minute sweep)
     publishPublicRosterQuiet_(only || undefined, !wasDirty); // nothing else was pending → this partial pass covers it all and may clear the flag
   } catch (err) { log_('publishOnChange', err); }
 }
@@ -2870,11 +2976,15 @@ function publishPublicRoster() {
     const linked = !!String(props.getProperty(PUBLIC_FILE_PROP_) || '').trim();
     if (linked) { props.deleteProperty(PUBLISH_DIRTY_PROP_); _pubDirtyMemo_ = false; } // this IS the full pass — clear first so an edit mid-publish re-marks
     const res = publishPublicRoster_();
+    if (res.failed || res.aborted) { _pubDirtyMemo_ = false; publishMarkDirty_(); }
     if (res.linked) {
       props.setProperty(PUBLISH_LAST_PROP_, String(Date.now())); // the sweep + burst guard see this pass, no redundant follow-up
       logInfo_('publishPublicRoster', `published ${res.rows} row(s) across ${res.tabs.length} tab(s).`);
     }
     return res;
+  } catch (e) {
+    _pubDirtyMemo_ = false; publishMarkDirty_();
+    throw e;
   } finally { publishPassRelease_(); }
 }
 
@@ -2922,43 +3032,6 @@ function setupPublicRoster() {
       'Unique ID / email / DOB / phone are never published and are wiped if a copy brought them along. Config, ' +
       'Webhooks, Disciplinary Log and Signups are never published at all.\n\n' +
       'Then share THAT file with members and restrict this one — in that order.', ui.ButtonSet.OK);
-  });
-}
-
-/** Create the Roster Signup form and point its responses INSIDE the protected admin file.
- *  (No menu entry any more — run from the script editor if ever needed; the signup REVIEW lives in Control Panel ▸ Signups.) */
-function createSignupForm() {
-  runAction_('Create Roster Signup Form', () => {
-    const ui = SpreadsheetApp.getUi();
-    const file = adminFile_();
-    if (!file) { ui.alert('🧾 Roster Signup', 'Link the protected admin file first (🎛️ Control Panel ▸ Tools ▸ admin roster).', ui.ButtonSet.OK); return; }
-    if (file.getSheetByName(CONFIG.sheets.signups)) { ui.alert('🧾 Roster Signup', `"${CONFIG.sheets.signups}" already exists in the admin file — the signup form is already set up.`, ui.ButtonSet.OK); return; }
-    const before = {}; file.getSheets().forEach((s) => { before[s.getSheetId()] = true; });
-    const form = FormApp.create('Roster Signup');
-    form.setDescription('Apply to join. Your answers go to a private file that only command staff can open.');
-    form.addTextItem().setTitle('Name (in-character)').setRequired(true);
-    form.addTextItem().setTitle('OOC Name').setRequired(true);
-    form.addTextItem().setTitle('Unique ID').setRequired(true)
-      .setValidation(FormApp.createTextValidation().setHelpText(idDigitsLabel_() + ' digits — copy-paste it, never retype it.').requireTextMatchesPattern(idRegexSource_()).build());
-    form.addTextItem().setTitle('Email').setRequired(true)
-      .setValidation(FormApp.createTextValidation().setHelpText('A valid email address.').requireTextIsEmail().build());
-    form.addDateItem().setTitle('Date of Birth').setRequired(true);
-    form.addTextItem().setTitle('Phone').setRequired(false);
-    form.addParagraphTextItem().setTitle('Prior Experience').setRequired(false);
-    form.addTextItem().setTitle('Timezone').setRequired(false);
-    form.addMultipleChoiceItem().setTitle('Age Confirmation').setChoiceValues(['I confirm I meet the minimum age requirement']).setRequired(true);
-    form.addParagraphTextItem().setTitle('Why do you want to join?').setRequired(false);
-    form.setDestination(FormApp.DestinationType.SPREADSHEET, file.getId());
-    SpreadsheetApp.flush();
-    let created = null; // Google adds a brand-new response tab — find it, rename it, then add the STATUS column
-    file.getSheets().forEach((s) => { if (!before[s.getSheetId()]) created = s; });
-    let renamed = false;
-    if (created) { try { created.setName(CONFIG.sheets.signups); renamed = true; } catch (e) { log_('createSignupForm.rename', e); } }
-    ensureSignupTab_(file);
-    logInfo_('createSignupForm', `signup form created; responses → ${file.getId()} / ${CONFIG.sheets.signups}.`);
-    ui.alert('🧾 Roster Signup form created',
-      `Share with applicants:\n${form.getPublishedUrl()}\n\nEdit the form:\n${form.getEditUrl()}\n\nResponses land on "${CONFIG.sheets.signups}" inside the ADMIN file — never the public workbook.` +
-      (renamed ? '' : `\n\n⚠️ Couldn't auto-rename the new response tab — rename it to "${CONFIG.sheets.signups}" in the admin file, then run 🔒 Sync Internal Roster.`), ui.ButtonSet.OK);
   });
 }
 
@@ -3028,7 +3101,8 @@ function cpSignupFlag(payload) {
   sh.getRange(row, SC.status).setValue(on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0]); // toggle: flag ⇄ back to Pending
   const who = String(sh.getRange(row, SC.name || 1).getDisplayValue()).trim();
   cpAudit_('signup', cur, on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0], sh.getRange(row, SC.status).getA1Notation(), who);
-  return { row: row, status: on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0], flagged: on };
+  sortSignups_(sh);
+  return { row: signupResolveRow_(sh, row, String((payload && payload.id) || '')), status: on ? SIGNUP_FLAGGED_ : SIGNUP_STATUSES_[0], flagged: on };
 }
 
 /**

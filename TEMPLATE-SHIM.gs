@@ -33,7 +33,7 @@
 
 /** Every Control-Panel endpoint this template permits. Must mirror the engine's DISPATCH_ENDPOINTS_. */
 const RE_ENDPOINTS = Object.freeze([
-  'cpPing', 'cpBootstrap', 'cpRefresh', 'cpGetProfile',
+  'cpPing', 'cpStartupInfo', 'cpBootstrap', 'cpRefresh', 'cpGetProfile',
   'cpSetStatus', 'cpSetStatusBulk', 'cpScheduleLeave', 'cpAssignMember', 'cpMoveMember',
   'cpRunAction', 'cpRunLog', 'cpJumpTo', 'cpSystemInfo',
   'cpColumnsInfo', 'cpSetColumnClass',

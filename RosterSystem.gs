@@ -11,7 +11,7 @@
  * layout keeps working; the configured positions are only the fallback.
  *
  * SETUP (once): paste the files, save, reload the sheet, then run 👥 Roster ▸ 🚀 First-Run Setup — it seeds
- * the ⚙️ Config tab, installs every trigger, creates and links the leave form, and reports a checklist.
+ * the ⚙️ Config tab, installs every trigger, uses your existing form response tabs, and reports a checklist.
  * Discord webhooks are set afterwards in 🎛️ Control Panel ▸ Tools ▸ Discord integration (never in code).
  *
  * DESIGN NOTES:
@@ -453,69 +453,6 @@ function installTriggers() {
 }
 
 /**
- * Phase 2 (brief Part C): programmatically create the leave Google Form from [FORM_MAP] + [LEAVE], link its
- * destination to this spreadsheet, and capture the REAL response-tab name into [SHEETS].LEAVE_FORM_RESPONSES —
- * eliminating the copy-and-relink-by-hand step (and the tab-name-mismatch bug class) at the source.
- * The Discord-ID question carries the ^\d{17,19}$ validation so a bad ID can't even be submitted.
- * @return {{tab:string, url:string, editUrl:string}}
- */
-function createLeaveForm_(ss) {
-  const s = ss || SpreadsheetApp.getActive();
-  const v = cfg_();
-  const types = v.leave.LEAVE_TYPES.length ? v.leave.LEAVE_TYPES : ['LOA', 'ROA'];
-  const label = (role, fallback) => {
-    const row = v.tables.FORM_MAP.filter((r) => norm_(r.Role) === role)[0];
-    return (row && row.Header) ? row.Header : fallback;
-  };
-  let form;
-  try {
-    form = FormApp.create(`${v.legacy.systemName} — Leave (${types.join('/')}) Request`);
-  } catch (e) {
-    // Most common cause: the Forms permission wasn't granted (scope prompt declined / stale authorization).
-    throw new Error(`Could not create the Google Form — re-run setup and accept ALL permission prompts (Forms access is required). (${e.message})`);
-  }
-  // F-020: everything AFTER FormApp.create runs in a guard — a failure here would otherwise strand an orphan form
-  // in the user's Drive (and every setup re-run would create another).
-  try {
-    form.setDescription('Submit a leave request. It appears on the tracker as Pending for command approval.');
-    form.addTextItem().setTitle(label('NAME', 'Name')).setRequired(true);
-    form.addTextItem().setTitle(label('DISCORD_ID', 'Discord ID')).setRequired(true)
-      .setValidation(FormApp.createTextValidation()
-        .setHelpText(idDigitsLabel_() + ' digits — copy-paste it, never retype it.')
-        .requireTextMatchesPattern(idRegexSource_()).build());
-    form.addTextItem().setTitle(label('CALLSIGN', 'Callsign')).setRequired(true);
-    form.addTextItem().setTitle(label('RANK', 'Rank')).setRequired(true);
-    form.addListItem().setTitle(label('TYPE', 'Status')).setChoiceValues(types).setRequired(true);
-    form.addDateItem().setTitle(label('START', 'Start Date')).setRequired(true);
-    form.addDateItem().setTitle(label('END', 'End Date')).setRequired(true);
-
-    const before = {};
-    s.getSheets().forEach((sh) => { before[sh.getName()] = true; });
-    form.setDestination(FormApp.DestinationType.SPREADSHEET, s.getId());
-    SpreadsheetApp.flush();
-    // F-040: poll with backoff (Sheets can be slow to attach the tab) and prefer a "Form Responses"-pattern name so a
-    // concurrently-inserted, unrelated tab can't be mis-recorded as the response sheet.
-    let tab = '';
-    for (let attempt = 0; attempt < 5 && !tab; attempt++) {
-      Utilities.sleep(attempt === 0 ? 1500 : 2000); // ~1.5s then up to 4×2s ≈ 9.5s worst case
-      const fresh = SpreadsheetApp.openById(s.getId()).getSheets().filter((sh) => !before[sh.getName()]);
-      const match = fresh.filter((sh) => /form responses/i.test(sh.getName()))[0] || fresh[0];
-      if (match) tab = match.getName();
-    }
-
-    // The premium move: write the ACTUAL created tab name into config so nothing ever has to match by hand.
-    const configSheet = findConfigSheet_(s);
-    if (configSheet && tab) { setKvValue_(configSheet, 'SHEETS', 'LEAVE_FORM_RESPONSES', tab); cfgInvalidate_(); }
-    logInfo_('createLeaveForm_', `form created; responses land on "${tab}".`);
-    return { tab, url: form.getPublishedUrl(), editUrl: form.getEditUrl() };
-  } catch (e) {
-    try { DriveApp.getFileById(form.getId()).setTrashed(true); } // remove the orphan (needs Drive scope)
-    catch (ce) { logWarn_('createLeaveForm_', `partial form left in Drive (id ${form.getId()}); trash it manually: ${ce && ce.message}`); }
-    throw new Error(`Leave form setup failed after the form was created (the partial form was removed): ${e.message}`);
-  }
-}
-
-/**
  * Menu: one-click first-run setup. Idempotent — installs the core + audit triggers, themes the
  * Form Response sheet, and reports a checklist of what's done vs. still manual (the webhook).
  * Composes existing functions; companion-file calls are typeof-guarded so it works standalone.
@@ -553,37 +490,31 @@ function setupWizard() {
 
     // 2. Always-on audit trigger (RosterTrust).
     try {
-      if (typeof cpEnsureAuditTrigger === 'function') { cpEnsureAuditTrigger(); steps.push('✅ Audit log trigger active.'); }
+      if (typeof cpEnsureAuditTrigger === 'function') { cpEnsureAuditTrigger(true); steps.push('✅ Audit log trigger active.'); }
       else steps.push('⏳ Audit log: paste RosterTrust.gs to enable.');
     } catch (e) { steps.push(`⚠️ Audit: ${e.message}`); }
 
-    // 3. Leave form — create + link it if missing (Phase 2), then theme the response tab.
+    // 3. Use department-owned forms only. Never create forms, rename response tabs, or change destinations.
     try {
-      let form = ss.getSheetByName(CONFIG.sheets.form);
-      // F-021: a template "Make a copy" clones the response SHEET but not the form link — leaving a dead decoy that
-      // sync would read from forever. If the tab exists but isn't linked to any form, retire it and create a fresh one.
-      if (form) {
-        let linked = false;
-        try { linked = !!form.getFormUrl(); } catch (e) { linked = false; }
-        if (!linked) {
-          const deadName = `_DECOY ${CONFIG.sheets.form}`.slice(0, 99);
-          try { form.setName(deadName); } catch (e) { /* name clash — leave it, we still create the real one */ }
-          steps.push(`⚠️ Found an unlinked "${CONFIG.sheets.form}" tab (copied template decoy) — renamed it to "${deadName}" and creating a fresh linked form.`);
-          form = null;
+      const responseTabs = [
+        ['Leave', CONFIG.sheets.form],
+        ['Patrol', CONFIG.sheets.patrol],
+        ['Signup', CONFIG.sheets.signupForm],
+      ];
+      responseTabs.forEach(([label, name]) => {
+        const sheet = name ? ss.getSheetByName(name) : null;
+        if (sheet) {
+          styleFormResponses_(sheet);
+          let linked = false;
+          try { linked = !!sheet.getFormUrl(); } catch (e) { /* response tab may be linked later */ }
+          steps.push(linked
+            ? `? ${label} response sheet themed: "${name}" (existing form retained).`
+            : `?? ${label} response sheet "${name}" retained. Link your own Google Form to this spreadsheet and select its response tab in Settings ? Sheets.`);
+        } else {
+          steps.push(`?? ${label} form: link your own Google Form to this spreadsheet, then select its response tab in Settings ? Sheets. No form was created.`);
         }
-      }
-      if (!form) {
-        const created = createLeaveForm_(ss); // builds the Google Form from [FORM_MAP]/[LEAVE], links it, captures the tab name
-        form = created.tab ? ss.getSheetByName(created.tab) : null;
-        steps.push(created.tab
-          ? `✅ Leave form created + linked (responses → "${created.tab}"). Share: ${created.url}`
-          : '❌ Leave form link FAILED — the response tab was not detected, so submissions will NOT sync. Re-run First-Run Setup; if it persists, open the form and check its response destination.');
-      }
-      if (form) { styleFormResponses_(form); steps.push('✅ Form Response sheet themed.'); }
-      // The patrol + signup form response tabs get the same console theme when they're linked.
-      try { const pf = CONFIG.sheets.patrol ? ss.getSheetByName(CONFIG.sheets.patrol) : null; if (pf) { styleFormResponses_(pf); steps.push('✅ Patrol form response sheet themed.'); } } catch (e2) { /* best-effort */ }
-      try { const sf = CONFIG.sheets.signupForm ? ss.getSheetByName(CONFIG.sheets.signupForm) : null; if (sf) { styleFormResponses_(sf); steps.push('✅ Signup form response sheet themed.'); } } catch (e2) { /* best-effort */ }
-    } catch (e) { steps.push(`⚠️ Leave form: ${e.message}`); }
+      });
+    } catch (e) { steps.push(`?? Form response sheets: ${e.message}`); }
 
     // 4. Column classification — scan roster headers into the [COLUMNS] block.
     try { const r = syncColumnConfig_(); steps.push(r ? `✅ Column config synced — ${r.scanned} column(s), ${r.added.length} newly classified.` : '⚠️ Column config skipped (roster tab not found).'); }
@@ -1395,7 +1326,7 @@ function onEdit(e) {
       // pointing at nothing, or simply not built yet on a fresh department sheet — the whole block above was skipped,
       // so a pasted log kept the raw canvas look on top of not being credited. Same if the sort itself threw. The
       // dressing is the one part that can still succeed, so run it either way (sortPatrolLog_ already ends in it).
-      try { if (PC.status && !sorted && typeof tidyTailRows_ === 'function') tidyTailRows_(sheet, CONFIG.patrolStartRow, PC.status); }
+      try { if (PC.status && !sorted) sortPatrolLog_(sheet); }
       catch (e2) { log_('onEdit.dressPatrol', e2); }
     }
     // Roster Signups: setting a row's STATUS to Approved on the review tab pops a slot picker + places the applicant on
@@ -1418,7 +1349,7 @@ function onEdit(e) {
       // panel can't offer them (signupSplit_ needs the STATUS column populated). Neither branch above reaches that case:
       // a bulk paste leaves e.value undefined, and a paste into NAME/UNIQUE ID is not a STATUS edit. Dress whatever just
       // landed. Skipped when the sort already ran, since sortSignups_ ends in this very pass.
-      try { if (inData && !sorted && typeof tidyTailRows_ === 'function') tidyTailRows_(sheet, sSC.dataStart, sSC.status); }
+      try { if (inData && !sorted) sortSignups_(sheet); }
       catch (e2) { log_('onEdit.dressSignups', e2); }
     }
     // F-003: refreshing the WHOLE workbook on every keystroke is the biggest recurring cost. Short-circuit:
@@ -1484,13 +1415,13 @@ function onFormSubmit(e) {
     if (!nm) return;
     try { const sh = ss2.getSheetByName(nm); if (sh) styleFormResponses_(sh); } catch (err) { log_('onFormSubmit.style', err); }
   });
-  // The submission is fully settled (synced, credited, styled) → release the publisher's stand-down NOW and schedule
-  // the ~8s catch-up so the PUBLIC roster shows the result in seconds. Without this, the 45s backoff stamped at entry
-  // just expired on its own, and — since a form submission fires no onEdit to schedule a catch-up — the public copy
-  // waited for backoff-expiry + the next 1-minute sweep (~45-105s). Both calls are safe here: this is an INSTALLABLE
-  // trigger (ScriptApp available for scheduleCatchup_), and if either fails the sweep still carries it.
-  try { PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_BACKOFF_PROP_); } catch (ig) { /* best-effort */ }
-  try { if (typeof scheduleCatchup_ === 'function') scheduleCatchup_(); } catch (ig) { /* sweep is the backstop */ }
+  // Authorized form handler: mirror completed tables now, after sync releases its writer locks.
+  // Duration patrol forms may also update roster totals; the queued full catch-up carries those changes.
+  try {
+    if (typeof publishAfterWrite_ === 'function') publishAfterWrite_(
+      routed ? (isLeave ? [CONFIG.sheets.tracker] : isPatrol ? [CONFIG.sheets.patrolLog] : [])
+        : [CONFIG.sheets.tracker, CONFIG.sheets.patrolLog]);
+  } catch (ig) { /* dirty sweep is the backstop */ }
 }
 
 /**
@@ -2340,7 +2271,7 @@ function trackerCols_(tracker) {
       out.reason = find((h) => h.indexOf('REASON') !== -1); // optional — a form's "reason" answer lands here when the tab has one (else NOTES)
     }
   } catch (e) { log_('trackerCols_', e); }
-  out.width = Math.max(out.key, out.rank, out.unit, out.ooc, out.name, out.discord, out.shift, out.start, out.end, out.length, out.untilStart, out.timeLeft, out.returnDate, out.status, out.approvedBy, out.notes, out.reason || 0, 16);
+  out.width = Math.max(out.key, out.rank, out.unit, out.ooc, out.name, out.discord, out.shift, out.start, out.end, out.length, out.untilStart, out.timeLeft, out.returnDate, out.status, out.approvedBy, out.notes, out.reason || 0, framedTable_(tracker, CONFIG.trackerStartRow).width);
   return out;
 }
 
@@ -2467,86 +2398,89 @@ function healUnstyledRows_(sheet, dataStart, lastData, statusCol, width) {
  * INSIDE the band instead, so the new row inherits the styled row above it and the bar stays last. Only acts when
  * a write would actually reach the bar, so it costs nothing on the normal path.
  */
-function ensureRoomAboveCap_(sheet, needRow) {
-  try {
-    const cap = sheet.getMaxRows();
-    if (needRow < cap) return;                            // room already; the closing row is untouched
-    if (cap > sheet.getLastRow()) sheet.insertRowsBefore(cap, needRow - cap + 1); // blank final row = the bar
-    else if (needRow > cap) sheet.insertRowsAfter(cap, needRow - cap);            // grid ends at data → plain append
-  } catch (e) { /* best-effort: the write still lands, at worst on the last row */ }
-}
-
-/**
- * AUTO-ROWS for the tracker-style tabs (LOA Tracker · Patrol Log · Signup review): keep exactly
- * [LIMITS].BLANK_TAIL_ROWS blank, fully-styled rows between the last entry and the operator's CLOSING ROW.
- * Short → rows are inserted INSIDE the styled band, so formatting, STATUS dropdowns and chip colours inherit
- * natively — the engine never paints a thing. Surplus → deleted in one contiguous run, so the tab ends cleanly
- * instead of in a thousand empty rows, and nobody ever has to add rows by hand again. One spare is the default:
- * it is the row the next submission lands in, and the pass re-pads it immediately afterwards. 0 = feature OFF
- * (the spare is what makes hands-free growth possible, so there is no zero-spare mode). Runs at the end of each
- * tab's sort — every mutation path finishes there.
- * A row is deleted only when EVERY cell is display-blank across the sheet width; rows above `dataStart` and the
- * sheet's final row are never touched; 🧪 sandbox tabs are exempt (DevQA fixtures address fixed rows).
- * @param {Sheet} sheet  @param {number} dataStart first data row (banner/header rows above are off-limits)
- */
-function tidyTailRows_(sheet, dataStart, statusCol) {
-  try {
-    const keep = Number(CONFIG.limits.blankTailRows || 0);
-    if (keep < 0 || !sheet || String(sheet.getName()).indexOf('🧪') === 0) return; // negative = feature off
-    const maxR = sheet.getMaxRows();
-    const width = Math.max(1, sheet.getLastColumn());
-    if (maxR < dataStart) return;
-    // Last non-blank row, scanning DISPLAY values bottom-up in growing chunks — the tail is usually tiny (one
-    // small read per sort); a legacy tab with 1000 blank rows costs a few chunk reads exactly once, then one delete.
-    let lastData = dataStart - 1;
-    let lo = maxR + 1; // rows from `lo` down are known-blank
-    let chunk = Math.max(keep + 20, 40);
-    while (lo > dataStart) {
-      const from = Math.max(dataStart, lo - chunk);
-      const disp = sheet.getRange(from, 1, lo - from, width).getDisplayValues();
-      let hit = -1;
-      for (let i = disp.length - 1; i >= 0; i--) {
-        if (disp[i].some((c) => String(c).trim() !== '')) { hit = i; break; }
+/** Table bounds include blank border columns; the closing bar may precede unused grid rows. */
+function framedTable_(sheet, dataStart) {
+  if (!dataStart) {
+    const name = sheet.getName();
+    dataStart = name === CONFIG.sheets.tracker ? CONFIG.trackerStartRow
+      : name === CONFIG.sheets.patrolLog ? CONFIG.patrolStartRow : signupCols_(sheet).dataStart;
+  }
+  const gridWidth = sheet.getMaxColumns(), max = sheet.getMaxRows();
+  let width = gridWidth;
+  if (dataStart <= max) {
+    const first = sheet.getRange(dataStart, 1, 1, gridWidth).getBackgrounds()[0];
+    if (first[0] !== '#ffffff') {
+      for (let c = gridWidth - 1; c > 1; c--) {
+        if (first[c] === first[0]) { width = c + 1; break; }
       }
-      if (hit >= 0) { lastData = from + hit; break; }
-      lo = from; chunk *= 2;
     }
-    // THE CLOSING ROW IS THE OPERATOR'S. Themed tabs end in a deliberate bar (a plain black row that shows where
-    // the sheet stops) — so the sheet's FINAL row is never written, styled, deleted, or counted as a spare.
-    // Auto-rows operates strictly between the last entry and it.
-    const hasCap = maxR > lastData;
-    const capRow = hasCap ? maxR : 0;
-    const room = hasCap ? (capRow - 1 - lastData) : 0; // blank rows BETWEEN the data and the closing row
-    const need = (keep - room) + (hasCap ? 0 : 1);     // no closing row left (a batch consumed it) → restore one
-    if (need > 0) {
-      // Insert ABOVE the closing row — strictly inside every band range (validation, formats, banding all
-      // stretch) and the operator's bar stays last.
-      const at = hasCap ? capRow : maxR + 1;
-      if (hasCap) sheet.insertRowsBefore(capRow, need); else sheet.insertRowsAfter(maxR, need);
-      // Row height is a SHEET property — it rides along with neither an insert nor a format paste, so the new
-      // rows came out short next to real submissions. Match the last entry's height explicitly.
-      if (lastData >= dataStart) { try { sheet.setRowHeights(at, need, sheet.getRowHeight(lastData)); } catch (e) { /* default height */ } }
-    } else if (room > keep) {
-      sheet.deleteRows(lastData + keep + 1, room - keep); // strictly between the data and the closing row
-    }
-    // 1) Rows that are already holding data but were never dressed — caught by their missing STATUS dropdown,
-    //    which is the only signal that survives a row inheriting the right background from an insert.
-    healUnstyledRows_(sheet, dataStart, lastData, statusCol, width);
-    // 2) The tail rows are what the NEXT submission lands in — give them (and any row still sitting on the old
-    //    unstyled canvas) the operator's own data-row look, copied down natively.
-    styleTailRows_(sheet, dataStart, lastData, keep, width);
-  } catch (e) { logWarn_('tidyTailRows_', 'auto-rows skipped: ' + ((e && e.message) ? e.message : e)); }
+  }
+  if (max <= dataStart) return { start: dataStart, width, cap: max + 1 };
+  const range = sheet.getRange(dataStart, 1, max - dataStart + 1, width);
+  const bg = range.getBackgrounds(), values = range.getDisplayValues();
+  for (let i = 1; i < bg.length; i++) {
+    const color = bg[i][0];
+    if (color !== bg[i][width - 1] || color === '#ffffff') continue;
+    if (bg[i].slice(1, -1).every((c) => c === color) && values[i].slice(1, -1).every((v) => String(v).trim() === '')
+      && bg[0].slice(1, -1).some((c) => c !== color)) return { start: dataStart, width, cap: dataStart + i };
+  }
+  // Legacy grids with a blank final closing row still work; occupied final rows are data.
+  return { start: dataStart, width, cap: values[values.length - 1].every((v) => String(v).trim() === '') ? max : max + 1 };
 }
 
-/**
- * Group the LOA Tracker by STATUS — order = [LEAVE].STATUS_FLOW (default: Pending → Approved → Denied → Expired) —
- * via a STABLE, VALUE-ONLY rewrite: the cells stay put (your row banding / STATUS dropdown / borders are preserved),
- * only the leave data is reordered into them. Regenerates the four computed columns + the ID/date formats (they
- * reference the physical row, so a reorder must rewrite them). Pass `prepend` (a new leave's row) to seat a
- * just-added leave at the very TOP first, so it lands at the top of the Pending group. Best-effort; never throws.
- * @param {Array} [prepend] one row of values, or an array of rows, to add at the top before sorting.
- * @param {Sheet} [trackerSheet] the tracker to sort (defaults to the live tracker tab; the injectable add-cores pass their own so tests + white-label runs stay isolated).
- */
+function ensureRoomAboveCap_(sheet, needRow) {
+  const table = framedTable_(sheet);
+  if (needRow < table.cap) return;
+  const count = needRow - table.cap + 1;
+  const source = Math.max(table.start, table.cap - 1);
+  if (table.cap <= sheet.getMaxRows()) sheet.insertRowsBefore(table.cap, count);
+  else sheet.insertRowsAfter(sheet.getMaxRows(), count);
+  const src = sheet.getRange(source, 1, 1, table.width);
+  for (let i = 0; i < count; i++) {
+    const dst = sheet.getRange(table.cap + i, 1, 1, table.width);
+    src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
+    src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+    src.copyTo(dst, SpreadsheetApp.CopyPasteType.PASTE_CONDITIONAL_FORMATTING, false);
+  }
+  sheet.setRowHeights(table.cap, count, sheet.getRowHeight(source));
+}
+
+/** Move complete rows, carrying custom formatting, validation, formulas and border cells. */
+function moveTableRecords_(sheet, start, sorted, width) {
+  let end = Math.max(start - 1, ...sorted.map((r) => r._sourceRow || start - 1));
+  sorted.forEach((r) => {
+    if (r._sourceRow) return;
+    r._sourceRow = ++end;
+    ensureRoomAboveCap_(sheet, end);
+    const values = r.slice(); while (values.length < width) values.push('');
+    writeValuesSafe_(sheet, end, 1, [values], null);
+  });
+  const positions = []; for (let r = start; r <= end; r++) positions.push(r);
+  sorted.forEach((r, i) => {
+    const at = positions.indexOf(r._sourceRow), target = start + i;
+    if (at !== i) {
+      const height = sheet.getRowHeight(start + at);
+      sheet.moveRows(sheet.getRange(start + at, 1, 1, width), target);
+      positions.splice(i, 0, positions.splice(at, 1)[0]);
+      sheet.setRowHeight(target, height);
+    }
+  });
+  // Preserve department-added formulas instead of replacing them with their last computed value.
+  if (sorted.length) {
+    const formulas = sheet.getRange(start, 1, sorted.length, width).getFormulas();
+    sorted.forEach((r, i) => formulas[i].forEach((f, c) => { if (f) r[c] = f; }));
+  }
+}
+
+/** Framed tables retain their existing blank rows; growth happens only when a write reaches the closing bar. */
+function tidyTailRows_(sheet, dataStart, statusCol) {
+  if (!sheet) return;
+  const table = framedTable_(sheet, dataStart);
+  const last = Math.min(sheet.getLastRow(), table.cap - 1);
+  healUnstyledRows_(sheet, dataStart, last, statusCol, table.width);
+}
+
+/** Group LOAs Pending ? Approved ? Denied ? Expired, oldest submission first. Whole rows carry their styles and custom formulas. New rows may be passed singly or as a batch. */
 function sortTracker_(prepend, trackerSheet) {
   try {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
@@ -2560,7 +2494,7 @@ function sortTracker_(prepend, trackerSheet) {
       logWarn_('sortTracker_', `TRACKER_START_ROW (${start}) is at/above the tracker header (row ${RC.labelRow}); auto-sort skipped to protect the header. Set [ROSTER_LAYOUT].TRACKER_START_ROW to the FIRST DATA ROW.`);
       return;
     }
-    const last = tracker.getLastRow();
+    const last = Math.min(tracker.getLastRow(), framedTable_(tracker, start).cap - 1);
     const records = [];
     if (last >= start) {
       const n = last - start + 1;
@@ -2571,43 +2505,37 @@ function sortTracker_(prepend, trackerSheet) {
         if (ids) row[RC.discord - 1] = String(ids[i][0]).trim();                         // keep the ID exact (getValues rounds a digit string)
         const idv = RC.discord ? String(row[RC.discord - 1] || '').trim() : '';
         if (!String(row[RC.key - 1] || '').trim() && !String(row[RC.name - 1] || '').trim() && !idv) continue; // skip blank rows
-        records.push(row);
+        row._sourceRow = start + i; records.push(row);
       }
     }
-    let prependN = 0; // prepended rows are JUST-ADDED by definition → pinned newest inside their status group
     if (prepend && prepend.length) {
       // ONE row (an array of values) or SEVERAL (an array of rows) — the form sync seats a whole batch in one pass
       // instead of paying a full tracker read+rewrite per leave.
       const rowsIn = Array.isArray(prepend[0]) ? prepend : [prepend];
       for (let k = rowsIn.length - 1; k >= 0; k--) records.unshift(rowsIn[k].slice(0, W));
-      prependN = rowsIn.length;
+
     }
     if (!records.length) return;
 
-    // Status priority: the tracker's OWN STATUS dropdown order when one exists (what admins see when they pick —
-    // an operator-added status like Flagged groups where THEIR list says), else [LEAVE].STATUS_FLOW; unknown/blank → bottom.
-    let flow = ['Pending', 'Approved', 'Denied', 'Expired'];
-    try { const f = cfg_().leave.STATUS_FLOW; if (f && f.length) flow = f; } catch (e) { /* config broken — classic order */ }
-    try { const dd = statusDropdownOrder_(tracker, start, RC.status); if (dd) flow = dd; } catch (e) { /* config flow stands */ }
+    // Required status priority; custom statuses follow the four standard groups.
+    const flow = ['Pending', 'Approved', 'Denied', 'Expired'];
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
     const prio = (row) => { const k = norm_(String(row[RC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
-    // Within a status group: NEWEST submission first. Recency = the millis embedded in the dedup KEY ("KEY|id|<ts>" —
-    // the form's own Timestamp; panel/autofill rows stamp creation time), falling back to the leave's START date for
-    // key-less rows. Prepended rows are just-added → pinned above everything in their group regardless of key.
-    const NEWEST_ = 8.64e15; // beyond any real date millis
+    // Submission time is stored in the dedup key; manual legacy rows fall back to their start date.
     const rec = (row, i) => {
-      if (i < prependN) return NEWEST_;
+
       const m = String(row[RC.key - 1] || '').match(/^KEY\|[^|]*\|(\d{10,})$/);
       if (m) return Number(m[1]);
       const s = row[RC.start - 1];
       return (s instanceof Date && !isNaN(s.getTime())) ? s.getTime() : 0;
     };
     const dec = records.map((row, i) => ({ row: row, i: i, p: prio(row), t: rec(row, i) }));
-    dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable: full ties keep prior order
+    dec.sort((a, b) => (a.p - b.p) || (a.t - b.t) || (a.i - b.i)); // stable: full ties keep prior order
     const sorted = dec.map((d) => d.row);
 
-    // Write reordered VALUES back into the SAME physical rows. '@' the ID column BEFORE writing so long IDs stay exact.
+    // Move whole rows first, then preserve exact ID text and regenerate engine-owned formulas. '@' the ID column BEFORE writing so long IDs stay exact.
     ensureRoomAboveCap_(tracker, start + sorted.length - 1); // grow inside the band; never write onto the closing row
+    moveTableRecords_(tracker, start, sorted, W);
     if (RC.discord) tracker.getRange(start, RC.discord, sorted.length, 1).setNumberFormat('@');
     // Merge-safe: a merged cell anywhere in the tracker's data rows would make a full-width setValues throw, and this
     // whole function is wrapped in a catch — so sorting would silently stop working.
@@ -2615,21 +2543,19 @@ function sortTracker_(prepend, trackerSheet) {
     if (last > start + sorted.length - 1) tracker.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent(); // blank any now-unused trailing rows
 
     // Date formats + regenerated computed columns (batched setFormulas — only the columns that actually exist).
-    if (RC.start) tracker.getRange(start, RC.start, sorted.length, 1).setNumberFormat('d mmm. yyyy');
-    if (RC.end) tracker.getRange(start, RC.end, sorted.length, 1).setNumberFormat('d mmm. yyyy');
     // Long-text columns stay readable: wrapped + centred (the engine wrote this text, so it may style it).
-    [RC.reason, RC.notes].forEach((c) => {
-      if (c) tracker.getRange(start, c, sorted.length, 1).setWrap(true).setHorizontalAlignment('center').setVerticalAlignment('middle');
-    });
     if (RC.start && RC.end) {
       const lenF = [], untF = [], lftF = [], retF = [];
       for (let k = 0; k < sorted.length; k++) { const f = leaveFormulaStrings_(RC, start + k); lenF.push([f.len]); untF.push([f.until]); lftF.push([f.left]); retF.push([f.ret]); }
       if (RC.length) tracker.getRange(start, RC.length, sorted.length, 1).setFormulas(lenF);
       if (RC.untilStart) tracker.getRange(start, RC.untilStart, sorted.length, 1).setFormulas(untF);
       if (RC.timeLeft) tracker.getRange(start, RC.timeLeft, sorted.length, 1).setFormulas(lftF);
-      if (RC.returnDate) tracker.getRange(start, RC.returnDate, sorted.length, 1).setFormulas(retF).setNumberFormat('d mmm. yyyy');
+      if (RC.returnDate) tracker.getRange(start, RC.returnDate, sorted.length, 1).setFormulas(retF);
     }
-    tidyTailRows_(tracker, start, RC.status); // auto-rows: re-pad the blank tail submissions consumed / trim surplus blanks
+    tidyTailRows_(tracker, start, RC.status);
+    // Re-mark after all row moves/styles settle, even if an overlapping publish cleared the earlier flag.
+    try { _pubDirtyMemo_ = false; publishMarkDirty_(); } catch (ig) {}
+    try { if (typeof publishTableSettled_ === 'function') publishTableSettled_(tracker.getName()); } catch (ig) {} // preserve the framed blank tail and repair inherited row styling
   } catch (e) { logWarn_('sortTracker_', 'tracker sort failed: ' + ((e && e.message) ? e.message : e)); }
 }
 
@@ -2642,7 +2568,7 @@ function manualSyncLOA() {
   runAction_('Sync Leave Forms', () => {
     const res = syncFormToTracker();
     // Always re-group — even with nothing new to add, the menu action must leave the tracker in the canonical order
-    // (status groups, newest leave first inside each), e.g. right after an ordering-rule change.
+    // (status groups, oldest submission first inside each), e.g. right after an ordering-rule change.
     if (res !== false) { try { sortTracker_(); } catch (e) { log_('manualSyncLOA.sort', e); } }
     SpreadsheetApp.getUi().alert(
       res === false ? 'Sync skipped — another sync is already running.'
@@ -2916,9 +2842,10 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
   // Identity-free log slots first, then append past the end (same free-row rule the log's sort/compaction uses).
   const start = CONFIG.patrolStartRow;
   const free = [];
-  let append = Math.max(logSheet.getLastRow() + 1, start);
-  if (logSheet.getLastRow() >= start && PC.width) {
-    const blk = logSheet.getRange(start, 1, logSheet.getLastRow() - start + 1, PC.width).getDisplayValues();
+  const logLast = Math.min(logSheet.getLastRow(), framedTable_(logSheet, start).cap - 1);
+  let append = Math.max(logLast + 1, start);
+  if (logLast >= start && PC.width) {
+    const blk = logSheet.getRange(start, 1, logLast - start + 1, PC.width).getDisplayValues();
     for (let r = 0; r < blk.length; r++) {
       const has = (PC.discord && String(blk[r][PC.discord - 1] || '').trim()) || (PC.name && String(blk[r][PC.name - 1] || '').trim());
       if (!has) free.push(start + r);
@@ -3120,7 +3047,7 @@ function patrolLogCols_(sheet) {
     out.startTime = all('START', 'TIME'); out.endTime = all('END', 'TIME');
     out.total = all('TOTAL'); out.status = all('STATUS');
     out.notes = all('NOTES') || all('NOTE') || all('REASON');
-    out.width = Math.max(lastCol, out.notes, out.status, out.total, out.endTime, out.endDate, out.startTime, out.startDate, out.shift, out.discord, out.name, out.ooc, out.unit, out.rank);
+    out.width = Math.max(framedTable_(sheet, CONFIG.patrolStartRow).width, lastCol, out.notes, out.status, out.total, out.endTime, out.endDate, out.startTime, out.startDate, out.shift, out.discord, out.name, out.ooc, out.unit, out.rank);
   } catch (e) { log_('patrolLogCols_', e); }
   return out;
 }
@@ -3377,7 +3304,7 @@ function sortPatrolLog_(patrolSheet) {
     const PC = patrolLogCols_(sheet), start = CONFIG.patrolStartRow, W = PC.width;
     if (!PC.status || !W) return;
     if (PC.labelRow && start <= PC.labelRow) { logWarn_('sortPatrolLog_', `PATROL_START_ROW (${start}) is at/above the header (row ${PC.labelRow}); sort skipped.`); return; }
-    const last = sheet.getLastRow();
+    const last = Math.min(sheet.getLastRow(), framedTable_(sheet, start).cap - 1);
     const records = [];
     if (last >= start) {
       const n = last - start + 1;
@@ -3389,16 +3316,15 @@ function sortPatrolLog_(patrolSheet) {
         const idv = PC.discord ? String(r[PC.discord - 1] || '').trim() : '';
         const nmv = PC.name ? String(r[PC.name - 1] || '').trim() : '';
         if (!idv && !nmv) continue; // drop blank rows (compaction)
-        records.push(r);
+        r._sourceRow = start + i; records.push(r);
       }
     }
     if (!records.length) return;
     // Grouping order: the log's OWN STATUS dropdown when one exists (what admins see when they pick), else [PATROL].STATUS_FLOW.
-    let flow = (CONFIG.patrol.statusFlow && CONFIG.patrol.statusFlow.length) ? CONFIG.patrol.statusFlow : ['Pending', 'Flagged', 'Approved', 'Denied', 'Processed'];
-    try { const dd = statusDropdownOrder_(sheet, start, PC.status); if (dd) flow = dd; } catch (e) { /* config flow stands */ }
+    const flow = ['Flagged', 'Pending', 'Approved', 'Processed'];
     const rankOf = {}; flow.forEach((s, i) => { rankOf[norm_(s)] = i; });
     const prio = (r) => { const k = norm_(String(r[PC.status - 1] || '').trim()); return (k in rankOf) ? rankOf[k] : flow.length; };
-    // Within a status group: NEWEST SUBMISSION first — the form Timestamp carried in the marker's 3rd field
+    // Within a status group: Oldest submission first — the form Timestamp carried in the marker's 3rd field
     // (hours|memberId|submissionMs). A patrol that STARTED earlier but was submitted later still tops its group.
     // Hand-typed rows (no submission) fall back to their start date+time; unparsable rows tie at 0 and keep order.
     const rec = (r) => {
@@ -3407,23 +3333,23 @@ function sortPatrolLog_(patrolSheet) {
       return d ? d.getTime() : 0;
     };
     const dec = records.map((r, i) => ({ r: r, i: i, p: prio(r), t: rec(r) }));
-    dec.sort((a, b) => (a.p - b.p) || (b.t - a.t) || (a.i - b.i)); // stable
+    dec.sort((a, b) => (a.p - b.p) || (a.t - b.t) || (a.i - b.i)); // stable
     const sorted = dec.map((d) => d.r);
 
     ensureRoomAboveCap_(sheet, start + sorted.length - 1); // grow inside the band; never write onto the closing row
+    moveTableRecords_(sheet, start, sorted, W);
     if (PC.discord) sheet.getRange(start, PC.discord, sorted.length, 1).setNumberFormat('@');
     writeValuesSafe_(sheet, start, 1, sorted, null); // merge-safe (see sortTracker_)
     if (last > start + sorted.length - 1) sheet.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent();
 
     if (PC.total && PC.startDate && PC.endDate && PC.startTime && PC.endTime) { // TOTAL formula per physical row
       const tf = []; for (let k = 0; k < sorted.length; k++) tf.push([patrolTotalFormula_(PC, start + k)]);
-      sheet.getRange(start, PC.total, sorted.length, 1).setFormulas(tf).setNumberFormat('0.00" hrs"');
+      sheet.getRange(start, PC.total, sorted.length, 1).setFormulas(tf);
     }
-    if (PC.startDate) sheet.getRange(start, PC.startDate, sorted.length, 1).setNumberFormat(PATROL_DATE_FMT_);
-    if (PC.endDate) sheet.getRange(start, PC.endDate, sorted.length, 1).setNumberFormat(PATROL_DATE_FMT_);
-    if (PC.startTime) sheet.getRange(start, PC.startTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
-    if (PC.endTime) sheet.getRange(start, PC.endTime, sorted.length, 1).setNumberFormat(PATROL_TIME_FMT_);
-    tidyTailRows_(sheet, start, PC.status); // auto-rows: re-pad the blank tail submissions consumed / trim surplus blanks
+    tidyTailRows_(sheet, start, PC.status);
+    // Re-mark after all row moves/styles settle, even if an overlapping publish cleared the earlier flag.
+    try { _pubDirtyMemo_ = false; publishMarkDirty_(); } catch (ig) {}
+    try { if (typeof publishTableSettled_ === 'function') publishTableSettled_(sheet.getName()); } catch (ig) {} // preserve the framed blank tail and repair inherited row styling
   } catch (e) { logWarn_('sortPatrolLog_', 'patrol sort failed: ' + ((e && e.message) ? e.message : e)); }
 }
 

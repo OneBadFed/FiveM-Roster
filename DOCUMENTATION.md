@@ -1,6 +1,10 @@
 # Roster Engine — System Documentation
 
-> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 37 whitelisted endpoints
+> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 38 whitelisted endpoints
+
+Panel loading: both dialogs embed their initial data with `<` escaped for safe script insertion, with an RPC fallback if bootstrap generation fails. Control Panel requests icons and `cpStartupInfo` after its first paint; the signup queue loads when opened. Profile requests share in-flight calls and cache results for 30 seconds, invalidated on roster refresh. Health results use a 30-second cache scoped to the user and spreadsheet; audit-trigger verification is throttled for five minutes, with setup forcing a fresh check. Settings batches its status updates once per animation frame and updates existing navigation nodes.
+
+Local verification: `node tools/htmlchk.js ControlPanel.html SettingsPanel.html`, `node tools/cfgcheck.js RosterConfig.gs`, `node tools/perfcheck.js`, and `node tools/preview.js both`. Preview RPCs are stubbed; live execution times must be measured in Google Sheets.
 > **Updated:** 2026-07-28
 >
 > A white-label, schema-driven personnel-management engine for Google Sheets, built in Google Apps Script.
@@ -243,7 +247,7 @@ deferred-work queue + 1-minute sweep as backstop.
 
 ## 4 · Leave Lifecycle (LOA/ROA)
 
-1. **Intake** — the wizard-generated Google Form (questions from `[FORM_MAP]`) writes to the response tab.
+1. **Intake** — your department-owned Google Form writes to its linked response tab. Select that tab in Settings ? Sheets; `[FORM_MAP]` maps question headers for intake.
 2. **Sync** — `onFormSubmit` → `syncFormToTracker()`: response columns are resolved **by header**
    (`leaveFormCols_`: `[FORM_MAP]` keywords + built-in synonyms, UNIQUE/COMMUNITY ID count as the ID column;
    the classic fixed order 1–8 applies with a WARN when the required roles don't all resolve) — so a reordered
@@ -384,7 +388,7 @@ immediately, with the deferred queue as backstop.
 design system, deep-linkable (`openControlPanel('signups')` lands on a tab directly).
 
 **Security architecture (D5):** the client calls exactly one server function — `dispatch(name, args)` — which
-validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **37 endpoints**; the shim's
+validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **38 endpoints**; the shim's
 `RE_ENDPOINTS` list mirrors it one-for-one (adding an endpoint = one line in each — and a DevQA regression test
 now round-trips the whitelist, so a forgotten registration fails the suite instead of erroring in production). Writes are **identity-keyed**: the
 client sends each row's Unique ID so a shifted row can't hit the wrong member (`cpResolveMemberRow_` for
@@ -679,3 +683,17 @@ in-sheet `NOW()`/`TODAY()` clock — keep it matched.
 **Keep-current rule:** when code changes, update the matching section here in the same commit. Companion docs
 (staff guide, feature pitch, menu reference) live outside this folder and predate 1.0 — this file is the
 authoritative system reference.
+
+### Framed operational tables
+
+LOA Tracker sorts Pending ? Approved ? Denied ? Expired. Patrol Log and Roster Signups sort Flagged ? Pending ? Approved ? Processed. All groups use oldest submission first; unknown statuses follow the standard groups and exact ties retain their previous order. Existing rows move as whole rows, preserving custom formats and formulas. Empty framed tables retain their three template rows; filling the table inserts styled rows above its closing border. The legacy BLANK_TAIL_ROWS setting no longer trims these framed tables.
+
+The right border is resolved from the data-row border styling, with the grid width as a legacy fallback. The bottom bar is detected before unused grid rows. Keep the border styling distinct from the interior data rows. Newly synced signups without a Timestamp column retain submission time in hidden border-column bookkeeping. Legacy rows with no recorded submission time use their available date or stable ordering fallback.
+
+A linked public roster receives the LOA Tracker and Patrol Log tables, including expanded dimensions, formats, validation, conditional formatting, borders, row heights and column widths. Missing public copies are created. Existing sensitive-column filtering remains in force; signup sheets remain blocked. A content-free style carrier transfers native formatting between workbooks and is removed after publishing. Local regression checks: `node tools/tablecheck.js`. Native dropdown chip colours and move behavior should also be checked by running the sheets in Google Apps Script.
+
+Public mirror update reliability: formatting-only changes schedule the catch-up publisher, and LOA/Patrol edits defer publication until sorting settles. Completed table sorts re-mark the public copy dirty. Failed or lock-busy mirror passes retain the dirty flag for the next sweep, including explicit publishes. LOA/Patrol replicas always use the framed-table mirror even if the destination contains formulas. Local regression checks: `node tools/publishcheck.js` and `node tools/tablecheck.js`. These checks use mocked Sheets; native Google Sheets rendering and installed triggers require live verification.
+
+First-Run Setup never creates Google Forms or changes their destinations. It retains existing response tabs (including unlinked template tabs), themes configured response sheets, and reports how to link your own forms. Link each form to the internal spreadsheet from Google Forms, then choose its response tab under Settings ? Sheets & layout ? Google Form links. The former leave/signup form creation functions have been removed entirely. Existing forms are not deleted.
+
+Fast public updates: authorized form-submit handlers publish the affected LOA/Patrol table immediately after sync and styling complete. Panel table writes publish their execution-local settled-table queue after releasing the writer lock. Both flush pending Sheets writes first and retain the global dirty flag for other pending changes. Deferred edit/format catch-up now requests a 3-second trigger delay (Google may execute it later); the 1-minute retry sweep remains. Full native row styling is still copied on every framed-table publish to preserve per-record formatting after sorting.

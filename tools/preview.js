@@ -241,6 +241,7 @@ function runtimeStub(configPayload, boot) {
         ],
       };
     })(),
+    cpStartupInfo: { health: boot.health, waiting: 18 },
     cpGetConfig: configPayload,
     cpApplyConfig: { ok: true, written: { kv: 1, tables: 0 }, state: configPayload },
     cpRankIcons: {
@@ -316,7 +317,8 @@ function renderPanel(file, configPayload, bootJson, boot) {
   let html = fs.readFileSync(path.join(ROOT, file), 'utf8');
   const scriptlets = (html.match(/<\?!?=?[\s\S]*?\?>/g) || []).length;
   // GAS scriptlets (<?!= bootJson ?>) are resolved server-side by HtmlService; substitute their values here.
-  html = html.replace(/<\?!?=\s*bootJson\s*\?>/g, bootJson)
+  html = html.replace(/<\?!?=\s*bootJson\s*\?>/g, () => bootJson)
+    .replace(/<\?!?=\s*settingsBootJson\s*\?>/g, () => JSON.stringify(configPayload).replace(/</g, '\\u003c'))
     .replace(/<\?!?=\s*initialTab\s*\?>/g, '')
     .replace(/<\?!?=[\s\S]*?\?>/g, 'null'); // any other template var -> null, so the page still parses
   // The stub must exist BEFORE the panel's own script runs.

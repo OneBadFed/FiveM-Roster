@@ -659,6 +659,7 @@
 <div id="toast"></div>
 
 <script>
+  var SETTINGS_BOOT = <?!= settingsBootJson ?>;
   /* ════ data layer — identical server contract (dispatch → cpGetConfig / cpApplyConfig) ════ */
   var DATA=null, KV={}, BASE={}, TBL={}, TBLBASE={}, TBLMETA={}, CUR='sheets', Q='', LASTSAVED=null;
   var DD={}, DDSEQ=0, DDOPEN=null; // custom-dropdown registry + open menu
@@ -838,7 +839,7 @@
       desc:'Every coded error the engine raises, throttled to one per code per five minutes.',
       events:['Coded engine errors (config, structure, permissions…) with their fix hints']},
     {id:'sheets', a:'var(--green)', title:'Sheets & layout', desc:'Which tabs the engine reads and writes, where headers and data begin, and which Google Form responses tab feeds each tracker.',
-      cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.PATROL_LOG','SHEETS.SIGNUPS','LIMITS.BLANK_TAIL_ROWS']},
+      cards:[{t:'Data tabs', keys:['SHEETS.ROSTER','SHEETS.TRACKER','SHEETS.PATROL_LOG','SHEETS.SIGNUPS']},
              {t:'Google Form links — responses tab → tracker', keys:['SHEETS.LEAVE_FORM_RESPONSES','SHEETS.PATROL_FORM_RESPONSES','SHEETS.SIGNUP_FORM_RESPONSES']},
              {t:'Roster layout', keys:['ROSTER_LAYOUT.HEADER_ROW','ROSTER_LAYOUT.DATA_START_ROW','ROSTER_LAYOUT.TRACKER_START_ROW','ROSTER_LAYOUT.DIVIDER_MODE','ROSTER_LAYOUT.UNIT_FORMAT']}, // previous-activity columns live in the Activity section
              {t:'Shift / assignment column', keys:['ROSTER_LAYOUT.SHIFT_HEADER','ROSTER_LAYOUT.SHIFT_ASSIGNED_BY','ROSTER_LAYOUT.SHIFT_VALUES']},
@@ -889,18 +890,21 @@
     });
     $('verLbl').textContent='Roster Engine '+(d.engine||'');
     $('srcPill').textContent=d.fromTab?('sheet: '+d.sheetName):'defaults — run First-Run Setup';
-    renderNav(); renderSection(); updateBar();
+    TABLE_DIRTY=null; renderNav(); renderSection(); flushBar();
   }
   function kvChanged(bk){ return KV[bk] && KV[bk].value!==BASE[bk]; }
-  function tblChanged(n){ return TBL[n] && JSON.stringify(TBL[n])!==TBLBASE[n]; }
+  var TABLE_DIRTY=null;
+  function tblChanged(n){ return TABLE_DIRTY && Object.prototype.hasOwnProperty.call(TABLE_DIRTY,n)?TABLE_DIRTY[n]:(TBL[n] && JSON.stringify(TBL[n])!==TBLBASE[n]); }
   function boolOn(v){ return /^(TRUE|1)$/i.test(String(v).trim()); }
   function listOf(v){ return String(v||'').split(',').map(function(x){return x.trim();}).filter(Boolean); }
   function statusFlow(){ return listOf(KV['LEAVE.STATUS_FLOW'] && KV['LEAVE.STATUS_FLOW'].value); }
   function leaveKinds(){ var out=[]; (TBL.STATUSES||[]).forEach(function(r){ if(String(r[1]).trim().toUpperCase()==='LEAVE'&&String(r[0]).trim()) out.push(String(r[0]).trim()); }); return out; }
   function tierNames(){ var out=[]; (TBL.STATUSES||[]).forEach(function(r){ if(String(r[1]).trim().toUpperCase()==='TIER'&&String(r[0]).trim()) out.push(String(r[0]).trim()); }); return out; }
-  function sectionOf(bk){ for(var i=0;i<SECTIONS.length;i++){ var g=SECTIONS[i]; if(!g.cards) continue; for(var j=0;j<g.cards.length;j++){ if(g.cards[j].keys.indexOf(bk)!==-1) return g.id; } } return null; }
+  var SECTION_BY_KEY={}, SECTION_BY_ID={};
+  SECTIONS.forEach(function(g){ SECTION_BY_ID[g.id]=g; (g.cards||[]).forEach(function(c){ c.keys.forEach(function(k){ if(!SECTION_BY_KEY[k]) SECTION_BY_KEY[k]=g.id; }); }); });
+  function sectionOf(bk){ return SECTION_BY_KEY[bk]||null; }
   function secDirty(id){
-    var g=SECTIONS.filter(function(x){return x.id===id;})[0];
+    var g=SECTION_BY_ID[id];
     if(g.tables && (tblChanged('STATUSES')||tblChanged('STATUS_OVERRIDES')||tblChanged('STATUS_RULES'))) return true;
     if(g.table && tblChanged(g.table)) return true;
     if(g.custom==='ranklabels' && tblChanged('DASHBOARD_GROUPS')) return true;
@@ -911,7 +915,7 @@
   }
   function secHits(id){
     var q=Q.trim().toLowerCase(); if(!q) return 0;
-    var g=SECTIONS.filter(function(x){return x.id===id;})[0]; var n=0;
+    var g=SECTION_BY_ID[id]; var n=0;
     var tblSearch=function(nm){ var meta=TBLMETA[nm]||{}; return ((nm+' '+(meta.cols||[]).join(' ')+' '+(meta.help||'')).toLowerCase().indexOf(q)!==-1); };
     if(g.tables && ((g.title+' statuses tiers ladder override kind minhours color status rules').toLowerCase().indexOf(q)!==-1 || tblSearch('STATUS_RULES'))) n++;
     if(g.table && tblSearch(g.table)) n++;
@@ -926,14 +930,14 @@
     GROUPS.forEach(function(gr){
       h+='<div class="ngroup">'+esc(gr.label)+'</div>';
       gr.ids.forEach(function(id){
-        var g=SECTIONS.filter(function(x){return x.id===id;})[0];
+        var g=SECTION_BY_ID[id];
         var hits=secHits(id);
         h+='<button type="button" class="nitem'+(id===CUR?' active':'')+(secDirty(id)?' dirty':'')+(hits?' hashits':'')+'" data-sec="'+id+'" style="--a:'+g.a+'">'
           +'<span class="nico">'+ICONS[id]+'</span><span class="nl">'+esc(g.title.split(' & ')[0].split(' ')[0]==='Sheets'?'Sheets':g.title.replace(/ & .*/,''))+'</span>'
-          +(hits?'<span class="nhits">'+hits+'</span>':'')+'<span class="ndot"></span></button>';
+          +'<span class="nhits">'+(hits||'')+'</span>'+'<span class="ndot"></span></button>';
       });
     });
-    $('nav').innerHTML=h;
+    if($('nav').innerHTML!==h) $('nav').innerHTML=h;
   }
 
   /* A number field plus our own stepper. tabindex="-1" and aria-hidden because the INPUT is already the
@@ -1235,7 +1239,8 @@
 
   function renderSection(){
     closeDD();
-    var g=SECTIONS.filter(function(x){return x.id===CUR;})[0];
+    DD={}; DDSEQ=0; LASTEMB=null; // release controls belonging to the replaced section
+    var g=SECTION_BY_ID[CUR];
     var saved=relTime(LASTSAVED);
     var h='<div class="ph"><div class="ph-top"><span class="ph-ico" style="--a:'+g.a+'">'+(ICONS[g.id]||ICONS.table)+'</span>'
       +'<div class="ph-tx"><h1>'+esc(g.title)+'</h1><p class="pdesc">'+esc(g.desc)+'</p></div></div>'
@@ -1274,10 +1279,12 @@
      patrol responses tab is picked. Cheap + null-safe, so it can run after every change from updateBar. */
   function applyPatrolVis(){
     var md=KV['PATROL.MODE'];
+    if(CUR!=='sheets') return;
+    var settings=document.querySelectorAll('.setting[data-row]');
     if(md){
       var dur=String(md.value).trim().toUpperCase()==='DURATION';
       [['PATROL.COL_START',!dur],['PATROL.COL_END',!dur],['PATROL.OVERNIGHT',!dur],['PATROL.COL_DURATION',dur]].forEach(function(p){
-        document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(el.dataset.row===p[0]) el.classList.toggle('modehide',!p[1]); });
+        settings.forEach(function(el){ if(el.dataset.row===p[0]) el.classList.toggle('modehide',!p[1]); });
       });
     }
     var pr=KV['SHEETS.PATROL_FORM_RESPONSES'], note=$('patrolOffNote');
@@ -1326,7 +1333,7 @@
   function refreshTagCheat(){ var el=$('tagCheat'); if(el) el.innerHTML=tagCheatText(); }
   /* Automation narrates itself too: what runs when, from the live values. */
   function schedStoryText(){
-    var gv=function(k,d){ var m=KV['SCHEDULE.'+k]; var v=m&&String(m.value).trim(); return v||d; };
+    var gv=function(k,d){ var m=KV[(k==='NIGHTLY_HOUR'?'SCHEDULE.':'ACTIVITY.')+k]; var v=m&&String(m.value).trim(); return v||d; };
     var cad=gv('RESET_CADENCE','WEEKLY').toUpperCase(), day=gv('WEEKLY_HOURS_RESET','SUN').toUpperCase();
     var hr=Number(gv('WEEKLY_RESET_HOUR','23')), dom=gv('RESET_DOM','1'), nh=Number(gv('NIGHTLY_HOUR','0'));
     var DAYN={SUN:'Sunday',MON:'Monday',TUE:'Tuesday',WED:'Wednesday',THU:'Thursday',FRI:'Friday',SAT:'Saturday'};
@@ -1341,13 +1348,15 @@
   }
   function refreshSchedStory(){ var el=$('schedStory'); if(el) el.innerHTML=schedStoryText(); }
   function applySchedVis(){
+    if(CUR!=='activity') return;
+    var settings=document.querySelectorAll('.setting[data-row]');
     var c=KV['ACTIVITY.RESET_CADENCE']; if(!c) return;
     var v=String(c.value).trim().toUpperCase(), man=(v==='MANUAL'), mon=(v==='MONTHLY');
     // Auto-reset OFF = nothing below it applies, so the schedule fields hide entirely rather than sit there implying they still run.
     var auto=!KV['ACTIVITY.AUTO_RESET'] || boolOn(KV['ACTIVITY.AUTO_RESET'].value);
     if(!auto) man=mon=false;
     [['ACTIVITY.WEEKLY_HOURS_RESET',auto&&!man&&!mon],['ACTIVITY.RESET_DOM',auto&&mon],['ACTIVITY.WEEKLY_RESET_HOUR',auto&&!man],['ACTIVITY.RESET_CADENCE',auto]].forEach(function(p){
-      document.querySelectorAll('.setting[data-row]').forEach(function(el){ if(el.dataset.row===p[0]) el.classList.toggle('modehide',!p[1]); });
+      settings.forEach(function(el){ if(el.dataset.row===p[0]) el.classList.toggle('modehide',!p[1]); });
     });
   }
   /* Tiny Java-date-pattern subset (d/dd, MM/MMM/MMMM, yy/yyyy, h/hh/HH, mm, a) — enough to preview today. */
@@ -1381,16 +1390,25 @@
       } else ex.textContent='Today → '+fmtExample(m&&m.value);
     });
   }
-  function updateBar(){
-    applyPatrolVis(); refreshLeaveStory(); refreshTagCheat(); applySchedVis(); refreshSchedStory(); refreshFmtExamples();
+  function flushBar(){
+    TABLE_DIRTY=null;
+    var dirty={}; Object.keys(TBL).forEach(function(t){ dirty[t]=JSON.stringify(TBL[t])!==TBLBASE[t]; }); TABLE_DIRTY=dirty;
+    if(CUR==='sheets') applyPatrolVis();
+    if(CUR==='leave') refreshLeaveStory();
+    if(CUR==='dashboard') refreshTagCheat();
+    if(CUR==='activity'){ applySchedVis(); refreshSchedStory(); }
+    if(CUR==='activity'||CUR==='automation') refreshFmtExamples();
     var n=0;
     for(var bk in KV){ if(kvChanged(bk)) n++; }
     Object.keys(TBL).forEach(function(t){ if(tblChanged(t)) n++; });
     var sp=$('savepill');
     if(n>0 && !sp.classList.contains('saving')){ sp.classList.add('show'); sp.classList.remove('saved'); $('sptxt').textContent=n+' unsaved change'+(n===1?'':'s'); $('savetxt').textContent='Save changes'; }
     else if(n===0 && !sp.classList.contains('saving') && !sp.classList.contains('saved')){ sp.classList.remove('show'); }
-    renderNav();
+    document.querySelectorAll('#nav [data-sec]').forEach(function(btn){ btn.classList.toggle('dirty',!!secDirty(btn.dataset.sec)); });
+    TABLE_DIRTY=null;
   }
+  var BAR_FRAME=null;
+  function updateBar(){ if(BAR_FRAME!==null) return; BAR_FRAME=requestAnimationFrame(function(){ BAR_FRAME=null; flushBar(); }); }
   function onKv(bk,value){
     var m=KV[bk]; if(!m) return;
     m.value=String(value);
@@ -1533,7 +1551,7 @@
     return norm(t)===norm(DC_DEFAULTS[ev]);
   }
   function dcCurMeta(){
-    var g=SECTIONS.filter(function(x){return x.id===CUR;})[0];
+    var g=SECTION_BY_ID[CUR];
     if(!g||g.custom!=='discord') return null;
     var evs=DC_EVENTS[g.channel]||[]; if(!evs.length) return null;
     var cur=DCEV[g.id]||evs[0].id, meta=null;
@@ -1995,7 +2013,7 @@
     if(e.key==='Enter' && e.target.dataset && e.target.dataset.addfor){ e.preventDefault(); var btn=document.querySelector('[data-addbtn="'+e.target.dataset.addfor+'"]'); if(btn) btn.click(); }
   });
 
-  boot();
+  if(SETTINGS_BOOT) fromData(SETTINGS_BOOT); else boot();
 </script>
 </body>
 </html>

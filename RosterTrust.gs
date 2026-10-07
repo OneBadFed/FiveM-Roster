@@ -33,14 +33,15 @@ function cpSystemInfo() {
   };
 }
 
-/** F-023: the structural health check rarely changes but is expensive; memoize it ~5 min so the 15s System-tab poll doesn't re-run it every tick. */
+/** F-023: the structural health check rarely changes but is expensive; memoize it for 30 seconds per user and spreadsheet so the 15s System-tab poll doesn't re-run it every tick. */
 function cpHealthCheckCached_() {
   try {
-    const cache = CacheService.getScriptCache();
-    const hit = cache.get('cp:health');
+    const cache = CacheService.getUserCache();
+    const key = 'cp:health:' + SpreadsheetApp.getActive().getId();
+    const hit = cache.get(key);
     if (hit) { const o = JSON.parse(hit); o.cached = true; return o; }
     const fresh = cpHealthCheck_();
-    try { cache.put('cp:health', JSON.stringify(fresh), 300); } catch (e) { /* cache best-effort */ }
+    try { cache.put(key, JSON.stringify(fresh), 30); } catch (e) { /* cache best-effort */ }
     return fresh;
   } catch (e) {
     return cpHealthCheck_(); // cache/parse failure → just compute it
@@ -49,7 +50,7 @@ function cpHealthCheckCached_() {
 
 /** Drop the memoized health check so the next System-tab poll reflects a just-made change (triggers, webhook, …). */
 function cpInvalidateHealth_() {
-  try { CacheService.getScriptCache().remove('cp:health'); } catch (e) { /* best-effort */ }
+  try { CacheService.getUserCache().remove('cp:health:' + SpreadsheetApp.getActive().getId()); } catch (e) { /* best-effort */ }
 }
 
 /* ----------------------------------------------------------------------------
@@ -82,15 +83,11 @@ function cpHealthCheck_() {
   add(`Form tab "${CONFIG.sheets.form}"`, form, form ? '' : 'Not found — check the exact tab name.');
 
   let memberCount = 0;
-  if (roster && roster.getLastRow() >= CONFIG.rosterStartRow) {
-    // Columns 2 and 3 were assumed to be RANK and NAME. Every other roster read in this file resolves them by
-    // header, so a reordered roster reported "0 member(s) found" while working perfectly.
-    const RCm = rosterCols_(roster);
-    const n = roster.getLastRow() - CONFIG.rosterStartRow + 1;
-    const ranks = roster.getRange(CONFIG.rosterStartRow, RCm.rank, n, 1).getDisplayValues();
-    const names = roster.getRange(CONFIG.rosterStartRow, RCm.name, n, 1).getDisplayValues();
-    for (let i = 0; i < n; i++) { if (isValidMemberValues_(ranks[i][0], names[i][0])) memberCount++; }
-  }
+  const RC = roster ? rosterCols_(roster) : null;
+  const rows = roster && roster.getLastRow() >= CONFIG.rosterStartRow
+    ? roster.getRange(CONFIG.rosterStartRow, 1, roster.getLastRow() - CONFIG.rosterStartRow + 1,
+        Math.max(RC.rank, RC.name, RC.discord)).getDisplayValues() : [];
+  rows.forEach((r) => { if (isValidMemberValues_(r[RC.rank - 1], r[RC.name - 1])) memberCount++; });
   add('Roster has members', memberCount > 0, `${memberCount} member(s) found.`);
 
   const handlers = {};
@@ -103,22 +100,15 @@ function cpHealthCheck_() {
   add('Discord webhooks', whn > 0, whn > 0 ? `${whn} channel(s) configured.` : 'No channels visible to your account — set them on Tools (stored in the admin roster).');
 
   let bad = 0;
-  if (roster && roster.getLastRow() >= CONFIG.rosterStartRow) {
-    const RC = rosterCols_(roster);
-    const n = roster.getLastRow() - CONFIG.rosterStartRow + 1;
-    const ranks = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getValues();
-    const names = roster.getRange(CONFIG.rosterStartRow, RC.name, n, 1).getValues();
-    const ids = roster.getRange(CONFIG.rosterStartRow, RC.discord, n, 1).getDisplayValues();
-    const seen = {};
-    for (let i = 0; i < n; i++) {
-      if (!isValidMemberValues_(ranks[i][0], names[i][0])) continue;
-      const id = String(ids[i][0]).trim();
-      if (id === '') continue;
-      if (!isValidId_(id)) bad++;
-      seen[id] = (seen[id] || 0) + 1;
-    }
-    Object.keys(seen).forEach((k) => { if (seen[k] > 1) bad += seen[k] - 1; });
-  }
+  const seen = {};
+  rows.forEach((r) => {
+    if (!isValidMemberValues_(r[RC.rank - 1], r[RC.name - 1])) return;
+    const id = String(r[RC.discord - 1]).trim();
+    if (!id) return;
+    if (!isValidId_(id)) bad++;
+    seen[id] = (seen[id] || 0) + 1;
+  });
+  Object.keys(seen).forEach((k) => { if (seen[k] > 1) bad += seen[k] - 1; });
   add('Discord IDs valid & unique', bad === 0, bad === 0 ? '' : `${bad} duplicate/malformed ID(s) — see Tools ▸ Check duplicate IDs.`);
 
   const schemaIssues = cpSchemaCheck_();
@@ -200,7 +190,7 @@ function cpFixTriggers() {
   ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
   ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(0).everyDays(1).create();
   auditEvent_('action', '', 'Installed form-submit + daily triggers.', '', '');
-  cpInvalidateHealth_(); // triggers just changed — don't show a stale health check for 5 min
+  cpInvalidateHealth_(); // triggers just changed — don't show a stale health check
   return 'Triggers installed: form submit + daily schedule check.';
 }
 
@@ -686,7 +676,10 @@ function cpAuditAutoStatus() {
 }
 
 /** Guarantees the audit trigger exists (audit is always-on). Idempotent; removes dup recordEdit triggers. */
-function cpEnsureAuditTrigger() {
+function cpEnsureAuditTrigger(force) {
+  const key = 'cp:audit-trigger:' + SpreadsheetApp.getActive().getId();
+  let cache = null;
+  try { cache = CacheService.getUserCache(); if (!force && cache.get(key)) return true; } catch (e) { /* verify without cache */ }
   // Lock so two near-simultaneous panel opens can't both pass the "no auditEdit" check and create duplicate triggers (double-logging).
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(8000)) return false; // someone else is already ensuring it
@@ -701,6 +694,7 @@ function cpEnsureAuditTrigger() {
       }
     });
     if (!kept) ScriptApp.newTrigger('auditEdit').forSpreadsheet(SpreadsheetApp.getActive()).onEdit().create();
+    try { if (cache) cache.put(key, '1', 300); } catch (e) { /* best-effort */ }
     return true;
   } finally {
     lock.releaseLock();

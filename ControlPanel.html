@@ -1550,15 +1550,17 @@
     renderAdminSetup();
     whStatus(b.webhooks||{});
     apply(b); setHealthPill(b.health); setLoading(false);
-    api(function(res){ // PERF: heavy base64 icons arrive after first paint; initials → icons swap. Endpoint shape = {ranks:[{rank,icon,color,…}]}
-      var map={};
-      (((res||{}).ranks)||[]).forEach(function(r){ if(!r) return; if(r.icon) map[r.rank]=r.icon; });
-      if(Object.keys(map).length){ STATE.rankIcons=map; renderMembers(); renderSlots(); }
-    }, function(){}, "cpRankIcons");
-    // Same idea for the signup queue: after first paint, so the sidebar can report how many applicants are
-    // waiting without you opening the tab — and the tab then opens instantly. Failure is silent (an operator
-    // without admin-file access simply gets no count).
-    if(!SU.loaded) loadSignups(true);
+    // Two animation frames allow the initial content to paint before optional RPCs begin.
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      api(function(res){
+        var map={}; (((res||{}).ranks)||[]).forEach(function(r){ if(r&&r.icon) map[r.rank]=r.icon; });
+        STATE.rankIcons=map; updateMemberAvatars(); renderSlots();
+      }, function(){}, 'cpRankIcons');
+      api(function(res){
+        setHealthPill(res&&res.health);
+        if(!SU.loaded){ var badge=$('navSignupCount'); if(badge) badge.textContent=res&&res.waiting?String(res.waiting):''; }
+      }, function(){}, 'cpStartupInfo');
+    }); });
   }
   function boot(){
     if(EMBED_BOOT){ applyBoot(EMBED_BOOT); return; } // PERF: server-embedded payload — the panel paints with data, zero extra round trips
@@ -1566,7 +1568,7 @@
     api(applyBoot, onError, "cpBootstrap");
   }
   function refresh(){ setLoading(true); api(function(s){ apply(s); if(STATE.systemLoaded) loadSystem(true); setLoading(false); toast('Refreshed.','ok'); }, onError, "cpRefresh"); }
-  function apply(s){ STATE.members=s.members||[]; STATE.selected={}; renderStats(s.stats||{}); renderRankFilter(); renderShiftFilter(); renderMembers(); renderSlots(); if(s.updatedAt) $('foot').textContent='Updated '+shortWhen(s.updatedAt); } // version lives in the #verLbl pill — don't repeat it here // F-027: clear stale selections on refresh (rows may have shifted)
+  function apply(s){ PROFILE_GEN++; PROFILE_CACHE={}; STATE.members=s.members||[]; STATE.selected={}; renderStats(s.stats||{}); renderRankFilter(); renderShiftFilter(); renderMembers(); renderSlots(); if(s.updatedAt) $('foot').textContent='Updated '+shortWhen(s.updatedAt); } // version lives in the #verLbl pill — don't repeat it here // F-027: clear stale selections on refresh (rows may have shifted)
   /* "All shifts" / "All districts" / "All watches" — the department's own word, lowered and pluralised, so the
      control reads as a sentence rather than echoing a shouted sheet header. */
   function pluralLower(s){
@@ -1801,9 +1803,30 @@
     anim.onfinish=end;
     setTimeout(end,dur+80); // onfinish is never delivered if something else re-renders the list mid-fold
   }
+  var PROFILE_CACHE={}, PROFILE_PENDING={}, PROFILE_GEN=0;
+  function requestProfile(id, done){
+    var key=String(id||''), gen=PROFILE_GEN, hit=PROFILE_CACHE[key];
+    if(hit && Date.now()-hit.at<30000){ done(hit.data); return; }
+    var pending=PROFILE_PENDING[key];
+    if(pending && pending.gen===gen){ pending.callbacks.push(done); return; }
+    pending={gen:gen,callbacks:[done]}; PROFILE_PENDING[key]=pending;
+    api(function(data){
+      if(PROFILE_PENDING[key]===pending) delete PROFILE_PENDING[key];
+      if(gen!==PROFILE_GEN) return;
+      PROFILE_CACHE[key]={at:Date.now(),data:data}; pending.callbacks.forEach(function(cb){ cb(data); });
+    }, function(e){ if(PROFILE_PENDING[key]===pending) delete PROFILE_PENDING[key]; if(gen===PROFILE_GEN) onError(e); }, 'cpGetProfile', key);
+  }
+  function updateMemberAvatars(){
+    document.querySelectorAll('#mlist .mrow').forEach(function(row){
+      var member=memberByRow(row.dataset.row), avatar=row.querySelector('.mav'); if(!member||!avatar) return;
+      var icon=STATE.rankIcons[member.rank]; avatar.classList.toggle('mav-has',!!icon);
+      if(icon){ var img=document.createElement('img'); img.className='mav-img'; img.src=icon; img.alt=member.rank; img.loading='lazy'; avatar.replaceChildren(img); }
+      else avatar.textContent=mInitials(member.name);
+    });
+  }
   function loadProfile(m){
     var req=Number(m.req)||0; // this rank's top-tier MinHours — colours the checks and draws the requirement line
-    api(function(p){
+    requestProfile(m.discord, function(p){
       var chk=$('chk'+m.row); if(chk) chk.innerHTML=activityChecks(p.history,req);
       var spk=$('spk'+m.row); if(spk) spk.innerHTML=sparkline(p.history,req);
       // Trend footer + check count — computed from the SAME series the chart draws, so the numbers can never
@@ -1833,7 +1856,7 @@
       var lv=$('lv'+m.row);
       if(lv){ if(!p.leaves||!p.leaves.length){ lv.innerHTML='<span class="muted2">No leave records.</span>'; }
         else lv.innerHTML=p.leaves.map(function(l){ return '<div class="lr"><span><b>'+esc(l.type||'—')+'</b> &nbsp;'+esc(l.start||'?')+' → '+esc(l.end||'?')+'</span><span class="ltag"><span class="pdot" style="background:'+leaveDot(l.status)+'"></span>'+esc(l.status||'')+'</span></div>'; }).join(''); }
-    }, onError, "cpGetProfile", m.discord);
+    });
   }
   function renderAdminSetup(){
     var el=$('admSetup'); if(!el) return;
@@ -2652,16 +2675,20 @@
       api(function(){},function(){},'cpSignupPostSeat',{slotRow:seatedRow}); // background: targeted assignment/Academy/dashboard refresh — the admin never waits on it
     }, function(e){ if(btn){ btn.disabled=false; btn.textContent='Approve & seat'; } onError(e); }, 'cpSignupApprove', {row:SU.cur, slotRow:seatedRow, id:(app&&app.discord)||'', edits:edits});
   }
+  var SIGNUPS_LOADING=false;
   function loadSignups(force){
+    if(SIGNUPS_LOADING) return;
     if(SU.loaded && !force){ renderSignups(); return; }
+    SIGNUPS_LOADING=true;
     var el=$('suBody'); if(el) el.innerHTML='<div class="skblk"></div>'; var qb=$('suBar'); if(qb) qb.hidden=true;
     api(function(d){
+      SIGNUPS_LOADING=false;
       SU.signups=d.signups||[]; SU.recent=d.recent||[]; SU.waiting=Number(d.waiting||0); SU.slots=d.slots||[]; SU.linked=!!d.linked; SU.ready=!!d.ready; SU.loaded=true;
       SU.statuses=d.statuses||null; SU.oocCol=!!d.oocCol; SU.shiftLabel=String(d.shiftLabel||'').trim(); SU.flagged=d.flaggedStatus||'Flagged';
       if(!SU.status) SU.status=STATE.defaultStatus||'';
       if(d.rankIcons){ STATE.rankIcons=STATE.rankIcons||{}; for(var k in d.rankIcons) STATE.rankIcons[k]=d.rankIcons[k]; }
       renderSignups();
-    }, function(e){ var el2=$('suBody'); if(el2) el2.innerHTML=suEmpty('Couldn\'t load signups',esc((e&&e.message)||'')); }, 'cpSignupList');
+    }, function(e){ SIGNUPS_LOADING=false; var el2=$('suBody'); if(el2) el2.innerHTML=suEmpty('Couldn\'t load signups',esc((e&&e.message)||'')); }, 'cpSignupList');
   }
   $('suScope').addEventListener('click',function(e){ var b=e.target.closest('[data-suscope]'); if(!b) return;
     SU.scope=b.dataset.suscope; this.querySelectorAll('.fchip').forEach(function(x){ x.classList.toggle('active',x===b); }); renderSignups(); });
@@ -2723,11 +2750,13 @@
     p.innerHTML='<span class="pdot"></span>'+(bad?(bad+' issue'+(bad===1?'':'s')+' need'+(bad===1?'s':'')+' review'):'All systems healthy');
   }
   function setAutoBtn(on){ STATE.autoSnap=!!on; var b=$('autoSnap'); b.textContent='Auto-weekly: '+(on?'On':'Off'); b.classList.toggle('on',!!on); }
+  var SYSTEM_LOADING=false;
   function loadSystem(silent){
+    if(SYSTEM_LOADING) return; SYSTEM_LOADING=true;
     if(!silent) $('healthBody').innerHTML=skel(3);
     api(function(s){
-      STATE.systemLoaded=true; STATE.auditAll=s.audit||[]; STATE.auditLoggingOn=s.auditLogging; renderHealth(s.health); renderSnapshots(s.snapshots||[]); renderAudit(); setAutoBtn(s.autoSnapshot); setAuditBtn(s.auditLogging);
-    }, function(e){ if(!silent){ $('healthBody').innerHTML='<span class="muted2">Could not load — is RosterTrust.gs pasted &amp; saved?</span>'; onError(e); } }, "cpSystemInfo");
+      SYSTEM_LOADING=false; STATE.systemLoaded=true; STATE.auditAll=s.audit||[]; STATE.auditLoggingOn=s.auditLogging; renderHealth(s.health); renderSnapshots(s.snapshots||[]); renderAudit(); setAutoBtn(s.autoSnapshot); setAuditBtn(s.auditLogging);
+    }, function(e){ SYSTEM_LOADING=false; if(!silent){ $('healthBody').innerHTML='<span class="muted2">Could not load — is RosterTrust.gs pasted &amp; saved?</span>'; onError(e); } }, "cpSystemInfo");
   }
   function loadColumns(silent){
     if(!silent) $('colBody').innerHTML=skel(4);
@@ -3005,7 +3034,7 @@
   boot();
   if(INIT_TAB){ var _dl=document.querySelector('.tab[data-tab="'+INIT_TAB+'"]'); if(_dl) _dl.click(); } // deep-link (e.g. open straight to Signups)
   // Live-ish updates: while the System tab is open, refresh it every 15s so new audit entries appear.
-  setInterval(function(){ if(STATE.systemLoaded && document.querySelector('.tab[data-tab="system"]').classList.contains('active')) loadSystem(true); }, 15000);
+  setInterval(function(){ if(!document.hidden && STATE.systemLoaded && document.querySelector('.tab[data-tab="system"]').classList.contains('active')) loadSystem(true); }, 15000);
 </script>
 </body>
 </html>
