@@ -224,5 +224,12 @@ for (const json of ['not json','[]','null','{"fields":"wrong"}','{"fields":[null
 }
 const good=X.validateConfig_({EMBEDS:{kind:'table',header:['Event','Json'],rows:[['audit','{"fields":[{"n":"Name","v":"{name}"}]}']]}});
 ok('valid embed templates accepted',!good.problems.some(p=>p.sev==='ERROR'&&p.key==='[EMBEDS].audit'));
+const emptyStatuses=X.validateConfig_({STATUSES:{kind:'table',header:['Status','Kind','MinHours','Color'],rows:[]},STATUS_OVERRIDES:{kind:'table',header:['Scope','Match','Ladder'],rows:[]}});
+ok('empty statuses do not block department setup',errsOf(emptyStatuses.problems).length===0);
+const emptyRuntime=X.materialize_(emptyStatuses.config,false).legacy;
+ok('empty statuses disable leave vocabulary and returning status',emptyRuntime.leaveTypes.length===0&&emptyRuntime.returnStatus==='');
+const disabledLeave=X.validateConfig_({LEAVE:{kind:'kv',kv:{LEAVE_TYPES:'',RETURN_STATUS:''}}});
+ok('explicit empty leave types are valid',errsOf(disabledLeave.problems).length===0&&disabledLeave.config.kv.LEAVE.LEAVE_TYPES.length===0);
+ok('startup preserves deliberately empty table blocks',fs.readFileSync('RosterConfig.gs','utf8').includes('const dataRows = have !== null ? have : spec.seed;'));
 console.log('\n==== ' + pass + ' passed, ' + fail + ' failed ====');
 process.exit(fail ? 1 : 0);

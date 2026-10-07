@@ -139,7 +139,7 @@ function devDepartmentResetPlan_(ss) {
   ['form','patrol','signupForm','audit','hoursHistory','integrity','snapshots','coverage','activity'].forEach((key) => add(CONFIG.sheets[key], 2, false));
   add('Webhooks', 2, false); add('_Rank Icons', 2, false); add(SYS_LOG_SHEET, 2, false);
   return { roster, rows, columns, identities, tables, preserved,
-    structural: ['COLUMNS','RANKS'].map((name) => ({ name, rows: (cv.tables[name] || []).map((r) => BLOCK_SPECS_[name].cols.map((c) => r[c] == null ? '' : r[c])) })) };
+    structural: ['COLUMNS'].map((name) => ({ name, rows: (cv.tables[name] || []).map((r) => BLOCK_SPECS_[name].cols.map((c) => r[c] == null ? '' : r[c])) })) };
 }
 
 function devApplyDepartmentReset_(ss, plan) {
@@ -177,6 +177,10 @@ function devApplyDepartmentReset_(ss, plan) {
   cfgInvalidate_(); seedConfigTab_(ss); config = findConfigSheet_(ss);
   plan.preserved.forEach((p) => { if (p[2] != null) setKvValue_(config, p[0], p[1], Array.isArray(p[2]) ? p[2].join(', ') : p[2]); });
   plan.structural.forEach((t) => setTableRows_(config, t.name, t.rows));
+  // Empty blocks must remain present so additive startup does not recreate seeded department vocabulary.
+  ['STATUSES','STATUS_OVERRIDES','STATUS_RULES','RANKS','SECTION_TAGS','DASHBOARD_GROUPS','EMBEDS'].forEach((name) => setTableRows_(config, name, []));
+  setKvValue_(config, 'LEAVE', 'LEAVE_TYPES', '');
+  setKvValue_(config, 'LEAVE', 'RETURN_STATUS', '');
   // Leave the required LOA response name at its default placeholder; optional intakes reset to off.
   setKvValue_(config, 'ACTIVITY', 'AUTO_RESET', 'FALSE');
   cfgInvalidate_();

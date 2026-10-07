@@ -53,7 +53,22 @@ assert.equal(doc.PUBLIC_ROSTER_ID,undefined);assert.equal(doc.RE_PROMOS,undefine
 assert.equal(doc.RE_RUNTIME_MODE,'LIBRARY');assert.equal(doc.RE_LIBRARY_MODE,'1');assert.equal(script.DISCORD_WEBHOOK_URL,'secret');assert.equal(script.RE_LAST_HOURS_RESET_MS,'old','library reset cannot wipe shared script properties');
 assert.deepEqual(removed,['onFormSubmit','RE.publishSweep','recordEdit']);
 assert(writes.some(w=>w[0]==='SHEETS'&&w[1]==='ROSTER'&&w[2]==='Custom roster'));assert(writes.some(w=>w[0]==='COLUMNS'&&w[1][0][1]==='EXTRA'));
+for(const name of ['STATUSES','STATUS_OVERRIDES','STATUS_RULES','RANKS','SECTION_TAGS','DASHBOARD_GROUPS','EMBEDS'])assert(writes.some(w=>w[0]===name&&Array.isArray(w[1])&&w[1].length===0),name+' must be explicitly empty');
+assert.equal(plan.structural.length,1,'only column mappings survive, never ranks');
+for(const key of ['LEAVE_TYPES','RETURN_STATUS'])assert(writes.some(w=>w[0]==='LEAVE'&&w[1]===key&&w[2]===''));
 assert(sheets.every(s=>s.style==='original'),'reset uses content-only clearing');
 ctx.CONFIG.sheets.form='Custom roster';assert.throws(()=>ctx.devDepartmentResetPlan_(ss),/mapped to the roster/,'unsafe aliases rejected before mutations');
 assert(source.includes("getResponseText().trim() !== 'RESET DEPARTMENT'"),'typed confirmation required');
 console.log('Department reset: custom layouts, member fields, dividers, borders, response headers, credentials, properties and trigger isolation passed.');
+// Disabled leave/activity paths must return before touching sheets, including old incoming submissions.
+function loadFunction(file,name){const code=fs.readFileSync(file,'utf8'),start=code.indexOf('function '+name+'('),end=code.indexOf('\nfunction ',start+1);vm.runInContext(code.slice(start,end<0?undefined:end),ctx)}
+ctx.CONFIG.leaveTypes=[];ctx.statusEngine_=()=>({global:[],overrides:[]});ctx.statusLadderFor_=()=>[];
+ctx.computeStatusCore_=()=>{throw Error('unconfigured tiers must not compute a fabricated status')};
+for(const name of ['computeStatus_','processDailyLOAs_','checkImmediateLOAStart','syncFormToTracker_'])loadFunction('RosterSystem.gs',name);
+loadFunction('RosterControlPanel.gs','cpScheduleLeave_');
+assert.equal(ctx.computeStatus_('Trooper',12),null);
+assert.equal(ctx.processDailyLOAs_(null,null,null).scanned,0);
+assert.equal(ctx.syncFormToTracker_(null,null).length,0);
+ctx.checkImmediateLOAStart(null,1);
+assert.throws(()=>ctx.cpScheduleLeave_(null,null,{},{}),/Configure at least one LEAVE/);
+console.log('Empty configuration: activity stays unchanged; leave import/daily/immediate paths touch no sheets; panel scheduling explains setup requirements.');

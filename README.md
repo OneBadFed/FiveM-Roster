@@ -30,9 +30,9 @@ within seconds of any change here.
    for authorization — that's the script asking to manage *this* spreadsheet on your behalf.)
 2. **👥 Roster ▸ 🚀 First-Run Setup** — creates/verifies the ⚙️ Config tab and everything the engine needs.
    Safe to run again any time; it never deletes your data.
-3. **👥 Roster ▸ 🔌 Install Triggers** — this is the step people forget. Triggers are what make forms sync
-   automatically, leaves start and expire overnight, and the public roster update live. **Run it once per copy
-   of the file.**
+3. First-Run Setup also installs the configured triggers. **👥 Roster ▸ 🔌 Install Triggers** reinstalls them
+   after schedule changes or repairs. Public edit/change and minute catch-up triggers are installed when a
+   public roster is linked. No Google Form is created or relinked; existing response-sheet formatting is retained.
 4. **Pick your ID type:** 👥 Roster ▸ 🆔 Unique ID Type — Discord IDs (17–19 digits) or Community IDs (1–8
    digits). Every member is keyed by this ID; it's how forms, patrol logs, and transfers find people.
 5. **Want to see it working before adding real people?** 🧪 Dev / QA ▸ **🎬 Load Demo Roster** fills the whole
@@ -170,6 +170,10 @@ all works inside.*
 ## Automatic Apps Script updates from GitHub
 
 The local [data-integrity and recovery audit](DATA_INTEGRITY_AUDIT.md) documents interrupted patrol credits/imports, member transfers/assignments, activity-reset checkpoints and the recovery procedure. It includes local verification and live acceptance checks; these audit changes are not deployed until pushed and uploaded. Use **Roster → Recover Interrupted Transfer** for pending transfers, member assignments or linked signup approvals. An interrupted activity reset requires the checkpoint review described in that report before rerunning it.
+
+**Reset for a new department** clears statuses, per-rank ladders, status rules, the Ranks configuration, section tags, dashboard headcount groups and embed overrides. Column mappings and physical roster layout remain intact. Empty configuration tables stay empty through startup. Without tiers, activity statuses stay unchanged; without configured leave types, leave imports and activation pause until setup is complete. Existing form submissions remain available for later import.
+
+**Config sheet appearance:** use **Roster → Restyle Config sheet** to apply the dark layout without resetting configuration. Section headers, blue input cells, wrapped help text and colour swatches make the sheet easier to scan. Only the engine's A–E area is styled; extra columns remain untouched. First-Run Setup applies the current design once, then skips repainting an unchanged configuration.
 
 `.github/workflows/apps-script.yml` checks the code and uploads it to the configured sheet script whenever `main` changes. It can also be run manually from GitHub Actions ? Sync Apps Script ? Run workflow. The target Script ID is `1SoCIV1N8-h_yyG9GtUgOWNO83yKxyexEUJ14dTnYRvnb5v58JGW8BQUg`.
 

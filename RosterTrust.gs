@@ -184,14 +184,10 @@ function cpSchemaCheck_() {
 
 /** One-click fix: (re)install the form-submit + daily triggers. Returns a status string. */
 function cpFixTriggers() {
-  const keep = { onFormSubmit: true, processDailyLOAs: true };
-  ScriptApp.getProjectTriggers().forEach((t) => { if (keep[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t); });
-  const ss = SpreadsheetApp.getActive();
-  ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
-  ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(0).everyDays(1).create();
-  auditEvent_('action', '', 'Installed form-submit + daily triggers.', '', '');
+  const result=installConfiguredTriggers_();
+  auditEvent_('action', '', 'Installed configured engine triggers.', '', '');
   cpInvalidateHealth_(); // triggers just changed — don't show a stale health check
-  return 'Triggers installed: form submit + daily schedule check.';
+  return result;
 }
 
 /* ----------------------------------------------------------------------------

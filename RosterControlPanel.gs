@@ -23,7 +23,7 @@ const CP_STATUSES = Object.freeze(['Active', 'Semi-Active', 'Inactive', 'LOA', '
 
 /** Status names from [STATUSES] on ⚙️ Config (defaults identical to CP_STATUSES). */
 function cpStatuses_() {
-  try { const names = cfg_().statusNames; if (names && names.length) return names; } catch (e) { /* config broken — fallback */ }
+  try { const names = cfg_().statusNames; if (Array.isArray(names)) return names; } catch (e) { /* config broken — fallback */ }
   return CP_STATUSES.slice();
 }
 
@@ -958,6 +958,7 @@ function cpScheduleLeave(p) {
  * No audit; `opts.sendWebhooks` gates the Discord post (tests pass false). Testable.
  */
 function cpScheduleLeave_(roster, tracker, p, opts) {
+  if (!CONFIG.leaveTypes || !CONFIG.leaveTypes.length) throw new Error('Configure at least one LEAVE-kind status and select it under Leave engine before scheduling leave.');
   opts = opts || {};
   const type = trackerLeaveType_(); // LOA-only tracker: no per-row TYPE column (any p.type from the panel is ignored)
   const status = String((p && p.status) || CONFIG.pendingStatus).trim();

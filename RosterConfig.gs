@@ -398,7 +398,7 @@ const BLOCK_SPECS_ = Object.freeze({
     PANEL_TAB: { t: 'string', d: 'Activity Panel', req: false, aka: 'SHEETS.ACTIVITY', help: 'The Activity Panel board tab: one row per patrol form submission (member, start/end, patrol length, live status from the Patrol Log) under a filter row — search and sort by any column. Engine-built VIEW, rebuilt on every patrol sync: hand edits do not survive; statuses are managed on the Patrol Log itself. BLANK = OFF.' },
   } },
   LEAVE: { type: 'kv', keys: {
-    LEAVE_TYPES: { t: 'list', d: 'LOA, ROA', req: true, help: 'Each must be a LEAVE-kind status in [STATUSES].' },
+    LEAVE_TYPES: { t: 'list', d: 'LOA, ROA', req: false, help: 'Each must be a LEAVE-kind status in [STATUSES]. Blank disables leave processing until types are configured.' },
     STATUS_FLOW: { t: 'list', d: 'Pending, Approved, Denied, Expired', req: true, help: 'Tracker status dropdown values. First = default on sync.' },
     APPROVED_STATUS: { t: 'string', d: 'Approved', req: false, help: 'The STATUS_FLOW value that ACTIVATES a leave. The nightly job starts/expires only leaves in this state.' },
     EXPIRED_STATUS: { t: 'string', d: 'Expired', req: false, help: 'The STATUS_FLOW value the nightly job writes when a leave END date passes.' },
@@ -776,7 +776,7 @@ function validateConfig_(raw) {
     statuses.push({ name: row.Status, kind, min, color: row.Color || '' });
   });
   const tiers = statuses.filter((s) => s.kind === 'TIER').sort((a, b) => b.min - a.min);
-  if (!tiers.length) problems.push({ sev: 'ERROR', code: 'E-110', key: '[STATUSES]', value: 'no TIER rows', type: 'ladder', expected: 'at least one TIER', reason: 'no TIER statuses defined' });
+  if (!tiers.length) problems.push({ sev: 'WARN', code: 'E-110', key: '[STATUSES]', value: 'no TIER rows', type: 'ladder', expected: 'configure tiers to enable activity status calculation; existing statuses stay unchanged', reason: 'no TIER statuses defined' });
   else checkLadder_(tiers.map((t) => ({ name: t.name, min: t.min })), '[STATUSES]', problems);
 
   // [STATUS_OVERRIDES]
@@ -888,7 +888,7 @@ function validateConfig_(raw) {
   // [LEAVE] semantics
   c.kv.LEAVE.LEAVE_TYPES.forEach((t) => {
     const st = statuses.filter((s) => norm_(s.name) === norm_(t))[0];
-    if (!st || st.kind !== 'LEAVE') problems.push({ sev: 'ERROR', code: 'E-103', key: '[LEAVE].LEAVE_TYPES', value: t, type: 'status', expected: 'a LEAVE-kind status from [STATUSES]' });
+    if (!st || st.kind !== 'LEAVE') problems.push({ sev: statuses.some(s=>s.kind==='LEAVE')?'ERROR':'WARN', code: 'E-103', key: '[LEAVE].LEAVE_TYPES', value: t, type: 'status', expected: 'a LEAVE-kind status from [STATUSES]; leave processing pauses when none exist' });
   });
   // APPROVED_STATUS / EXPIRED_STATUS must be members of STATUS_FLOW (the leave engine writes them onto the tracker).
   ['APPROVED_STATUS', 'EXPIRED_STATUS'].forEach((k) => {
@@ -919,7 +919,7 @@ function validateConfig_(raw) {
   // RETURN_STATUS (optional) must be a LEAVE-kind status when set.
   if (c.kv.LEAVE.RETURN_STATUS) {
     const rs = statuses.filter((s) => norm_(s.name) === norm_(c.kv.LEAVE.RETURN_STATUS))[0];
-    if (!rs || rs.kind !== 'LEAVE') problems.push({ sev: 'ERROR', code: 'E-103', key: '[LEAVE].RETURN_STATUS', value: c.kv.LEAVE.RETURN_STATUS, type: 'status', expected: 'a LEAVE-kind status from [STATUSES] (or empty)' });
+    if (!rs || rs.kind !== 'LEAVE') problems.push({ sev: statuses.some(s=>s.kind==='LEAVE')?'ERROR':'WARN', code: 'E-103', key: '[LEAVE].RETURN_STATUS', value: c.kv.LEAVE.RETURN_STATUS, type: 'status', expected: 'a LEAVE-kind status from [STATUSES] (or empty)' });
   }
 
   c.statuses = statuses;
@@ -1128,13 +1128,13 @@ function materialize_(c, fromTab) {
     bg: { done: t.PASS, error: t.FAIL }, // no "processing" tint: nothing ever painted one
     protectedStatuses,
     // ---- Config-driven status vocabulary (single source of truth; hot paths must read these, not literals) ----
-    leaveTypes: kv.LEAVE.LEAVE_TYPES.slice(),                                    // e.g. ['LOA','ROA'] — members on leave
+    leaveTypes: kv.LEAVE.LEAVE_TYPES.filter(name => c.statuses.some(s => s.kind === 'LEAVE' && norm_(s.name) === norm_(name))),
     formTypePolicy: kv.LEAVE.FORM_TYPE_POLICY || 'MATCH',                        // MATCH = reject unknown form types; ANY = accept + record in NOTES
     statusFlow: kv.LEAVE.STATUS_FLOW.slice(),                                    // tracker dropdown values
     pendingStatus: kv.LEAVE.STATUS_FLOW[0] || 'Pending',                         // default tracker status on sync
     approvedStatus: kv.LEAVE.APPROVED_STATUS || 'Approved',                      // the state the nightly job acts on
     expiredStatus: kv.LEAVE.EXPIRED_STATUS || 'Expired',                         // written when a leave END passes
-    returnStatus: kv.LEAVE.RETURN_STATUS || '',                                  // ROA-style auto-downgrading leave ('' = none)
+    returnStatus: c.statuses.some(s=>s.kind==='LEAVE' && norm_(s.name)===norm_(kv.LEAVE.RETURN_STATUS)) ? kv.LEAVE.RETURN_STATUS : '',
     autoExpire: kv.LEAVE.AUTO_EXPIRE !== false,                                  // OFF = the nightly job never ends a leave on a schedule
     expireNeverApproved: kv.LEAVE.EXPIRE_NEVER_APPROVED === true,                // ON = a past-END leave still on pendingStatus is ended too
     tiers: c.tiers.map((x) => ({ name: x.name, min: x.min })),                   // TIER statuses, sorted high→low by MinHours
@@ -1271,7 +1271,6 @@ function seedConfigTab_(ss) {
   // F-014: clear ONLY the core A-E grid we rebuild — NOT sheet.clear(), which also destroys the user's extra
   // columns (F onward), their notes, formats, and validations. Everything past column E is preserved untouched.
   const region = sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 1), W);
-  region.clearContent(); region.clearFormat(); region.clearNote(); region.clearDataValidations();
 
   // Build the full grid in memory (values only), remembering which rows are banners / table headers.
   const grid = [];   // rows of length W
@@ -1279,7 +1278,7 @@ function seedConfigTab_(ss) {
   const subheads = []; // 1-based row numbers to paint as table headers
   const pad = (arr) => { const row = arr.slice(0, W).map((x) => String(x == null ? '' : x)); while (row.length < W) row.push(''); return row; };
 
-  grid.push(pad([CONFIG_MARKER, `Roster Engine ${ENGINE_VERSION} configuration — edit column B values / table cells. Column C is help.`]));
+  grid.push(pad([CONFIG_MARKER, 'Roster configuration', 'Edit blue cells · Settings Studio offers guided controls']));
   banners.push(1);
   grid.push(pad([]));
 
@@ -1300,7 +1299,7 @@ function seedConfigTab_(ss) {
 
   BLOCK_ORDER_.forEach((name) => {
     const spec = BLOCK_SPECS_[name];
-    grid.push(pad([`[${name}]`, '', spec.help || '']));
+    grid.push(pad([`[${name}]`, '', configBlockLabel_(name)]));
     banners.push(grid.length);
     if (spec.type === 'kv') {
       const have = (existing[name] && existing[name].kv) || {};
@@ -1328,22 +1327,25 @@ function seedConfigTab_(ss) {
       grid.push(pad(spec.cols));
       subheads.push(grid.length);
       const have = (existing[name] && existing[name].kind === 'table') ? existing[name].rows : null;
-      const dataRows = (have && have.length) ? have : spec.seed;
+      const dataRows = have !== null ? have : spec.seed; // an intentionally empty block is configured, not missing
       if (!have) added += dataRows.length;
       dataRows.forEach((row) => grid.push(pad(row)));
     }
     grid.push(pad([]));
   });
 
+  // A verified config needs no rewrite or reformat. Preserve notes/validation and avoid full-grid service calls.
+  if(!created){
+    const current=sheet.getRange(1,1,Math.max(sheet.getLastRow(),grid.length),W).getDisplayValues();
+    const unchanged=current.every((row,i)=>row.every((value,c)=>String(value)===(grid[i]?grid[i][c]:'')));
+    if(unchanged){ensureConfigSheetStyle_(sheet,current,false);cfgInvalidate_();return {created:false,added};}
+  }
+  // Finish constructing the replacement before touching the existing configuration.
+  region.clearContent(); region.clearFormat(); region.clearNote(); region.clearDataValidations();
   // One bulk write, then theme: canvas + text first, banner/subhead overrides after.
   sheet.getRange(1, 1, grid.length, W).setValues(grid);
-  const all = sheet.getRange(1, 1, grid.length, W);
-  all.setNumberFormat('@'); // text-safety rule (brief Part D) — keeps hex colors, TRUE/FALSE, and big IDs literal
-  all.setBackground(theme_('CANVAS')).setFontColor(theme_('TEXT')).setFontFamily('Roboto Mono').setFontSize(10);
-  banners.forEach((r) => sheet.getRange(r, 1, 1, W).setBackground(theme_('BANNER')).setFontColor(theme_('TEXT_STRONG')).setFontWeight('bold'));
-  subheads.forEach((r) => sheet.getRange(r, 1, 1, W).setBackground(theme_('SUBHEAD')).setFontColor(theme_('SUBHEAD_TEXT')).setFontWeight('bold'));
-  sheet.setColumnWidth(1, 190); sheet.setColumnWidth(2, 260); sheet.setColumnWidth(3, 430); sheet.setColumnWidth(4, 150); sheet.setColumnWidth(5, 120);
-  sheet.setFrozenRows(1);
+  sheet.getRange(1,1,grid.length,W).setNumberFormat('@'); // config values remain literal text
+  ensureConfigSheetStyle_(sheet,grid,true);
   try {
     const protections = sheet.getProtections(SpreadsheetApp.ProtectionType.SHEET);
     if (!protections.length) sheet.protect().setWarningOnly(true).setDescription('Roster Engine configuration — edits take effect on the next action.');
@@ -1351,6 +1353,82 @@ function seedConfigTab_(ss) {
   cfgInvalidate_();
   SpreadsheetApp.flush();
   return { created, added };
+}
+
+function configBlockLabel_(name) {
+  const labels={SYSTEM:'System identity',SHEETS:'Sheets & data sources',ROSTER_LAYOUT:'Roster layout',COLUMNS:'Column ownership',RANKS:'Ranks & dividers',STATUSES:'Statuses & activity tiers',STATUS_OVERRIDES:'Per-rank activity ladders',STATUS_RULES:'Additional status rules',SECTION_TAGS:'Section colours & tags',DASHBOARD_GROUPS:'Dashboard headcount groups',ACTIVITY:'Activity & periods',LEAVE:'Leave engine',EMBEDS:'Discord embed templates',FORM_MAP:'Leave form field mapping',DISCORD:'Discord appearance',NOTIFICATIONS:'Notification settings',PATROL:'Patrol logs',PUBLISH:'Public roster publishing',THEME:'Sheet colours',FORMATS:'Date & time formats',SCHEDULE:'Schedule',LOGGING:'Diagnostics',LIMITS:'Retention & row limits'};
+  return labels[name]||String(name).replace(/_/g,' ');
+}
+
+/** Presentation plan only: never changes keys, values, block positions or extra columns. */
+function configSheetStylePlan_(grid) {
+
+  let block='',tableHeader=false,index=0;
+  return grid.map((row,i)=>{
+    const marker=String(row[0]||'').trim().match(MARKER_RE_),blank=row.every(v=>String(v||'').trim()==='');
+    const kind=i===0?'title':marker?'section':blank?'space':tableHeader?'columns':'data';
+    if(marker){block=marker[1];tableHeader=!!(BLOCK_SPECS_[block]&&BLOCK_SPECS_[block].type==='table');index=0;}
+    else if(kind==='columns')tableHeader=false;
+    const spec=BLOCK_SPECS_[block],table=spec&&spec.type==='table',bg=kind==='data'?(index++%2?'#24282f':'#20242a'):'#191d23';
+    const backgrounds=Array(5).fill(bg),colors=Array(5).fill('#e4e9f0');
+    if(kind==='data'){
+      if(table){for(let c=0;c<spec.cols.length;c++){backgrounds[c]='#24374a';colors[c]='#dcecff';
+        if(/^#[0-9a-f]{6}$/i.test(String(row[c]))){const hex=String(row[c]).slice(1);backgrounds[c]=row[c];colors[c]=(parseInt(hex.slice(0,2),16)*.299+parseInt(hex.slice(2,4),16)*.587+parseInt(hex.slice(4,6),16)*.114)>150?'#121820':'#ffffff';}
+      }}
+      else {backgrounds[1]='#24374a';colors[0]='#b8c5d5';colors[1]='#dcecff';colors[2]='#aeb9c8';
+        if(block==='SYSTEM'&&row[0]==='SCHEMA_VERSION'){backgrounds[1]=bg;colors[1]='#8996a8';}
+        const key=spec&&spec.keys&&spec.keys[row[0]];
+        if(key&&key.t==='bool')colors[1]=/^(TRUE|1)$/i.test(String(row[1]))?'#76dda3':'#b7c3d1';
+        if(key&&key.t==='color'&&/^#[0-9a-f]{6}$/i.test(String(row[1]))){backgrounds[1]=row[1];const hex=row[1].slice(1);colors[1]=(parseInt(hex.slice(0,2),16)*.299+parseInt(hex.slice(2,4),16)*.587+parseInt(hex.slice(4,6),16)*.114)>150?'#121820':'#ffffff';}
+      }
+    } else if(kind==='section'){backgrounds.fill('#2c3542');colors.fill('#eaf1fa');colors[0]='#79b8ff';}
+    else if(kind==='columns'){backgrounds.fill('#303c4b');colors.fill('#c3d7ee');}
+    else if(kind==='title'){backgrounds.fill('#202c3b');colors[0]='#79b8ff';colors[2]='#b6c7da';}
+    return {kind,block,label:configBlockLabel_(block),backgrounds,colors};
+  });
+}
+
+/** A version stamp avoids repainting an unchanged sheet on every startup. Explicit restyling always applies. */
+function ensureConfigSheetStyle_(sheet,grid,force) {
+  const version='2',key='RE_CONFIG_STYLE:'+sheet.getSheetId();
+  let props;
+  try{props=PropertiesService.getDocumentProperties();if(!force&&props.getProperty(key)===version)return;}catch(e){/* style without cache */}
+  const rows=configSheetStylePlan_(grid),range=sheet.getRange(1,1,grid.length,5);
+  range.setFontFamily('Arial').setFontSize(11).setFontWeight('normal').setVerticalAlignment('middle').setHorizontalAlignment('left').setWrap(true);
+  range.setBackgrounds(rows.map(r=>r.backgrounds)).setFontColors(rows.map(r=>r.colors));
+  sheet.getRange(1,1,grid.length,1).setFontFamily('Roboto Mono').setFontSize(10);
+  sheet.setColumnWidth(1,270);sheet.setColumnWidth(2,280);sheet.setColumnWidth(3,540);sheet.setColumnWidth(4,160);sheet.setColumnWidth(5,140);
+  sheet.setHiddenGridlines(true);sheet.setFrozenRows(1);
+  // Estimate wrapped text at these fixed widths, then batch adjacent equal heights (no per-row service reads).
+  const capacities=[36,40,78,22,18],heights=grid.map((cells,i)=>{
+    const kind=rows[i].kind;if(kind==='title')return 58;if(kind==='section')return 44;if(kind==='columns')return 30;if(kind==='space')return 12;
+    const lines=Math.max.apply(null,cells.slice(0,5).map((v,c)=>String(v||'').split('\n').reduce((sum,line)=>sum+Math.max(1,Math.ceil(line.length/capacities[c])),0)));
+    return Math.max(32,lines*17+14);
+  });
+  for(let start=0;start<heights.length;){let end=start+1;while(end<heights.length&&heights[end]===heights[start])end++;sheet.setRowHeights(start+1,end-start,heights[start]);start=end;}
+  rows.forEach((row,i)=>{
+    if(row.kind==='title'){sheet.setRowHeight(i+1,58);sheet.getRange(i+1,2).setFontSize(18).setFontWeight('bold');sheet.getRange(i+1,3).setFontSize(11);}
+    else if(row.kind==='section'){sheet.setRowHeight(i+1,44);sheet.getRange(i+1,1,1,5).setFontWeight('bold');}
+    else if(row.kind==='columns'){sheet.setRowHeight(i+1,30);sheet.getRange(i+1,1,1,5).setFontWeight('bold');}
+    else if(row.kind==='space')sheet.setRowHeight(i+1,12);
+  });
+  try{if(props)props.setProperty(key,version);}catch(e){/* next startup may repaint */}
+}
+
+/** Menu action: apply the dark Config design without resetting any setting. */
+function restyleConfigSheet() {
+  runAction_('Restyle Config sheet',()=>{
+    const sheet=findConfigSheet_(SpreadsheetApp.getActive());
+    if(!sheet)throw new Error('Run First-Run Setup to create the Config sheet first.');
+    const grid=sheet.getRange(1,1,sheet.getLastRow(),5).getDisplayValues();
+    // These are presentation rows only; parser-owned setting/table cells remain untouched.
+    grid[0][1]='Roster configuration';grid[0][2]='Edit blue cells · Settings Studio offers guided controls';
+    sheet.getRange(1,2,1,2).setValues([[grid[0][1],grid[0][2]]]);
+    grid.forEach((row,i)=>{const marker=String(row[0]).match(MARKER_RE_);if(marker){row[2]=configBlockLabel_(marker[1]);sheet.getRange(i+1,3).setValue(row[2]);}});
+    ensureConfigSheetStyle_(sheet,grid,true);
+    SpreadsheetApp.flush();
+    SpreadsheetApp.getUi().alert('Config styling updated. Your settings and table entries were preserved.');
+  });
 }
 
 /**
@@ -1492,8 +1570,11 @@ function setTableRows_(configSheet, blockName, rows) {
     const range = configSheet.getRange(dataStart, 1, newCount, W);
     range.setNumberFormat('@'); // text-safety rule (brief Part D) — hex colors, TRUE/FALSE, big IDs stay literal
     range.setValues(rows.map(pad));
-    range.setBackground(theme_('CANVAS')).setFontColor(theme_('TEXT')).setFontWeight('normal');
+    const plan=configSheetStylePlan_([[],['['+blockName+']'],spec.cols].concat(rows.map(pad))).slice(3);
+    range.setBackgrounds(plan.map(r=>r.backgrounds)).setFontColors(plan.map(r=>r.colors)).setFontFamily('Arial').setFontSize(11).setFontWeight('normal').setVerticalAlignment('middle').setWrap(true);
+    configSheet.autoResizeRows(dataStart,newCount);
   }
+  try{PropertiesService.getDocumentProperties().deleteProperty('RE_CONFIG_STYLE:'+configSheet.getSheetId());}catch(e){/* repaint next explicit restyle if cache is unavailable */}
   cfgInvalidate_();
   return newCount;
 }
@@ -1533,7 +1614,7 @@ function migrateConfig_(ss) {
   if (from < ENGINE_SCHEMA) {
     setKvValue_(sheet, 'SYSTEM', 'SCHEMA_VERSION', ENGINE_SCHEMA);
     logInfo_('migrateConfig_', `config schema migrated v${from} → v${ENGINE_SCHEMA} (additive; nothing deleted).`);
-  } else {
+  } else if(seed.created) {
     setKvValue_(sheet, 'SYSTEM', 'SCHEMA_VERSION', ENGINE_SCHEMA); // fresh tab: stamp the current schema
   }
   cfgInvalidate_();

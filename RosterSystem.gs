@@ -390,6 +390,7 @@ function buildMenus_(prefix) {
         .addItem('Community ID (1–8 digits)', p + 'idTypeCommunity'))
       .addItem('🧩 Sync Column Config', p + 'syncColumnConfig')
       .addItem('🚀 First-Run Setup', p + 'setupWizard')
+      .addItem('🎨 Restyle Config sheet', p + 'restyleConfigSheet')
       .addItem('🔌 Install Triggers', p + 'installTriggers')
       .addToUi();
   } catch (err) {
@@ -425,36 +426,57 @@ function onOpenLib(libId) {
 
 /** Creates the installable triggers (form submit + daily check), replacing any duplicates. */
 function installTriggers() {
-  runAction_('Install Triggers', () => {
+  runAction_('Install Triggers', () => { const result=installConfiguredTriggers_();SpreadsheetApp.getUi().alert(result); });
+}
+
+/** Build replacements before deleting working triggers; clean up a failed creation batch. */
+function replaceManagedTriggers_(handlers, create) {
+  const lock=LockService.getScriptLock(),held=lock.hasLock();
+  if(!held && !lock.tryLock(8000))throw new Error('Another trigger installation is running. Retry shortly.');
+  let primary;
+  try {
+  const old=ScriptApp.getProjectTriggers().filter(t=>handlers.indexOf(t.getHandlerFunction())!==-1),fresh=[];
+  try { create(t=>fresh.push(t)); }
+  catch(e) { fresh.forEach(t=>{try{ScriptApp.deleteTrigger(t);}catch(cleanup){log_('trigger.rollback',cleanup);}});throw e; }
+  old.forEach(t=>ScriptApp.deleteTrigger(t));
+  }catch(e){primary=e;throw e;}
+  finally{if(!held){try{lock.releaseLock();}catch(e){if(primary)log_('trigger.unlock',e);else throw e;}}}
+}
+
+/** Shared installer for startup, menu and panel repair. Validates before changing any triggers. */
+function installConfiguredTriggers_() {
     const hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; // preflight before deleting any existing triggers
     const failures = [];
-    const keep = { onFormSubmit: true, processDailyLOAs: true, publishPublicRoster: true, publishOnChange: true, publishSweep: true };
-    ScriptApp.getProjectTriggers().forEach((t) => {
-      if (keep[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t);
-    });
     const ss = SpreadsheetApp.getActive();
-    ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
-    ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(hour).everyDays(1).create();
+    replaceManagedTriggers_(['onFormSubmit','processDailyLOAs'],add=>{
+      add(ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create());
+      add(ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(hour).everyDays(1).create());
+    });
     // Public roster: near-live. An INSTALLABLE onEdit runs authorized (unlike the simple one) so it can write to the
     // other file; onChange additionally catches row insert/DELETE, which onEdit never fires for. The 1-minute sweep
     // publishes anything a burst skipped, and does nothing at all when the sheet is idle.
     let pubLine = '';
     try {
       if (typeof publishOnChange === 'function') {
-        ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onEdit().create();
-        ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onChange().create();
-        ScriptApp.newTrigger('publishSweep').timeBased().everyMinutes(1).create();
-        pubLine = '\n• Public roster: live on edit + row delete (1-min catch-up)';
+        const linked=!!PropertiesService.getDocumentProperties().getProperty('PUBLIC_ROSTER_ID');
+        replaceManagedTriggers_(['publishPublicRoster','publishOnChange','publishSweep'],add=>{
+          if(!linked)return;
+          add(ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onEdit().create());
+          add(ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onChange().create());
+          add(ScriptApp.newTrigger('publishSweep').timeBased().everyMinutes(1).create());
+        });
+        pubLine = linked?'\n• Public roster: live on edit + row delete (1-min catch-up)':'\n• Public roster: not linked; publishing triggers skipped';
       }
     } catch (e) { log_('installTriggers.publish', e); failures.push('public publishing triggers'); }
     // v1.0 — ONE installer: also (re)install the Extras triggers when that companion file is present (integrity scan,
     // coverage rebuild, cadence-aware hours reset). Guarded so a bound project WITHOUT RosterExtras.gs still installs core.
     let extrasLine = '';
     try { if (typeof installExtrasTriggers_ === 'function') { const rd = installExtrasTriggers_(); extrasLine = `\n• Integrity scan (7am), coverage rebuild (6am)\n• Hours reset — ${rd}`; } } catch (e) { log_('installTriggers.extras', e); failures.push('extras triggers'); }
+    try { if(typeof cpEnsureAuditTrigger==='function' && !cpEnsureAuditTrigger(true))throw new Error('Audit trigger verification is busy; retry installation.'); }catch(e){log_('installTriggers.audit',e);failures.push('audit trigger');}
     if (failures.length) throw new AppError('E-504', {operation:'Trigger installation', completed:2, reason:'Core triggers installed, but '+failures.join(' and ')+' could not be fully installed. Review project triggers before retrying.'});
     logInfo_('installTriggers', `installed core triggers (daily hour ${hour})${extrasLine ? ' + extras' : ''}.`);
-    SpreadsheetApp.getUi().alert(`✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})${pubLine}${extrasLine}`);
-  });
+    if(typeof cpInvalidateHealth_==='function')cpInvalidateHealth_();
+    return `✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})${pubLine}${extrasLine}`;
 }
 
 /**
@@ -480,24 +502,11 @@ function setupWizard() {
         : `✅ Config: "${CONFIG_SHEET_NAME}" verified${mig.added ? ` — ${mig.added} missing entr${mig.added === 1 ? 'y' : 'ies'} added` : ''}${mig.from < mig.to ? ` (schema v${mig.from} → v${mig.to})` : ''}.`);
       if (imported) steps.push(`✅ Config: imported ${imported} column classification(s) from the legacy "_Columns" tab.`);
       cfg_(); // parse + validate now so problems surface HERE, not mid-action (throws aggregate E-102 if broken)
-    } catch (e) { steps.push(`⚠️ Config: ${e.message}`); }
+    } catch (e) { steps.push(`⚠️ Config: ${e.message}`); ui.alert('First-Run Setup stopped',steps.join('\n'),ui.ButtonSet.OK); return; }
 
-    // 1. Core triggers (form submit + daily schedule) — replace any duplicates.
-    try {
-      const keep = { onFormSubmit: true, processDailyLOAs: true };
-      let hour = 0;
-      try { hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; } catch (e) { /* config broken — classic midnight */ }
-      ScriptApp.getProjectTriggers().forEach((t) => { if (keep[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t); });
-      ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
-      ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(hour).everyDays(1).create();
-      steps.push('✅ Triggers: form-submit + daily schedule check installed.');
-    } catch (e) { steps.push(`⚠️ Triggers: ${e.message}`); }
-
-    // 2. Always-on audit trigger (RosterTrust).
-    try {
-      if (typeof cpEnsureAuditTrigger === 'function') { cpEnsureAuditTrigger(true); steps.push('✅ Audit log trigger active.'); }
-      else steps.push('⏳ Audit log: paste RosterTrust.gs to enable.');
-    } catch (e) { steps.push(`⚠️ Audit: ${e.message}`); }
+    // One shared, validated installer for core, publishing, extras and audit triggers.
+    try { steps.push(installConfiguredTriggers_()); }
+    catch(e){ steps.push('⚠️ Triggers: '+e.message); }
 
     // 3. Use department-owned forms only. Never create forms, rename response tabs, or change destinations.
     try {
@@ -507,13 +516,14 @@ function setupWizard() {
         ['Signup', CONFIG.sheets.signupForm],
       ];
       responseTabs.forEach(([label, name]) => {
+        if(!name){steps.push(`${label} intake is off; no response sheet changes needed.`);return;}
         const sheet = name ? ss.getSheetByName(name) : null;
         if (sheet) {
-          styleFormResponses_(sheet);
+          // Department-owned response formatting is retained; setup only verifies the link.
           let linked = false;
           try { linked = !!sheet.getFormUrl(); } catch (e) { /* response tab may be linked later */ }
           steps.push(linked
-            ? `? ${label} response sheet themed: "${name}" (existing form retained).`
+            ? `? ${label} response sheet verified: "${name}" (existing form retained).`
             : `?? ${label} response sheet "${name}" retained. Link your own Google Form to this spreadsheet and select its response tab in Settings ? Sheets.`);
         } else {
           steps.push(`?? ${label} form: link your own Google Form to this spreadsheet, then select its response tab in Settings ? Sheets. No form was created.`);
@@ -527,11 +537,12 @@ function setupWizard() {
 
     // 5. Force the ID columns to exact text so appends never coerce a 17-19 digit Discord ID to a rounded Number.
     try {
+      let idColumns=0;
       const tr = ss.getSheetByName(CONFIG.sheets.tracker);
-      if (tr) { const tc = trackerCols_(tr).discord; if (tc) tr.getRange(1, tc, tr.getMaxRows(), 1).setNumberFormat('@'); }
+      if (tr) { const tc = trackerCols_(tr).discord; if (tc) {tr.getRange(1, tc, tr.getMaxRows(), 1).setNumberFormat('@');idColumns++;} }
       const fm = ss.getSheetByName(CONFIG.sheets.form);
-      if (fm) fm.getRange(1, CONFIG.form.discord, fm.getMaxRows(), 1).setNumberFormat('@');
-      steps.push('✅ ID columns locked to exact text (tracker + form Discord).');
+      if (fm) { const fc=leaveFormCols_(fm); if(fc.byHeader && fc.discord) {fm.getRange(2,fc.discord,Math.max(1,fm.getMaxRows()-1),1).setNumberFormat('@');idColumns++;}else steps.push('⚠️ Leave form headers need mapping; no fixed answer column was reformatted.'); }
+      steps.push(`ID text format verified on ${idColumns} resolved column(s).`);
     } catch (e) { steps.push(`⚠️ ID columns: ${e.message}`); }
 
     // 5b. Entry-time data validation — reject malformed Discord IDs, warn on bad dates / dropdown values.
@@ -626,6 +637,7 @@ function installDataValidation_() {
   // dropdown, even when the value set differs. The engine only CREATES one when the column has none. If theirs is
   // missing a status the engine writes, we just WARN (the value still displays fine — the rule allows invalid).
   const applyStatusDropdown = (range, wantVals, msg, label) => {
+    if (!wantVals.length) { range.clearDataValidations(); return; }
     try {
       const dv = range.getCell(1, 1).getDataValidation();
       if (dv && dv.getCriteriaType() === SpreadsheetApp.DataValidationCriteria.VALUE_IN_LIST) {
@@ -1659,7 +1671,9 @@ function computeStatus_(rank, hrs) {
   // Phase 1: ladder-driven via [STATUSES] tiers + [STATUS_OVERRIDES] (RosterConfig.gs). The old hardcoded
   // "Auxiliary Trooper" branch is now the seeded override row "RANK | Auxiliary Trooper | Active:5, Inactive:0",
   // so on defaults this returns exactly what it always did — but any community can now add its own ladders.
-  return computeStatusCore_(rank, hrs, statusEngine_());
+  const engine=statusEngine_();
+  if (!statusLadderFor_(rank,engine).length) return null; // unconfigured department: preserve existing activity
+  return computeStatusCore_(rank, hrs, engine);
 }
 
 /** Parses a number, '5.5', or '5h 30m' into decimal hours. Always returns a number. */
@@ -1992,6 +2006,7 @@ function processDailyLOAs() {
 function processDailyLOAs_(roster, tracker, today, opts = {}) {
   const sendWebhooks = opts.sendWebhooks !== false;
   const summary = { expired: [], started: [], scanned: 0 };
+  if (!CONFIG.leaveTypes || !CONFIG.leaveTypes.length) return summary;
   const lastRow = tracker.getLastRow();
   if (lastRow < CONFIG.trackerStartRow) return summary;
 
@@ -2044,8 +2059,8 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
     const ri = idToIndex.has(discordId) ? idToIndex.get(discordId) : -1;
     statusOut[i][0] = EXPIRED;
     if (okToChange(ri, type)) { // recompute from hours (a 0h return is Inactive, not Active)
-      activity[ri][0] = computeStatus_(rRank[ri][0], parseHours_(rHrs[ri][0]));
-      changedRis.add(ri);
+      const next=computeStatus_(rRank[ri][0], parseHours_(rHrs[ri][0]));
+      if(next!==null){activity[ri][0]=next;changedRis.add(ri);}
     }
     expirations.push({ name: data[i][TC.name - 2], rank: data[i][TC.rank - 2], id: discordId, type });
     summary.expired.push({ row: CONFIG.trackerStartRow + i, name: data[i][TC.name - 2], id: discordId });
@@ -2107,6 +2122,7 @@ function processDailyLOAs_(roster, tracker, today, opts = {}) {
 
 /** Activates a just-approved leave immediately if its start date has arrived. */
 function checkImmediateLOAStart(sheet, row) {
+  if (!CONFIG.leaveTypes || !CONFIG.leaveTypes.length) return;
   const roster = getSheetOrWarn_(SpreadsheetApp.getActive(), CONFIG.sheets.roster);
   if (!roster) return;
   const RC = trackerCols_(sheet);
@@ -3638,6 +3654,7 @@ function leaveFormCols_(formSheet) {
  * @return {Array<Object>} newly-appended leaves (for the entrypoint to announce).
  */
 function syncFormToTracker_(form, tracker, opts = {}) {
+  if (!CONFIG.leaveTypes || !CONFIG.leaveTypes.length) return []; // keep source submissions untouched until setup
   const sendWebhooks = opts.sendWebhooks !== false;
   const appended = [];
   const lastRow = form.getLastRow();

@@ -46,30 +46,29 @@ const EXTRAS = Object.freeze({
 function installExtrasTriggers_() {
   const sc=cfg_().kv.ACTIVITY; // validate before altering existing triggers
   // 'dailyBackup' stays listed so re-running deletes any leftover backup trigger from earlier.
-  const managed = { dailyBackup: true, scanIntegrity: true, buildCoverage: true, weeklyResetScheduled: true };
-  ScriptApp.getProjectTriggers().forEach((t) => {
-    if (managed[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t);
-  });
   // Reset cadence/day/hour come from [SCHEDULE] on ⚙️ Config (defaults WEEKLY · SUN · 23 — the classic schedule).
   // Resolved G1: the reset captures the hours-history tab BEFORE zeroing, so the panel sparkline survives.
   let day = 'SUN', hour = 23, cadence = 'WEEKLY', dom = 1, autoReset = true;
   day=sc.WEEKLY_HOURS_RESET;hour=sc.WEEKLY_RESET_HOUR;cadence=sc.RESET_CADENCE;dom=sc.RESET_DOM;autoReset=sc.AUTO_RESET!==false;
   const weekDays = { SUN: ScriptApp.WeekDay.SUNDAY, MON: ScriptApp.WeekDay.MONDAY, TUE: ScriptApp.WeekDay.TUESDAY, WED: ScriptApp.WeekDay.WEDNESDAY, THU: ScriptApp.WeekDay.THURSDAY, FRI: ScriptApp.WeekDay.FRIDAY, SAT: ScriptApp.WeekDay.SATURDAY };
-  ScriptApp.newTrigger('scanIntegrity').timeBased().atHour(7).everyDays(1).create();
-  ScriptApp.newTrigger('buildCoverage').timeBased().atHour(6).everyDays(1).create();
+  let resetDesc;
+  replaceManagedTriggers_(['dailyBackup','scanIntegrity','buildCoverage','weeklyResetScheduled'],add=>{
+  add(ScriptApp.newTrigger('scanIntegrity').timeBased().atHour(7).everyDays(1).create());
+  add(ScriptApp.newTrigger('buildCoverage').timeBased().atHour(6).everyDays(1).create());
   // v1.0 — cadence-aware reset trigger. MANUAL (or WEEKLY_HOURS_RESET=OFF) installs no trigger. MONTHLY fires on
   // RESET_DOM. WEEKLY/BIWEEKLY fire weekly on the chosen weekday; the handler (resetDue_) gates BIWEEKLY to ~14 days
   // apart via the LAST_RESET marker, so Apps Script's lack of a native bi-weekly trigger doesn't matter.
-  let resetDesc = autoReset ? 'OFF (no auto-reset)' : 'OFF (auto-reset switched off in Settings)';
-  if (autoReset && cadence !== 'MANUAL' && day !== 'OFF') {
+  resetDesc = autoReset ? 'OFF (no auto-reset)' : 'OFF (auto-reset switched off in Settings)';
+  if (autoReset && cadence !== 'MANUAL' && (cadence === 'MONTHLY' || day !== 'OFF')) {
     if (cadence === 'MONTHLY') {
-      ScriptApp.newTrigger('weeklyResetScheduled').timeBased().onMonthDay(dom).atHour(hour).create();
+      add(ScriptApp.newTrigger('weeklyResetScheduled').timeBased().onMonthDay(dom).atHour(hour).create());
       resetDesc = `MONTHLY (day ${dom}, ${hour}:00)`;
     } else {
-      ScriptApp.newTrigger('weeklyResetScheduled').timeBased().onWeekDay(weekDays[day] || ScriptApp.WeekDay.SUNDAY).atHour(hour).create();
+      add(ScriptApp.newTrigger('weeklyResetScheduled').timeBased().onWeekDay(weekDays[day] || ScriptApp.WeekDay.SUNDAY).atHour(hour).create());
       resetDesc = `${cadence} (${day} ${hour}:00)`;
     }
   }
+  });
   logInfo_('installExtrasTriggers_', `extras triggers installed (reset: ${resetDesc}).`);
   return resetDesc;
 }
