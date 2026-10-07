@@ -241,6 +241,20 @@ function runtimeStub(configPayload, boot) {
         ],
       };
     })(),
+    cpSystemInfo: {
+      health: { checks: [
+        {label:'Config valid',ok:true}, {label:'Roster tab "Member Information"',ok:true},
+        {label:'Tracker tab "LOA Tracker"',ok:true}, {label:'Leave response tab',ok:false,detail:'Not found ? choose the response tab for your own form in Settings.'},
+        {label:'Form-submit trigger',ok:true}, {label:'Daily schedule trigger',ok:true},
+        {label:'Unique IDs valid and unique',ok:true}, {label:'Sheet structure',ok:true},
+      ] },
+      snapshots:[{id:'preview-1',when:'6 Oct 2026, 9:00 AM',count:23}],
+      autoSnapshot:false,auditLogging:true,
+      audit:[
+        {time:new Date(Date.now()-60000).toISOString(),type:'system',editor:'admin@example.com',sheet:'Member Information',cell:'',newV:'Triggers installed',oldV:'',member:'',field:''},
+        {time:new Date(Date.now()-3600000).toISOString(),type:'status',editor:'admin@example.com',sheet:'Member Information',cell:'F14',newV:'Active',oldV:'Inactive',member:'J. Bennett',field:'Status'},
+      ],
+    },
     cpStartupInfo: { health: boot.health, waiting: 18 },
     cpGetConfig: configPayload,
     cpApplyConfig: { ok: true, written: { kv: 1, tables: 0 }, state: configPayload },

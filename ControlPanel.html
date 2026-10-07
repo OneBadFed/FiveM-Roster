@@ -1112,6 +1112,58 @@
   #toast.show{transform:translate(-50%,0);opacity:1;visibility:visible;transition:transform .26s var(--ease),opacity .26s,visibility 0s;}
   #toast.err{color:var(--red);} #toast.ok{color:var(--txt);}
 
+
+  /* Connections and System share the panel's compact desktop materials. */
+  #pane-conns .tconns{grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:var(--s4);}
+  #pane-conns .conn,.system-card{background:rgba(255,255,255,.04);border-radius:var(--r-md);box-shadow:0 0 0 .5px var(--hair) inset;padding:0;overflow:hidden;}
+  #pane-conns .conn-h,.system-card .sys-h{min-height:42px;margin:0;padding:10px 14px;box-shadow:0 -.5px 0 var(--hair) inset;gap:var(--s3);}
+  #pane-conns .conn-h .ico{width:16px;height:16px;border-radius:0;background:none;color:var(--txt-2);box-shadow:none;}
+  #pane-conns .conn-h .ico svg{width:15px;height:15px;stroke-width:1.7;}
+  #pane-conns .conn-h b,.system-card .sys-h{font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--txt);}
+  #pane-conns .conn-body{padding:4px 14px 14px;}
+  #pane-conns .crow{padding:9px 0;gap:var(--s3);font-size:12.5px;box-shadow:0 -.5px 0 var(--hair) inset;}
+  #pane-conns .crow-k{font-size:12.5px;font-weight:400;text-transform:none;letter-spacing:0;color:var(--txt-2);}
+  #pane-conns .crow-v{font-size:12px;font-weight:500;min-width:0;}
+  #pane-conns .dot,#pane-system .dot{width:6px;height:6px;box-shadow:none;flex:0 0 auto;}
+  #pane-conns .hint{font-size:11.5px;font-weight:400;color:var(--txt-2);line-height:1.6;margin:12px 0 0;}
+  #pane-conns .hint b{font-weight:500;}
+  #pane-conns .whchips{gap:6px;margin-top:14px;}
+  #pane-conns .whchip{min-height:24px;padding:3px 8px;border-radius:6px;font-size:12px;font-weight:400;background:var(--btn);box-shadow:var(--ctl-ring);}
+  #pane-conns .whchip:has(input:checked){background:var(--accent-soft);color:var(--txt);box-shadow:0 0 0 .5px var(--accent) inset;}
+  #pane-conns .whchip:focus-within{box-shadow:var(--focus-ring);}
+  .connection-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-top:10px;}
+  #pane-conns #whUrl{flex:1 1 100%;min-width:0;font-size:12px;}
+  #pane-conns #whSave{background:var(--accent);color:white;}
+  #pane-conns #whPurge{margin-left:auto;}
+  #pane-system{display:none;}
+  #pane-system.active{display:flex;flex-direction:column;gap:var(--s4);}
+  .system-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;}
+  .system-card .sys-h{flex-wrap:wrap;}
+  .system-card .sys-body{margin:0;padding:12px 14px;}
+  #healthBody{gap:0 20px;padding-top:0;padding-bottom:0;}
+  #healthBody .hchip{align-items:flex-start;gap:8px;background:none;border-radius:0;padding:10px 0;font-size:12.5px;font-weight:400;box-shadow:0 -.5px 0 var(--hair) inset;}
+  #healthBody .hchip .dot{margin-top:6px;}
+  .health-copy{flex:1;min-width:0;}
+  .health-copy b{display:block;font-weight:500;line-height:1.5;}
+  #healthBody .hchip small{display:block;margin-top:3px;font-size:11.5px;font-weight:400;line-height:1.5;color:var(--amber-f);}
+  #healthBody .btn{justify-self:start;margin:10px 0;}
+  #pane-system .snap-row{padding:8px 0;background:none;border-radius:0;box-shadow:none;transform:none;}
+  #pane-system .snap-row+.snap-row{box-shadow:0 .5px 0 var(--hair) inset;}
+  #pane-system .snap-row .si2 b{font-weight:500;font-size:12.5px;}
+  #pane-system .snap-row .si2 small{color:var(--txt-2);margin-top:3px;font-size:11.5px;}
+  #pane-system .snap-restore{height:24px;padding:0 9px;border-radius:6px;font-size:12px;font-weight:400;box-shadow:var(--ctl-ring);transform:none;}
+  #pane-system .snap-restore:hover{background:var(--btn-hi);color:var(--txt);box-shadow:var(--ctl-ring);transform:none;}
+  #pane-system .snap-restore.armed{background:var(--amber-t);color:var(--amber-f);}
+  #pane-system .audit-on{padding:0;background:none;box-shadow:none;border-radius:0;font-size:11.5px;font-weight:400;color:var(--txt-2);text-transform:none;letter-spacing:0;}
+  #pane-system .audit-on::before{width:6px;height:6px;box-shadow:none;animation:none;}
+  #pane-system .aud-controls{margin:12px 14px 0;gap:8px;}
+  #pane-system #auditBody{max-height:420px;padding:14px;}
+  #pane-system .aud-day{font-size:11px;font-weight:500;letter-spacing:0;text-transform:none;color:var(--txt-2);}
+  #pane-system .aud-node{width:26px;height:26px;border-radius:6px;background:var(--btn);box-shadow:none;}
+  #pane-system .aud-item:not(:last-child)::before{left:12px;top:30px;width:.5px;background:var(--hair);}
+  #pane-system .aud-r1 b{font-size:12.5px;font-weight:500;}
+  #pane-system .aud-who,#pane-system .aud-t{color:var(--txt-2);}
+  @media(max-width:760px){#healthBody{grid-template-columns:1fr;}#pane-system .aud-controls{flex-wrap:wrap;}#pane-system .aud-controls .search-wrap{min-width:160px;}}
 </style>
 </head>
 <body>
@@ -1333,6 +1385,7 @@
       <div class="tconns">
         <div class="conn">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.7 21a2 2 0 0 1-3.4 0"/></svg></span><b>Discord integration</b></div>
+          <div class="conn-body">
           <div class="crow"><span class="crow-k">Audit log</span><span class="crow-v" id="whAUDIT"><span class="dot"></span>checking…</span></div>
           <div class="crow"><span class="crow-k">LOAs</span><span class="crow-v" id="whLOA"><span class="dot"></span>checking…</span></div>
           <div class="crow"><span class="crow-k">Patrol logs</span><span class="crow-v" id="whPATROL"><span class="dot"></span>checking…</span></div>
@@ -1346,28 +1399,36 @@
             <label class="whchip"><input type="checkbox" class="whch" value="PATROL">Patrol logs</label>
             <label class="whchip"><input type="checkbox" class="whch" value="ERRORS">Errors</label>
           </div>
-          <div style="display:flex;gap:var(--s2);align-items:stretch;flex-wrap:wrap;margin-top:var(--s2)">
-            <input type="password" class="field mono" id="whUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" style="flex:1;min-width:160px">
+          <div class="connection-actions">
+            <input type="password" class="field mono" id="whUrl" placeholder="https://discord.com/api/webhooks/…" autocomplete="off" aria-label="Discord webhook URL">
             <button class="linkbtn" id="whSave">Save</button>
             <button class="linkbtn" id="whTest">Send test</button>
             <button class="linkbtn" id="whPurge" style="color:var(--red-f)" title="Remove every webhook — all channels go silent">Remove all</button>
           </div>
           <p class="hint">Tick one or more channels, paste a webhook URL, and <b>Save</b> — the <b>same webhook can serve several notifications</b>. URLs live in the <b>admin roster</b>; only accounts with access can view, change or post through them. Save with the field empty to clear the ticked channels; <b>Remove all</b> is the kill switch.</p>
+          </div>
         </div>
         <div class="conn">
           <div class="conn-h"><span class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span><b>Admin roster</b></div>
+          <div class="conn-body">
           <div id="admSetup"><span class="muted2">Loading…</span></div>
           <p class="hint">Webhook URLs and the signup review tab live in <b>this</b> workbook, never in the published public copy. <b>Google file sharing is the access control</b> — only accounts this file is shared with can view, change or post through them.</p>
+          </div>
         </div>
       </div>
   </div>
 
   <div class="pane" id="pane-system">
+    <section class="system-card" aria-label="System health">
     <div class="sys-h">Health<button class="linkbtn" id="recheck">Re-check</button></div>
     <div id="healthBody" class="sys-body"><span class="muted2">Loading…</span></div>
-    <div class="sys-h" style="margin-top:var(--s4)">Snapshots<span style="display:flex;gap:6px"><button class="linkbtn" id="autoSnap">Auto-weekly: …</button><button class="linkbtn" id="takeSnap">Take snapshot</button></span></div>
+    </section>
+    <section class="system-card" aria-label="Snapshots">
+    <div class="sys-h">Snapshots<span class="system-actions"><button class="linkbtn" id="autoSnap">Auto-weekly: …</button><button class="linkbtn" id="takeSnap">Take snapshot</button></span></div>
     <div id="snapBody" class="sys-body"><span class="muted2">Loading…</span></div>
-    <div class="sys-h" style="margin-top:var(--s4)">Recent edits<span class="audit-on">Audit log: on</span></div>
+    </section>
+    <section class="system-card" aria-label="Recent edits">
+    <div class="sys-h">Recent edits<span class="audit-on">Logging enabled</span></div>
     <div class="aud-controls">
       <div class="search-wrap" id="auditSearchWrap" style="flex:1">
         <svg class="si" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="M21 21l-4-4"/></svg>
@@ -2786,7 +2847,7 @@
     // detail into the tooltip; only a FAILING check spends space inline.
     var html=h.checks.map(function(c){
       if(c.fix==='fixTriggers'&&!c.ok) needFix=true;
-      return '<span class="hchip" title="'+esc(c.detail||'')+'"><span class="dot '+(c.ok?'on':'off')+'"></span>'+esc(c.label)+(c.ok?'':' <small>· '+esc(c.detail||'needs attention')+'</small>')+'</span>';
+      return '<span class="hchip" title="'+esc(c.detail||'')+'"><span class="dot '+(c.ok?'on':'off')+'"></span><span class="health-copy"><b>'+esc(c.label)+'</b>'+(c.ok?'':'<small>'+esc(c.detail||'Needs attention')+'</small>')+'</span></span>';
     }).join('');
     if(needFix) html+='<button class="btn" id="fixTrg">Install missing triggers</button>';
     $('healthBody').innerHTML=html;
