@@ -217,5 +217,12 @@ const sysSrc = fs.readFileSync('RosterSystem.gs', 'utf8');
 ok('processDailyLOAs_ actually reads CONFIG.autoExpire', /if \(!CONFIG\.autoExpire\) continue;/.test(sysSrc));
 ok('processDailyLOAs_ actually reads CONFIG.expireNeverApproved', /CONFIG\.expireNeverApproved && st === PENDING/.test(sysSrc));
 
+console.log('\n[12] malformed embed templates');
+for (const json of ['not json','[]','null','{"fields":"wrong"}','{"fields":[null]}']) {
+  const bad=X.validateConfig_({EMBEDS:{kind:'table',header:['Event','Json'],rows:[['audit',json]]}});
+  ok('reject malformed embed '+json, bad.problems.some(p=>p.sev==='ERROR'&&p.key==='[EMBEDS].audit'));
+}
+const good=X.validateConfig_({EMBEDS:{kind:'table',header:['Event','Json'],rows:[['audit','{"fields":[{"n":"Name","v":"{name}"}]}']]}});
+ok('valid embed templates accepted',!good.problems.some(p=>p.sev==='ERROR'&&p.key==='[EMBEDS].audit'));
 console.log('\n==== ' + pass + ' passed, ' + fail + ' failed ====');
 process.exit(fail ? 1 : 0);

@@ -26,7 +26,17 @@ jobs:
           node tools/cfgcheck.js
           node tools/tablecheck.js
           node tools/publishcheck.js
+          node tools/resetcheck.js
           node tools/perfcheck.js
+          node tools/panelopencheck.js
+          node tools/selectioncheck.js
+          node tools/hardeningcheck.js
+          node tools/settingscheck.js
+          node tools/welcomecheck.js
+          node tools/groupcheck.js
+          node tools/errorcheck.js
+          node tools/recoverycheck.js
+          node tools/privacycheck.js
           node tools/htmlchk.js ControlPanel.html SettingsPanel.html
           node -e "const fs=require('fs');for(const f of fs.readdirSync('.').filter(f=>f.endsWith('.gs')))new Function(fs.readFileSync(f,'utf8'));"
       - name: Install clasp

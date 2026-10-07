@@ -713,7 +713,7 @@
   .mcheck{appearance:none;-webkit-appearance:none;width:14px;height:14px;border:none;border-radius:3.5px;background:rgba(255,255,255,.09);cursor:pointer;flex:0 0 auto;
           box-shadow:0 0 0 .5px rgba(255,255,255,.16) inset;transition:background var(--t) var(--ease);}
   .mcheck:hover{background:rgba(255,255,255,.14);}
-  .mcheck:checked{background:linear-gradient(180deg,#0f8cff,#0a7ae8) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E") center/10px no-repeat;box-shadow:none;}
+  .mcheck:checked{background:#0a84ff url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='3.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 13l4 4L19 7'/%3E%3C/svg%3E") center/10px 10px no-repeat;box-shadow:none;}
   .mcheck:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
   /* The selection bar is the one place the accent fills a surface — it IS the active task. */
   .bulkbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;background:rgba(255,255,255,.05);
@@ -1567,7 +1567,12 @@
     }
     return true;
   }
-  function api(success, failure, name){ var args=Array.prototype.slice.call(arguments,3); google.script.run.withSuccessHandler(success).withFailureHandler(failure||onError).dispatch(name, args); }
+  function api(success,failure,name){
+    var args=Array.prototype.slice.call(arguments,3),settled=false;
+    function fail(e){if(settled)return;settled=true;try{(failure||onError)(e);}catch(handlerError){onError(new Error('The panel could not finish handling a failure. Reload it and check the last action before repeating it.'));}}
+    function done(result){if(settled)return;settled=true;try{if(success)success(result);}catch(e){var message=new Error('The server completed '+name+', but the panel could not display the result. Reload the panel and check the data before repeating the action.');try{(failure||onError)(message);}catch(handlerError){onError(message);}}}
+    try{google.script.run.withSuccessHandler(done).withFailureHandler(fail).dispatch(name,args);}catch(e){fail(e);}
+  }
   function skel(n){ var o=''; for(var i=0;i<n;i++) o+='<div class="skel-row"></div>'; return o; }
   function mInitials(n){ var p=String(n||'').replace(/[^A-Za-z0-9 .'-]/g,'').split(/[ .]+/).filter(Boolean); if(!p.length) return '—'; var a=(p[0][0]||''); var b=p.length>1?(p[p.length-1][0]||''):''; return (a+b).toUpperCase()||'—'; }
   function pillClass(st){ var k=String(st||'').replace(/[^A-Za-z]/g,''); return ['Active','SemiActive','Inactive','LOA','ROA','Reserve'].indexOf(k)>=0?'p-'+k:'p-none'; }
@@ -1628,7 +1633,7 @@
     setLoading(true);
     api(applyBoot, onError, "cpBootstrap");
   }
-  function refresh(){ setLoading(true); api(function(s){ apply(s); if(STATE.systemLoaded) loadSystem(true); setLoading(false); toast('Refreshed.','ok'); }, onError, "cpRefresh"); }
+  function refresh(silent){ setLoading(true); api(function(s){ apply(s); if(STATE.systemLoaded) loadSystem(true); setLoading(false); if(silent!==true) toast('Refreshed.','ok'); }, onError, "cpRefresh"); }
   function apply(s){ PROFILE_GEN++; PROFILE_CACHE={}; STATE.members=s.members||[]; STATE.selected={}; renderStats(s.stats||{}); renderRankFilter(); renderShiftFilter(); renderMembers(); renderSlots(); if(s.updatedAt) $('foot').textContent='Updated '+shortWhen(s.updatedAt); } // version lives in the #verLbl pill — don't repeat it here // F-027: clear stale selections on refresh (rows may have shifted)
   /* "All shifts" / "All districts" / "All watches" — the department's own word, lowered and pluralised, so the
      control reads as a sentence rather than echoing a shouted sheet header. */
@@ -1680,6 +1685,16 @@
     bar.innerHTML='<span class="bsel">'+rows.length+' selected</span><div class="bbtns">'
       +STATE.statuses.map(function(s){return '<button class="seg" data-bulk="'+esc(s)+'">'+esc(s)+'</button>';}).join('')
       +'</div><button class="bclear">Clear</button>';
+  }
+  function setMemberSelected(row, checked){
+    var member=memberByRow(Number(row));
+    if(!member || !member.filled) return;
+    if(checked) STATE.selected[member.row]=true; else delete STATE.selected[member.row];
+    // The list header and expanded profile can both contain this member's checkbox.
+    document.querySelectorAll('#mlist input[data-sel]').forEach(function(box){
+      if(Number(box.dataset.sel)===Number(member.row)) box.checked=!!checked;
+    });
+    renderBulk();
   }
   function filtered(){
     var q=$('search').value.trim().toLowerCase(), fs=STATE.filterStatus, fr=STATE.filterRank;
@@ -2731,20 +2746,22 @@
                 shift:(addShiftMode()==='free'?($('suShift')?$('suShift').value.trim():''):(addShiftMode()==='pick'?(SU.shift||''):'')) };
     var seatedRow=SU.slot; // captured before the reset below — the background refresh needs it
     api(function(r){
-      toast('✅ '+(r.name||'Applicant')+' seated'+(r.piiWritten?(' · '+r.piiWritten+' private field'+(r.piiWritten===1?'':'s')+' copied'):'')+'.','ok');
+      toast('✅ '+(r.name||'Applicant')+' seated'+(r.piiWritten?(' · '+r.piiWritten+' private field'+(r.piiWritten===1?'':'s')+' copied'):'')+'.'+(r.sortWarning?' Review sorting needs a retry; run Sync signups if it persists.':''),r.sortWarning?'err':'ok');
       SU.slot=null; refresh(); loadSignups(true);
       api(function(){},function(){},'cpSignupPostSeat',{slotRow:seatedRow}); // background: targeted assignment/Academy/dashboard refresh — the admin never waits on it
-    }, function(e){ if(btn){ btn.disabled=false; btn.textContent='Approve & seat'; } onError(e); }, 'cpSignupApprove', {row:SU.cur, slotRow:seatedRow, id:(app&&app.discord)||'', edits:edits});
+    }, function(e){ if(btn){ btn.disabled=false; btn.textContent='Approve & seat'; } onError(e); }, 'cpSignupApprove', {row:SU.cur, slotRow:seatedRow, id:(app&&app.discord)||'', key:(app&&app.key)||'', edits:edits});
   }
   var SIGNUPS_LOADING=false;
   function loadSignups(force){
     if(SIGNUPS_LOADING) return;
     if(SU.loaded && !force){ renderSignups(); return; }
     SIGNUPS_LOADING=true;
+    var selected=suApp(SU.cur),selectedKey=selected&&selected.key,selectedId=selected&&selected.discord;
     var el=$('suBody'); if(el) el.innerHTML='<div class="skblk"></div>'; var qb=$('suBar'); if(qb) qb.hidden=true;
     api(function(d){
       SIGNUPS_LOADING=false;
       SU.signups=d.signups||[]; SU.recent=d.recent||[]; SU.waiting=Number(d.waiting||0); SU.slots=d.slots||[]; SU.linked=!!d.linked; SU.ready=!!d.ready; SU.loaded=true;
+      if(selectedKey || selectedId){var match=SU.signups.concat(SU.recent).filter(function(a){return selectedKey?a.key===selectedKey:a.discord===selectedId});SU.cur=match.length===1?match[0].row:null;}
       SU.statuses=d.statuses||null; SU.oocCol=!!d.oocCol; SU.shiftLabel=String(d.shiftLabel||'').trim(); SU.flagged=d.flaggedStatus||'Flagged';
       if(!SU.status) SU.status=STATE.defaultStatus||'';
       if(d.rankIcons){ STATE.rankIcons=STATE.rankIcons||{}; for(var k in d.rankIcons) STATE.rankIcons[k]=d.rankIcons[k]; }
@@ -2772,7 +2789,7 @@
       toast(suTitle(k)+' saved');
     },function(err){
       el.classList.remove('saving'); el.disabled=false; el.value=prev; onError(err);
-    },'cpSignupUpdate',{row:a.row,id:a.discord,k:k,v:v});
+    },'cpSignupUpdate',{row:a.row,id:a.discord,key:a.key||'',k:k,v:v});
   });
   $('suSkip').addEventListener('click',function(){ suStep(1); });
   $('suPrev').addEventListener('click',function(){ suStep(-1); });
@@ -2780,8 +2797,8 @@
   $('suFlag').addEventListener('click',function(){
     var a=suApp(SU.cur); if(!a) return;
     var b=this; b.disabled=true;
-    api(function(r){ b.disabled=false; a.status=r.status; renderSignups(); toast(r.flagged?('Flagged '+(a.name||'signup')+' for review.'):'Flag cleared.','ok'); },
-        function(e){ b.disabled=false; onError(e); }, 'cpSignupFlag', {row:a.row, id:a.discord||''});
+    api(function(r){ b.disabled=false; a.status=r.status;a.row=r.row;SU.cur=r.row;loadSignups(true); toast(r.flagged?('Flagged '+(a.name||'signup')+' for review.'):'Flag cleared.','ok'); },
+        function(e){ b.disabled=false; onError(e); }, 'cpSignupFlag', {row:a.row, id:a.discord||'',key:a.key||'',flagged:String(a.status||'').toUpperCase()!=='FLAGGED'});
   });
   document.addEventListener('click',function(e){
     if(copyClick(e)) return; /* the Signups read-only fields carry the same copy buttons */
@@ -2974,7 +2991,10 @@
     var ids=rows.map(discordOf); // F-027: send each row's Discord ID so a shifted selection can't hit the wrong members
     document.querySelectorAll('#bulkbar .seg').forEach(function(x){x.disabled=true;});
     api(function(res){
-      STATE.selected={}; toast('Set '+res.count+' member'+(res.count===1?'':'s')+' → '+res.status+'.','ok'); refresh();
+      STATE.selected={};
+      var skipped=(res.skipped||[]).length;
+      refresh(true);
+      toast('Set '+res.count+' member'+(res.count===1?'':'s')+' → '+res.status+'.'+(skipped?' '+skipped+' skipped — refresh and review the selection.':''),skipped?'err':'ok');
     }, function(e){ document.querySelectorAll('#bulkbar .seg').forEach(function(x){x.disabled=false;}); onError(e); }, "cpSetStatusBulk", rows, b.dataset.bulk, ids);
   });
   $('healthPill').addEventListener('click',function(){ document.querySelector('.tab[data-tab="system"]').click(); });
@@ -2989,7 +3009,7 @@
     var r=e.target.closest('[data-restore]'); if(!r) return;
     var lbl=r.querySelector('span');
     if(r.dataset.armed!=='1'){ r.dataset.armed='1'; if(lbl) lbl.textContent='Confirm?'; r.classList.add('armed'); setTimeout(function(){ if(r){ r.dataset.armed='0'; if(lbl) lbl.textContent='Restore'; r.classList.remove('armed'); } },3500); return; }
-    r.disabled=true; api(function(res){ toast('Restored '+res.restored+' member'+(res.restored===1?'':'s')+'.','ok'); refresh(); loadSystem(); }, function(ev){ r.disabled=false; r.dataset.armed='0'; if(lbl) lbl.textContent='Restore'; r.classList.remove('armed'); onError(ev); }, "cpRestoreSnapshot", r.dataset.restore);
+    r.disabled=true; api(function(res){ toast('Restored '+res.restored+' member'+(res.restored===1?'':'s')+'.'+(res.skipped?' '+res.skipped+' skipped — review unmatched members.':''),res.skipped?'err':'ok'); refresh(); loadSystem(); }, function(ev){ r.disabled=false; r.dataset.armed='0'; if(lbl) lbl.textContent='Restore'; r.classList.remove('armed'); onError(ev); }, "cpRestoreSnapshot", r.dataset.restore);
   });
   $('addBtn').addEventListener('click',addMember);
   $('slotBtn').addEventListener('click',function(e){ e.stopPropagation(); openSlotMenu(); });
@@ -3022,7 +3042,7 @@
     var amem=memberByRow(Number(arow)); ad.id=amem?(amem.discord||''):''; // stamp ownership so a shifted row can't rehydrate another member's draft
   });
   $('mlist').addEventListener('click',function(e){
-    var sel=e.target.closest('[data-sel]'); if(sel){ var rw=sel.dataset.sel; if(sel.checked) STATE.selected[rw]=true; else delete STATE.selected[rw]; renderBulk(); return; }
+    if(e.target.closest('[data-sel]')) return; // selection changes below; never toggle the profile
     if(copyClick(e)){ e.stopPropagation(); return; } /* stop here too, or copying an ID would collapse the row */
     var sc=e.target.closest('[data-sched]'); if(sc){ var scr=Number(sc.dataset.sched); STATE.formOpen=(STATE.formOpen===scr?null:scr); renderMembers(); return; } // F-026: drive open-state off STATE so a re-render preserves it
     var sg=e.target.closest('[data-schedgo]'); if(sg){ scheduleLeave(Number(sg.dataset.schedgo),sg); return; }
@@ -3033,6 +3053,10 @@
     var st=e.target.closest('[data-st]'); if(st){ setStatus(Number(st.closest('.mrow').dataset.row),st.dataset.st); return; }
     var col=e.target.closest('[data-collapse]'); if(col){ toggleDetail(Number(col.dataset.collapse)); return; } /* the triangle inside the panel header — the collapsed row is gone */
     var head=e.target.closest('.mhead'); if(head){ toggleDetail(Number(head.closest('.mrow').dataset.row)); }
+  });
+  $('mlist').addEventListener('change',function(e){
+    var box=e.target;
+    if(box.matches('input[type="checkbox"][data-sel]')) setMemberSelected(box.dataset.sel,box.checked);
   });
   document.querySelectorAll('.runbtn[data-act]').forEach(function(b){ b.addEventListener('click',function(){ runAction(b.dataset.act,b); }); });
   document.addEventListener('click',function(e){ if(e.target&&e.target.id==='runMore'){ RUNS.showAll=true; var el=$('runLog');
@@ -3092,8 +3116,11 @@
         function(e){ btn.disabled=false; onError(e); }, 'cpRunAction', 'purgeWebhooks');
   });
 
-  boot();
-  if(INIT_TAB){ var _dl=document.querySelector('.tab[data-tab="'+INIT_TAB+'"]'); if(_dl) _dl.click(); } // deep-link (e.g. open straight to Signups)
+  // Give the static navigation/layout its first paint before starting server work.
+  requestAnimationFrame(function(){ requestAnimationFrame(function(){
+    boot();
+    if(INIT_TAB){ var _dl=document.querySelector('.tab[data-tab="'+INIT_TAB+'"]'); if(_dl) _dl.click(); }
+  }); });
   // Live-ish updates: while the System tab is open, refresh it every 15s so new audit entries appear.
   setInterval(function(){ if(!document.hidden && STATE.systemLoaded && document.querySelector('.tab[data-tab="system"]').classList.contains('active')) loadSystem(true); }, 15000);
 </script>

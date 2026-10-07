@@ -44,6 +44,7 @@ const EXTRAS = Object.freeze({
  * hours reset). No UI — returns a human description of the reset schedule. Shared by 📋 Roster ▸ Install Triggers.
  */
 function installExtrasTriggers_() {
+  const sc=cfg_().kv.ACTIVITY; // validate before altering existing triggers
   // 'dailyBackup' stays listed so re-running deletes any leftover backup trigger from earlier.
   const managed = { dailyBackup: true, scanIntegrity: true, buildCoverage: true, weeklyResetScheduled: true };
   ScriptApp.getProjectTriggers().forEach((t) => {
@@ -52,7 +53,7 @@ function installExtrasTriggers_() {
   // Reset cadence/day/hour come from [SCHEDULE] on ⚙️ Config (defaults WEEKLY · SUN · 23 — the classic schedule).
   // Resolved G1: the reset captures the hours-history tab BEFORE zeroing, so the panel sparkline survives.
   let day = 'SUN', hour = 23, cadence = 'WEEKLY', dom = 1, autoReset = true;
-  try { const sc = cfg_().kv.ACTIVITY; day = sc.WEEKLY_HOURS_RESET; hour = sc.WEEKLY_RESET_HOUR; cadence = sc.RESET_CADENCE; dom = sc.RESET_DOM; autoReset = (sc.AUTO_RESET !== false); } catch (e) { /* config broken — classic weekly schedule */ }
+  day=sc.WEEKLY_HOURS_RESET;hour=sc.WEEKLY_RESET_HOUR;cadence=sc.RESET_CADENCE;dom=sc.RESET_DOM;autoReset=sc.AUTO_RESET!==false;
   const weekDays = { SUN: ScriptApp.WeekDay.SUNDAY, MON: ScriptApp.WeekDay.MONDAY, TUE: ScriptApp.WeekDay.TUESDAY, WED: ScriptApp.WeekDay.WEDNESDAY, THU: ScriptApp.WeekDay.THURSDAY, FRI: ScriptApp.WeekDay.FRIDAY, SAT: ScriptApp.WeekDay.SATURDAY };
   ScriptApp.newTrigger('scanIntegrity').timeBased().atHour(7).everyDays(1).create();
   ScriptApp.newTrigger('buildCoverage').timeBased().atHour(6).everyDays(1).create();
@@ -174,11 +175,17 @@ function captureHoursSnapshot_(weekLabel) {
   const when = weekLabel || weekKey_();
   const members = readMembers_(roster);
   if (!members.length) return 0;
-  // Replace this week's rows (don't duplicate) if the snapshot is re-run within the same week. A week's rows were
-  // appended as one contiguous block, so remove them in RUNS — one deleteRows per block instead of one deleteRow
-  // per member (a same-week re-run on a big roster paid hundreds of sequential calls inside the reset's lock).
-  if (sh.getLastRow() >= 2) {
-    const weeks = sh.getRange(2, 1, sh.getLastRow() - 1, 1).getDisplayValues();
+  // Append and flush the replacement BEFORE deleting the prior week's snapshot. A failed append must not
+  // destroy the only existing record. Remove prior rows in contiguous runs, excluding the new batch.
+  const previousLast=sh.getLastRow();
+  const rows = members.map((m) => [when, m.id, m.name, m.rank, parseHours_(m.hours), m.activity]);
+  const startRow = previousLast + 1, requiredRows = startRow+rows.length-1;
+  if (requiredRows>sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(),requiredRows-sh.getMaxRows());
+  sh.getRange(startRow, 2, rows.length, 1).setNumberFormat('@');
+  sh.getRange(startRow, 1, rows.length, 6).setValues(rows.map(r=>r.map(v=>typeof v==='string' && v.startsWith('=') ? "'"+v : v)));
+  SpreadsheetApp.flush();
+  if (previousLast >= 2) {
+    const weeks = sh.getRange(2, 1, previousLast - 1, 1).getDisplayValues();
     const wk = String(when).trim();
     let r = weeks.length - 1;
     while (r >= 0) {
@@ -189,14 +196,11 @@ function captureHoursSnapshot_(weekLabel) {
       r = top - 1;
     }
   }
-  const rows = members.map((m) => [when, m.id, m.name, m.rank, parseHours_(m.hours), m.activity]);
-  const startRow = sh.getLastRow() + 1;
-  sh.getRange(startRow, 2, rows.length, 1).setNumberFormat('@'); // keep IDs exact
-  sh.getRange(startRow, 1, rows.length, 6).setValues(rows);
   // F-024: cap growth like the sibling Integrity/Edit logs — trim the oldest rows so the sheet can't grow unbounded.
   const CAP = logRowCap_(); // v1.0: configurable
   const last = sh.getLastRow();
-  if (last > CAP + 1) sh.deleteRows(2, last - CAP - 1); // keep the header + newest CAP rows
+  const keep=Math.max(CAP,rows.length); // the complete current roster snapshot survives even when it exceeds the retention cap
+  if (last > keep + 1) sh.deleteRows(2, last - keep - 1);
   logInfo_('captureHoursSnapshot_', `captured ${rows.length} member-hours for week ${when}.`);
   return rows.length;
 }
@@ -309,27 +313,47 @@ function archiveRightHeader_(roster) {
 /** Core reset: archive-shift, capture history, then zero + recompute. Locked; no UI (safe from triggers). */
 function doWeeklyReset_() {
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(5000)) { logWarn_('doWeeklyReset_', 'another run holds the lock; skipping.'); return; }
+  if (!lock.tryLock(5000)) raise_('E-503');
+  let primary;
   try {
     const ss = SpreadsheetApp.getActive();
     const roster = getSheetOrWarn_(ss, CONFIG.sheets.roster);
     if (!roster) return;
+    assertNoPendingRosterRecovery_(roster,'Activity reset');
+    const resetProps = PropertiesService.getDocumentProperties(), resetKey = 'RE_ACTIVITY_RESET_PENDING';
+    const saved = resetProps.getProperty(resetKey);
+    if (saved) {
+      let pending;
+      try { pending=JSON.parse(saved); } catch (e) { throw new Error('Activity-reset checkpoint is unreadable. Inspect it before resetting again.'); }
+      if (!pending || pending.book !== ss.getId() || pending.sheet !== roster.getSheetId()) throw new Error('Activity-reset checkpoint belongs to a different roster. Inspect it before resetting again.');
+      if (pending.phase === 'committed' && pending.summary) {
+        resetProps.setProperty(LAST_RESET_PROP,String(pending.started));
+        resetProps.deleteProperty(resetKey);
+        return Object.assign({},pending.summary,{recovered:true}); // acknowledge a completed reset; never roll/zero twice
+      }
+      throw new Error('An activity reset stopped during '+String(pending.phase || 'an unknown phase')+'. Current hours have not been safely reconciled. Review the hours-history snapshot and archive columns before clearing RE_ACTIVITY_RESET_PENDING; do not rerun blindly.');
+    }
+    const checkpoint = {book:ss.getId(),sheet:roster.getSheetId(),started:Date.now(),phase:'history'};
+    const stage = phase => { checkpoint.phase=phase; resetProps.setProperty(resetKey,JSON.stringify(checkpoint)); };
+    stage('history'); // persist BEFORE any non-atomic history/archive mutations
     const captured = captureHoursSnapshot_() || 0; // preserve history BEFORE zeroing
     const before = readMembers_(roster);
+    stage('archive');
     let shifted = 0, bucketLabel = '', accumulated = false; // roll the visible period columns BEFORE hours are zeroed
     try {
       // [SCHEDULE].PERIOD_BUCKET = MONTH → checks inside one month ADD into that month's column instead of
       // rolling a fresh column each time (weekly checks, monthly archive totals).
       let acc = false;
-      try { acc = String(cfg_().kv.ACTIVITY.PERIOD_BUCKET || 'RESET').toUpperCase() === 'MONTH'; } catch (e2) { /* default RESET */ }
+      acc = String(cfg_().kv.ACTIVITY.PERIOD_BUCKET || 'RESET').toUpperCase() === 'MONTH';
       bucketLabel = periodLabel_();
       const rightHdrBefore = acc ? archiveRightHeader_(roster) : ''; // NOT `before` — that is the member snapshot above
       shifted = shiftArchiveColumns_(roster, bucketLabel, acc);
       accumulated = acc && !shifted && norm_(rightHdrBefore) === norm_(bucketLabel);
-    } catch (e) { log_('doWeeklyReset_.archive', e); }
+    } catch (e) { log_('doWeeklyReset_.archive', e); throw e; }
     // LAST ACTIVITY must snapshot each member's status AS THE PERIOD CLOSED — i.e. BEFORE the recompute below
     // re-tiers everyone off zeroed hours. (This was the whole point of the column and was never wired in here.)
     let lastAct = -1;
+    stage('previous activity');
     try {
       if (typeof captureLastActivityCore_ === 'function') lastAct = captureLastActivityCore_(roster);
       // [ACTIVITY].LAST_ACTIVITY_STYLE (MATCH / NEUTRAL) is applied HERE, on the capture that actually runs. Its only
@@ -338,8 +362,10 @@ function doWeeklyReset_() {
       if (lastAct >= 0 && typeof ensureLastActivityFormat_ === 'function' && typeof lastActivityCols_ === 'function') {
         lastActivityCols_(roster).forEach((c) => { try { ensureLastActivityFormat_(roster, c); } catch (e2) { log_('doWeeklyReset_.laStyle', e2); } });
       }
-    } catch (e) { log_('doWeeklyReset_.lastActivity', e); }
+    } catch (e) { log_('doWeeklyReset_.lastActivity', e); throw e; }
+    stage('hours and statuses');
     recomputeStatuses_(roster, true);     // core function: zero + recompute
+    SpreadsheetApp.flush();
     const after = readMembers_(roster);
     const prev = {};
     before.forEach((m) => { prev[m.id] = m.activity; });
@@ -347,6 +373,11 @@ function doWeeklyReset_() {
     const dropped = after.filter((m) => m.activity === lowestTier && prev[m.id] !== lowestTier);
     const totalHours = before.reduce((s, m) => s + parseHours_(m.hours), 0); // hoisted: used by the digest AND the return summary
     const activeCount = after.filter((m) => m.activity !== lowestTier).length;
+    const summary = { captured:captured,shifted:shifted,accumulated:accumulated,periodLabel:bucketLabel,lastActivity:lastAct,total:after.length,droppedNames:dropped.map(m=>m.name),lowestTier:lowestTier,totalHours:totalHours };
+    checkpoint.summary=Object.assign({},summary,{droppedNames:summary.droppedNames.slice(0,20).map(n=>String(n).slice(0,128))});
+    stage('committed');
+    resetProps.setProperty(LAST_RESET_PROP,String(checkpoint.started));
+    resetProps.deleteProperty(resetKey);
     logInfo_('doWeeklyReset_', `reset complete; ${dropped.length} dropped to ${lowestTier}.`);
     if (CONFIG.notify && CONFIG.notify.weeklyDigest) { // v1.0 richer opt-in digest supersedes the basic reset notice
       notifyCh_('AUDIT', true, {
@@ -362,10 +393,11 @@ function doWeeklyReset_() {
     } else {
       postSummary_('`🗑️` Weekly Reset', `Hours zeroed and statuses recomputed. **${dropped.length}** member(s) dropped to ${lowestTier}.`, 15105570);
     }
-    try { PropertiesService.getScriptProperties().setProperty(LAST_RESET_PROP, String(Date.now())); } catch (e) { /* best-effort cadence marker */ } // v1.0: advance the cadence clock (manual + scheduled both count)
-    return { captured: captured, shifted: shifted, accumulated: accumulated, periodLabel: bucketLabel, lastActivity: lastAct, total: after.length, droppedNames: dropped.map((m) => m.name), lowestTier: lowestTier, totalHours: totalHours };
+    return summary;
+  } catch (e) {
+    primary=e; throw e;
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e) { if (primary) log_('doWeeklyReset_.release',e); else throw e; }
   }
 }
 
@@ -399,8 +431,22 @@ function weeklyResetScheduled() {
 /**
  * v1.0 — is the hours reset due now, given [SCHEDULE].RESET_CADENCE and the LAST_RESET marker? WEEKLY fires every
  * scheduled run; BIWEEKLY/MONTHLY fire weekly/monthly but only proceed once enough days have elapsed (jitter-tolerant
- * floors). MANUAL never runs from the trigger. A broken config errs toward running — never silently skip a reset.
+ * floors). MANUAL never runs from the trigger. An unreadable config or cadence marker stops the reset to protect member hours.
  */
+/** One-time bound-project migration. Library callers must never inherit another department's shared legacy clock. */
+function lastResetMarker_() {
+  const doc = PropertiesService.getDocumentProperties();
+  const current = doc.getProperty(LAST_RESET_PROP);
+  if (current != null) return current;
+  if (doc.getProperty('RE_RUNTIME_MODE') !== 'BOUND') return null;
+  const legacy = PropertiesService.getScriptProperties().getProperty(LAST_RESET_PROP);
+  if (legacy != null) {
+    const timestamp = Number(legacy);
+    if (!Number.isFinite(timestamp) || timestamp < 0) throw new Error('Legacy hours-reset timestamp is invalid.');
+    doc.setProperty(LAST_RESET_PROP,String(timestamp));
+  }
+  return legacy;
+}
 function resetDue_() {
   try {
     const sc = cfg_().kv.ACTIVITY;
@@ -412,13 +458,15 @@ function resetDue_() {
     const cad = sc.RESET_CADENCE;
     if (cad === 'MANUAL') return false;
     if (cad === 'WEEKLY') return true;
-    const last = Number(PropertiesService.getScriptProperties().getProperty(LAST_RESET_PROP) || 0);
+    const marker=lastResetMarker_();
+    const last=Number(marker||0);
+    if(!Number.isFinite(last)||last<0)throw new Error('The last-reset marker is invalid; member hours were left unchanged.');
     if (!last) return true; // never reset before → run now
     const days = (Date.now() - last) / 86400000;
     if (cad === 'BIWEEKLY') return days >= 13; // ~2 weeks (13-day floor absorbs weekly-trigger jitter)
     if (cad === 'MONTHLY') return days >= 25;  // ~1 month (25-day floor guards against a double-fire)
     return true;
-  } catch (e) { return true; }
+  } catch (e) { log_('resetDue_',e);return false; }
 }
 
 /* ======================================================================
@@ -440,7 +488,7 @@ function groupColLetter_(n) {
  *   "#group: Column = Value"            group by that column's value (or "Column: Value")
  *   "#group: Column in V1, V2, …"       any of several values (e.g. two ranks — cadets + probationary)
  *   "#group: Value"                     shorthand — engine auto-finds the column
- *   "#group: … | A, B, C"               after the "|", extra roster columns (e.g. hidden Beat, Vehicle) to also show
+ *   "#group: … | A, B, C"               after the "|", legacy extra-column hints; destination headers determine which columns are mirrored
  * @return {{row,col,column,values:string[],extras:string[],raw}|null}
  */
 function groupMarker_(sh) {
@@ -525,6 +573,19 @@ function inferGroup_(name) {
 
 /** Normalize a group value for matching: lowercase, collapse whitespace, trim. */
 function groupNorm_(x) { return String(x).toLowerCase().replace(/\s+/g, ' ').trim(); }
+function groupValueMatches_(value,wanted) { const v=groupNorm_(value), w=groupNorm_(wanted); return !!w && (v===w || v.indexOf(w+' ')===0); }
+/** Ambiguous identities must never overwrite another member's custom fields. */
+function groupIdentityProblem_(rows,keyCol,nameCol) {
+  const seen=Object.create(null);
+  for (let i=0;i<rows.length;i++) {
+    if (!String(rows[i][nameCol-1]||'').trim()) continue;
+    const key=String(rows[i][keyCol-1]||'').trim();
+    if (!key) return 'a named member has no matching identity';
+    if (seen[key]) return 'duplicate matching identity: '+key;
+    seen[key]=true;
+  }
+  return '';
+}
 
 /** 0-based column offsets within [firstCol, firstCol+width-1] that carry a CHECKBOX data-validation rule (scans a few rows). @return {number[]} */
 function checkboxOffsets_(sheet, firstRow, firstCol, width) {
@@ -552,8 +613,9 @@ function rosterBandRanges_(roster, rosterBandCol) {
   const covered = {};
   const add = (label, top, bottom) => {
     if (!label) return;
-    if (!(label in out)) out[label] = { top: top, bottom: bottom };
-    else { out[label].top = Math.min(out[label].top, top); out[label].bottom = Math.max(out[label].bottom, bottom); }
+    if (!(label in out)) out[label] = { top: top, bottom: bottom, ranges:[] };
+    out[label].ranges.push({top:top,bottom:bottom});
+    out[label].top = Math.min(out[label].top, top); out[label].bottom = Math.max(out[label].bottom, bottom);
   };
   merges.forEach((m) => {
     const top = m.getRow();
@@ -594,15 +656,23 @@ function tabBandRanges_(sh, dataRow, tabBandCol) {
   return out;
 }
 
-/**
- * FILL-ONLY. For each group tab (one carrying a "#group:" marker, or simply named like a group — "Day Shift",
- * "Troop A", "Academy"), the engine leaves the tab's own layout exactly as laid out — header, banners, widths,
- * formatting AND the RANK GROUP bands in column B (their sizes/blank spots are yours). Into each band it drops a live,
- * capped FILTER that fills that rank group's members for this shift at the band's top, leaving the remaining spots
- * blank. Tabs without rank-group bands get one contiguous FILTER instead. Nothing above the data area, and nothing in
- * column B, is touched. @return {{built:number, sheets:string[], skipped:Array<{name,why}>}}
- */
-function buildGroupSheets_(hint) { // hint (optional, from a single-cell member edit) → rebuild only the tab(s) that member is/was in
+/** Refresh editable group rows inside operator-owned layouts. Fixed bands must have enough capacity. */
+function derivedWriteRows_(sheet,row,col,rows) {
+  if(!rows.length)return;
+  sheet.getRange(row,col,rows.length,rows[0].length).setValues(rows.map(r=>r.map(v=>v&&v.derivedFormula?'':(typeof v==='string'&&v.charAt(0)==='='?"'"+v:v))));
+  rows.forEach((values,r)=>values.forEach((value,c)=>{if(value&&value.derivedFormula)sheet.getRange(row+r,col+c).setFormulaR1C1(value.derivedFormula);}));
+}
+function derivedReport_(where,result) {
+  if(typeof logWarn_==='function') (result.skipped||[]).forEach(item=>logWarn_(where,item.name+': '+item.why));
+  return result;
+}
+function withDerivedLock_(fn) {
+  const lock=LockService.getScriptLock(), held=lock.hasLock();
+  if(!held&&!lock.tryLock(1000))throw new Error('Derived roster refresh is busy; queued refresh will retry.');
+  try{return fn();}finally{if(!held)lock.releaseLock();}
+}
+function buildGroupSheets_(hint) { return withDerivedLock_(()=>derivedReport_("buildGroupSheets_",buildGroupSheetsCore_(hint))); }
+function buildGroupSheetsCore_(hint) { // optional hint rebuilds only affected tabs
   const ss = SpreadsheetApp.getActive();
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
   if (!roster) return { built: 0, sheets: [], skipped: [] };
@@ -634,8 +704,7 @@ function buildGroupSheets_(hint) { // hint (optional, from a single-cell member 
   };
   const firstCol = RC.rank;
   const rosterWidth = lastCol - firstCol + 1;
-  // Roster checkbox columns can't be REAL checkboxes in a live FILTER (the rule occupies the array's cells → #REF!), so
-  // the per-tab block below mirrors them with a filled box ☑ (checked) / empty box ☐ (unchecked) instead.
+  // Mirror checkbox values as booleans when the destination has checkbox validation, otherwise as glyphs.
   const cbSet = {}; checkboxOffsets_(roster, start, firstCol, rosterWidth).forEach((off) => { cbSet[firstCol + off] = true; });
   const nameRange = rName + '!' + L(RC.name) + start + ':' + L(RC.name);
   // The roster's RANK GROUP column (merged bands) — header "RANK … GROUP", else the column just left of RANK.
@@ -664,7 +733,7 @@ function buildGroupSheets_(hint) { // hint (optional, from a single-cell member 
     const grp = marker ? { column: marker.column, values: marker.values } : inferGroup_(nm);
     // Named column first; if that header no longer exists (e.g. SHIFT renamed to ASSIGNMENT), fall back to the
     // value scan — the tab keeps working across a rename instead of silently emptying.
-    const gCol = (grp.column ? colFor(grp.column) : 0) || findGroupColumn_(roster, start, grp.values[0]);
+    const gCol = (grp.column ? colFor(grp.column) : 0) || (/^(shift|assignment|division|district|watch)$/i.test(grp.column||'') ? RC.shift : 0) || findGroupColumn_(roster, start, grp.values[0]);
     // FAST PATH (targeted rebuild): with a single-cell edit hint, skip a tab the edited member is neither in NOW nor
     // WAS in — only the old + new value of the edited cell can change their group membership, so every other tab is
     // untouched by this edit. Skipped before the tab's own reads, so a single move rebuilds ~1-2 tabs, not all of them.
@@ -672,8 +741,8 @@ function buildGroupSheets_(hint) { // hint (optional, from a single-cell member 
     if (gCol && hint && hint.rowVals) {
       const gvN = grp.values.map((v) => groupNorm_(v)).filter(Boolean);
       const cur = groupNorm_(gCol <= hint.rowVals.length ? (hint.rowVals[gCol - 1] || '') : '');
-      const isNow = gvN.some((v) => cur.indexOf(v) === 0);
-      const wasBefore = (hint.editedCol === gCol) && gvN.some((v) => groupNorm_(hint.oldVal || '').indexOf(v) === 0);
+      const isNow = gvN.some((v) => groupValueMatches_(cur,v));
+      const wasBefore = (hint.editedCol === gCol) && gvN.some((v) => groupValueMatches_(hint.oldVal||'',v));
       if (!isNow && !wasBefore) return; // this tab is unaffected by the edit
     }
     // Find where the member rows begin on THIS tab (right below its own RANK/NAME header row) — never assume a position.
@@ -718,8 +787,12 @@ function buildGroupSheets_(hint) { // hint (optional, from a single-cell member 
     const readTo = Math.min(Math.max(sh.getLastRow(), dataRow - 1), maxRows);
     const bodyN = Math.max(0, readTo - dataRow + 1);
     const existVals = bodyN ? sh.getRange(dataRow, rankTabCol, bodyN, fillW).getValues() : [];
+    const existFormulas = bodyN ? sh.getRange(dataRow, rankTabCol, bodyN, fillW).getFormulasR1C1() : [];
     const existKeys = bodyN ? sh.getRange(dataRow, keyTabCol, bodyN, 1).getDisplayValues() : [];
-    const existByKey = {};
+    const identityProblem = groupIdentityProblem_(rd,useId?RC.discord:RC.name,RC.name) || groupIdentityProblem_(existVals,keyTabCol-rankTabCol+1,tabNameCol-rankTabCol+1);
+    if (identityProblem) { skipped.push({name:nm,why:identityProblem+' — existing rows left unchanged'}); return; }
+    existFormulas.forEach((row,r)=>row.forEach((formula,c)=>{ if(formula&&!colMap[rankTabCol+c]) existVals[r][c]={derivedFormula:formula}; }));
+    const existByKey = Object.create(null);
     for (let i = 0; i < existVals.length; i++) { const k = String(existKeys[i][0] || '').trim(); if (k && existVals[i].some((c) => String(c || '').trim() !== '')) existByKey[k] = existVals[i].slice(); }
     const blankRow = () => new Array(fillW).fill('');
     const keyOfIdx = (i) => (useId ? String(rd[i][RC.discord - 1] || '') : String(rd[i][RC.name - 1] || '')).trim();
@@ -732,7 +805,7 @@ function buildGroupSheets_(hint) { // hint (optional, from a single-cell member 
         const rc = colMap[tc];
         if (rc) { // mirrored roster column
           if (cbSet[rc]) { const checked = String(rd[i][rc - 1]).trim().toUpperCase() === 'TRUE'; row[tc - rankTabCol] = tabCb[tc] ? checked : (checked ? '☑' : '☐'); } // real checkbox on the tab → bool; else pretty text
-          else row[tc - rankTabCol] = String(rd[i][rc - 1] || '');
+          else row[tc - rankTabCol] = String(rd[i][rc - 1] == null ? '' : rd[i][rc - 1]);
         } else if (tabCb[tc]) {
           row[tc - rankTabCol] = boolish(row[tc - rankTabCol]); // operator's OWN checkbox column: keep their state, but as a valid bool (no red flag)
         }
@@ -746,17 +819,25 @@ function buildGroupSheets_(hint) { // hint (optional, from a single-cell member 
     for (let i = 0; i < rd.length; i++) {
       if (String(rd[i][RC.name - 1] || '').trim() === '') continue;
       const cell = groupNorm_(rd[i][gCol - 1] || '');
-      if (gvals.some((v) => cell.indexOf(v) === 0)) selected.push(i);
+      if (gvals.some((v) => groupValueMatches_(cell,v))) selected.push(i);
+    }
+    const bandLabelOfRow = (rrow) => { for (const lbl in rosterRanges) { if (rosterRanges[lbl].ranges.some((range)=>rrow>=range.top&&rrow<=range.bottom)) return groupNorm_(lbl); } return ''; };
+    if(bands.length&&!Object.keys(rosterRanges).length){skipped.push({name:nm,why:"destination has rank bands but roster bands are missing — existing rows left unchanged"});return;}
+    const byBand = Object.create(null);
+    if (bands.length && Object.keys(rosterRanges).length) {
+      bands.forEach((b)=>{if(!byBand[groupNorm_(b.label)])byBand[groupNorm_(b.label)]=[];});
+      const unassigned=[];
+      selected.forEach((i)=>{const label=bandLabelOfRow(start+i);if(label in byBand)byBand[label].push(i);else unassigned.push(i);});
+      const repeated=bands.some((b,i)=>bands.slice(0,i).some((other)=>groupNorm_(other.label)===groupNorm_(b.label)));
+      const overflow=bands.some((b)=>(byBand[groupNorm_(b.label)]||[]).length>b.height);
+      if(repeated||overflow||unassigned.length){skipped.push({name:nm,why:'rank bands are duplicated, too small, or missing for matching members — existing rows left unchanged'});return;}
     }
     // Clear the member area (content + merges) — NEVER data validations, so the operator's own checkboxes/dropdowns on
     // their columns survive; then '@' the ID column so long IDs write exact. Column B (your bands) is never touched.
     if (maxRows >= dataRow) { const area = sh.getRange(dataRow, rankTabCol, maxRows - dataRow + 1, fillW); try { area.breakApart(); } catch (e) { /* nothing merged */ } area.clearContent(); }
     if (tabIdCol && maxRows >= dataRow) sh.getRange(dataRow, tabIdCol, maxRows - dataRow + 1, 1).setNumberFormat('@');
-    const writeBlock = (rows, atRow) => { if (rows.length) sh.getRange(atRow, rankTabCol, rows.length, fillW).setValues(rows); };
+    const writeBlock = (rows, atRow) => derivedWriteRows_(sh,atRow,rankTabCol,rows);
     if (bands.length && Object.keys(rosterRanges).length) {
-      const bandLabelOfRow = (rrow) => { for (const lbl in rosterRanges) { const rb = rosterRanges[lbl]; if (rrow >= rb.top && rrow <= rb.bottom) return groupNorm_(lbl); } return ''; };
-      const byBand = {}; bands.forEach((b) => { byBand[groupNorm_(b.label)] = []; });
-      selected.forEach((i) => { const lbl = bandLabelOfRow(start + i); if (lbl in byBand) byBand[lbl].push(i); });
       bands.forEach((b) => {
         const idxs = byBand[groupNorm_(b.label)] || [];
         const rows = [];
@@ -876,9 +957,9 @@ function academyHeaderRow_(sh) {
 function academyCols_(headers) {
   const find = (pred) => { for (let i = 0; i < headers.length; i++) { if (headers[i] && pred(headers[i])) return i + 1; } return 0; };
   return {
-    id: find((h) => h.indexOf('UNIQUE') !== -1 || h.indexOf('DISCORD') !== -1 || h === 'ID' || /\bID\b/.test(h)),
+    id: find((h) => /^(UNIQUE ID|DISCORD ID|COMMUNITY ID|MEMBER ID|ID)$/.test(h)) || find((h) => h.indexOf('UNIQUE') !== -1 || h.indexOf('DISCORD') !== -1 || /\bID\b/.test(h)),
     rank: find((h) => h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1),
-    name: find((h) => h === 'NAME' || (h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1)),
+    name: find((h)=>h==='NAME') || find((h) => h.indexOf('NAME') !== -1 && h.indexOf('OOC') === -1 && h.indexOf('UNIQUE') === -1),
     call: find((h) => h.indexOf('CALLSIGN') !== -1 || h.indexOf('UNIT') !== -1),
     grad: find((h) => h.indexOf('GRADUAT') !== -1),
   };
@@ -899,7 +980,7 @@ function academyGradSection_(sh, fromRow, width) {
   const merges = sh.getRange(hdr, 1, Math.min(6, maxR - hdr + 1), width).getMergedRanges(); // banner is usually merged — data starts under it
   let bottom = hdr;
   merges.forEach((m) => { if (m.getRow() <= hdr + 4) bottom = Math.max(bottom, m.getRow() + m.getNumRows() - 1); });
-  return { headerRow: hdr, dataStart: Math.min(bottom + 1, maxR) };
+  return { headerRow: hdr, dataStart: bottom + 1 }; // grow below a final-row banner instead of overwriting it
 }
 
 /** Significant rank/label word-stems for matching an Academy band to a rank ("CADETS"→[CADET], "Probationary Officer"→[PROBATIONARY]). */
@@ -915,7 +996,8 @@ function academyStems_(s) {
  * overwritten; column B (your bands) is untouched. Anyone no longer in a band drops below a "— GRADUATED —" divider.
  * A tab with no rank-group bands falls back to one contiguous list. @return {{built:number, sheets:string[], skipped}}
  */
-function buildAcademySheets_() {
+function buildAcademySheets_() { return withDerivedLock_(()=>derivedReport_("buildAcademySheets_",buildAcademySheetsCore_())); }
+function buildAcademySheetsCore_() {
   const ss = SpreadsheetApp.getActive();
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
   if (!roster) return { built: 0, sheets: [], skipped: [] };
@@ -961,7 +1043,7 @@ function buildAcademySheets_() {
     const kwFallback = explicit.length ? [] : (CONFIG.trainingDividers || []).map(groupNorm_).concat(['PROBATION']).filter(Boolean);
     const isTrainee = (rank) => {
       const r = groupNorm_(rank);
-      if (wanted.some((w) => w && r.indexOf(w) === 0)) return true;
+      if (wanted.some((w) => w && (explicit.length ? r===w : groupValueMatches_(r,w)))) return true;
       return kwFallback.some((k) => r.indexOf(k) !== -1);
     };
     const H = academyHeaderRow_(sh);
@@ -985,6 +1067,9 @@ function buildAcademySheets_() {
       if (aBannerRow && !rosterBannerSet[aBanners[c] || '']) { colMap[c] = 0; continue; }    // under one of YOUR sections → a training field, never overwritten
       colMap[c] = colForRoster(H.headers[c] || '');
     }
+    colMap[AC.name-1]=RC.name;
+    if(AC.rank)colMap[AC.rank-1]=RC.rank;
+    if(AC.id&&RC.discord)colMap[AC.id-1]=RC.discord;
     // Find the tab's RANK GROUP band column (its label is often merged across the banner+label rows → scan both; else col left of RANK).
     const topHdr = H.row > 1 ? sh.getRange(H.row - 1, 1, 1, width).getDisplayValues()[0].map((x) => String(x).toUpperCase()) : [];
     let tabBandCol = 0;
@@ -996,8 +1081,12 @@ function buildAcademySheets_() {
     const memberCol1 = tabBandCol ? tabBandCol + 1 : 1; // first member column = right of the band column (never write column B)
     // Read the existing body (to preserve your training columns) keyed by ID; a display read of the key avoids number rounding.
     const existVals = maxRows >= dataRow ? sh.getRange(dataRow, 1, maxRows - dataRow + 1, width).getValues() : [];
+    const existFormulas = maxRows >= dataRow ? sh.getRange(dataRow, 1, maxRows - dataRow + 1, width).getFormulasR1C1() : [];
     const existKeys = maxRows >= dataRow ? sh.getRange(dataRow, keyCol, maxRows - dataRow + 1, 1).getDisplayValues() : [];
-    const existByKey = {};
+    const identityProblem = groupIdentityProblem_(rd,useId?RC.discord:RC.name,RC.name) || groupIdentityProblem_(existVals.filter((row)=>String(row[AC.name-1]||'').trim()!==ACADEMY_GRAD_DIVIDER),keyCol,AC.name);
+    if(identityProblem){skipped.push({name:sh.getName(),why:identityProblem+' — existing rows left unchanged'});return;}
+    existFormulas.forEach((row,r)=>row.forEach((formula,c)=>{if(formula&&!colMap[c])existVals[r][c]={derivedFormula:formula};}));
+    const existByKey = Object.create(null);
     for (let i = 0; i < existVals.length; i++) {
       if (String(existVals[i][AC.name - 1] || '').trim() === ACADEMY_GRAD_DIVIDER) continue; // never re-ingest the divider row
       const k = String(existKeys[i][0] || '').trim();
@@ -1009,7 +1098,7 @@ function buildAcademySheets_() {
       const k = keyOfIdx(i);
       const row = (k && existByKey[k]) ? existByKey[k].slice() : blank();
       while (row.length < width) row.push('');
-      for (let c = memberCol1; c <= width; c++) { const rc = colMap[c - 1]; if (rc) row[c - 1] = String(rd[i][rc - 1] || ''); } // fill roster-mapped columns
+      for (let c = memberCol1; c <= width; c++) { const rc = colMap[c - 1]; if (rc) row[c - 1] = String(rd[i][rc - 1] == null ? '' : rd[i][rc - 1]); }
       if (AC.grad) row[AC.grad - 1] = graduated ? 'Graduated' : '';
       return row;
     };
@@ -1017,18 +1106,18 @@ function buildAcademySheets_() {
     // Write helper: member columns only (right of the band column), so your column-B bands are never touched.
     const writeBlock = (rowsFull, atRow) => {
       if (!rowsFull.length) return;
-      sh.getRange(atRow, memberCol1, rowsFull.length, width - memberCol1 + 1).setValues(rowsFull.map((r) => r.slice(memberCol1 - 1, width)));
+      derivedWriteRows_(sh,atRow,memberCol1,rowsFull.map((r)=>r.slice(memberCol1-1,width)));
     };
-    if (AC.id && AC.id >= memberCol1) sh.getRange(dataRow, AC.id, maxRows - dataRow + 1, 1).setNumberFormat('@'); // keep long IDs exact
+    if (AC.id && AC.id >= memberCol1 && maxRows >= dataRow) sh.getRange(dataRow, AC.id, maxRows - dataRow + 1, 1).setNumberFormat('@');
     // A "GRADUATE LOG" section (a row holding "GRADUATE") tells us where graduates go AND caps the member bands above it.
     const gradSec = academyGradSection_(sh, dataRow, width);
     // Clear member columns in [top, bottom] — break merges so setValues is safe, but never touch the GRADUATE LOG banner.
     const clearMemberCols = (top, bottom) => { if (bottom >= top && bottom >= dataRow) { const a = sh.getRange(top, memberCol1, bottom - top + 1, width - memberCol1 + 1); a.breakApart(); a.clearContent(); } };
     // Members STILL on the roster (named), keyed the same way. A member GONE from the roster is REMOVED from the Academy;
     // one who left the training ranks but remains on the roster (e.g. promoted to Officer) goes to the GRADUATE LOG.
-    const rosterKeys = {};
-    for (let i = 0; i < rd.length; i++) { const kk = keyOfIdx(i); if (kk && String(rd[i][RC.name - 1] || '').trim()) rosterKeys[kk] = true; }
-    const gradRowsFrom = () => Object.keys(existByKey).filter((k) => !filled[k] && rosterKeys[k]).map((k) => { const r = existByKey[k].slice(); while (r.length < width) r.push(''); if (AC.grad) r[AC.grad - 1] = 'Graduated'; return r; });
+    const rosterKeys = Object.create(null);
+    for (let i = 0; i < rd.length; i++) { const kk = keyOfIdx(i); if (kk && String(rd[i][RC.name - 1] || '').trim()) rosterKeys[kk] = i; }
+    const gradRowsFrom = () => Object.keys(existByKey).filter((k) => !filled[k] && Object.prototype.hasOwnProperty.call(rosterKeys,k)).map((k) => rowForIdx(rosterKeys[k],true));
     const putGrads = (grads, bandBottom, tmplRow) => {
       const top = gradSec ? gradSec.dataStart : bandBottom + 1;
       clearMemberCols(top, sh.getMaxRows()); // clear the graduate destination first so removed graduates don't linger (banner above untouched)
@@ -1048,6 +1137,20 @@ function buildAcademySheets_() {
     };
 
     const bands = tabBandRanges_(sh, dataRow, tabBandCol).filter((b) => !gradSec || b.top < gradSec.headerRow);
+    // Validate placement BEFORE clearing any training records. Overflow is never graduation.
+    const counts=bands.map(()=>0); let unmatched=0, activeCount=0;
+    rd.forEach((row)=>{
+      if(!String(row[RC.name-1]||'').trim()||!isTrainee(row[RC.rank-1]))return;
+      activeCount++;
+      if(!bands.length)return;
+      const stems=academyStems_(row[RC.rank-1]);let best=-1,score=0;
+      bands.forEach((band,i)=>{const bs=academyStems_(band.label);const s=stems.filter((stem)=>bs.indexOf(stem)!==-1).length;if(s>score){score=s;best=i;}});
+      if(best<0)unmatched++;else counts[best]++;
+    });
+    const overflow=bands.some((band,i)=>counts[i]>band.height || (gradSec && band.top+band.height>gradSec.headerRow));
+    if(unmatched||overflow||(!bands.length&&gradSec&&activeCount>gradSec.headerRow-dataRow)){
+      skipped.push({name:sh.getName(),why:'training bands are too small or do not match active trainees — existing records left unchanged'});return;
+    }
     if (bands.length) {
       const bandBottom = bands.reduce((mx, b) => Math.max(mx, b.top + b.height - 1), dataRow - 1);
       clearMemberCols(dataRow, bandBottom);
@@ -1986,7 +2089,7 @@ function seedDemoStats_(ss, groups, leaders) {
   ss.getSheets().forEach((sh) => {
     const name = sh.getName();
     if (dashboardSkip_(name) || name === CONFIG.sheets.roster || name === CONFIG.sheets.tracker) return; // only KPI/stat tabs
-    try { if (fillEmployeeBox_(sh, groups) || fillExecBox_(sh, leaders)) any = true; } catch (e) { log_('seedDemoStats_.sheet', e); }
+    try { const employees = fillEmployeeBox_(sh, groups); const leadership = fillExecBox_(sh, leaders); if (employees || leadership) any = true; } catch (e) { log_('seedDemoStats_.sheet', e); }
   });
   return any;
 }

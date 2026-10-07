@@ -157,6 +157,7 @@ restructure, or reformat your sheets.
 - Unique IDs are the backbone — keep them accurate, one per member.
 - Don't edit the hidden first column on the Patrol Log.
 - 🎬 Load Demo Roster is for fresh copies only — it overwrites.
+- To prepare a demo copy for another department, use **🧪 Dev / QA ▸ 🗑️ Reset for a new department…** and type **RESET DEPARTMENT**. This permanently clears members (including custom MEMBER columns), LOAs, patrol logs, signups, linked response-sheet rows, history, snapshots, webhooks, rank icons and saved department configuration. SLOT values such as ranks/callsigns, dividers, borders, formatting, custom tab names and structural column mappings remain. Other settings return to defaults with scheduled activity reset off. The public roster is disconnected before cleanup; no other spreadsheet or Google Form is changed. Engine triggers belonging to the current user are removed; any other trigger owners must remove theirs separately. Run it on a copy, inspect any manually maintained content, then link the new department's own response tabs, configure its connections and run First-Run Setup. The reset is not transactional: if it reports a failure, keep the copy private and retry after resolving the error.
 - After big changes, the 🧪 Dev / QA menu can run the engine's own test suite (Parts 1–3) against sandbox tabs —
   it never touches your live data.
 
@@ -167,6 +168,8 @@ all works inside.*
 
 
 ## Automatic Apps Script updates from GitHub
+
+The local [data-integrity and recovery audit](DATA_INTEGRITY_AUDIT.md) documents interrupted patrol credits/imports, member transfers/assignments, activity-reset checkpoints and the recovery procedure. It includes local verification and live acceptance checks; these audit changes are not deployed until pushed and uploaded. Use **Roster → Recover Interrupted Transfer** for pending transfers, member assignments or linked signup approvals. An interrupted activity reset requires the checkpoint review described in that report before rerunning it.
 
 `.github/workflows/apps-script.yml` checks the code and uploads it to the configured sheet script whenever `main` changes. It can also be run manually from GitHub Actions ? Sync Apps Script ? Run workflow. The target Script ID is `1SoCIV1N8-h_yyG9GtUgOWNO83yKxyexEUJ14dTnYRvnb5v58JGW8BQUg`.
 

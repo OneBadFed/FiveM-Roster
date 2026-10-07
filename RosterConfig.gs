@@ -61,6 +61,9 @@ const REGISTRY_ = Object.freeze({
   'E-301': { sev: 'WARN', msg: 'Row {row}: "{value}" is not a pingable Discord ID.', hint: 'Discord @mention pings need a 17-19 digit snowflake; pings are skipped for this member (identity still works with the configured ID length).' },
   'E-501': { sev: 'INFO', msg: 'Another run holds the lock; this one exited.', hint: 'Normal under concurrency — retry shortly.' },
   'E-502': { sev: 'WARN', msg: 'Discord webhook post failed: HTTP {code}.', hint: 'Check the webhook row on the admin file\'s Webhooks tab — the message was dropped, the run itself continued.' },
+  'E-503': { sev: 'WARN', msg: 'Another roster operation is still running.', hint: 'Wait a few seconds, then try again. No automatic write retry was made.' },
+  'E-504': { sev: 'ERROR', msg: '{operation} stopped after {completed} completed item(s): {reason}', hint: 'Some rows may already be saved. Check the affected table before retrying.' },
+  'E-507': { sev: 'ERROR', msg: 'Invalid panel request: {reason}', hint: 'Reload the panel and try again.' },
   'E-506': { sev: 'ERROR', msg: 'Unknown panel endpoint "{name}".', hint: 'Only whitelisted endpoints may be dispatched (brief D5 — enforced in Phase 2).' },
   'E-601': { sev: 'ERROR', msg: 'Unexpected error in {fn}: {msg}', hint: 'Open the SYS Log tab (or script editor → Executions) for the stack.' },
   'PERF': { sev: 'INFO', msg: '{label} took {ms}ms.', hint: 'Timing lines only appear while [LOGGING].PERF_TIMING is TRUE.' },
@@ -92,9 +95,38 @@ class AppError extends Error {
 }
 function raise_(code, params, ctx) { throw new AppError(code, params, ctx); }
 
+/** Diagnostic boundaries: never include webhook credentials or unbounded/circular context. */
+function diagnosticText_(value,limit) {
+  let text;try{text=String(value==null?'':value);}catch(e){text='[unreadable diagnostic]';}
+  return text.replace(/https?:\/\/(?:[^\s/]+\.)?(?:discord|discordapp)\.com\/api(?:\/v\d+)?\/webhooks\/[^\s"'<>]+/gi,'[webhook redacted]')
+    .replace(/(Bearer\s+)[A-Za-z0-9._~+\/-]+/gi,'$1[redacted]')
+    .replace(/((?:access_token|refresh_token|client_secret|authorization|password)\s*[=:]\s*)[^\s&,;]+/gi,'$1[redacted]').slice(0,limit||4000);
+}
+function diagnosticContext_(value) {
+  const seen=new Set();
+  const clean=(v,depth)=>{
+    if(v==null||typeof v==='boolean'||typeof v==='number')return v;
+    if(typeof v!=='object')return diagnosticText_(v,500);
+    if(seen.has(v))return '[circular]';if(depth>3)return '[depth limit]';seen.add(v);
+    if(Array.isArray(v))return v.slice(0,20).map(x=>clean(x,depth+1));
+    const out=Object.create(null);Object.keys(v).slice(0,20).forEach(k=>{try{out[k]=/token|secret|password|authorization|webhook|namedvalues|payload/i.test(k)?'[redacted]':clean(v[k],depth+1);}catch(e){out[k]='[unreadable]';}});return out;
+  };
+  try{return JSON.stringify(clean(value,0)).slice(0,900);}catch(e){return '[context unavailable]';}
+}
+function diagnosticConsole_(level,message) { try{console[level](diagnosticText_(message,4000));}catch(e){/* diagnostics never replace the original error */} }
+function reportError_(scope,error,notify) {
+  const ae=error instanceof AppError?error:wrapUnexpected_(scope,error);
+  let stack='';try{stack=error&&error.stack||ae.message;}catch(e){stack=ae.message;}
+  diagnosticConsole_('error', '['+scope+'] '+stack);
+  try{slog_(ae.sev,ae.code,scope,ae.message,ae.ctx);}catch(e){/* preserve the primary error */}
+  if(notify)try{maybeErrorWebhook_(ae,scope);}catch(e){/* notification is optional */}
+  return ae;
+}
+
 /** Wrap a non-AppError into E-601 so every failure leaves a coded trail. */
 function wrapUnexpected_(fnName, e) {
-  const ae = new AppError('E-601', { fn: fnName, msg: (e && e.message) ? e.message : String(e) }, { stack: e && e.stack ? String(e.stack) : '' });
+  let message,stack;try{message=(e&&e.message)||e;stack=(e&&e.stack)||'';}catch(unreadable){message='[unreadable error]';stack='';}
+  const ae = new AppError('E-601', { fn: fnName, msg: diagnosticText_(message) }, { stack: diagnosticText_(stack) });
   return ae;
 }
 
@@ -115,20 +147,24 @@ function getErrorsWebhookUrl_() {
  * failing on every edit) posts once, not hundreds of times. Reads the CFG_ memo, never cfg_() (error paths run
  * exactly when config may be broken).
  */
+const _errorNoticeSeen_ = new Set();
 function maybeErrorWebhook_(ae, fnName) {
   try {
     if (!ae || ae.sev !== 'ERROR') return;
     if (typeof DEV_WEBHOOKS_OFF_ !== 'undefined' && DEV_WEBHOOKS_OFF_) return; // DevQA-raised errors (adversarial cases) stay in the SYS Log only
-    const key = 'errwh:' + (ae.code || 'E-601') + ':' + (fnName || ''); // F-045: throttle per code AND function, not code alone
-    const cache = CacheService.getScriptCache();
-    if (cache.get(key)) return; // throttle FIRST — the URL now lives in the admin file, so don't open it during a storm
+    let book = ''; try { const active = SpreadsheetApp.getActive(); if (active) book = active.getId(); } catch (e) { /* execution-local throttle when no container is available */ }
+    const key = 'errwh:' + book + ':' + (ae.code || 'E-601') + ':' + (fnName || ''); // library script cache is shared: namespace by workbook
+    if(_errorNoticeSeen_.has(key))return;
+    _errorNoticeSeen_.add(key);
+    let cache=null;try{if(book){cache=CacheService.getScriptCache();if(cache.get(key))return;}}catch(e){/* one notification per execution if shared cache is unavailable */}
+    // // throttle FIRST — the URL now lives in the admin file, so don't open it during a storm
     const url = getErrorsWebhookUrl_();
     if (!url) return;
-    cache.put(key, '1', 300);
+    try{if(cache)cache.put(key,'1',300);}catch(e){/* per-execution throttle still applies */}
     const sysName = (CFG_ && CFG_.legacy) ? CFG_.legacy.systemName : 'Roster System';
     let desc = `# \`🚨\` Engine Error · ${ae.code}`; // house style: "# " heading in the description with a boxed \`emoji\`
-    desc += `\n\`📄\` **Message:** ${ae.message || ''}`;
-    if (ae.hint) desc += `\n\`🛠️\` **Fix:** ${ae.hint}`;
+    desc += `\n\`📄\` **Message:** ${diagnosticText_(ae.message)}`;
+    if (ae.hint) desc += `\n\`🛠️\` **Fix:** ${diagnosticText_(ae.hint)}`;
     desc += `\n\`📍\` **Where:** \`${fnName || 'engine'}\``;
     desc = desc.slice(0, 1500) + '\n\n_See SYS Log for the complete record._'; // F-044: one safe bound on the whole description + pointer
     const fallbackEmbed = {
@@ -138,7 +174,7 @@ function maybeErrorWebhook_(ae, fnName) {
     };
     // Template override, memo-safe: embedFromTemplate_ reads CONFIG (may be broken on an error path) inside its
     // own try/catch and falls back to the built-in embed — an error notification is never lost to a bad template.
-    const eVars = { code: ae.code || 'E-601', message: String(ae.message || ''), hint: String(ae.hint || ''), 'function': fnName || 'engine' };
+    const eVars = { code: ae.code || 'E-601', message: diagnosticText_(ae.message), hint: diagnosticText_(ae.hint), 'function': fnName || 'engine' };
     let tpl = null; try { tpl = CFG_ && CFG_.legacy && CFG_.legacy.embedTpl && CFG_.legacy.embedTpl.error; } catch (e) { tpl = null; } // memo only — never force a config load on an error path
     const embed = (typeof embedFromTemplate_ === 'function') ? embedFromTemplate_('error', eVars, fallbackEmbed) : fallbackEmbed;
     const body = { username: `${sysName} — errors` };
@@ -155,7 +191,7 @@ function maybeErrorWebhook_(ae, fnName) {
     const code = res.getResponseCode();
     if (code < 200 || code >= 300) slog_('WARN', 'E-502', 'maybeErrorWebhook_', `errors-webhook post returned HTTP ${code}`, { code });
   } catch (e) {
-    try { console.error(`maybeErrorWebhook_ failed (never fatal): ${e && e.message}`); } catch (e2) { /* nothing left */ }
+    try { diagnosticConsole_('error', `maybeErrorWebhook_ failed (never fatal): ${e && e.message}`); } catch (e2) { /* nothing left */ }
   }
 }
 
@@ -168,9 +204,7 @@ function guarded_(fnName, fn) {
   try {
     return fn();
   } catch (e) {
-    const ae = (e instanceof AppError) ? e : wrapUnexpected_(fnName, e);
-    slog_(ae.sev, ae.code, fnName, ae.message, ae.ctx);
-    maybeErrorWebhook_(ae, fnName); // Phase 3: optional errors channel (silent no-op unless WEBHOOK_ERRORS is set)
+    const ae = reportError_(fnName,e,true); // // Phase 3: optional errors channel (silent no-op unless WEBHOOK_ERRORS is set)
     try {
       SpreadsheetApp.getUi().alert(
         `⚠️ ${ae.code} — "${fnName}" stopped`,
@@ -189,9 +223,10 @@ function guarded_(fnName, fn) {
  * exactly what this log must record.
  * ====================================================================== */
 
-const EXEC_ID_ = Math.random().toString(36).slice(2, 8); // groups all lines from one execution
+const EXEC_ID_ = (()=>{try{return Utilities.getUuid();}catch(e){return Date.now().toString(36)+'-'+Math.random().toString(36).slice(2,10);}})(); // groups all lines from one execution
 const LOG_ORDER_ = Object.freeze({ ERROR: 3, WARN: 2, INFO: 1, DEBUG: 0 });
 let _sysLogSheet = null;
+const _sysLogSeen_ = new Set();
 let _sysLogUnavailable_ = false; // set once if the sheet can't be created this execution (e.g. LIMITED-auth simple trigger) — don't retry every call
 
 /** Create + hide the SYS Log sheet (full-auth contexts). Called by First-Run Setup so slog_ never has to insertSheet in a LIMITED trigger (F-016). */
@@ -210,38 +245,46 @@ function ensureSysLog_(ss) {
 }
 
 function slog_(sev, code, fn, message, ctx) {
+  message=diagnosticText_(message,900);fn=diagnosticText_(fn,160);
+  if(_sysLogUnavailable_){diagnosticConsole_('error','[slog_ unavailable] '+sev+' '+code+' '+fn+': '+message);return;}
   try {
     // Read the MEMO (CFG_) directly, never cfg_(): cfg_ logs its own WARN problems mid-load, so calling
     // cfg_() from here would recurse infinitely. Before the memo exists we simply use the defaults.
     let maxRows = 500, minLevel = 'INFO';
-    if (CFG_) { maxRows = CFG_.logging.maxRows; minLevel = CFG_.logging.level; }
+    if (CFG_ && CFG_.logging) { maxRows = Number(CFG_.logging.maxRows)||500; minLevel = CFG_.logging.level; }
+    maxRows=Math.max(25,Math.floor(maxRows));
     // == null, not || : LOG_ORDER_.DEBUG is 0, and `|| INFO` quietly promoted every DEBUG line to INFO — so a
     // DEBUG entry was never filtered out at the default level, and LOG_LEVEL=DEBUG revealed nothing extra.
     const sevRank = (LOG_ORDER_[sev] == null) ? LOG_ORDER_.INFO : LOG_ORDER_[sev];
     const minRank = (LOG_ORDER_[minLevel] == null) ? LOG_ORDER_.INFO : LOG_ORDER_[minLevel];
     if (sevRank < minRank) return;
+    const fingerprint=[sev,code,fn,message].join('|');
+    if(_sysLogSeen_.has(fingerprint))return;
+    if(_sysLogSeen_.size<200)_sysLogSeen_.add(fingerprint);
     const ss = SpreadsheetApp.getActive();
     if (!_sysLogSheet || _sysLogSheet.getParent().getId() !== ss.getId()) {
       _sysLogSheet = ss.getSheetByName(SYS_LOG_SHEET);
       if (!_sysLogSheet) {
         // F-016: don't retry insertSheet on every call once it has failed this execution (LIMITED-auth triggers can't
         // create sheets) — always preserve the ORIGINAL message + a breadcrumb to run First-Run Setup with full auth.
-        if (_sysLogUnavailable_) { try { console.error(`[slog_ no-sheet] ${sev} ${code} ${fn}: ${message}`); } catch (ig) {} return; }
+        if (_sysLogUnavailable_) { try { diagnosticConsole_('error', `[slog_ no-sheet] ${sev} ${code} ${fn}: ${message}`); } catch (ig) {} return; }
         try {
           _sysLogSheet = ensureSysLog_(ss);
         } catch (ce) {
           _sysLogUnavailable_ = true;
-          try { console.error(`[slog_ no-sheet] ${sev} ${code} ${fn}: ${message} :: "${SYS_LOG_SHEET}" missing and could not be created (run 📋 Roster ▸ First-Run Setup with full authorization): ${ce && ce.message}`); } catch (ig) {}
+          try { diagnosticConsole_('error', `[slog_ no-sheet] ${sev} ${code} ${fn}: ${message} :: "${SYS_LOG_SHEET}" missing and could not be created (run 📋 Roster ▸ First-Run Setup with full authorization): ${ce && ce.message}`); } catch (ig) {}
           return;
         }
       }
     }
-    const ctxJson = ctx ? JSON.stringify(ctx).slice(0, 900) : '';
-    _sysLogSheet.appendRow([new Date(), ENGINE_VERSION, sev, code || '', fn || '', String(message || '').slice(0, 900), ctxJson, EXEC_ID_]);
+    const ctxJson = ctx ? diagnosticContext_(ctx) : '';
+    const textCell=v=>typeof v==='string'&&v.charAt(0)==='='?"'"+v:v;
+    _sysLogSheet.appendRow([new Date(), ENGINE_VERSION, sev, code || '', fn || '', message, ctxJson, EXEC_ID_].map(textCell));
     const last = _sysLogSheet.getLastRow();
     if (last > maxRows + 25) _sysLogSheet.deleteRows(2, last - maxRows - 1); // trim oldest, keep header
   } catch (e) {
-    try { console.error(`[slog_ fallback] ${sev} ${code} ${fn}: ${message} :: logger failed: ${e && e.message}`); } catch (e2) { /* nothing left to do */ }
+    _sysLogUnavailable_=true;
+    try { diagnosticConsole_('error', `[slog_ fallback] ${sev} ${code} ${fn}: ${message} :: logger failed: ${e && e.message}`); } catch (e2) { /* nothing left to do */ }
   }
 }
 
@@ -288,7 +331,7 @@ const BLOCK_SPECS_ = Object.freeze({
     COVERAGE: { t: 'string', d: 'Leave Coverage', req: false, help: 'Leave-coverage view tab. Blank = "Leave Coverage".' },
     INTEGRITY: { t: 'string', d: 'Integrity Log', req: false, help: 'Integrity-scan log tab. Blank = "Integrity Log".' },
     SNAPSHOTS: { t: 'string', d: '_Snapshots', req: false, help: 'Hidden snapshot/restore tab. Blank = "_Snapshots".' },
-    WELCOME: { t: 'string', d: 'Welcome Page', req: false, help: 'The Welcome Page / dashboard tab (the front page with the title banner + Department Statistics). Blank = "Welcome Page". A leading emoji is matched automatically, so "👋 Welcome Page" works even at the default; set the exact name here only if you renamed it to something else. Used so the publish protects its title block (F6:W7 reads differently public vs internal) and force-mirrors the header cells (F40:H41, AE6) from the internal.' },
+    WELCOME: { t: 'string', d: 'Welcome Page', req: false, help: 'The Welcome Page / dashboard tab (the front page with the title banner + Department Statistics). Blank = "Welcome Page". A leading emoji is matched automatically, so "👋 Welcome Page" works even at the default; set the exact name here only if you renamed it to something else. Published as a complete snapshot of the internal sheet: the full canvas, title, dimensions and formatting. The public F6:W7 title block is the sole exception and remains unchanged; other keep ranges do not apply to this sheet.' },
     PATROL_FORM_RESPONSES: { t: 'string', d: '', req: false, aka: 'PATROL_RESPONSES', help: 'The PATROL Google Form\'s responses tab. BLANK = patrol-form sync OFF (the manual Patrol Log tab still works). Point this at the tab your own linked patrol form writes to; each new submission credits its patrol time to the matching member.' },
     PATROL_LOG: { t: 'string', d: 'Patrol Log', req: false, help: 'Manual Patrol Log tracker tab (like the LOA Tracker). Enter Unique ID + start/end date + start/end time; the engine auto-fills member info, computes TOTAL TIME, credits the hours to the roster, and sorts Pending → Flagged → Processed. BLANK = OFF. Activates only if a tab with this name exists.' },
     SIGNUPS: { t: 'string', d: 'Roster Signups', req: false, help: 'Roster Signup REVIEW tab (like the LOA Tracker): the engine adds field-matched form submissions here (from SIGNUP_FORM_RESPONSES) for admins to review — STATUS + NOTES are admin-owned. Lay it out with a header row (NAME / OOC NAME / UNIQUE ID / DOB / EMAIL / STATUS / NOTES…) anywhere in the top rows. Approving adds the member to a slot and writes their private details to the Internal Roster.' },
@@ -411,7 +454,7 @@ const BLOCK_SPECS_ = Object.freeze({
   } },
   PUBLISH: { type: 'kv', help: 'Public-roster publishing. Cells on the PUBLIC copy that must never be overwritten. On a SAME-SHAPE (wholesale) tab, a destination cell containing a FORMULA is left alone automatically (its own live date/time/counters keep recalculating). On a HEADER-MATCHED tab (public layout differs), a mirrored column always receives the internal VALUE — even over a formula — so stale copied formulas heal; protect a deliberate public formula there with a KEEP_RANGES entry.', keys: {
     NEVER_PUBLISH: { t: 'list', d: 'EMAIL, DATE OF BIRTH, DOB, PHONE, ADDRESS', req: false, help: 'Column headers whose data is NEVER copied to the public roster, and is wiped there if a tab copy brought it along. Matched case/space-insensitively as a substring, except CID and DOB which must match exactly. Remove an entry to publish that column (e.g. drop "UNIQUE ID" if members should see IDs).' },
-    KEEP_RANGES: { t: 'list', d: 'Welcome Page!F6:W7, Member Information!D3:H3', req: false, help: 'Comma-separated Tab!Range entries the publish never writes to, e.g. "Welcome Page!F6:W7, Welcome Page!A1". Use * as the tab name to apply a range to every tab.' },
+    KEEP_RANGES: { t: 'list', d: 'Member Information!D3:H3', req: false, help: 'Comma-separated Tab!Range entries the publish never writes to, e.g. "Member Information!D3:H3". The Welcome Page preserves only its public F6:W7 title block and ignores other exceptions. Use * as the tab name to apply a range to every tab.' },
     FORCE_RANGES: { t: 'list', d: 'Welcome Page!F40:H40, Welcome Page!F41:H41, Welcome Page!AE6', req: false, help: 'The OPPOSITE of KEEP_RANGES: comma-separated Tab!Range entries the publish ALWAYS mirrors from the internal, even when the public cell holds a formula. A self-contained formula (like a NOW() clock) is copied as-is so it keeps ticking; a formula that references another sheet is copied as its computed VALUE so it can\'t break on the public file. Use * as the tab name to apply a range to every tab.' },
   } },
   PATROL: { type: 'kv', help: 'Patrol-log form → member hours. Each new submission on the [SHEETS].PATROL_FORM_RESPONSES tab credits its patrol time to the matching member\'s HOURS. Column keywords match your form\'s question headers (header CONTAINS the keyword, case/space-proof). OFF until [SHEETS].PATROL_FORM_RESPONSES is set.', keys: {
@@ -784,6 +827,18 @@ function validateConfig_(raw) {
     if (cyclic) problems.push({ sev: 'WARN', code: 'E-103', key: '[STATUS_RULES]', value: 'cyclic transitions', type: 'rules', expected: 'no Source→Target cycles — the engine caps iteration and still converges, but the outcome may surprise you' });
   })();
 
+  // Hand-edited embed rows must have the shape the Settings builder consumes.
+  (c.tables.EMBEDS || []).forEach((row) => {
+    try {
+      const template = JSON.parse(String(row.Json || ''));
+      if (!template || typeof template !== 'object' || Array.isArray(template)) throw new Error('object required');
+      if (template.fields != null && (!Array.isArray(template.fields) || template.fields.some((f) => !f || typeof f !== 'object' || Array.isArray(f)))) throw new Error('field objects required');
+    } catch (e) {
+      problems.push({ sev: 'ERROR', code: 'E-103', key: `[EMBEDS].${row.Event || '(blank)'}`, value: row.Json,
+        type: 'json', expected: 'a JSON object with an optional fields array of objects' });
+    }
+  });
+
   // [RANKS] — explicit rank/divider list (only applied when [ROSTER_LAYOUT].DIVIDER_MODE = EXPLICIT_LIST)
   c.tables.RANKS.forEach((row) => {
     if (!row.Value && !row.Kind) return;
@@ -932,7 +987,7 @@ function cfg_() {
   let raw = null, sheet = null, fromCache = false;
   try { // cross-execution cache first — skips BOTH the tab lookup and the config-sheet read on a hit
     const hit = CacheService.getDocumentCache().get(CFG_CACHE_KEY_);
-    if (hit) { raw = JSON.parse(hit); fromCache = true; }
+    if (hit) { const cached = JSON.parse(hit); if (cached && typeof cached === 'object' && !Array.isArray(cached)) { raw = cached; fromCache = true; } }
   } catch (e) { /* cache unavailable/corrupt → fall through to the sheet */ }
   if (!fromCache) {
     sheet = findConfigSheet_();
@@ -947,9 +1002,9 @@ function cfg_() {
   if (hasTab && errors.length) {
     const list = errors.slice(0, 8).map((p) => `${p.code} ${p.key} = "${p.value}" (want ${p.expected})`).join(' · ');
     const ae = new AppError('E-102', { n: errors.length, list }, { problems: errors.slice(0, 20) });
+    CFG_ERROR_ = ae; // notification templates can read CONFIG: memoize before entering diagnostics
     slog_('ERROR', 'E-102', 'cfg_', ae.message, ae.ctx);
     maybeErrorWebhook_(ae, 'cfg_'); // once per 5 min (throttled) — a broken config tab is exactly what the errors channel is for
-    CFG_ERROR_ = ae;
     throw ae;
   }
   problems.forEach((p) => slog_(p.sev === 'WARN' ? 'WARN' : 'INFO', p.code, 'cfg_', `${p.key} = "${p.value}" — expected ${p.expected}`));

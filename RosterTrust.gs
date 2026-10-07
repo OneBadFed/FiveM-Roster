@@ -200,9 +200,7 @@ function cpFixTriggers() {
 
 /** Capture current member data to the hidden snapshot tab. @return {{id, when, count}} */
 function cpTakeSnapshot() {
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) throw new Error('Another snapshot/restore is in progress — try again in a moment.');
-  try {
+  return cpWithLock_(()=>{
     const ss = SpreadsheetApp.getActive();
     const roster = ss.getSheetByName(CONFIG.sheets.roster);
     if (!roster) throw new Error(`Roster tab "${CONFIG.sheets.roster}" not found.`);
@@ -223,9 +221,7 @@ function cpTakeSnapshot() {
     cpPruneSnapshots_(sh);
     auditEvent_('snapshot', '', rows.length + ' members', '', '');
     return { id, when, count: rows.length };
-  } finally {
-    lock.releaseLock();
-  }
+  });
 }
 
 /** Keeps only the most recent TRUST.keepSnapshots snapshots. */
@@ -271,9 +267,7 @@ function cpListSnapshots() {
 function cpRestoreSnapshot(id) {
   const sid = String(id).trim();
   if (!sid) throw new Error('No snapshot specified.');
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(10000)) throw new Error('Another snapshot/restore is in progress — try again in a moment.');
-  try {
+  return cpWithLock_(()=>{
     const ss = SpreadsheetApp.getActive();
     const sh = ss.getSheetByName(TRUST.snapshotSheet);
     const roster = ss.getSheetByName(CONFIG.sheets.roster);
@@ -283,11 +277,12 @@ function cpRestoreSnapshot(id) {
     const snapRows = v.filter((r) => String(r[0]).trim() === sid);
     const restored = cpApplyRestore_(roster, snapRows);
     if (!restored) throw new Error('Nothing restored — snapshot not found or no matching slots.');
+    if (typeof publishMarkDirty_ === 'function') publishMarkDirty_();
+    if (typeof publishTableSettled_ === 'function') publishTableSettled_(roster.getName());
+    if (typeof deferWork_ === 'function') ['academy','groups','dashboard'].forEach(deferWork_);
     auditEvent_('restore', '', restored + ' members', '', '');
-    return { restored };
-  } finally {
-    lock.releaseLock();
-  }
+    return { restored, skipped:Math.max(0,snapRows.length-restored) };
+  });
 }
 
 /** Injectable core: build snapshot rows from the given roster (no writes; testable). */
@@ -316,29 +311,36 @@ function cpSnapshotRows_(roster, id, when) {
 
 /** Injectable core: write snapshot rows back into the roster by row (testable). @return {number} restored. */
 function cpApplyRestore_(roster, snapRows) {
+  snapRows.forEach(row=>{if(!row[8])return;try{const extra=JSON.parse(row[8]);if(!extra||typeof extra!=='object'||Array.isArray(extra))throw new Error('invalid extra fields');}catch(e){throw new AppError('E-504',{operation:'Snapshot restore',completed:0,reason:'Snapshot extra fields are malformed. No restore writes were started.'});}});
+  if (typeof assertNoPendingRosterRecovery_ === 'function') assertNoPendingRosterRecovery_(roster,'Snapshot restore');
   const RC = rosterCols_(roster);
-  const byHeader = {}; columnRegistry_(roster).forEach((c) => { byHeader[c.header.toUpperCase()] = c.col; });
+  const byHeader = {}; columnRegistry_(roster).filter((c) => c.klass === 'MEMBER').forEach((c) => { byHeader[c.header.toUpperCase()] = c.col; });
   // Restore by member IDENTITY: map the CURRENT roster Discord IDs → row, so a row insert/delete since the
   // snapshot can't drop a member's data onto a different member's row.
   const last = roster.getLastRow();
-  const idToRow = {};
+  const idToRow = Object.create(null);
   let rankCache = null; // ranks batch-read once — a restore never writes the RANK column, so the cache can't go stale
   if (last >= CONFIG.rosterStartRow) {
     const n = last - CONFIG.rosterStartRow + 1;
     const ids = roster.getRange(CONFIG.rosterStartRow, RC.discord, n, 1).getDisplayValues();
-    for (let k = 0; k < ids.length; k++) { const id = String(ids[k][0]).trim(); if (id && !(id in idToRow)) idToRow[id] = CONFIG.rosterStartRow + k; }
+    for (let k = 0; k < ids.length; k++) { const id = String(ids[k][0]).trim(); if (id) idToRow[id] = (id in idToRow) ? null : CONFIG.rosterStartRow + k; }
     rankCache = roster.getRange(CONFIG.rosterStartRow, RC.rank, n, 1).getDisplayValues();
   }
   let restored = 0;
   for (let i = 0; i < snapRows.length; i++) {
     const snapId = String(snapRows[i][4]).trim();
+    if (snapId && snapId in idToRow && idToRow[snapId] === null) { log_('cpApplyRestore_', `member ID ${snapId} is duplicated — skipped to avoid ambiguous restore`); continue; }
     // Prefer the row that currently holds this member's ID; else the stored row, but only if it's safe (empty / same ID).
     let row = (snapId && idToRow[snapId]) ? idToRow[snapId] : -1;
     if (row === -1) {
       const storedRow = Number(snapRows[i][2]);
-      if (!(storedRow >= CONFIG.rosterStartRow)) continue;
+      if (!Number.isInteger(storedRow) || storedRow < CONFIG.rosterStartRow || storedRow > roster.getMaxRows()) continue;
       const rowId = String(roster.getRange(storedRow, RC.discord).getDisplayValue()).trim();
       if (rowId !== '' && rowId !== snapId) { log_('cpApplyRestore_', `snapshot row ${storedRow} now holds a different member — skipped to avoid overwrite`); continue; }
+      const rowName = String(roster.getRange(storedRow, RC.name).getDisplayValue()).trim();
+      if (rowName !== '' && (rowId === '' || snapId === '')) {
+        log_('cpApplyRestore_', `snapshot row ${storedRow} is occupied without a verifiable ID — skipped to avoid overwrite`); continue;
+      }
       row = storedRow;
     }
     const rank = (rankCache && row >= CONFIG.rosterStartRow && (row - CONFIG.rosterStartRow) < rankCache.length)
@@ -347,6 +349,7 @@ function cpApplyRestore_(roster, snapRows) {
     if (!isMemberSlot_(rank) || rank === '' || rank === 'Rank') continue;
     roster.getRange(row, RC.name).setValue(snapRows[i][3]);
     const idCell = roster.getRange(row, RC.discord); idCell.setNumberFormat('@'); idCell.setValue(snapRows[i][4]);
+    if (snapId) idToRow[snapId] = row;
     roster.getRange(row, RC.activity).setValue(snapRows[i][5]);
     const hrs = parseFloat(snapRows[i][6]);
     roster.getRange(row, RC.hours).setValue(isNaN(hrs) ? snapRows[i][6] : hrs);
@@ -361,7 +364,7 @@ function cpApplyRestore_(roster, snapRows) {
           if (/^\d{16,}$/.test(String(extra[h]))) cell.setNumberFormat('@'); // keep long IDs exact
           cell.setValue(extra[h]);
         });
-      } catch (e) { log_('cpApplyRestore_', e); }
+      } catch (e) { throw new AppError('E-504',{operation:'Snapshot restore',completed:restored,reason:diagnosticText_((e&&e.message)||e)}); }
     }
     restored++;
   }
@@ -641,9 +644,36 @@ function auditTypeLabel_(t) {
  * Mirror an audit entry to the AUDIT Discord channel. Webhook presence IS the opt-in (like the errors channel);
  * no webhook (or no admin-file access for this account) = silent no-op. Never throws into the edit that fired it.
  */
+function auditPublicValues_(sheetName,cellA1,type,oldV,newV) {
+  const hidden='[private value withheld]';
+  let privateEdit=false;
+  try {
+    const roles=CONFIG.sheets || {},name=norm_(sheetName),kind=String(type || '').toLowerCase();
+    privateEdit=kind==='signup' || [roles.signups,roles.signupForm,roles.form,roles.patrol].some(s=>s && norm_(s)===name) || name.indexOf('WEBHOOK')!==-1 || (typeof CONFIG_SHEET_NAME!=='undefined' && name===norm_(CONFIG_SHEET_NAME));
+    if(!privateEdit && cellA1 && /^[A-Z]+\d+(?::[A-Z]+\d+)?$/i.test(cellA1)) {
+      const sheet=SpreadsheetApp.getActive().getSheetByName(sheetName);
+      if(!sheet)privateEdit=true;
+      else {
+        const range=sheet.getRange(cellA1),first=range.getColumn(),width=range.getNumColumns();
+        const headerRow=sheetName===roles.roster?rosterCols_(sheet).headerRow:(typeof publishHeaderRow_==='function'?publishHeaderRow_(sheet):0);
+        if(!headerRow)privateEdit=true;
+        else {
+          const headers=sheet.getRange(headerRow,first,1,width).getDisplayValues()[0];
+          privateEdit=headers.some(h=>{
+            const label=norm_(h);
+            return (typeof publishSensitiveHeader_==='function' && publishSensitiveHeader_(h)) || /EMAIL|DATE OF BIRTH|\bDOB\b|PHONE|ADDRESS|OOC|SOCIAL SECURITY|\bSSN\b|PASSWORD|TOKEN|SECRET|API KEY/.test(label);
+          });
+        }
+      }
+    }
+  }catch(e){privateEdit=true;} // unreadable privacy context must never expose a raw value
+  const safe=v=>typeof diagnosticText_==='function'?diagnosticText_(v):String(v==null?'':v);
+  return {old:privateEdit?hidden:safe(oldV),new:privateEdit?hidden:safe(newV)};
+}
 function auditNotify_(editor, sheetName, cellA1, oldV, newV, type, member) {
   try {
     if (!webhookFor_('AUDIT')) return; // memoized per execution — cheap when unset
+    const values=auditPublicValues_(sheetName,cellA1,type,oldV,newV);oldV=values.old;newV=values.new;
     const fields = [];
     const add = (n, v) => { if (String(v == null ? '' : v).trim() !== '') fields.push({ name: n, value: clamp_(dash_(String(v)), 1000), inline: true }); };
     add('`👤` Editor', editor);

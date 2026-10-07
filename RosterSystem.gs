@@ -373,6 +373,7 @@ function buildMenus_(prefix) {
       .addItem('🚔 Sync Patrol Forms to Log', p + 'manualSyncPatrol')
       .addItem('📸 Capture & Reset Activity', p + 'weeklyResetWithHistory')
       .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
+      .addItem('🛠️ Recover Interrupted Transfer', p + 'recoverMemberMove')
       .addItem('🌐 Publish Public Roster', p + 'publishPublicRosterNow')
       .addSeparator()
       // Roster editing
@@ -400,7 +401,8 @@ function buildMenus_(prefix) {
 
 /** Simple trigger: builds the custom menus when the spreadsheet opens (bound mode). */
 function onOpen() {
-  buildMenus_('');
+  try { PropertiesService.getDocumentProperties().setProperty('RE_RUNTIME_MODE','BOUND'); } catch (e) { reportError_('onOpen.mode',e,false); }
+  try { buildMenus_(''); } catch (e) { reportError_('onOpen', e, false); }
 }
 
 /**
@@ -408,27 +410,29 @@ function onOpen() {
  * @param {string} libId - the identifier the template chose when adding the library (must match).
  */
 function onOpenLib(libId) {
+  try { const props=PropertiesService.getDocumentProperties(); props.setProperty('RE_LIBRARY_MODE','1'); props.setProperty('RE_RUNTIME_MODE','LIBRARY'); } catch (e) { reportError_('onOpenLib.mode',e,false); }
   const id = String(libId || '').trim();
   // F-022: the shim passes its own library identifier; menu targets are built with this prefix, so it MUST match the
   // identifier chosen when adding the library (the runbook fixes it to 'RE'). A blank/malformed value means the
   // template was misconfigured — fall back to 'RE' and leave a diagnostic breadcrumb instead of silently dead menus.
   if (!/^[A-Za-z][A-Za-z0-9_]*$/.test(id)) {
     try { console.warn(`onOpenLib received an invalid library identifier "${libId}"; falling back to 'RE'. Add the engine library with identifier RE (see ROSTER-ENGINE-V2-RUNBOOK).`); } catch (e) { /* nothing */ }
-    buildMenus_('RE.');
+    try { buildMenus_('RE.'); } catch (e) { reportError_('onOpenLib', e, false); }
     return;
   }
-  buildMenus_(id + '.');
+  try { buildMenus_(id + '.'); } catch (e) { reportError_('onOpenLib', e, false); }
 }
 
 /** Creates the installable triggers (form submit + daily check), replacing any duplicates. */
 function installTriggers() {
   runAction_('Install Triggers', () => {
+    const hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; // preflight before deleting any existing triggers
+    const failures = [];
     const keep = { onFormSubmit: true, processDailyLOAs: true, publishPublicRoster: true, publishOnChange: true, publishSweep: true };
     ScriptApp.getProjectTriggers().forEach((t) => {
       if (keep[t.getHandlerFunction()]) ScriptApp.deleteTrigger(t);
     });
     const ss = SpreadsheetApp.getActive();
-    const hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; // [SCHEDULE].NIGHTLY_HOUR — default 0 (midnight, the classic behavior)
     ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create();
     ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(hour).everyDays(1).create();
     // Public roster: near-live. An INSTALLABLE onEdit runs authorized (unlike the simple one) so it can write to the
@@ -442,11 +446,12 @@ function installTriggers() {
         ScriptApp.newTrigger('publishSweep').timeBased().everyMinutes(1).create();
         pubLine = '\n• Public roster: live on edit + row delete (1-min catch-up)';
       }
-    } catch (e) { log_('installTriggers.publish', e); }
+    } catch (e) { log_('installTriggers.publish', e); failures.push('public publishing triggers'); }
     // v1.0 — ONE installer: also (re)install the Extras triggers when that companion file is present (integrity scan,
     // coverage rebuild, cadence-aware hours reset). Guarded so a bound project WITHOUT RosterExtras.gs still installs core.
     let extrasLine = '';
-    try { if (typeof installExtrasTriggers_ === 'function') { const rd = installExtrasTriggers_(); extrasLine = `\n• Integrity scan (7am), coverage rebuild (6am)\n• Hours reset — ${rd}`; } } catch (e) { log_('installTriggers.extras', e); }
+    try { if (typeof installExtrasTriggers_ === 'function') { const rd = installExtrasTriggers_(); extrasLine = `\n• Integrity scan (7am), coverage rebuild (6am)\n• Hours reset — ${rd}`; } } catch (e) { log_('installTriggers.extras', e); failures.push('extras triggers'); }
+    if (failures.length) throw new AppError('E-504', {operation:'Trigger installation', completed:2, reason:'Core triggers installed, but '+failures.join(' and ')+' could not be fully installed. Review project triggers before retrying.'});
     logInfo_('installTriggers', `installed core triggers (daily hour ${hour})${extrasLine ? ' + extras' : ''}.`);
     SpreadsheetApp.getUi().alert(`✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})${pubLine}${extrasLine}`);
   });
@@ -717,7 +722,7 @@ function dashboardStats_(roster) {
   const tagByNorm = {}; (CONFIG.sectionCategories || []).forEach((t) => { tagByNorm[norm_(t.label)] = t.label; });
   Object.keys(CONFIG.dashboard.groups).forEach((g) => CONFIG.dashboard.groups[g].forEach((cat) => {
     const canon = tagByNorm[norm_(cat)];
-    if (canon) { groupOf[canon] = g; groupOf[cat] = g; }             // category entry (canonical + as-typed keys)
+    if (canon) { if (!(canon in groupOf)) groupOf[canon] = g; if (!(cat in groupOf)) groupOf[cat] = g; } // first matching group wins for sections too
     // EVERY entry ALSO registers as a rank match (first group listing it wins) — an entry that collides with a
     // [SECTION_TAGS] label can still be a real RANK ("Cadet" is both), and the old else-branch dropped that rank
     // role entirely: a Cadet then bucketed by their section divider (→ Members) and #training stayed 0. Same
@@ -741,7 +746,8 @@ function dashboardStats_(roster) {
       if (isMemberSlot_(rank) && !name) out.openSlots++;
       if (!isValidMemberValues_(rank, name)) continue;
       out.total++;
-      const hrs = parseHours_(block[i][RC.hours - 1]);
+      const parsedHours = parseHours_(block[i][RC.hours - 1]);
+      const hrs = Number.isFinite(parsedHours) ? Math.max(0, parsedHours) : 0;
       out.totalHours += hrs;
       if (hrs > 0) tops.push({ n: name, h: hrs }); // leaderboard candidates — zero-hour members never "lead"
       const st = String(block[i][RC.activity - 1]).trim();
@@ -963,12 +969,15 @@ function renderPromotions_(fullScan) {
   const P = PropertiesService.getDocumentProperties();
   let list; try { list = JSON.parse(P.getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
   if (!Array.isArray(list)) list = [];
+  list = list.filter((entry) => entry && typeof entry === 'object' && Number.isFinite(Number(entry.t)) && Number(entry.t) > 0 && typeof entry.n === 'string' && typeof entry.r === 'string');
   let known = null;
   if (!fullScan) { try { const v = JSON.parse(P.getProperty(PROMO_TABS_PROP_) || 'null'); known = Array.isArray(v) ? v : null; } catch (e) { known = null; } }
   const ss = SpreadsheetApp.getActive();
   const sheets = (known == null)
     ? ss.getSheets().filter((sh) => !sh.isSheetHidden() && !dashboardSkip_(sh.getName()))
     : known.map((n) => ss.getSheetByName(n)).filter(Boolean);
+  // The configured landing page must not disappear behind a stale discovery cache.
+  ss.getSheets().forEach((sheet) => { if (tabKey_(sheet.getName()) === tabKey_(CONFIG.sheets.welcome || 'Welcome Page') && !sheet.isSheetHidden() && sheets.indexOf(sheet) === -1) sheets.push(sheet); });
   const hits = [];
   sheets.forEach((sh) => {
     try { if (renderPromotionsOnSheet_(sh, list)) hits.push(sh.getName()); } catch (e) { logWarn_('renderPromotions_', String((e && e.message) || e)); }
@@ -1014,6 +1023,8 @@ function refreshDashboard_(fullRescan) {
     // non-owner's onEdit, transient Sheets error) or transiently writes 0 must not permanently drop a live tab;
     // a stale entry costs one cheap render per refresh and only the menu's full rescan rebuilds the set. Not
     // writing the property here also removes the read-modify-write race — only full scans and discovery add.
+    const welcomeKey = tabKey_(CONFIG.sheets.welcome || 'Welcome Page');
+    ss.getSheets().forEach((sheet) => { if (tabKey_(sheet.getName()) === welcomeKey && known.indexOf(sheet.getName()) === -1) known.push(sheet.getName()); });
     known.forEach((name) => {
       const sh = ss.getSheetByName(name);
       if (!sh || dashboardSkip_(name)) return; // deleted/renamed tabs are simply skipped (rescan cleans the list)
@@ -1135,40 +1146,48 @@ function refreshDashboard() {
  * -------------------------------------------------------------------- */
 const DEFER_PROP_ = 'DEFERRED_WORK';
 
-/** Queue a heavy rebuild. Cheap: one property write, no sheet access. */
-function deferWork_(key) {
-  try {
-    const p = PropertiesService.getDocumentProperties();
-    const cur = String(p.getProperty(DEFER_PROP_) || '|');
-    if (cur.indexOf('|' + key + '|') === -1) p.setProperty(DEFER_PROP_, cur + key + '|');
-  } catch (e) { /* best-effort: the nightly run rebuilds anyway */ }
+const DEFER_JOBS_ = ['academy','groups','dashboard','activity','signupOrder'];
+const DEFER_JOB_PREFIX_ = 'RE_DEFER_JOB:';
+const DEFER_HINT_PROP_ = 'RE_DEFER_PENDING';
+function deferredState_(fn) {
+  const lock=LockService.getDocumentLock()||LockService.getScriptLock(),held=lock.hasLock();
+  if(!held&&!lock.tryLock(1000))raise_('E-503');
+  try{return fn(PropertiesService.getDocumentProperties());}finally{if(!held)lock.releaseLock();}
 }
-
-/**
- * Run whatever is queued. BUILD FIRST, clear the flags AFTER each build succeeds — so a heavy rebuild cut short by
- * the simple-trigger budget (the editable group/Academy upserts can be big) leaves its flag SET, and the 1-minute
- * sweep re-runs it. (Clearing first lost the work on any timeout — an assignment edit then never reached the tabs
- * until a manual Build/Refresh.) An edit that lands DURING a rebuild re-sets the same flag; the rebuild already read
- * the current sheet so it's reflected, and clearing that flag is safe — a genuinely newer state re-queues next edit.
- */
+/** Each job owns a generation; a newer enqueue can never be cleared by an older build. */
+function deferWork_(key) {
+  if(DEFER_JOBS_.indexOf(key)===-1)throw new Error('Unknown deferred job: '+key);
+  try{return deferredState_(p=>{p.setProperty(DEFER_JOB_PREFIX_+key,JSON.stringify({token:Date.now()+':'+Math.random().toString(36).slice(2),attempts:0,next:0}));p.setProperty(DEFER_HINT_PROP_,'1');return true;});}
+  catch(e){log_('deferWork_',e);return false;}
+}
+function deferredJobState_(raw) {
+  try{const state=JSON.parse(raw);if(state&&typeof state.token==='string')return state;}catch(e){/* preserve malformed pending work for recovery */}
+  return {token:String(raw),attempts:0,next:0};
+}
 function runDeferredWork_() {
-  let pending = '';
-  try {
-    pending = String(PropertiesService.getDocumentProperties().getProperty(DEFER_PROP_) || '');
-    if (pending.replace(/\|/g, '') === '') return;
-  } catch (e) { return; }
-  const has = (k) => pending.indexOf('|' + k + '|') !== -1;
-  const done = [];
-  if (has('academy')) { try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); done.push('academy'); } catch (e) { log_('deferred.academy', e); } }
-  if (has('groups')) { try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); done.push('groups'); } catch (e) { log_('deferred.groups', e); } }
-  if (has('dashboard')) { try { refreshDashboard_(); done.push('dashboard'); } catch (e) { log_('deferred.dashboard', e); } }
-  if (has('activity')) { try { if (typeof buildActivityPanel_ === 'function') buildActivityPanel_(); done.push('activity'); } catch (e) { log_('deferred.activity', e); } }
-  try { // clear ONLY the flags whose rebuild actually completed (a throw/timeout leaves it queued for the sweep)
-    const p = PropertiesService.getDocumentProperties();
-    let cur = String(p.getProperty(DEFER_PROP_) || '|');
-    done.forEach((k) => { cur = cur.split('|' + k + '|').join('|'); });
-    if (cur.replace(/\|/g, '') === '') p.deleteProperty(DEFER_PROP_); else p.setProperty(DEFER_PROP_, cur);
-  } catch (e) { /* best-effort */ }
+  let snapshot;
+  try{snapshot=deferredState_(p=>{
+    const legacy=String(p.getProperty(DEFER_PROP_)||'');
+    if(!legacy&&!p.getProperty(DEFER_HINT_PROP_))return null; // idle sweep avoids reading the full property store
+    const all=p.getProperties();
+    DEFER_JOBS_.forEach(key=>{const prop=DEFER_JOB_PREFIX_+key;if(legacy.indexOf('|'+key+'|')!==-1&&!all[prop]){all[prop]=JSON.stringify({token:'legacy:'+Date.now(),attempts:0,next:0});p.setProperty(prop,all[prop]);}});
+    if(legacy){p.setProperty(DEFER_HINT_PROP_,'1');p.deleteProperty(DEFER_PROP_);}return all;
+  });}catch(e){log_('deferred.snapshot',e);return;}
+  if(!snapshot)return;
+  const jobs={academy:()=>{if(typeof buildAcademySheets_!=='function')throw new Error('Academy builder is unavailable.');return buildAcademySheets_();},groups:()=>{if(typeof buildGroupSheets_!=='function')throw new Error('Group builder is unavailable.');return buildGroupSheets_();},dashboard:()=>refreshDashboard_(),activity:()=>{if(typeof buildActivityPanel_!=='function')throw new Error('Activity builder is unavailable.');return buildActivityPanel_();},signupOrder:()=>{if(typeof sortSignupQueues_!=='function')throw new Error('Signup sorter is unavailable.');return sortSignupQueues_();}};
+  DEFER_JOBS_.forEach(key=>{
+    const prop=DEFER_JOB_PREFIX_+key,raw=snapshot[prop];if(!raw)return;
+    const state=deferredJobState_(raw);if(Number(state.next)>Date.now())return;
+    let failed=false;
+    try{const result=jobs[key]();if(result&&result.skipped&&result.skipped.length)throw new Error(result.skipped.length+' tab(s) could not be refreshed; see builder diagnostics.');}
+    catch(e){failed=true;log_('deferred.'+key,e);}
+    try{deferredState_(p=>{
+      const current=p.getProperty(prop);if(!current||deferredJobState_(current).token!==state.token)return;
+      if(!failed){p.deleteProperty(prop);if(DEFER_JOBS_.every(job=>!p.getProperty(DEFER_JOB_PREFIX_+job)))p.deleteProperty(DEFER_HINT_PROP_);return;}
+      const attempts=Math.min(10,(Number(state.attempts)||0)+1);
+      p.setProperty(prop,JSON.stringify({token:state.token,attempts,next:Date.now()+Math.min(900000,30000*Math.pow(2,attempts-1))}));
+    });}catch(e){log_('deferred.complete',e);}
+  });
 }
 
 const DERIVED_LAST_PROP_ = 'DERIVED_LAST_SYNC';
@@ -1398,7 +1417,7 @@ function onFormSubmit(e) {
     try {
       // F-036: if a response row disappeared during the settle window, the submission would vanish silently — log it.
       if (leaveForm && beforeLeave >= 2 && leaveForm.getLastRow() < beforeLeave) {
-        const who = (e && e.namedValues) ? String(JSON.stringify(e.namedValues)).slice(0, 300) : '(event data unavailable)';
+        const who = (e && e.range) ? 'event row '+e.range.getRow() : '(event row unavailable)';
         logWarn_('onFormSubmit', `a response row disappeared during the 2s settle window (rows ${beforeLeave} → ${leaveForm.getLastRow()}); a submission may not have synced. Submitted: ${who}`);
       }
       syncFormToTracker();
@@ -1483,13 +1502,9 @@ function styleFormResponses_(sheet) {
 /** Leveled logging helpers — filterable in Cloud Logging. Never pass secrets/URLs/tokens here. */
 // Phase 1: the console helpers now ALSO write coded rows to the hidden SYS Log (RosterConfig.gs slog_ —
 // failure-proof by contract), so every existing call site gains a persistent diagnostic trail for free.
-function log_(scope, err) {
-  console.error(`[${scope}] ${err?.stack ?? err}`);
-  const ae = (err instanceof AppError) ? err : null;
-  slog_(ae ? ae.sev : 'ERROR', ae ? ae.code : 'E-601', scope, ae ? ae.message : String((err && err.message) || err), ae ? ae.ctx : {});
-}
-function logWarn_(scope, msg) { console.warn(`[${scope}] ${msg}`); slog_('WARN', '', scope, msg); }
-function logInfo_(scope, msg) { console.info(`[${scope}] ${msg}`); slog_('INFO', '', scope, msg); }
+function log_(scope, err) { reportError_(scope,err,true); }
+function logWarn_(scope, msg) { diagnosticConsole_('warn', '['+scope+'] '+msg); slog_('WARN', '', scope, msg); }
+function logInfo_(scope, msg) { diagnosticConsole_('info', '['+scope+'] '+msg); slog_('INFO', '', scope, msg); }
 
 /**
  * Runs a user/trigger-invoked action with uniform handling: logs the real error
@@ -1502,7 +1517,9 @@ function runAction_(label, fn) {
   // INTERACTIVE-FIRST: every menu action is a human waiting — stamp the publisher's backoff so no NEW publish
   // pass starts underneath it (same priority cpWithLock_ and transfers get). The stamp expires on its own; any
   // pending publish rides the sweep right after. Long actions re-stamp implicitly if they call locked helpers.
-  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
+  if (label !== 'Open Control Panel') {
+    try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
+  }
   try {
     const result = fn();
     // Audit-log every menu/scheduled command that ran. Skip the UI-open ('Open Control Panel') as noise;
@@ -1513,10 +1530,7 @@ function runAction_(label, fn) {
     return result;
   } catch (err) {
     // Phase 1: every failure is CODED (brief Part B) — real values in the message, a fix hint, a SYS Log row.
-    const ae = (err instanceof AppError) ? err : wrapUnexpected_(label, err);
-    console.error(`[${label}] ${err?.stack ?? err}`);
-    slog_(ae.sev, ae.code, label, ae.message, ae.ctx);
-    maybeErrorWebhook_(ae, label); // Phase 3: optional errors channel (no-op unless WEBHOOK_ERRORS is set)
+    const ae = reportError_(label,err,true); // // Phase 3: optional errors channel (no-op unless WEBHOOK_ERRORS is set)
     try {
       SpreadsheetApp.getUi().alert(
         `⚠️ ${ae.code} — "${label}" stopped`,
@@ -2453,7 +2467,7 @@ function moveTableRecords_(sheet, start, sorted, width) {
     r._sourceRow = ++end;
     ensureRoomAboveCap_(sheet, end);
     const values = r.slice(); while (values.length < width) values.push('');
-    writeValuesSafe_(sheet, end, 1, [values], null);
+    if(writeValuesSafe_(sheet, end, 1, [values], null))throw new Error('Table append contains unwritable cells.');
   });
   const positions = []; for (let r = start; r <= end; r++) positions.push(r);
   sorted.forEach((r, i) => {
@@ -2539,7 +2553,7 @@ function sortTracker_(prepend, trackerSheet) {
     if (RC.discord) tracker.getRange(start, RC.discord, sorted.length, 1).setNumberFormat('@');
     // Merge-safe: a merged cell anywhere in the tracker's data rows would make a full-width setValues throw, and this
     // whole function is wrapped in a catch — so sorting would silently stop working.
-    writeValuesSafe_(tracker, start, 1, sorted, null);
+    if(writeValuesSafe_(tracker, start, 1, sorted, null))throw new Error('Tracker sort contains unwritable cells.');
     if (last > start + sorted.length - 1) tracker.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent(); // blank any now-unused trailing rows
 
     // Date formats + regenerated computed columns (batched setFormulas — only the columns that actually exist).
@@ -2556,7 +2570,7 @@ function sortTracker_(prepend, trackerSheet) {
     // Re-mark after all row moves/styles settle, even if an overlapping publish cleared the earlier flag.
     try { _pubDirtyMemo_ = false; publishMarkDirty_(); } catch (ig) {}
     try { if (typeof publishTableSettled_ === 'function') publishTableSettled_(tracker.getName()); } catch (ig) {} // preserve the framed blank tail and repair inherited row styling
-  } catch (e) { logWarn_('sortTracker_', 'tracker sort failed: ' + ((e && e.message) ? e.message : e)); }
+  } catch (e) { throw e; }
 }
 
 /* ======================================================================
@@ -2638,8 +2652,16 @@ function patrolFindRow_(roster, discord, callsign, idx) {
   const id = String(discord == null ? '' : discord).trim();
   if (id !== '') { // an ID was given — trust it, don't fall back to callsign
     if (!isValidId_(id)) return -1; // malformed ID → error (operator fixes it), not a callsign guess
-    for (let i = 0; i < n; i++) { if (isValidMemberValues_(X.ranks[i][0], X.names[i][0]) && String(X.ids[i][0]).trim() === id) return CONFIG.rosterStartRow + i; }
-    return -1; // valid ID but not on the roster → error, NOT a callsign fallback
+    if (!X.uniqueIds) {
+      X.uniqueIds = Object.create(null);
+      for (let i = 0; i < n; i++) {
+        if (!isValidMemberValues_(X.ranks[i][0], X.names[i][0])) continue;
+        const key = String(X.ids[i][0]).trim();
+        if (!key) continue;
+        X.uniqueIds[key] = Object.prototype.hasOwnProperty.call(X.uniqueIds,key) ? -1 : CONFIG.rosterStartRow + i;
+      }
+    }
+    return Object.prototype.hasOwnProperty.call(X.uniqueIds,id) ? X.uniqueIds[id] : -1; // duplicated IDs are unsafe too
   }
   const cs = norm_(callsign); // no ID → callsign fallback, but only if it uniquely identifies a member
   if (cs) {
@@ -2709,17 +2731,21 @@ function patrolMarkerCol_(sheet) {
 
 /**
  * Injectable core: credit each UNPROCESSED patrol-form row to the matching member's HOURS. Idempotency is DURABLE — a
- * dedup key is written to the "_Credited" column BEFORE the roster is touched and flushed, so a log can NEVER be credited
- * twice even if the run dies mid-row, setBackground throws, or the row's colour is later cleared/sorted. Rows with a bad
+ * a recovery record is written to the "_Credited" column BEFORE changing hours; an interrupted write resumes only
+ * from its recorded before/after totals. Rows with a bad
  * time or no matching member are painted red and RE-TRIED on the next run (so a later fix takes effect). Returns a summary.
  */
 function syncPatrolHours_(patrolSheet, roster, opts = {}) {
+  return withPatrolCreditLock_(() => syncPatrolHoursCore_(patrolSheet,roster,opts));
+}
+function syncPatrolHoursCore_(patrolSheet, roster, opts = {}) {
   const sendWebhooks = opts.sendWebhooks !== false;
   const summary = { credited: [], hoursAdded: 0, errored: 0, scanned: 0, flags: [] };
   const last = patrolSheet.getLastRow();
   if (last < 2) return summary; // header only
   const RC = rosterCols_(roster);
   const cols = patrolCols_(patrolSheet);          // resolve DATA columns by header keyword FIRST (before we add the marker col)
+  const rosterIndex = patrolRosterIndex_(roster); // identity snapshot reused under the shared credit lock
   const markCol = patrolMarkerCol_(patrolSheet);  // durable per-row dedup key column
   const width = patrolSheet.getLastColumn();       // now includes markCol
   const n = last - 1;
@@ -2730,6 +2756,13 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
   for (let i = 0; i < n; i++) {
     const marker = String(grid[i][markCol - 1] == null ? '' : grid[i][markCol - 1]).trim();
     const bg = String(bgs[i][0] || '').toLowerCase();
+    const pending = patrolCreditTransaction_(marker);
+    if (marker.indexOf(PATROL_IMPORT_TX_) === 0) throw new Error('This form has an unfinished Patrol Log import. Resume that import before switching to direct credit mode.');
+    if (pending) {
+      withPatrolCreditLock_(() => applyPatrolCreditTransaction_(patrolSheet.getRange(2+i,markCol),roster,RC,pending,rosterIndex));
+      summary.recovered = (summary.recovered || 0) + 1;
+      continue; // uncertain notification delivery is not replayed
+    }
     if (marker !== '' || bg === done) continue; // durably credited already → NEVER re-credit
     summary.scanned++;
     const rowIndex = 2 + i;
@@ -2740,22 +2773,19 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
     };
     const hours = patrolDuration_(cell(cols.start), cell(cols.end), cell(cols.duration));
     if (hours === null) { markErr('bad or missing time (unparseable, zero, or over the max)'); continue; }
-    const memberRow = patrolFindRow_(roster, cell(cols.discord), cell(cols.callsign));
+    const submittedId = cols.discord > 0 ? String(gridDisp[i][cols.discord-1] || '').trim() : '';
+    const memberRow = patrolFindRow_(roster, submittedId, cell(cols.callsign),rosterIndex);
     if (memberRow === -1) { markErr('no matching member (unknown Discord ID / callsign)'); continue; }
     try {
-      // 1) DURABLE dedup key FIRST (+ flush): once written, this log can never be credited again — even if the credit
-      //    below, the status recompute, or the green paint throws / is killed by the 6-min limit. Rare cost: a crash in
-      //    the tiny window before the credit lands drops that one credit (recoverable), which is far safer than a double.
-      patrolSheet.getRange(rowIndex, markCol).setValue('✓ ' + Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm'));
-      SpreadsheetApp.flush();
-      // 2) Credit the hours + recompute status.
-      const cur = parseHours_(roster.getRange(memberRow, RC.hours).getValue());
+      // Record intended totals before applying them; completion replaces the journal with the legacy done marker.
+      const rawHours = roster.getRange(memberRow, RC.hours).getValue();
+      const cur = rawHours === '' ? 0 : Number(rawHours);
+      if (!Number.isFinite(cur)) throw new Error('Roster HOURS must be numeric before patrol credits can be applied.');
       const next = Math.round((cur + hours) * 100) / 100;
-      roster.getRange(memberRow, RC.hours).setValue(next);
-      if (CONFIG.patrol.recompute) { try { updateStatusFromHours(roster, memberRow); } catch (e) { log_('syncPatrolHours_.recompute', e); } }
       const memberName = String(roster.getRange(memberRow, RC.name).getDisplayValue()).trim();
       const memberId = String(roster.getRange(memberRow, RC.discord).getDisplayValue()).trim();
-      if (typeof auditEvent_ === 'function') { try { auditEvent_('patrol', String(cur), String(next), roster.getRange(memberRow, RC.hours).getA1Notation(), memberName); } catch (e) { /* best-effort */ } }
+      startPatrolCreditTransaction_(patrolSheet.getRange(rowIndex,markCol),roster,RC,[{id:memberId,before:cur,after:next}],
+        '✓ '+Utilities.formatDate(new Date(),ssTz_(),'yyyy-MM-dd HH:mm'),rosterIndex);
       patrolSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done);
       const startDisp = cols.start > 0 ? String(gridDisp[i][cols.start - 1] || '') : '';
       const endDisp = cols.end > 0 ? String(gridDisp[i][cols.end - 1] || '') : '';
@@ -2763,7 +2793,10 @@ function syncPatrolHours_(patrolSheet, roster, opts = {}) {
       const memberCall = RC.unit ? String(roster.getRange(memberRow, RC.unit).getDisplayValue()).trim() : '';
       summary.credited.push({ name: memberName, rank: memberRank, callsign: memberCall, hours: hours, total: next, discord: memberId, start: startDisp, end: endDisp });
       summary.hoursAdded += hours;
-    } catch (e) { log_('syncPatrolHours_.credit', e); } // dedup key already written → this log is never re-credited (a partial failure is logged, not doubled)
+    } catch (e) {
+      reportError_('syncPatrolHours_.credit',e,true);
+      throw new AppError('E-504',{operation:'Patrol hours sync',completed:summary.credited.length,reason:'A credit could not finish. Its recovery marker is retained; inspect the form and roster HOURS before retrying.'});
+    }
   }
   // Notifications fire AFTER all writes (never block a credit). Off by default (the [DISCORD].PATROL_LOGGED opt-in).
   if (sendWebhooks && CONFIG.notify && CONFIG.notify.patrolLogged) {
@@ -2809,6 +2842,50 @@ function syncPatrolHours() {
  * The caller then runs refreshPatrolLog_: autofill, evaluation, marker-reconciled crediting and the sort all
  * happen through the log's own hardened path. @return {{added:number, skipped:Array<{row:number,reason:string}>}}
  */
+const PATROL_IMPORT_TX_ = 'RE_IMPORT_V1:';
+const PATROL_IMPORT_LAYOUT_KEYS_ = ['mark','discord','name','unit','notes','startDate','startTime','endDate','endTime'];
+function patrolImportTransaction_(text) {
+  text = String(text || '').trim();
+  if (text.indexOf(PATROL_IMPORT_TX_) !== 0) return null;
+  let tx; try { tx = JSON.parse(text.slice(PATROL_IMPORT_TX_.length)); } catch (e) { throw new Error('Patrol import recovery record is malformed.'); }
+  if (!tx || tx.version !== 1 || typeof tx.book !== 'string' || !tx.book || !Number.isInteger(tx.sheet) || !Number.isInteger(tx.row) || tx.row < 1 || !Number.isInteger(tx.mark) || tx.mark < 1 || !tx.layout || typeof tx.layout !== 'object' || Array.isArray(tx.layout) || typeof tx.timestamp !== 'number' || !Number.isFinite(tx.timestamp) || tx.timestamp < 0 || typeof tx.token !== 'string' || !/^[a-zA-Z0-9-]+$/.test(tx.token) || !Array.isArray(tx.fields) || !tx.fields.length || tx.fields.length > 20) throw new Error('Patrol import recovery record has an invalid shape.');
+  const seen = new Set();
+  tx.fields.forEach(f => { if (!Array.isArray(f) || !Number.isInteger(f[0]) || f[0] < 1 || f[0] === tx.mark || seen.has(f[0]) || !(typeof f[1] === 'string' || (f[1] && typeof f[1].date === 'number' && Number.isFinite(f[1].date)))) throw new Error('Patrol import recovery fields are invalid.'); seen.add(f[0]); });
+  return tx;
+}
+/** Retry a partial form import by its durable destination token, including after a row sort. */
+function applyPatrolImportTransaction_(formMarker, logSheet, PC, tx) {
+  if (tx.book !== logSheet.getParent().getId() || tx.sheet !== logSheet.getSheetId() || tx.mark !== PC.mark) throw new Error('Patrol import destination/layout changed. Inspect the pending form marker before retrying.');
+  if (tx.row < CONFIG.patrolStartRow || PATROL_IMPORT_LAYOUT_KEYS_.some(k => tx.layout[k] !== Number(PC[k] || 0))) throw new Error('Patrol import destination headers/layout changed. Restore the layout or inspect the recovery record.');
+  const start = CONFIG.patrolStartRow, last = Math.min(logSheet.getLastRow(),framedTable_(logSheet,start).cap-1);
+  const tokenEnd = '|IMPORT:'+tx.token, pendingEnd = '|IMPORT_PENDING:'+tx.token;
+  let at = -1;
+  if (last >= start) {
+    logSheet.getRange(start,PC.mark,last-start+1,1).getDisplayValues().forEach((r,i) => {
+      const text = String(r[0] || '');
+      if (text.endsWith(tokenEnd) || text.endsWith(pendingEnd)) { if (at !== -1) throw new Error('Patrol import destination token is duplicated.'); at = start+i; }
+      else if (text.indexOf(PATROL_CREDIT_TX_) === 0 && text.indexOf(tokenEnd) !== -1) throw new Error('Patrol credit recovery must finish before acknowledging this import.');
+    });
+  }
+  if (at === -1) at = tx.row;
+  ensureRoomAboveCap_(logSheet,at);
+  const markCell = logSheet.getRange(at,PC.mark), liveMark = String(markCell.getDisplayValue() || '');
+  if (liveMark && !liveMark.endsWith(tokenEnd) && !liveMark.endsWith(pendingEnd)) throw new Error('Patrol import recovery row is occupied by another submission.');
+  if (tx.fields.some(f => f[0] > PC.width)) throw new Error('Patrol import recovery columns no longer exist.');
+  const fields = tx.fields.map(f => {
+    const cell = logSheet.getRange(at,f[0]), current = cell.getValue(), desired = typeof f[1] === 'string' ? f[1] : new Date(f[1].date);
+    const same = current instanceof Date && desired instanceof Date ? current.getTime() === desired.getTime() : String(current) === String(desired);
+    if (current !== '' && !same) throw new Error('Patrol import recovery conflict: a destination field was edited after the interruption.');
+    return {cell,desired,same};
+  });
+  if (!liveMark) { markCell.setNumberFormat('@').setValue('||'+(tx.timestamp || '')+pendingEnd); SpreadsheetApp.flush(); }
+  fields.forEach(f => { if (!f.same) { if (typeof f.desired === 'string') f.cell.setNumberFormat('@'); f.cell.setValue(typeof f.desired === 'string' && f.desired.startsWith('=') ? "'"+f.desired : f.desired); } });
+  SpreadsheetApp.flush();
+  if (!liveMark || liveMark.endsWith(pendingEnd)) { markCell.setNumberFormat('@').setValue('||'+(tx.timestamp || '')+tokenEnd); SpreadsheetApp.flush(); }
+  formMarker.setNumberFormat('@').setValue('✓ Imported '+tx.token+' → '+logSheet.getName());
+  SpreadsheetApp.flush();
+  return at;
+}
 function syncPatrolFormToLog_(formSheet, logSheet, roster) {
   const out = { added: 0, skipped: [] };
   const cols = patrolCols_(formSheet);
@@ -2837,6 +2914,7 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
   const idx = roster ? patrolRosterIndex_(roster) : null; // one snapshot serves every bad-ID resolution below
   const n = last - 1;
   const grid = formSheet.getRange(2, 1, n, width).getValues();
+  const gridDisp = formSheet.getRange(2, 1, n, width).getDisplayValues();
   const bgs = formSheet.getRange(2, 1, n, 1).getBackgrounds();
   const done = String(CONFIG.bg.done).toLowerCase();
   // Identity-free log slots first, then append past the end (same free-row rule the log's sort/compaction uses).
@@ -2848,7 +2926,7 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
     const blk = logSheet.getRange(start, 1, logLast - start + 1, PC.width).getDisplayValues();
     for (let r = 0; r < blk.length; r++) {
       const has = (PC.discord && String(blk[r][PC.discord - 1] || '').trim()) || (PC.name && String(blk[r][PC.name - 1] || '').trim());
-      if (!has) free.push(start + r);
+      if (!has && (!PC.mark || !String(blk[r][PC.mark-1] || '').trim())) free.push(start + r);
     }
   }
   const dOnly = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate());
@@ -2858,6 +2936,14 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
     const rowIndex = 2 + i;
     try {
       const marker = String(grid[i][markCol - 1] == null ? '' : grid[i][markCol - 1]).trim();
+      const pendingImport = patrolImportTransaction_(marker);
+      if (pendingImport) {
+        const recoveredRow = applyPatrolImportTransaction_(formSheet.getRange(rowIndex,markCol),logSheet,PC,pendingImport);
+        const freeIndex = free.indexOf(recoveredRow); if (freeIndex !== -1) free.splice(freeIndex,1);
+        append = Math.max(append,recoveredRow+1);
+        out.recovered = (out.recovered || 0)+1; continue;
+      }
+      if (marker.indexOf(PATROL_CREDIT_TX_) === 0) throw new Error('This patrol form row has an unfinished direct credit. Recover it in its original credit mode before importing it.');
       const bg = String(bgs[i][0] || '').toLowerCase();
       const already = (marker !== '' || bg === done); // already transferred (or credited by the direct path) → no re-ingest; still parsed below so its submission stamp can BACKFILL the log's sort recency
       const cell = (c) => (c > 0 && c <= width) ? grid[i][c - 1] : '';
@@ -2877,7 +2963,7 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
       // name + callsign match; if even that fails, the row still lands with NAME/UNIT filled and the ID left
       // blank — the log's own failsafe gets another chance on refresh, and an unresolved row is FLAGGED there
       // with the reason instead of crashing the sync against the ID column's validation rule.
-      let id = String(cell(cols.discord) == null ? '' : cell(cols.discord)).trim();
+      let id = cols.discord > 0 ? String(gridDisp[i][cols.discord-1] || '').trim() : '';
       const csRaw = String(cell(cols.callsign) == null ? '' : cell(cols.callsign)).trim(); // often "2519 | L. Forger"
       const unit = csRaw.indexOf('|') !== -1 ? csRaw.split('|')[0].trim() : csRaw;
       const csName = csRaw.indexOf('|') !== -1 ? csRaw.split('|').slice(1).join('|').trim() : '';
@@ -2895,26 +2981,24 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
         if (id && isValidId_(id) && subMs) backfill.push({ key: id + '|' + sd.getTime() + '|' + ed.getTime(), ts: subMs });
         continue;
       }
-      // Durable marker + flush BEFORE the transfer: once stamped, this submission can never be ingested twice.
-      formSheet.getRange(rowIndex, markCol).setValue('✓ ' + Utilities.formatDate(new Date(), ssTz_(), 'yyyy-MM-dd HH:mm') + ' → ' + logSheet.getName());
-      SpreadsheetApp.flush();
       const at = free.length ? free.shift() : append++;
       ensureRoomAboveCap_(logSheet, at); // a submission grows the log INSIDE the band — never onto the closing bar
-      logSheet.getRange(at, PC.discord).setNumberFormat('@').setValue(id);
-      if (PC.name && nm) logSheet.getRange(at, PC.name).setValue(nm);     // identity breadcrumbs: the log's failsafe
-      if (PC.unit && unit) logSheet.getRange(at, PC.unit).setValue(unit); // resolves name+unit rows on refresh
-      logSheet.getRange(at, PC.startDate).setValue(dOnly(sd));
-      logSheet.getRange(at, PC.startTime).setValue(tOnly(sd));
-      logSheet.getRange(at, PC.endDate).setValue(dOnly(ed));
-      logSheet.getRange(at, PC.endTime).setValue(tOnly(ed));
-      if (PC.notes && F.narrative) { const nar = String(cell(F.narrative) || '').trim(); if (nar) logSheet.getRange(at, PC.notes).setNumberFormat('@').setValue(clamp_(nar, 1000)); } // the patrol write-up → the log's NOTES
-      if (PC.mark && subMs) logSheet.getRange(at, PC.mark).setNumberFormat('@').setValue('||' + subMs); // marker grammar hours|memberId|submissionMs — no credit yet, just the sort recency
+      if (!PC.mark) throw new Error('Patrol Log needs a hidden credit-marker column for safe imports.');
+      const fields = [[PC.discord,id],[PC.startDate,{date:dOnly(sd).getTime()}],[PC.startTime,{date:tOnly(sd).getTime()}],[PC.endDate,{date:dOnly(ed).getTime()}],[PC.endTime,{date:tOnly(ed).getTime()}]];
+      if (PC.name && nm) fields.push([PC.name,nm]);
+      if (PC.unit && unit) fields.push([PC.unit,unit]);
+      if (PC.notes && F.narrative) { const nar = String(cell(F.narrative) || '').trim(); if (nar) fields.push([PC.notes,clamp_(nar,1000)]); }
+      const layout = {}; PATROL_IMPORT_LAYOUT_KEYS_.forEach(k => { layout[k] = Number(PC[k] || 0); });
+      const tx = {version:1,book:logSheet.getParent().getId(),sheet:logSheet.getSheetId(),row:at,mark:PC.mark,layout,token:Utilities.getUuid(),timestamp:subMs,fields};
+      const encoded = PATROL_IMPORT_TX_+JSON.stringify(tx); patrolImportTransaction_(encoded);
+      formSheet.getRange(rowIndex,markCol).setNumberFormat('@').setValue(encoded); SpreadsheetApp.flush();
+      applyPatrolImportTransaction_(formSheet.getRange(rowIndex,markCol),logSheet,PC,tx);
       try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done); } catch (e2) { /* best-effort */ }
       out.added++;
     } catch (err) { // one bad row must never kill the sync (e.g. an unexpected validation reject)
       log_('syncPatrolFormToLog_', err);
       try { formSheet.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error); } catch (e2) { /* best-effort */ }
-      out.skipped.push({ row: rowIndex, reason: 'unexpected error — row marked red; see SYS Log' });
+      throw new AppError('E-504',{operation:'Patrol form import',completed:out.added,reason:'A submission could not finish. Its recovery marker is retained; inspect the form and log before retrying.'});
     }
   }
   // BACKFILL: log rows transferred before the submission stamp existed can only sort by start time — stamp them once
@@ -2938,7 +3022,8 @@ function syncPatrolFormToLog_(formSheet, logSheet, roster) {
           if (!lid || !lsd || !led) continue;
           const q = byKey[lid + '|' + lsd.getTime() + '|' + led.getTime()];
           if (q && q.length) { // duplicate identical logs each consume one stamp
-            logSheet.getRange(start + i2, PC.mark).setNumberFormat('@').setValue([parts[0] || '', parts[1] || '', String(q.shift())].join('|'));
+            const stamped = [parts[0] || '', parts[1] || '', String(q.shift())]; if (parts[3]) stamped.push(parts[3]);
+            logSheet.getRange(start + i2, PC.mark).setNumberFormat('@').setValue(stamped.join('|'));
             out.backfilled = (out.backfilled || 0) + 1;
           }
         }
@@ -2968,7 +3053,10 @@ function syncPatrolFormNow_() {
   if (!lock.tryLock(30000)) return { locked: true };
   let res;
   try { res = syncPatrolFormToLog_(form, log, ss.getSheetByName(CONFIG.sheets.roster)); } finally { lock.releaseLock(); }
-  try { refreshPatrolLog_(); } catch (e) { log_('syncPatrolFormNow_.refresh', e); } // autofill + credit + flag + sort, the log's own path
+  try { refreshPatrolLog_(); } catch (e) {
+    reportError_('syncPatrolFormNow_.refresh', e, true);
+    throw new AppError('E-504', {operation:'Patrol form sync', completed:res && res.added || 0, reason:'Submissions were transferred, but log evaluation, crediting or sorting failed. Inspect the Patrol Log before retrying.'});
+  }
   try { if (typeof buildActivityPanel_ === 'function') buildActivityPanel_(); } catch (e) { log_('syncPatrolFormNow_.activity', e); } // refreshPatrolLog_ queued it; build now so the board shows the submission immediately (queue stays as the sweep backstop)
   return { mode: 'log', res };
 }
@@ -3108,6 +3196,8 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
     const rawv = rowData ? ((c) => c ? rowData.vals[c - 1] : '')
       : ((c) => c ? sheet.getRange(row, c).getValue() : '');
     const priorMark = rowData ? rowData.mark : null;
+    const liveMarker = priorMark == null && PC.mark ? String(sheet.getRange(row,PC.mark).getDisplayValue()) : String(priorMark || '');
+    if (liveMarker.indexOf('|IMPORT_PENDING:') !== -1) throw new Error('Patrol import is incomplete. Resume form sync before processing this log.');
     let idv = disp(PC.discord);
     const anyInput = !!(idv || rawv(PC.startDate) !== '' || rawv(PC.startTime) !== '' || rawv(PC.endDate) !== '' || rawv(PC.endTime) !== '');
     if (!anyInput) { reconcilePatrolCredit_(sheet, row, PC, roster, idx.RC, null, idx, priorMark); return; } // empty/deleted row → reverse any prior credit, stay blank
@@ -3148,7 +3238,8 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
     const hours = (startDT && endDT) ? Math.round(((endDT.getTime() - startDT.getTime()) / 3600000) * 100) / 100 : null;
     const P = CONFIG.patrol;
     const curStatus = PC.status ? disp(PC.status) : '';
-    const setStatus = (s) => { if (PC.status && norm_(curStatus) !== norm_(s)) sheet.getRange(row, PC.status).setValue(s); };
+    let nextStatus = null;
+    const setStatus = (s) => { if (PC.status && norm_(curStatus) !== norm_(s)) nextStatus = s; };
     const setNote = (t) => { if (PC.notes && disp(PC.notes) !== t) sheet.getRange(row, PC.notes).setValue(t); };
 
     // Five-state model. ADMIN-OWNED terminals (Approved / Denied) are respected — the engine never overwrites them:
@@ -3187,6 +3278,7 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
       }
     }
     reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, priorMark);
+    if (nextStatus !== null) sheet.getRange(row,PC.status).setValue(nextStatus); // never announce Processed before credit succeeds
     // A status TRANSITION this pass → ONE Discord embed (processed = credited, flagged = why). Skipped when the status
     // didn't change, so the nightly sweep and ordinary re-edits never re-post. Sandbox tabs (🧪 — the DevQA suite)
     // never notify: every test row is a transition, and a test run must not post to the real channel.
@@ -3199,57 +3291,118 @@ function processPatrolLog_(sheet, row, PC, roster, idx, rowData) {
         });
       } catch (e2) { log_('processPatrolLog_.notify', e2); }
     }
-  } catch (e) { log_('processPatrolLog_', e); }
+    return true;
+  } catch (e) { log_('processPatrolLog_', e); return false; }
+}
+
+/** Serialize financial writes without releasing a lock owned by the calling action. */
+function withPatrolCreditLock_(fn) {
+  const lock = LockService.getScriptLock();
+  const owned = lock.hasLock();
+  if (!owned && !lock.tryLock(1000)) throw new AppError('E-503', {});
+  let failed = false;
+  try { return fn(); } catch (e) { failed = true; throw e; }
+  finally { if (!owned) { try { lock.releaseLock(); } catch (e) { reportError_('patrolCredit.release',e,false); if (!failed) throw e; } } }
+}
+
+const PATROL_CREDIT_TX_ = 'RE_CREDIT_V1:';
+/** A marker carries its recovery record with the source row when a table is sorted. */
+function patrolCreditTransaction_(text) {
+  text = String(text || '').trim();
+  if (text.indexOf(PATROL_CREDIT_TX_) !== 0) return null;
+  let tx;
+  try { tx = JSON.parse(text.slice(PATROL_CREDIT_TX_.length)); } catch (e) { throw new Error('Patrol recovery record is malformed; inspect the hidden credit marker.'); }
+  if (!tx || tx.version !== 1 || typeof tx.book !== 'string' || !tx.book || !Number.isInteger(tx.sheet) || typeof tx.final !== 'string' || tx.final.indexOf(PATROL_CREDIT_TX_) === 0 || !Array.isArray(tx.changes) || tx.changes.length > 2 || !tx.changes.length) throw new Error('Patrol recovery record has an invalid shape.');
+  const seen = new Set();
+  tx.changes.forEach(c => {
+    if (!c || !isValidId_(c.id) || seen.has(c.id) || typeof c.before !== 'number' || typeof c.after !== 'number' || !Number.isFinite(c.before) || !Number.isFinite(c.after)) throw new Error('Patrol recovery record has invalid member/hour values.');
+    seen.add(c.id);
+  });
+  return tx;
+}
+/** Resume only from the recorded before/after totals. A different live total is a conflict, never a guessed replay. */
+function applyPatrolCreditTransaction_(markCell, roster, RC, tx, idx) {
+  assertNoPendingActivityReset_(roster);
+  if (tx.book !== roster.getParent().getId() || tx.sheet !== roster.getSheetId()) throw new Error('Patrol recovery record belongs to a different roster. It cannot be replayed into this department.');
+  if ((tx.hoursCol != null && tx.hoursCol !== RC.hours) || (tx.idCol != null && tx.idCol !== RC.discord)) throw new Error('Roster HOURS/Unique ID columns changed during an interrupted credit. Restore the original layout before retrying.');
+  // Preflight EVERY affected member before changing any total. IDs stay exact; duplicate or removed IDs stop recovery.
+  const X = idx || patrolRosterIndex_(roster);
+  const steps = tx.changes.map(c => {
+    const row = patrolFindRow_(roster,c.id,'',X);
+    if (row === -1 || String(roster.getRange(row,RC.discord).getDisplayValue()).trim() !== c.id) throw new Error('Patrol recovery member is missing, duplicated or moved; inspect the roster before retrying.');
+    const cell = roster.getRange(row,RC.hours), raw = cell.getValue();
+    if (cell.getFormula && cell.getFormula()) throw new Error('Patrol recovery cannot overwrite a formula in the roster HOURS cell.');
+    const current = raw === '' ? 0 : Number(raw);
+    if (!Number.isFinite(current) || (Math.abs(current-c.before) > 0.000001 && Math.abs(current-c.after) > 0.000001)) throw new Error('Patrol recovery conflict: HOURS changed after the interrupted operation. Review the hidden marker before retrying.');
+    return {row,cell,current,change:c};
+  });
+  let applied = 0;
+  steps.forEach(s => {
+    if (Math.abs(s.current-s.change.after) > 0.000001) { s.cell.setValue(s.change.after); applied++; }
+  });
+  SpreadsheetApp.flush(); // all hour writes acknowledged BEFORE the final marker replaces the recovery record
+  markCell.setNumberFormat('@').setValue(tx.final);
+  SpreadsheetApp.flush();
+  steps.forEach(s => {
+    if (CONFIG.patrol.recompute) { try { updateStatusFromHours(roster,s.row); } catch (e) { log_('patrolCredit.recompute',e); } }
+    if (typeof auditEvent_ === 'function' && Math.abs(s.current-s.change.after) > 0.000001) {
+      try { auditEvent_('patrol',String(s.change.before),String(s.change.after),s.cell.getA1Notation(),String(roster.getRange(s.row,RC.name).getDisplayValue())); } catch (e) { log_('patrolCredit.audit',e); }
+    }
+  });
+  return applied;
+}
+function startPatrolCreditTransaction_(markCell, roster, RC, changes, final, idx) {
+  assertNoPendingActivityReset_(roster);
+  const tx = {version:1,book:roster.getParent().getId(),sheet:roster.getSheetId(),hoursCol:RC.hours,idCol:RC.discord,final:String(final || ''),changes:changes};
+  patrolCreditTransaction_(PATROL_CREDIT_TX_ + JSON.stringify(tx)); // validate before any writes
+  markCell.setNumberFormat('@').setValue(PATROL_CREDIT_TX_ + JSON.stringify(tx));
+  SpreadsheetApp.flush(); // durable recovery record BEFORE financial writes
+  return applyPatrolCreditTransaction_(markCell,roster,RC,tx,idx);
 }
 
 /**
  * Reconcile a Patrol Log row's credited hours against the roster. The row's hidden marker (col A) holds "hours|memberId"
  * of what was LAST credited; `desired` is {hours, mid} to credit now, or null. Reverses the prior credit and applies the
  * new one so a member's HOURS always equals the sum of their VALID logs — idempotent across edits, flag/unflag, ID
- * changes and deletes. The marker is written BEFORE the roster is touched (a crash under-credits, never double-credits).
+ * changes and clears. Interrupted writes retain a recovery record; conflicting live totals require review.
  */
 function reconcilePatrolCredit_(sheet, row, PC, roster, RCr, desired, idx, priorMark) {
-  try {
+  return withPatrolCreditLock_(() => {
     try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
     if (!PC.mark || !RCr.hours) return;
     const markCell = sheet.getRange(row, PC.mark);
     // `priorMark` is the sweep's cached read of this cell (each row is processed exactly once per sweep, and only this
     // function writes the marker — so the cache can't be stale). null = read live (the onEdit single-row path).
-    const prior = (priorMark == null) ? String(markCell.getDisplayValue()).trim() : String(priorMark).trim();
-    let priorHours = 0, priorMid = '', priorTs = ''; // marker grammar: hours|memberId|submissionMs (ts survives every credit/reverse)
-    if (prior) { const p = prior.split('|'); priorHours = parseFloat(p[0]) || 0; priorMid = (p[1] || '').trim(); priorTs = (p[2] || '').trim(); }
+    let prior = (priorMark == null) ? String(markCell.getDisplayValue()).trim() : String(priorMark).trim();
+    const pending = patrolCreditTransaction_(prior);
+    if (pending) { applyPatrolCreditTransaction_(markCell,roster,RCr,pending,idx); prior = pending.final; }
+    let priorHours = 0, priorMid = '', priorTs = '', priorImport = ''; // optional fourth field keeps the import's durable token
+    if (prior) {
+      const p = prior.split('|'); priorHours = p[0] === '' ? 0 : Number(p[0]); priorMid = (p[1] || '').trim(); priorTs = (p[2] || '').trim();
+      priorImport = (p[3] || '').trim();
+      if (!Number.isFinite(priorHours) || priorHours < 0 || (priorHours && !isValidId_(priorMid))) throw new Error('Patrol credit marker is invalid; inspect it before reconciling hours.');
+    }
     const wantHours = desired ? (Math.round(desired.hours * 100) / 100) : 0;
     const wantMid = desired ? String(desired.mid).trim() : '';
     if (prior && priorMid === wantMid && Math.abs(priorHours - wantHours) < 0.005) return; // already exactly credited → no-op
 
-    if (priorMid && priorHours) { // reverse the prior credit on whoever actually got it
-      const prow = patrolFindRow_(roster, priorMid, '', idx);
-      if (prow !== -1) {
-        const cur = parseHours_(roster.getRange(prow, RCr.hours).getValue());
-        roster.getRange(prow, RCr.hours).setValue(Math.round((cur - priorHours) * 100) / 100);
-        if (CONFIG.patrol.recompute) { try { updateStatusFromHours(roster, prow); } catch (e) { /* best-effort */ } }
-      }
-    }
-    // Durably "uncredited" before any re-credit (self-heals on the next process if we die here). Only when there IS a
-    // marker: an uncredited row (flagged/incomplete) must not pay for a write + flush on every single edit and on every
-    // row of the nightly refreshPatrolLog_ sweep.
-    if (prior) { // durably "uncredited" — but the submission stamp (3rd field) must survive for the newest-first sort
-      if (priorTs) markCell.setNumberFormat('@').setValue('||' + priorTs); else markCell.clearContent();
-      SpreadsheetApp.flush();
-    }
-
-    if (desired && wantHours > 0 && wantMid) { // apply the new credit on the target member
-      const trow = patrolFindRow_(roster, wantMid, '', idx);
-      if (trow !== -1) {
-        markCell.setValue(wantHours + '|' + wantMid + (priorTs ? '|' + priorTs : '')); SpreadsheetApp.flush(); // durable marker BEFORE the credit
-        const cur = parseHours_(roster.getRange(trow, RCr.hours).getValue());
-        const next = Math.round((cur + wantHours) * 100) / 100;
-        roster.getRange(trow, RCr.hours).setValue(next);
-        if (CONFIG.patrol.recompute) { try { updateStatusFromHours(roster, trow); } catch (e) { /* best-effort */ } }
-        if (typeof auditEvent_ === 'function') { try { auditEvent_('patrol', String(cur), String(next), roster.getRange(trow, RCr.hours).getA1Notation(), String(roster.getRange(trow, RCr.name).getDisplayValue()).trim()); } catch (e) { /* best-effort */ } }
-      }
-    }
-  } catch (e) { log_('reconcilePatrolCredit_', e); }
+    if (!Number.isFinite(wantHours) || wantHours < 0) throw new Error('Patrol credit hours must be finite and non-negative.');
+    const delta = Object.create(null);
+    if (priorMid && priorHours) delta[priorMid] = -priorHours;
+    if (desired && wantHours > 0 && wantMid) delta[wantMid] = (delta[wantMid] || 0) + wantHours;
+    const X = idx || patrolRosterIndex_(roster);
+    const changes = Object.keys(delta).filter(id => Math.abs(delta[id]) > 0.000001).map(id => {
+      const memberRow = patrolFindRow_(roster,id,'',X);
+      if (memberRow === -1) throw new Error('Cannot reconcile patrol credit: member is missing or has a duplicate ID.');
+      const raw = roster.getRange(memberRow,RCr.hours).getValue(), before = raw === '' ? 0 : Number(raw);
+      if (!Number.isFinite(before)) throw new Error('Cannot reconcile patrol credit: roster HOURS is not numeric.');
+      return {id,before,after:Math.round((before+delta[id])*100)/100};
+    });
+    let final = wantMid && wantHours > 0 ? wantHours+'|'+wantMid+(priorTs || priorImport?'|'+priorTs:'') : (priorTs || priorImport?'||'+priorTs:'');
+    if (priorImport) final += '|'+priorImport;
+    if (changes.length) startPatrolCreditTransaction_(markCell,roster,RCr,changes,final,X);
+    else if (prior !== final) markCell.setNumberFormat('@').setValue(final);
+  });
 }
 
 /**
@@ -3315,7 +3468,9 @@ function sortPatrolLog_(patrolSheet) {
         if (ids) r[PC.discord - 1] = String(ids[i][0]).trim();
         const idv = PC.discord ? String(r[PC.discord - 1] || '').trim() : '';
         const nmv = PC.name ? String(r[PC.name - 1] || '').trim() : '';
-        if (!idv && !nmv) continue; // drop blank rows (compaction)
+        const marker = PC.mark ? String(r[PC.mark-1] || '') : '';
+        const recoveryPending = marker.indexOf('|IMPORT_PENDING:') !== -1 || marker.indexOf('RE_CREDIT_V1:') === 0;
+        if (!idv && !nmv && !recoveryPending) continue; // never compact away a recovery record on an emptied row
         r._sourceRow = start + i; records.push(r);
       }
     }
@@ -3328,7 +3483,11 @@ function sortPatrolLog_(patrolSheet) {
     // (hours|memberId|submissionMs). A patrol that STARTED earlier but was submitted later still tops its group.
     // Hand-typed rows (no submission) fall back to their start date+time; unparsable rows tie at 0 and keep order.
     const rec = (r) => {
-      if (PC.mark) { const p = String(r[PC.mark - 1] == null ? '' : r[PC.mark - 1]).split('|'); const ts = p.length > 2 ? Number(p[2]) : 0; if (ts > 0) return ts; }
+      if (PC.mark) {
+        let marker = String(r[PC.mark-1] == null ? '' : r[PC.mark-1]);
+        if (marker.indexOf('RE_CREDIT_V1:') === 0) marker = patrolCreditTransaction_(marker).final;
+        const p = marker.split('|'), ts = p.length > 2 ? Number(p[2]) : 0; if (ts > 0) return ts;
+      }
       const d = (PC.startDate && PC.startTime) ? combineDateTime_(r[PC.startDate - 1], r[PC.startTime - 1]) : null;
       return d ? d.getTime() : 0;
     };
@@ -3339,7 +3498,7 @@ function sortPatrolLog_(patrolSheet) {
     ensureRoomAboveCap_(sheet, start + sorted.length - 1); // grow inside the band; never write onto the closing row
     moveTableRecords_(sheet, start, sorted, W);
     if (PC.discord) sheet.getRange(start, PC.discord, sorted.length, 1).setNumberFormat('@');
-    writeValuesSafe_(sheet, start, 1, sorted, null); // merge-safe (see sortTracker_)
+    if(writeValuesSafe_(sheet, start, 1, sorted, null))throw new Error('Patrol sort contains unwritable cells.'); // merge-safe (see sortTracker_)
     if (last > start + sorted.length - 1) sheet.getRange(start + sorted.length, 1, last - (start + sorted.length) + 1, W).clearContent();
 
     if (PC.total && PC.startDate && PC.endDate && PC.startTime && PC.endTime) { // TOTAL formula per physical row
@@ -3350,11 +3509,14 @@ function sortPatrolLog_(patrolSheet) {
     // Re-mark after all row moves/styles settle, even if an overlapping publish cleared the earlier flag.
     try { _pubDirtyMemo_ = false; publishMarkDirty_(); } catch (ig) {}
     try { if (typeof publishTableSettled_ === 'function') publishTableSettled_(sheet.getName()); } catch (ig) {} // preserve the framed blank tail and repair inherited row styling
-  } catch (e) { logWarn_('sortPatrolLog_', 'patrol sort failed: ' + ((e && e.message) ? e.message : e)); }
+  } catch (e) { throw e; }
 }
 
 /** Nightly/refresh: re-process every Patrol Log row (matures a once-future log, re-credits deltas) + re-group. No-op if OFF. */
 function refreshPatrolLog_() {
+  return withPatrolCreditLock_(() => refreshPatrolLogCore_());
+}
+function refreshPatrolLogCore_() {
   try {
     if (!CONFIG.sheets.patrolLog) return;
     const ss = SpreadsheetApp.getActive();
@@ -3377,11 +3539,11 @@ function refreshPatrolLog_() {
         vals: grid.vals[i], disp: grid.disp[i], sweep: true,
         mark: PC.mark ? String(grid.disp[i][PC.mark - 1] == null ? '' : grid.disp[i][PC.mark - 1]).trim() : null,
       } : null;
-      processPatrolLog_(sheet, r, PC, roster, idx, rowData);
+      if (processPatrolLog_(sheet, r, PC, roster, idx, rowData) === false) throw new AppError('E-504',{operation:'Patrol Log refresh',completed:r-start,reason:'A row could not be processed safely. Sorting stopped; inspect SYS Log and any recovery marker before retrying.'});
     }
     sortPatrolLog_(sheet);
     deferWork_('activity'); // any pass over the log can change statuses/credits → the Activity Panel board follows on the sweep
-  } catch (e) { log_('refreshPatrolLog_', e); }
+  } catch (e) { log_('refreshPatrolLog_', e); throw e; }
 }
 
 /**
@@ -3396,13 +3558,19 @@ function syncFormToTracker() {
     return false;
   }
   let newLeaves = [];
+  let syncFailed = false;
   try {
     const ss = SpreadsheetApp.getActive();
     const form = getSheetOrWarn_(ss, CONFIG.sheets.form);
     const tracker = getSheetOrWarn_(ss, CONFIG.sheets.tracker);
-    if (form && tracker) newLeaves = syncFormToTracker_(form, tracker, { sendWebhooks: false });
+    if (!form || !tracker) throw new AppError('E-504', {operation:'Leave form sync',completed:0,reason:'The configured form responses or LOA Tracker sheet is missing. No submissions were imported.'});
+    newLeaves = syncFormToTracker_(form, tracker, { sendWebhooks: false });
+  } catch (e) {
+    syncFailed = true;
+    reportError_('syncFormToTracker', e, true);
+    throw e;
   } finally {
-    lock.releaseLock();
+    try { lock.releaseLock(); } catch (e) { reportError_('syncFormToTracker.release', e, false); if (!syncFailed) throw e; }
   }
   newLeaves.forEach((L) => sendDiscordWebhook(L.name, L.rank, L.callsign, L.type, L.startStr, L.endStr, L.durationStr, L.discord));
   // Audit-log each leave a form submission added (so the trail covers the auto/onFormSubmit path, not just the panel).
@@ -3479,10 +3647,12 @@ function syncFormToTracker_(form, tracker, opts = {}) {
   const width = form.getLastColumn();
   const range = form.getRange(2, 1, lastRow - 1, width);
   const values = range.getValues();
+  const displayValues = range.getDisplayValues();
   const backgrounds = range.getBackgrounds();
   const synced = buildSyncedKeySet_(tracker);
   const FC = leaveFormCols_(form); // form columns BY HEADER ([FORM_MAP] keywords + synonyms); classic fixed order as fallback
   const RC = trackerCols_(tracker); // resolve the tracker's columns by header (any layout)
+  if (!RC.key || !RC.discord || !RC.start || !RC.end || !RC.status) throw new Error('LOA Tracker needs key, Unique ID, start/end and status columns before importing leave forms.');
   const tz = ssTz_();
   const doneBg = String(CONFIG.bg.done).toLowerCase(); // lowercase once — a Studio-picked theme colour can be uppercase (getBackgrounds returns lowercase)
   // ONE roster snapshot serves every rosterOocShift_ lookup below (a backfill was one full roster scan per row),
@@ -3490,6 +3660,8 @@ function syncFormToTracker_(form, tracker, opts = {}) {
   let rIdx = null;
   try { const rSh = SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster); if (rSh) rIdx = patrolRosterIndex_(rSh); } catch (e) { log_('syncFormToTracker_.idx', e); }
   const accepted = [];
+  const duplicateSources = [];
+  let repaired = 0;
 
   for (let i = 0; i < values.length; i++) {
     const rowIndex = i + 2;
@@ -3501,7 +3673,7 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const at = (c) => (c && c <= row.length) ? row[c - 1] : ''; // 0 = the role didn't resolve → blank, never a wrong column
       const timestamp = at(FC.timestamp);
       const name = at(FC.name);
-      let discord = String(at(FC.discord)).trim();
+      let discord = FC.discord ? String(displayValues[i][FC.discord-1] || '').trim() : '';
       const callsign = at(FC.callsign);
       const rank = at(FC.rank);
       const type = at(FC.type);
@@ -3540,7 +3712,7 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       // switch this to the composite key: it would match the denied row and silently swallow the re-request. (Cross-path
       // form+panel duplicates are harmless — processDailyLOAs_ writes are deterministic + idempotent within a run.)
       const dedupKey = makeLeaveKey_(discord, timestamp);
-      if (dedupKey && synced[dedupKey]) { form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.done); continue; }
+      const existing = dedupKey && synced[dedupKey];
 
       const startDate = parseFormDate_(startRaw);
       const endDate = parseFormDate_(endRaw);
@@ -3560,7 +3732,6 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       const fName = (mi.found && mi.name) ? mi.name : name;
       const fRank = (mi.found && mi.rank) ? mi.rank : rank;
       const fUnit = (mi.found && mi.unit) ? mi.unit : callsign;
-      if (dedupKey) synced[dedupKey] = true; // in-loop, so a duplicate submission later in this same scan still dedups
       // FLAG what doesn't add up — the row still syncs (nothing is lost), but lands as [LEAVE].FLAGGED_STATUS
       // with the reason spelled out in NOTES instead of a quietly wrong Pending: an ID that isn't on the roster,
       // reversed dates, a leave that already ended, or one longer than MAX_DAYS_WARN. Mirrors the Patrol Log.
@@ -3582,16 +3753,27 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       if (flags.length) noteBits.push('⚠️ ' + flags.join(' · '));
       if (!typeMatches) noteBits.push(typeEff);
       if (reason && !RC.reason) noteBits.push(reason);
+      const rowVals = buildTrackerRow_(RC,RC.width,{key:dedupKey,rank:fRank,unit:fUnit,ooc:mi.ooc,name:fName,discord,shift:mi.shift,start:startDate,end:endDate,status:rowStatus,notes:clamp_(noteBits.join(' — '),500),reason:RC.reason?clamp_(reason,500):''});
+      if (existing) {
+        if (typeof existing === 'number') {
+          repaired += repairIncompleteLeaveRow_(tracker,existing,RC,rowVals);
+          form.getRange(rowIndex,1,1,width).setBackground(CONFIG.bg.done);
+        } else duplicateSources.push(rowIndex); // acknowledge in-batch duplicates only AFTER the destination write
+        continue;
+      }
+      if (dedupKey) synced[dedupKey] = true;
       accepted.push({
-        rowVals: buildTrackerRow_(RC, RC.width, { key: dedupKey, rank: fRank, unit: fUnit, ooc: mi.ooc, name: fName, discord: discord, shift: mi.shift, start: startDate, end: endDate, status: rowStatus, notes: clamp_(noteBits.join(' — '), 500), reason: RC.reason ? clamp_(reason, 500) : '' }),
+        rowVals: rowVals,
         rowIndex: rowIndex,
         leaf: { name: fName, rank: fRank, callsign: fUnit, type: typeEff, startStr, endStr, durationStr, discord },
       });
     } catch (err) {
-      form.getRange(rowIndex, 1, 1, width).setBackground(CONFIG.bg.error);
-      log_('syncFormToTracker_', err); // skip this row, keep processing the rest
+      try { form.getRange(rowIndex,1,1,width).setBackground(CONFIG.bg.error); } catch (e) { log_('syncFormToTracker_.markError',e); }
+      log_('syncFormToTracker_',err);
+      throw new AppError('E-504',{operation:'Leave form sync',completed:0,reason:'A submission could not be processed safely. Existing complete rows are retained; inspect SYS Log and retry after correcting the conflict.'});
     }
   }
+  if (!accepted.length && repaired) sortTracker_(null,tracker);
 
   if (accepted.length) {
     // Prepend the whole batch at the TOP and re-group by status ONCE — new Pending leaves land at the top of the list.
@@ -3603,20 +3785,50 @@ function syncFormToTracker_(form, tracker, opts = {}) {
       form.getRange(a.rowIndex, 1, 1, width).setBackground(CONFIG.bg.done);
     });
   }
+  duplicateSources.forEach(row => form.getRange(row,1,1,width).setBackground(CONFIG.bg.done));
   if (appended.length) logInfo_('syncFormToTracker_', `appended ${appended.length} new leave(s).`);
   return appended;
 }
 
-/** Builds a set of dedup keys already present in the tracker (col A). */
+/** Repair a keyed but incomplete row after a partial batch write; never overwrite nonempty admin-owned values. */
+function repairIncompleteLeaveRow_(tracker,row,RC,planned) {
+  const live = tracker.getRange(row,1,1,RC.width).getValues()[0];
+  const required = [RC.name,RC.discord,RC.start,RC.end,RC.status].filter(c=>c>0);
+  if (required.every(c => live[c-1] !== '' && live[c-1] != null)) return 0;
+  [RC.discord,RC.start,RC.end].forEach(c => {
+    const current = live[c-1], expected = planned[c-1];
+    if (current === '' || current == null) return;
+    const same = current instanceof Date && expected instanceof Date ? current.getTime() === expected.getTime() : String(current) === String(expected);
+    if (!same) throw new Error('Incomplete leave import conflicts with existing identity/dates. Inspect its key and source form row before retrying.');
+  });
+  let count = 0;
+  [RC.rank,RC.unit,RC.ooc,RC.name,RC.discord,RC.shift,RC.start,RC.end,RC.status,RC.notes,RC.reason].filter(c => c > 0).forEach(c => {
+    const value = planned[c-1];
+    if ((live[c-1] === '' || live[c-1] == null) && value !== '' && value != null) {
+      const cell = tracker.getRange(row,c);
+      if (cell.getFormula && cell.getFormula()) return; // a department's formula is not a missing value
+      if (typeof value === 'string') cell.setNumberFormat('@');
+      cell.setValue(typeof value === 'string' && value.startsWith('=') ? "'"+value : value); count++;
+    }
+  });
+  SpreadsheetApp.flush();
+  if (!required.every(c => { const v = tracker.getRange(row,c).getValue(); return v !== '' && v != null; })) throw new Error('Incomplete leave import has required fields that cannot be filled safely. Inspect validations and formulas before retrying.');
+  return count;
+}
+
+/** Maps durable submission keys to their physical rows; duplicate keys require inspection. */
 function buildSyncedKeySet_(tracker) {
-  const set = {};
+  const set = Object.create(null);
   const last = tracker.getLastRow();
   if (last < CONFIG.trackerStartRow) return set;
   const n = last - CONFIG.trackerStartRow + 1;
   const keys = tracker.getRange(CONFIG.trackerStartRow, trackerCols_(tracker).key, n, 1).getValues();
-  keys.forEach(([k]) => {
+  keys.forEach(([k],i) => {
     const key = String(k).trim();
-    if (key.indexOf('KEY|') === 0) set[key] = true;
+    if (key.indexOf('KEY|') === 0) {
+      if (set[key]) throw new Error('Duplicate leave submission key found. Inspect the LOA Tracker before syncing more submissions.');
+      set[key] = CONFIG.trackerStartRow+i;
+    }
   });
   return set;
 }
@@ -3856,26 +4068,21 @@ function getRankIcon(rank) {
  * @return {{ok:boolean, code:number, error?:string}} ok = HTTP 2xx confirmed.
  */
 function postToWebhook_(url, payload) {
-  if (!url) return { ok: false, code: 0, error: 'no-url' };
-  const opts = { method: 'post', contentType: 'application/json', payload: JSON.stringify(payload), muteHttpExceptions: true };
+  if(!url)return {ok:false,code:0,error:'no-url'};
   try {
-    let res = UrlFetchApp.fetch(url, opts);
-    let code = res.getResponseCode();
-    if (code === 429) {
-      const headers = res.getHeaders();
-      const retryAfter = parseFloat(headers['Retry-After'] ?? headers['retry-after'] ?? '1') || 1;
-      logWarn_('postToWebhook_', `Discord rate-limited (429); retrying once after ${retryAfter}s.`);
-      Utilities.sleep(Math.min(5000, retryAfter * 1000));
-      res = UrlFetchApp.fetch(url, opts);
-      code = res.getResponseCode();
+    const opts={method:'post',contentType:'application/json',payload:JSON.stringify(payload),muteHttpExceptions:true};
+    let res=UrlFetchApp.fetch(url,opts),code=res.getResponseCode();
+    if(code===429){
+      const headers=res.getHeaders();let seconds=Number(headers['Retry-After']??headers['retry-after']);
+      if(!Number.isFinite(seconds)||seconds<0){try{seconds=Number(JSON.parse(res.getContentText()).retry_after);}catch(e){seconds=NaN;}}
+      if(!Number.isFinite(seconds)||seconds<0)seconds=1;
+      if(seconds>5){logWarn_('postToWebhook_','Discord rate-limited; retry delay exceeds the inline budget. Message was not retried.');return {ok:false,code:429,error:'rate-limited',retryAfter:seconds};}
+      Utilities.sleep(Math.ceil(seconds*1000));res=UrlFetchApp.fetch(url,opts);code=res.getResponseCode();
     }
-    const ok = code >= 200 && code < 300;
-    if (!ok) logWarn_('postToWebhook_', `non-2xx response (${code}): ${clamp_(res.getContentText(), 300)}`);
-    return { ok, code };
-  } catch (err) {
-    log_('postToWebhook_', err);
-    return { ok: false, code: -1, error: String((err && err.message) || err) };
-  }
+    const ok=code>=200&&code<300;
+    if(!ok)logWarn_('postToWebhook_','Discord webhook returned HTTP '+code+'. Response content omitted from diagnostics.');
+    return {ok,code};
+  }catch(err){log_('postToWebhook_',err);return {ok:false,code:-1,error:diagnosticText_((err&&err.message)||err,500)};}
 }
 
 /** Posts to the MAIN webhook. @return {{ok:boolean, code:number, error?:string}} (callers may ignore the return). */
@@ -3967,24 +4174,151 @@ function isMemberSlot_(rankValue) {
  * band/section border into the destination row and repaint the roster. The caller must hold the script lock and have
  * validated both rows. Shared by the sheet-edit transfer (checkForMemberMove) and the Control Panel's Move action.
  */
+const MEMBER_MOVE_PROP_ = 'RE_MEMBER_MOVE:';
+/** Freeze new financial/member writes while an interrupted reset's state needs review. */
+function assertNoPendingActivityReset_(roster) {
+  const raw=PropertiesService.getDocumentProperties().getProperty('RE_ACTIVITY_RESET_PENDING');
+  if (!raw) return;
+  let pending; try { pending=JSON.parse(raw); } catch (e) { throw new Error('Activity-reset checkpoint is unreadable. Inspect it before modifying roster hours or members.'); }
+  if (!pending || pending.book!==roster.getParent().getId() || pending.sheet!==roster.getSheetId() || pending.phase!=='committed') throw new Error('An interrupted activity reset needs review before roster credits or member writes can continue.');
+}
+function memberMoveJournal_(sheet) {
+  const raw = PropertiesService.getDocumentProperties().getProperty(MEMBER_MOVE_PROP_+sheet.getSheetId());
+  if (!raw) return null;
+  let j; try { j = JSON.parse(raw); } catch (e) { throw new Error('Interrupted transfer record is malformed; inspect document properties before moving members.'); }
+  if (!j || j.version !== 1 || j.book !== sheet.getParent().getId() || j.sheet !== sheet.getSheetId() || !['prepared','clearing'].includes(j.phase) || !Number.isInteger(j.source) || !Number.isInteger(j.target) || j.source === j.target || !Array.isArray(j.runs) || !j.runs.length) throw new Error('Interrupted transfer record has an invalid shape or belongs to a different department.');
+  return j;
+}
+/** Destructive hour resets/restores must not invalidate an unfinished financial or transfer recovery record. */
+function assertNoPendingRosterRecovery_(roster, operation) {
+  if (memberMoveJournal_(roster)) throw new AppError('E-504',{operation,completed:0,reason:'An interrupted member transfer needs recovery before this operation can change the roster.'});
+  if (typeof memberAssignmentRows_==='function' && memberAssignmentRows_(roster).length) throw new AppError('E-504',{operation,completed:0,reason:'An interrupted member assignment needs recovery before this operation can change the roster.'});
+  if(typeof pendingSignupApprovals_==='function' && pendingSignupApprovals_().length)throw new AppError('E-504',{operation,completed:0,reason:'An interrupted signup approval needs recovery before this operation can change the roster.'});
+  const ss = roster.getParent(), sources = [];
+  if (CONFIG.sheets.patrolLog) {
+    const log = ss.getSheetByName(CONFIG.sheets.patrolLog);
+    if (log) { const PC = patrolLogCols_(log); if (PC.mark) sources.push({sheet:log,col:PC.mark,start:CONFIG.patrolStartRow}); }
+  }
+  if (CONFIG.sheets.patrol) {
+    const form = ss.getSheetByName(CONFIG.sheets.patrol);
+    if (form && form.getLastColumn()) {
+      const headers = form.getRange(1,1,1,form.getLastColumn()).getDisplayValues()[0];
+      const col = headers.findIndex(h => norm_(h) === norm_('_Credited'))+1;
+      if (col) sources.push({sheet:form,col,start:2});
+    }
+  }
+  sources.forEach(s => {
+    const last = s.sheet.getLastRow(); if (last < s.start) return;
+    const pending = s.sheet.getRange(s.start,s.col,last-s.start+1,1).getDisplayValues().some(r => /^(RE_CREDIT_V1:|RE_IMPORT_V1:)|\|IMPORT_PENDING:/.test(String(r[0] || '').trim()));
+    if (pending) throw new AppError('E-504',{operation,completed:0,reason:'An unfinished patrol credit/import needs recovery before roster hours can be reset or restored. Inspect '+s.sheet.getName()+'.'});
+  });
+}
+function memberMoveCellValue_(value) {
+  if ((value instanceof Date && !Number.isFinite(value.getTime())) || (typeof value === 'number' && !Number.isFinite(value))) throw new Error('A transfer field contains an invalid numeric/date value. No member fields were moved.');
+  return value instanceof Date ? {date:value.getTime()} : {value:value};
+}
+function memberMoveSnapshot_(range) {
+  const values = range.getValues()[0], formulas = range.getFormulasR1C1()[0];
+  return values.map((v,i) => ({content:memberMoveCellValue_(v),formula:String(formulas[i] || '')}));
+}
+function memberMoveCellMatches_(live, expected) {
+  if (live.formula || expected.formula) return live.formula === expected.formula;
+  return JSON.stringify(live.content) === JSON.stringify(expected.content);
+}
+/** Complete a staged transfer only while both rows still agree with the durable snapshots. */
+function resumeMemberMove_(sheet, j) {
+  assertNoPendingActivityReset_(sheet);
+  if (j.book !== sheet.getParent().getId() || j.sheet !== sheet.getSheetId() || !['prepared','clearing'].includes(j.phase)) throw new Error('Interrupted transfer record belongs to a different roster or phase.');
+  const lastCol = sheet.getLastColumn(), slots = slotColumnSet_(sheet);
+  if (j.source < CONFIG.rosterStartRow || j.target < CONFIG.rosterStartRow || j.source > sheet.getMaxRows() || j.target > sheet.getMaxRows() || j.width !== lastCol) throw new Error('Interrupted transfer layout changed; inspect both rows before recovery.');
+  const seen = new Set();
+  j.runs.forEach(run => {
+    if (!Number.isInteger(run.col) || run.col < 2 || !Array.isArray(run.source) || !run.source.length || !Array.isArray(run.target) || run.source.length !== run.target.length || run.col+run.source.length-1 > lastCol) throw new Error('Interrupted transfer columns are invalid.');
+    run.source.forEach((v,i) => {
+      const col = run.col+i;
+      if (seen.has(col) || slots[col] || !v || !v.content || typeof v.formula !== 'string' || !run.target[i] || !run.target[i].content || typeof run.target[i].formula !== 'string') throw new Error('Interrupted transfer classification or snapshot changed.');
+      seen.add(col);
+    });
+    const source = memberMoveSnapshot_(sheet.getRange(j.source,run.col,1,run.source.length));
+    const target = memberMoveSnapshot_(sheet.getRange(j.target,run.col,1,run.source.length));
+    const empty = {content:{value:''},formula:''};
+    source.forEach((v,i) => {
+      if (!memberMoveCellMatches_(v,run.source[i]) && !(j.phase === 'clearing' && memberMoveCellMatches_(v,empty))) throw new Error('Interrupted transfer conflict: source member fields were edited. Recovery stopped.');
+      const copied = memberMoveCellMatches_(target[i],run.source[i]);
+      if (!copied && !(j.phase === 'prepared' && memberMoveCellMatches_(target[i],run.target[i]))) throw new Error('Interrupted transfer conflict: destination member fields were edited. Recovery stopped.');
+    });
+  });
+  for (let col=2;col<=lastCol;col++) if (!slots[col] && !seen.has(col)) throw new Error('Interrupted transfer MEMBER column classification changed.');
+  const props = PropertiesService.getDocumentProperties(), key = MEMBER_MOVE_PROP_+sheet.getSheetId();
+  if (j.phase === 'prepared') {
+    // Copy EVERY run before clearing ANY source cells. Retry can safely repeat copies while the source is intact.
+    j.runs.forEach(run => sheet.getRange(j.source,run.col,1,run.source.length).copyTo(sheet.getRange(j.target,run.col,1,run.source.length),SpreadsheetApp.CopyPasteType.PASTE_NO_BORDERS,false));
+    SpreadsheetApp.flush();
+    j.phase = 'clearing'; props.setProperty(key,JSON.stringify(j));
+  }
+  j.runs.forEach(run => sheet.getRange(j.source,run.col,1,run.source.length).clearContent());
+  sheet.getRange(j.target,rosterCols_(sheet).discord).setNumberFormat('@');
+  SpreadsheetApp.flush();
+  props.deleteProperty(key); // last step: a failed acknowledgement retains a safely resumable clearing record
+  return j;
+}
 function moveMemberColumns_(sheet, sourceRow, targetRow) {
+  assertNoPendingActivityReset_(sheet);
+  const pending = memberMoveJournal_(sheet);
+  if (pending) {
+    if (pending.source !== sourceRow || pending.target !== targetRow) throw new Error('An interrupted transfer is pending. Use Recover Interrupted Transfer before starting another move.');
+    return resumeMemberMove_(sheet,pending);
+  }
   const slot = slotColumnSet_(sheet);
   const lastCol = sheet.getLastColumn();
   // MEMBER columns are moved in CONTIGUOUS RUNS — one copyTo + one clearContent per run instead of two calls per
   // column. The transfer runs inside the LIMITED onEdit budget that also hosts the human confirm dialog, so the
   // per-column churn directly ate the margin. Semantics: SLOT stays put, everything else follows the person, and
   // borders are never repainted.
+  const RC = rosterCols_(sheet), runs = [];
   let c = 2;
   while (c <= lastCol) {
     if (slot[c]) { c++; continue; }                // SLOT stays with the destination position (and on the source)
     let e = c;
     while (e + 1 <= lastCol && !slot[e + 1]) e++;
-    // Carry value/formula + number format + validation, but NOT borders — so a move never repaints the roster's band/section lines.
-    sheet.getRange(sourceRow, c, 1, e - c + 1).copyTo(sheet.getRange(targetRow, c, 1, e - c + 1), SpreadsheetApp.CopyPasteType.PASTE_NO_BORDERS, false);
-    sheet.getRange(sourceRow, c, 1, e - c + 1).clearContent(); // the member has left the source row
+    runs.push({col:c,source:memberMoveSnapshot_(sheet.getRange(sourceRow,c,1,e-c+1)),target:memberMoveSnapshot_(sheet.getRange(targetRow,c,1,e-c+1))});
     c = e + 1;
   }
-  sheet.getRange(targetRow, rosterCols_(sheet).discord).setNumberFormat('@'); // keep the moved ID exact
+  if (!runs.length) throw new Error('No MEMBER columns are configured for this transfer.');
+  const j = {version:1,book:sheet.getParent().getId(),sheet:sheet.getSheetId(),source:sourceRow,target:targetRow,width:lastCol,phase:'prepared',runs,
+    name:String(sheet.getRange(sourceRow,RC.name).getDisplayValue()).trim(),id:String(sheet.getRange(sourceRow,RC.discord).getDisplayValue()).trim(),
+    fromRank:String(sheet.getRange(sourceRow,RC.rank).getDisplayValue()).trim(),toRank:String(sheet.getRange(targetRow,RC.rank).getDisplayValue()).trim()};
+  const encoded = JSON.stringify(j), bytes = encodeURIComponent(encoded).replace(/%[A-Fa-f0-9]{2}|./g,'x').length;
+  if (bytes > 8000) throw new Error('Transfer recovery record exceeds the safe storage limit. No member fields were moved; review the number of MEMBER columns or long field values.');
+  PropertiesService.getDocumentProperties().setProperty(MEMBER_MOVE_PROP_+sheet.getSheetId(),encoded);
+  return resumeMemberMove_(sheet,j);
+}
+
+/** Menu recovery: complete the recorded move, never restore over conflicting manual edits. */
+function recoverMemberMove() {
+  runAction_('Recover Interrupted Transfer', () => {
+    const result = withPatrolCreditLock_(() => {
+      const ss = SpreadsheetApp.getActive(), sheets = ss.getSheets();
+      const recovered = [];
+      sheets.forEach(sheet => {
+        const j = memberMoveJournal_(sheet); if (j) { resumeMemberMove_(sheet,j); recovered.push(j); }
+        if (typeof memberAssignmentRows_==='function') memberAssignmentRows_(sheet).forEach(row=>{
+          const assignment=memberAssignmentJournal_(sheet,row);
+          resumeMemberAssignment_(sheet,assignment);
+          recovered.push({name:JSON.parse(assignment.request).name,fromRank:'',toRank:assignment.rank,assignment:true});
+        });
+      });
+      if(typeof recoverSignupApprovals_==='function')recovered.push.apply(recovered,recoverSignupApprovals_());
+      return recovered;
+    });
+    if (result.length) {
+      deferWork_('groups'); deferWork_('academy'); deferWork_('dashboard');
+      try { publishMarkDirty_(); } catch (e) { log_('recoverMemberMove.publish',e); }
+      result.forEach(j => { if (typeof auditEvent_ === 'function') { try { auditEvent_(j.assignment?'add':'move',j.fromRank,j.toRank,'',j.name+' (recovered)'); } catch (e) { log_('recoverMemberMove.audit',e); } } });
+    }
+    SpreadsheetApp.getUi().alert(result.length ? 'Recovered '+result.length+' interrupted member change(s), including linked signup approvals. Refresh the panel and inspect the affected rows.' : 'No interrupted transfers, assignments or signup approvals are pending.');
+    return result.length;
+  });
 }
 
 /**
@@ -4008,7 +4342,10 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   let sourceRow = -1;
   for (let i = 0; i < ids.length; i++) {
     const rowNum = CONFIG.rosterStartRow + i;
-    if (String(ids[i][0]).trim() === target && rowNum !== targetRow) { sourceRow = rowNum; break; }
+    if (String(ids[i][0]).trim() === target && rowNum !== targetRow) {
+      if (sourceRow !== -1) throw new Error('This Unique ID belongs to multiple source rows. Resolve the duplicate IDs before transferring a member.');
+      sourceRow = rowNum;
+    }
   }
   if (sourceRow === -1) return;
 
@@ -4197,4 +4534,3 @@ function updateUnitNumbers_() {
   sheet.getRange(CONFIG.rosterStartRow, RC.unit, n, 1).setValues(units);
   return counter - 1; // number of member slots that received a callsign
 }
-

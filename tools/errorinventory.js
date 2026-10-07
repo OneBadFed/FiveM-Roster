@@ -1,0 +1,6 @@
+// Reproducible textual catch-site inventory; classification is a review aid, not proof of correctness.
+const fs=require('fs');
+const files=fs.readdirSync('.').filter(f=>/\.(gs|html)$/.test(f)),sites=[];
+for(const file of files){let scope='top level';const lines=fs.readFileSync(file,'utf8').split(/\r?\n/);lines.forEach((line,i)=>{const fn=line.match(/^\s*(?:function\s+([\w$]+)|(?:async\s+)?([\w$]+)\s*\([^)]*\)\s*\{)/);if(fn)scope=fn[1]||fn[2];if(!/\bcatch\s*\(/.test(line))return;const excerpt=lines.slice(i,Math.min(lines.length,i+4)).join(' ').replace(/\s+/g,' ').trim();let kind=file==='RosterDevQA.gs'?'QA/assertion':/log_|logWarn_|slog_|reportError_|onError|diagnosticConsole_|throw\b|toast\(/.test(excerpt)?'observable or propagated':/cache|best.effort|optional|fallback|quirk|no UI|not available|nicety|nothing|ignore/i.test(excerpt)?'optional/fallback':'manual review';sites.push({file,line:i+1,scope,kind,excerpt:excerpt.slice(0,500)});});}
+fs.writeFileSync('ERROR_HANDLING_INVENTORY.json',JSON.stringify({method:'Textual catch-line scan; nearest declaration is approximate. Read the audit for semantic findings.',files:files.length,sites},null,2)+'\n');
+const counts={};sites.forEach(s=>counts[s.kind]=(counts[s.kind]||0)+1);console.log(JSON.stringify({files:files.length,catchSites:sites.length,classifications:counts}));
