@@ -27,14 +27,42 @@ const wizard=fs.readFileSync('RosterSystem.gs','utf8').split('function setupWiza
 assert(wizard.includes('installConfiguredTriggers_()'));assert(!wizard.includes('styleFormResponses_(sheet)'));assert(!wizard.includes('CONFIG.form.discord,'));
 assert(!/FormApp\.create\s*\(/.test(fs.readdirSync('.').filter(f=>f.endsWith('.gs')).map(f=>fs.readFileSync(f,'utf8')).join('\n')));
 console.log('Startup: configured schedules, duplicate cleanup, custom trigger preservation, creation rollback, monthly/OFF semantics, public-link gating, audit failure and department-owned forms passed');
+// Support initialization uses runtime names and never touches existing tabs or adds sample records.
+ctx.SYS_LOG_SHEET='SYS Log';
+ctx.TRUST={snapshotSheet:'Custom snapshots',auditSheet:'Edit Log'};
+ctx.EXTRAS={integritySheet:'Custom integrity',coverageSheet:'Custom coverage',historySheet:'Custom history'};
+ctx.theme_=()=> '#222222';
+load('RosterSystem.gs','ensureStartupSupportSheets_');
+load('RosterSystem.gs','styleStartupSupportSheet_');
+const support=new Map(),events=[];
+const supportBook={getSheetByName:name=>support.get(name),insertSheet(name){
+  const range=new Proxy({}, {get:(o,k)=>(...args)=>{events.push([name,k,args]);return range}});
+  const sh=new Proxy({getRange:()=>range,getLastColumn:()=>8,getMaxRows:()=>1000,getMaxColumns:()=>26}, {get:(o,k)=>k in o?o[k]:(...args)=>{events.push([name,k,args]);return sh}});
+  support.set(name,sh);return sh;
+}};
+assert.equal(ctx.ensureStartupSupportSheets_(supportBook).length,6);
+assert.equal(events.filter(e=>e[1]==='hideSheet').length,3);
+assert(events.filter(e=>e[1]==='setValues').every(e=>e[2][0].length===1),'only headers written');
+const eventCount=events.length;
+assert.equal(ctx.ensureStartupSupportSheets_(supportBook).length,0);
+assert.equal(events.slice(eventCount).filter(e=>e[1]==='setValues').length,0,'repeat setup preserves existing data');
+assert(events.some(e=>e[1]==='setBackground'&&e[2][0]==='#20242a'),'support sheets use a dark foundation');
+assert(wizard.includes('ensureStartupSupportSheets_(ss)'));
 // Real seeding twice: populated defaults only on the first pass; no clear/write on the verified pass.
-let grid=[],writes=0,clears=0;
-const sheet=new Proxy({getSheetId:()=>99,getLastRow:()=>grid.length,getLastColumn:()=>5,getMaxRows:()=>2000,getName:()=> 'Config',getProtections:()=>[],getRange(r,c,n=1,w=1){return new Proxy({}, {get:(target,key)=>key==='getDisplayValues'?()=>Array.from({length:n},(_,i)=>Array.from({length:w},(_,j)=>String(grid[r+i-1]?.[c+j-1]??''))):key==='setValues'?values=>{grid=values.map(row=>Array.from(row));writes++;return target}:key==='getDisplayValue'?()=>String(grid[r-1]?.[c-1]??''):key.startsWith('clear')?()=>{clears++;return sheet.getRange(r,c,n,w)}:()=>sheet.getRange(r,c,n,w)})}}, {get:(target,key)=>key in target?target[key]:()=>sheet});
+let grid=[],writes=0,clears=0,lastColumn=5;const layoutEvents=[];
+const paintedTail=[];
+const sheet=new Proxy({getSheetId:()=>99,getLastRow:()=>grid.length,getLastColumn:()=>lastColumn,getMaxColumns:()=>26,getMaxRows:()=>2000,showColumns:(...a)=>layoutEvents.push(['showColumns',...a]),hideColumns:(...a)=>layoutEvents.push(['hideColumns',...a]),showRows:(...a)=>layoutEvents.push(['showRows',...a]),hideRows:(...a)=>layoutEvents.push(['hideRows',...a]),getName:()=> 'Config',getProtections:()=>[],getRange(r,c,n=1,w=1){return new Proxy({}, {get:(target,key)=>key==='setBackground'?color=>{paintedTail.push({r,c,n,w,color});return sheet.getRange(r,c,n,w)}:key==='getDisplayValues'?()=>Array.from({length:n},(_,i)=>Array.from({length:w},(_,j)=>String(grid[r+i-1]?.[c+j-1]??''))):key==='setValues'?values=>{grid=values.map(row=>Array.from(row));writes++;return target}:key==='getDisplayValue'?()=>String(grid[r-1]?.[c-1]??''):key.startsWith('clear')?()=>{clears++;return sheet.getRange(r,c,n,w)}:()=>sheet.getRange(r,c,n,w)})}}, {get:(target,key)=>key in target?target[key]:()=>sheet});
 const seedCtx={SpreadsheetApp:{ProtectionType:{SHEET:1},flush(){}},console};vm.createContext(seedCtx);vm.runInContext(fs.readFileSync('RosterConfig.gs','utf8'),seedCtx);
 seedCtx.findConfigSheet_=()=>sheet;seedCtx.cfgInvalidate_=()=>{};seedCtx.theme_=()=> '#222222';
 seedCtx.seedConfigTab_({});const initialWrites=writes,initialClears=clears;
 assert(initialWrites>0);seedCtx.seedConfigTab_({});assert.equal(writes,initialWrites);assert.equal(clears,initialClears,'unchanged config preserves notes, formatting and validation');
 console.log('Config seeding: verified tables and settings cause no repeated grid writes or clearing.');
+assert(layoutEvents.some(e=>e[0]==='hideColumns'&&e[1]===5),'empty columns after the four-column configuration are hidden');
+assert(paintedTail.some(e=>e.r===grid.length+1&&e.n===2000-grid.length&&e.w===5&&e.color==='#191d23'),'all allocated trailing rows are dark, including hidden rows');
+assert(layoutEvents.some(e=>e[0]==='hideRows'&&e[1]===grid.length+3),'trailing rows are hidden after two dark padding rows');
+lastColumn=8;layoutEvents.length=0;seedCtx.ensureConfigSheetStyle_(sheet,grid,true);
+assert(layoutEvents.some(e=>e[0]==='showColumns'&&e[2]===8),'populated custom columns stay visible');
+assert(layoutEvents.some(e=>e[0]==='hideColumns'&&e[1]===9),'only columns beyond custom data are hidden');lastColumn=5;
 const styled=seedCtx.configSheetStylePlan_(grid),beforeValues=JSON.stringify(grid);
 assert.equal(styled[0].kind,'title');assert(styled.some(row=>row.kind==='columns'));assert(styled.some(row=>row.kind==='data'&&row.backgrounds[1]==='#24374a'));
 seedCtx.ensureConfigSheetStyle_(sheet,grid,true);assert.equal(JSON.stringify(grid),beforeValues,'restyling does not rewrite settings or table values');

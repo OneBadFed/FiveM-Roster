@@ -1390,7 +1390,7 @@ function configSheetStylePlan_(grid) {
 
 /** A version stamp avoids repainting an unchanged sheet on every startup. Explicit restyling always applies. */
 function ensureConfigSheetStyle_(sheet,grid,force) {
-  const version='2',key='RE_CONFIG_STYLE:'+sheet.getSheetId();
+  const version='4',key='RE_CONFIG_STYLE:'+sheet.getSheetId();
   let props;
   try{props=PropertiesService.getDocumentProperties();if(!force&&props.getProperty(key)===version)return;}catch(e){/* style without cache */}
   const rows=configSheetStylePlan_(grid),range=sheet.getRange(1,1,grid.length,5);
@@ -1399,6 +1399,20 @@ function ensureConfigSheetStyle_(sheet,grid,force) {
   sheet.getRange(1,1,grid.length,1).setFontFamily('Roboto Mono').setFontSize(10);
   sheet.setColumnWidth(1,270);sheet.setColumnWidth(2,280);sheet.setColumnWidth(3,540);sheet.setColumnWidth(4,160);sheet.setColumnWidth(5,140);
   sheet.setHiddenGridlines(true);sheet.setFrozenRows(1);
+  // Hide empty sheet canvas, not data. Extra populated columns remain visible and intact.
+  const usedWidth=Math.max(3,...grid.map(row=>row.reduce((last,value,c)=>String(value==null?'':value).trim()?c+1:last,0)));
+  const lastColumn=sheet.getLastColumn(),visibleColumns=lastColumn>5?lastColumn:usedWidth;
+  const maxColumns=sheet.getMaxColumns(),maxRows=sheet.getMaxRows();
+  sheet.showColumns(1,visibleColumns);
+  if(maxColumns>visibleColumns)sheet.hideColumns(visibleColumns+1,maxColumns-visibleColumns);
+  const visibleRows=Math.min(maxRows,Math.max(grid.length,sheet.getLastRow())+2);
+  sheet.showRows(1,visibleRows);
+  // Paint the entire allocated tail, including hidden rows. Unhiding rows must not reveal
+  // the default white canvas, and rows inserted at the end inherit this dark foundation.
+  if(maxRows>grid.length)sheet.getRange(grid.length+1,1,maxRows-grid.length,5)
+    .setBackground('#191d23').setFontColor('#aeb9c8').setFontFamily('Arial').setFontSize(11);
+  if(maxRows>visibleRows)sheet.hideRows(visibleRows+1,maxRows-visibleRows);
+
   // Estimate wrapped text at these fixed widths, then batch adjacent equal heights (no per-row service reads).
   const capacities=[36,40,78,22,18],heights=grid.map((cells,i)=>{
     const kind=rows[i].kind;if(kind==='title')return 58;if(kind==='section')return 44;if(kind==='columns')return 30;if(kind==='space')return 12;

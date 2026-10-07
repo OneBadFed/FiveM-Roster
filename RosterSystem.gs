@@ -504,6 +504,10 @@ function setupWizard() {
       cfg_(); // parse + validate now so problems surface HERE, not mid-action (throws aggregate E-102 if broken)
     } catch (e) { steps.push(`⚠️ Config: ${e.message}`); ui.alert('First-Run Setup stopped',steps.join('\n'),ui.ButtonSet.OK); return; }
 
+    // Prepare empty support tabs without running scans, capturing members or replacing existing data.
+    try { const names=ensureStartupSupportSheets_(ss); steps.push(names.length ? '✅ Support sheets created: '+names.join(', ')+'.' : '✅ Support sheets already exist; existing data preserved.'); }
+    catch(e){ steps.push('⚠️ Support sheets: '+e.message); }
+
     // One shared, validated installer for core, publishing, extras and audit triggers.
     try { steps.push(installConfiguredTriggers_()); }
     catch(e){ steps.push('⚠️ Triggers: '+e.message); }
@@ -577,6 +581,49 @@ function setupWizard() {
     logInfo_('setupWizard', `setup run — ${steps.length} step(s).`);
     ui.alert('🚀 First-Run Setup', `${steps.join('\n')}${healthLine}`, ui.ButtonSet.OK);
   });
+}
+
+/** Create missing support tabs and style existing tabs without changing their data. */
+function ensureStartupSupportSheets_(ss) {
+  const specs = [
+    [SYS_LOG_SHEET, ['Timestamp','Ver','Sev','Code','Function','Message','Context','Exec'], true],
+    [TRUST.auditSheet, ['Time','Editor','Sheet','Cell','Old','New','Type','Member'], false],
+    [TRUST.snapshotSheet, ['SnapshotId','When','Row','Name','Discord','Status','Hours','Rank','Extra'], true],
+    [EXTRAS.integritySheet, ['Time','# Issues','Detail'], false],
+    [EXTRAS.coverageSheet, ['Name','Type','Start','End','Status'], false],
+    [EXTRAS.historySheet, ['WeekOf','DiscordID','Name','Rank','Hours','Status'], true],
+  ];
+  const created=[];
+  specs.forEach(([name,headers,hidden])=>{
+    let sheet=ss.getSheetByName(name);
+    if(!sheet){
+      sheet=ss.insertSheet(name);
+      sheet.getRange(1,1,1,headers.length).setValues([headers]);
+      if(hidden) sheet.hideSheet();
+      created.push(name);
+    }
+    styleStartupSupportSheet_(sheet,headers);
+  });
+  return created;
+}
+
+/** Shared dark foundation; only presentation changes, never values, formulas or number formats. */
+function styleStartupSupportSheet_(sheet,headers) {
+  const width=Math.max(headers.length,sheet.getLastColumn()),height=sheet.getMaxRows();
+  const body=sheet.getRange(1,1,height,width);
+  body.setBackground('#20242a').setFontColor('#e4e9f0').setFontFamily('Arial')
+    .setFontSize(11).setVerticalAlignment('middle').setWrap(true);
+  sheet.getRange(1,1,1,width).setBackground('#2c3542').setFontColor('#72b4ff').setFontWeight('bold');
+  sheet.setFrozenRows(1);sheet.setHiddenGridlines(true);sheet.setRowHeight(1,36);
+  sheet.setColumnWidths(1,headers.length,150);
+  headers.forEach((header,i)=>{
+    if(/^(Message|Context|Detail|Old|New|Extra)$/.test(header)) sheet.setColumnWidth(i+1,420);
+    else if(/^(Name|Member|Editor|Function|Discord|DiscordID)$/.test(header)) sheet.setColumnWidth(i+1,220);
+    else if(/^(Time|Timestamp|When|WeekOf)$/.test(header)) sheet.setColumnWidth(i+1,190);
+  });
+  sheet.showColumns(1,width);
+  const maxColumns=sheet.getMaxColumns();
+  if(maxColumns>width)sheet.hideColumns(width+1,maxColumns-width);
 }
 
 /**

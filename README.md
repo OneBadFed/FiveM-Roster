@@ -28,7 +28,7 @@ within seconds of any change here.
 
 1. **Open the workbook.** After a moment a **👥 Roster** menu appears in the menu bar. (First use asks Google
    for authorization — that's the script asking to manage *this* spreadsheet on your behalf.)
-2. **👥 Roster ▸ 🚀 First-Run Setup** — creates/verifies the ⚙️ Config tab and everything the engine needs.
+2. **👥 Roster ▸ 🚀 First-Run Setup** — creates/verifies the ⚙️ Config tab and prepares missing support sheets: snapshots, integrity log, leave coverage and hours history (using configured tab names). New support sheets contain formatted headers only; existing data remains untouched. Startup applies the shared dark layout to SYS Log, Edit Log and these four support sheets, with readable headers, wrapped text, suitable column widths and a dark background through the unused rows. Unused columns are hidden while populated custom columns stay visible. Newly created snapshots and hours history are hidden. The main roster/template sheets must already exist.
    Safe to run again any time; it never deletes your data.
 3. First-Run Setup also installs the configured triggers. **👥 Roster ▸ 🔌 Install Triggers** reinstalls them
    after schedule changes or repairs. Public edit/change and minute catch-up triggers are installed when a
