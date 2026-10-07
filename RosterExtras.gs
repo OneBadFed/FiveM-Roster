@@ -449,12 +449,11 @@ function lastResetMarker_() {
 function resetDue_() {
   try {
     const sc = cfg_().kv.ACTIVITY;
-    // OFF is authoritative regardless of cadence (matches installExtrasTriggers_ + the [SCHEDULE] contract). Enforced HERE at
-    // run time too, so setting WEEKLY_HOURS_RESET=OFF via Settings takes effect immediately even if the operator
-    // didn't re-run Install Extras Triggers — the live CONFIG bridge makes that the expected behavior everywhere else.
+    // The weekly OFF setting disables weekly/biweekly resets; monthly resets use RESET_DOM instead.
+    // Check live settings at runtime too, so changes take effect before triggers are reinstalled.
     if (sc.AUTO_RESET === false) return false; // the master switch — checked FIRST, and at run time so flipping it
-    if (sc.WEEKLY_HOURS_RESET === 'OFF') return false; // takes effect without re-installing triggers
     const cad = sc.RESET_CADENCE;
+    if (sc.WEEKLY_HOURS_RESET === 'OFF' && cad !== 'MONTHLY') return false; // monthly uses RESET_DOM, not a weekday
     if (cad === 'MANUAL') return false;
     if (cad === 'WEEKLY') return true;
     const marker=lastResetMarker_();

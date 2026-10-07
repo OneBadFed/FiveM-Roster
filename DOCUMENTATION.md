@@ -592,7 +592,7 @@ Refresh Police Academy · 📊 Build / Refresh Activity Panel │ 🌐 Set Up Pu
 (Discord / Community) · 🧩 Sync Column
 Config · 🚀 First-Run Setup · 🔌 Install Triggers.
 
-**🧪 Dev / QA:** 🎬 Load Demo Roster · 🗑️ Reset for a new department · 🧹 Delete old Sandbox / Results Tabs. In-sheet test sections and random test generators have been removed.
+**🧪 Dev / QA:** QA — all new scenarios / core logic / Sheets platform · 🎬 Load Demo Roster · 🗑️ Reset for a new department · 🧹 Delete old Sandbox / Results Tabs. QA results and synthetic platform fixtures are stored in a separate workbook; see [QA_TESTING.md](QA_TESTING.md). The old test sections and random generators remain removed.
 
 Every action reports what it actually did (counts, names, changes).
 

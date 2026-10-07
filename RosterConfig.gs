@@ -663,7 +663,7 @@ function parseLadder_(raw) {
   if (!parts.length) return null;
   const out = [];
   for (let i = 0; i < parts.length; i++) {
-    const m = parts[i].match(/^(.+?)\s*:\s*(\d+(?:\.\d+)?)$/);
+    const m = parts[i].match(/^([^:,]+?)\s*:\s*(\d+(?:\.\d+)?)$/);
     if (!m) return null;
     out.push({ name: m[1].trim(), min: parseFloat(m[2]) });
   }

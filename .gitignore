@@ -3,6 +3,7 @@ Thumbs.db
 node_modules/
 .claude/settings.local.json
 tools/.preview/
+tools/.qa/
 *.dc.html
 
 # OAuth tokens must never be tracked or uploaded

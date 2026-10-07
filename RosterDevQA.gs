@@ -1,10 +1,14 @@
-/** Department demo/reset utilities. In-sheet Dev/QA test suites have been removed. */
+/** Department demo/reset utilities and entry points to the fresh RosterQA.gs framework. */
 const SANDBOX_PREFIX = '🧪SANDBOX_'; // legacy sandbox cleanup only
 const RESULTS_TAB = '🧪 Test Results'; // legacy results cleanup only
 
 function addDevMenu_(prefix) {
   const p=prefix||'';
   SpreadsheetApp.getUi().createMenu('🧪 Dev / QA')
+    .addItem('✅ QA — all new scenarios',p+'qaRunAll')
+    .addItem('🧠 QA — core logic',p+'qaRunCore')
+    .addItem('📐 QA — Sheets platform',p+'qaRunPlatform')
+    .addSeparator()
     .addItem('🎬 Load Demo Roster (preview)',p+'seedDemoRoster')
     .addItem('🗑️ Reset for a new department…',p+'devResetForNewDepartment')
     .addItem('🧹 Delete old Sandbox / Results Tabs',p+'devCleanup')
