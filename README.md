@@ -164,3 +164,19 @@ restructure, or reformat your sheets.
 
 *Roster Engine v1.0.0 · white-label · Google Apps Script · see [DOCUMENTATION.md](DOCUMENTATION.md) for how it
 all works inside.*
+
+
+## Automatic Apps Script updates from GitHub
+
+`.github/workflows/apps-script.yml` checks the code and uploads it to the configured sheet script whenever `main` changes. It can also be run manually from GitHub Actions ? Sync Apps Script ? Run workflow. The target Script ID is `1SoCIV1N8-h_yyG9GtUgOWNO83yKxyexEUJ14dTnYRvnb5v58JGW8BQUg`.
+
+One-time setup:
+
+1. Enable the Apps Script API at https://script.google.com/home/usersettings.
+2. Install Node.js 22, then run `npm install --global @google/clasp@3.4.1` and `clasp login`. Sign in with the Google account that can edit the target script.
+3. In GitHub ? Settings ? Secrets and variables ? Actions ? New repository secret, create `CLASPRC_JSON`. Paste the full contents of your local `.clasprc.json` credential file. On Windows, it normally lives at `%USERPROFILE%\.clasprc.json`. Do not post the contents in chat or commit this file.
+4. Run the workflow manually once and check the Actions log for a successful upload.
+
+The workflow replaces the target script's source files and manifest with the repository versions. It does not run First-Run Setup, create forms, install triggers, or change spreadsheet data. Edit code in GitHub/local files going forward; manual edits in the Apps Script editor are overwritten by the next sync. Existing versioned library/web-app deployments are not updated by this workflow; it uploads the current project source only. Separate copied sheets require their own target configuration.
+
+Google's clasp guide: https://developers.google.com/apps-script/guides/clasp.

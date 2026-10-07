@@ -21,3 +21,8 @@ tools/**
 # Same idea, different name: this one does NOT match *.dc.html and was being deployed as a
 # stray duplicate of SettingsPanel.
 SettingsPanel-macOS.html
+
+# CI configuration and OAuth credentials are not Apps Script files
+.github/**
+.clasprc.json
+.clasprc.*.json

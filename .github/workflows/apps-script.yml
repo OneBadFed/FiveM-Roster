@@ -1,0 +1,51 @@
+name: Sync Apps Script
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apps-script-production
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify roster code
+        run: |
+          node tools/cfgcheck.js
+          node tools/tablecheck.js
+          node tools/publishcheck.js
+          node tools/perfcheck.js
+          node tools/htmlchk.js ControlPanel.html SettingsPanel.html
+          node -e "const fs=require('fs');for(const f of fs.readdirSync('.').filter(f=>f.endsWith('.gs')))new Function(fs.readFileSync(f,'utf8'));"
+      - name: Install clasp
+        run: npm install --global @google/clasp@3.4.1
+      - name: Load Google credentials
+        env:
+          CLASPRC_JSON: ${{ secrets.CLASPRC_JSON }}
+        run: |
+          node <<'JS'
+          const fs = require('fs'), os = require('os'), path = require('path');
+          const raw = process.env.CLASPRC_JSON;
+          if (!raw) throw new Error('Add the CLASPRC_JSON repository secret before syncing. See README.md.');
+          JSON.parse(raw);
+          const config = JSON.parse(fs.readFileSync('.clasp.json', 'utf8'));
+          if (config.scriptId !== '1SoCIV1N8-h_yyG9GtUgOWNO83yKxyexEUJ14dTnYRvnb5v58JGW8BQUg') throw new Error('Unexpected Apps Script target.');
+          fs.writeFileSync(path.join(os.homedir(), '.clasprc.json'), raw, { mode: 0o600 });
+          JS
+      - name: Upload code to the sheet script
+        run: clasp push --force
+      - name: Remove Google credentials
+        if: always()
+        run: rm -f "$HOME/.clasprc.json"

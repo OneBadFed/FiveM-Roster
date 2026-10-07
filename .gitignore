@@ -4,3 +4,7 @@ node_modules/
 .claude/settings.local.json
 tools/.preview/
 *.dc.html
+
+# OAuth tokens must never be tracked or uploaded
+.clasprc.json
+.clasprc.*.json
