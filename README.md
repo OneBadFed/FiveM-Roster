@@ -46,6 +46,10 @@ within seconds of any change here.
    Dimension copying uses a bulk Sheets API path when available, with a complete fallback. Full publishes and
    background passes taking ten seconds or more include total/per-tab timings in SYS Log. See
    [PUBLISH_AUDIT.md](PUBLISH_AUDIT.md) for performance changes and live verification steps.
+   Linking installs automatic publish triggers even if First-Run Setup ran before the public file existed.
+   For a previously linked department whose edits update only when forced, run **Install Triggers** once after
+   updating the code, or force-publish once to repair its triggers. Welcome application status at **AA5:AA6**
+   mirrors automatically; **F6:W7** remains the only Welcome area owned by the public copy.
 
 ---
 

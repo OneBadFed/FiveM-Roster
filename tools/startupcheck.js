@@ -4,8 +4,16 @@ let held=false,triggers=[],created=0,failAt=0,linked=false,audit=true;
 const config={kv:{SCHEDULE:{NIGHTLY_HOUR:21},ACTIVITY:{AUTO_RESET:true,RESET_CADENCE:'MONTHLY',WEEKLY_HOURS_RESET:'OFF',RESET_DOM:8,WEEKLY_RESET_HOUR:4}}};
 const ctx={cfg_:()=>config,PropertiesService:{getDocumentProperties:()=>({getProperty:()=>linked?'public':null})},SpreadsheetApp:{getActive:()=>({})},LockService:{getScriptLock:()=>({hasLock:()=>held,tryLock(){held=true;return true},releaseLock(){held=false}})},log_(){},logInfo_(){},cpEnsureAuditTrigger:()=>audit,cpInvalidateHealth_(){},publishOnChange(){},AppError:class extends Error{constructor(code,detail){super(detail.reason)}},ScriptApp:{WeekDay:{SUNDAY:1},getProjectTriggers:()=>triggers.slice(),deleteTrigger:t=>{triggers=triggers.filter(x=>x!==t)},newTrigger(name){const schedule={};const builder=new Proxy({}, {get:(target,key)=>key==='create'?()=>{created++;if(created===failAt)throw Error('creation quota');const trigger={name,schedule,getHandlerFunction:()=>name};triggers.push(trigger);return trigger}:(...args)=>{schedule[key]=args;return builder}});return builder}}};
 vm.createContext(ctx);
+ctx.SpreadsheetApp.getActive=()=>({getId:()=> 'bound',getName:()=> 'Internal'});
+ctx.ScriptApp.EventType={ON_EDIT:'EDIT',ON_CHANGE:'CHANGE',CLOCK:'CLOCK'};
+ctx.ScriptApp.getProjectTriggers=()=>{
+ triggers.forEach(t=>{
+  if(!t.getEventType)t.getEventType=()=>t.schedule?.onEdit?'EDIT':t.schedule?.onChange?'CHANGE':'CLOCK';
+  if(!t.getTriggerSourceId)t.getTriggerSourceId=()=>t.schedule?.forSpreadsheet?.[0]?.getId()||null;
+ });return triggers.slice();
+};
 function load(file,name){const code=fs.readFileSync(file,'utf8'),start=code.indexOf('function '+name+'('),end=code.indexOf('\nfunction ',start+1);vm.runInContext(code.slice(start,end<0?undefined:end),ctx)}
-for(const name of ['replaceManagedTriggers_','installConfiguredTriggers_'])load('RosterSystem.gs',name);
+for(const name of ['replaceManagedTriggers_','ensurePublicPublishingTriggers_','installConfiguredTriggers_'])load('RosterSystem.gs',name);
 load('RosterExtras.gs','installExtrasTriggers_');
 const old=name=>({name,getHandlerFunction:()=>name});
 triggers=[old('customJob'),old('onFormSubmit'),old('onFormSubmit'),old('processDailyLOAs'),old('publishSweep')];
@@ -15,6 +23,15 @@ assert.equal(triggers.find(t=>t.name==='processDailyLOAs').schedule.atHour[0],21
 assert(triggers.some(t=>t.name==='customJob'));
 assert(!triggers.some(t=>t.name==='publishSweep'),'unlinked public publishing has no minute trigger');
 assert.equal(triggers.find(t=>t.name==='weeklyResetScheduled').schedule.onMonthDay[0],8,'monthly cadence ignores weekly OFF');
+// Startup before linking, then link: install just public triggers without rerunning core/extras.
+linked=true;const core=triggers.find(t=>t.name==='onFormSubmit');assert(ctx.ensurePublicPublishingTriggers_(false).installed);
+assert(triggers.includes(core));assert.equal(triggers.filter(t=>t.name==='publishOnChange').length,2);
+const stable=created;assert(!ctx.ensurePublicPublishingTriggers_(false).installed);assert.equal(created,stable,'healthy sets are not recreated');
+const edit=triggers.find(t=>t.name==='publishOnChange'&&t.getEventType()==='EDIT');edit.getTriggerSourceId=()=> 'wrong-workbook';
+assert(ctx.ensurePublicPublishingTriggers_(false).installed,'same handler on wrong source is repaired');
+const valid=triggers.slice();failAt=created+2;
+assert.throws(()=>ctx.ensurePublicPublishingTriggers_(true),/creation quota/);assert.deepEqual(triggers,valid,'public trigger creation failure retains previous set');assert(!held);
+failAt=0;linked=false;ctx.ensurePublicPublishingTriggers_(false);assert(!triggers.some(t=>t.name==='publishOnChange'));
 const before=triggers.slice();created=0;failAt=2;
 assert.throws(()=>ctx.installConfiguredTriggers_(),/creation quota/);
 assert.deepEqual(triggers,before,'failed core replacement retains original triggers and removes staged trigger');assert(!held);
@@ -27,6 +44,17 @@ const wizard=fs.readFileSync('RosterSystem.gs','utf8').split('function setupWiza
 assert(wizard.includes('installConfiguredTriggers_()'));assert(!wizard.includes('styleFormResponses_(sheet)'));assert(!wizard.includes('CONFIG.form.discord,'));
 assert(!/FormApp\.create\s*\(/.test(fs.readdirSync('.').filter(f=>f.endsWith('.gs')).map(f=>fs.readFileSync(f,'utf8')).join('\n')));
 console.log('Startup: configured schedules, duplicate cleanup, custom trigger preservation, creation rollback, monthly/OFF semantics, public-link gating, audit failure and department-owned forms passed');
+// Real link/menu callers invoke the same verifier before publishing.
+load('RosterControlPanel.gs','setupPublicRoster');load('RosterControlPanel.gs','publishPublicRosterNow');
+ctx.PUBLIC_FILE_PROP_='PUBLIC_ROSTER_ID';ctx.runAction_=(label,fn)=>fn();
+const publicFile={getId:()=> 'public',getName:()=> 'Public',getUrl:()=> 'https://example.test/public'};
+const ui={Button:{OK:'OK'},ButtonSet:{OK_CANCEL:'OK_CANCEL',OK:'OK'},prompt:()=>({getSelectedButton:()=> 'OK',getResponseText:()=> 'p'.repeat(30)}),alert(){}};
+ctx.SpreadsheetApp.getUi=()=>ui;ctx.SpreadsheetApp.openById=()=>publicFile;
+ctx.PropertiesService.getDocumentProperties=()=>({getProperty:()=>linked?'public':null,setProperty:()=>{linked=true;}});
+let publishes=0;ctx.publishPublicRoster=()=>{publishes++;assert.equal(triggers.filter(t=>t.name==='publishOnChange').length,2,'edit trigger must exist before first publish');return {linked:true,tabs:[],rows:0,url:'test'};};
+linked=false;ctx.ensurePublicPublishingTriggers_(false);ctx.setupPublicRoster();assert.equal(publishes,1);
+triggers=triggers.filter(t=>t.name!=='publishOnChange');ctx.publishPublicRosterNow();assert.equal(publishes,2);assert.equal(triggers.filter(t=>t.name==='publishOnChange').length,2,'manual publishing repairs existing departments');
+console.log('Public auto-update: startup-before-link, idempotent repair, event/source checks, rollback and real link/menu wiring passed.');
 // Support initialization uses runtime names and never touches existing tabs or adds sample records.
 ctx.SYS_LOG_SHEET='SYS Log';
 ctx.TRUST={snapshotSheet:'Custom snapshots',auditSheet:'Edit Log'};

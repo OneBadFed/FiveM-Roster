@@ -38,9 +38,12 @@ assert.throws(()=>ctx.publishWelcomePage_(src,failedOld),/swap failed/);assert(p
 assert(source.includes('if (!isWelcome &&'),'Welcome cannot be skipped as self-computing');
 const titleInternal=new Book(),titlePublic=new Book(),titleSource=new Sheet(titleInternal,'Welcome Page',30,30),titleDest=new Sheet(titlePublic,'Welcome Page',30,30);
 titleSource.titleBlock={text:'Internal title',style:'internal'};titleDest.titleBlock={text:'Public title',style:'public',merges:['F6:W7']};
+titleSource.values=Array.from({length:7},()=>Array(30).fill(''));titleSource.formulas=titleSource.values.map(row=>row.map(()=>''));titleSource.values[4][26]='Applications open';
 ctx.publishWelcomePage_(titleSource,titleDest);
 assert.deepEqual(titlePublic.sheets[0].titleBlock,{text:'Public title',style:'public',merges:['F6:W7']},'F6:W7 public content and style survive');
 assert.deepEqual(titlePublic.sheets[0].heights,titleSource.heights,'title row heights still match internal');
+assert.equal(titlePublic.sheets[0].values[4][26],'Applications open','AA5 is outside F6:W7 and must be mirrored');
+titleSource.values[4][26]='Applications closed';ctx.publishWelcomePage_(titleSource,titlePublic.sheets[0]);assert.equal(titlePublic.sheets[0].values[4][26],'Applications closed','subsequent status change is mirrored');
 console.log('Welcome: full grid/style snapshot, all dimensions, source title, computed values, public references and failure preservation passed.');
 
 const system=fs.readFileSync('RosterSystem.gs','utf8'),extras=fs.readFileSync('RosterExtras.gs','utf8');

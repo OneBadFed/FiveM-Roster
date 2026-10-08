@@ -1402,6 +1402,7 @@ function cpRunActionCore_(name) {
       return `"${r.name}" rebuilt — ${r.rows} patrol${r.rows === 1 ? '' : 's'} listed.`;
     }
     case 'publishRoster': {
+      if(typeof ensurePublicPublishingTriggers_==='function')ensurePublicPublishingTriggers_(false);
       const res = publishPublicRoster();
       if (res === false) raise_('E-503');
       if (!res || !res.linked) return 'No public roster is linked yet — set one up before publishing.';
@@ -3340,6 +3341,9 @@ function publishOnChange(e) {
     const last = Number(props.getProperty(PUBLISH_LAST_PROP_) || 0);
     if (Date.now() - last < PUBLISH_MIN_GAP_MS_) { scheduleCatchup_(); return; } // too soon → a trailing catch-up publishes the tail in ~3s (not the 1-minute sweep)
     publishPublicRosterQuiet_(only || undefined, !wasDirty); // nothing else was pending → this partial pass covers it all and may clear the flag
+    // A backoff, busy pass or failed mirror can decline an immediate edit. Always
+    // schedule its pending tail instead of silently relying only on the minute sweep.
+    if(props.getProperty(PUBLISH_DIRTY_PROP_)==='1')scheduleCatchup_();
   } catch (err) { log_('publishOnChange', err); }
 }
 
@@ -3435,6 +3439,9 @@ function publishPublicRoster() {
 function publishPublicRosterNow() {
   runAction_('Publish Public Roster', () => {
     const ui = SpreadsheetApp.getUi();
+    // Repairs departments linked after their original startup, which installed no
+    // public triggers. A valid set is left intact; installation failures are visible.
+    if(typeof ensurePublicPublishingTriggers_==='function')ensurePublicPublishingTriggers_(false);
     const res = publishPublicRoster();
     if (res === false) { ui.alert('Publish skipped — another roster operation is running.'); return; }
     if (!res.linked) { ui.alert('🌐 Public Roster', 'No public roster is linked yet.\n\nRun 👥 Roster ▸ 🌐 Set Up Public Roster first.', ui.ButtonSet.OK); return; }
@@ -3467,10 +3474,12 @@ function setupPublicRoster() {
     if (file.getId() === SpreadsheetApp.getActive().getId()) { ui.alert('Choose a separate public spreadsheet. The internal roster cannot publish onto itself.'); return; }
     PropertiesService.getDocumentProperties().setProperty(PUBLIC_FILE_PROP_, file.getId());
     _publicFileMemo_ = file; // a link change must invalidate any earlier per-execution lookup
+    if(typeof ensurePublicPublishingTriggers_==='function')ensurePublicPublishingTriggers_(false);
     const sum = publishPublicRoster();
     logInfo_('setupPublicRoster', `public roster linked: ${file.getId()}`);
     ui.alert('🌐 Public roster linked',
       file.getName() + '\n' + file.getUrl() + '\n\n' +
+      'Automatic updates are installed: cell edits, structural changes and a one-minute retry sweep.\n\n' +
       'NEXT — copy the tabs you want members to see into that file (right-click a tab ▸ Copy to ▸ that spreadsheet), ' +
       'then rename each copy to EXACTLY match its name here. Publishing mirrors every public tab whose name matches a ' +
       'tab here, matching columns by header — so delete a column there and it simply stops being filled.\n\n' +

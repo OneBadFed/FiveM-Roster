@@ -50,6 +50,16 @@ c.publishOnChange({range:{getSheet:()=>({getName:()=> 'Signups'})}});assert(!h.d
 c.publishOnChange({changeType:'FORMAT'});assert.deepEqual(copy(c.publishQueueTake_()),{except:[]},'unscoped formatting events still publish every eligible tab');
 console.log('Fast publish queue: scoped work, legacy fallback, exclusions, retries, lock contention, concurrent writes and real wrappers passed.');
 
+// Welcome application status is edited in AA5:AA6 (often a merged dropdown).
+const status=harness();let statusSchedules=0;status.ctx.scheduleCatchup_=()=>statusSchedules++;
+const welcomeEdit={value:'Applications open',range:{getSheet:()=>({getName:()=> '👋 Welcome Page'}),getRow:()=>5,getColumn:()=>27,getNumRows:()=>2,getNumColumns:()=>1}};
+status.ctx.publishOnChange(welcomeEdit);assert.deepEqual(copy(status.calls.pop()),['👋 Welcome Page']);assert(!status.data.has('PUBLIC_DIRTY'),'AA5:AA6 publishes without forcing the roster');
+status.time(1001000);status.ctx.publishOnChange(welcomeEdit);assert.equal(statusSchedules,1);assert.deepEqual(copy(status.ctx.publishQueueTake_()),['👋 Welcome Page'],'rapid dropdown changes retain the latest Welcome update');
+status.time(1010000);status.data.set('PUBLISH_BACKOFF_UNTIL','1045000');status.ctx.publishOnChange(welcomeEdit);assert.equal(statusSchedules,2,'backoff-declined Welcome update gets a catch-up');
+status.data.delete('PUBLISH_BACKOFF_UNTIL');status.data.set('PUBLISH_PASS_UNTIL','1500000|another-pass');status.ctx.publishOnChange(welcomeEdit);assert.equal(statusSchedules,3,'busy publish-declined Welcome update gets a catch-up');
+status.data.delete('PUBLISH_PASS_UNTIL');status.ctx.publishPublicRosterQuiet_();assert.deepEqual(copy(status.calls.pop()),['👋 Welcome Page']);assert(!status.data.has('PUBLIC_DIRTY'));
+console.log('Welcome status: AA5:AA6 edit, merged dropdown, rapid changes, backoff, busy publisher and automatic catch-up passed.');
+
 // Simulate a hard stop after taking work: no catch/finally/retry from that run.
 const stopped=harness();stopped.ctx.publishQueueChange_('LOA');assert(stopped.ctx.publishPassClaim_());stopped.ctx.publishQueueBegin_();
 assert(!stopped.data.has('PUBLIC_DIRTY'));assert(stopped.data.has('PUBLIC_INFLIGHT_SCOPE_V1'));

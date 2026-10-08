@@ -44,7 +44,9 @@ ctx.UrlFetchApp.fetch=()=>{throw Error('network '+secret)};result=ctx.postToWebh
 
 const actualPublish=ctx.publishPublicRoster_;
 // Publish failures cannot be returned as successful Control Panel actions.
+let triggerChecks=0;ctx.ensurePublicPublishingTriggers_=()=>{triggerChecks++;}; // platform verifier is exercised by startupcheck
 ctx.publishPublicRoster=()=>({linked:true,failed:true,tabs:['Roster'],rows:1,skipped:['Welcome'],detail:['Welcome unavailable']});assert.throws(()=>ctx.cpRunActionCore_('publishRoster'),/Public publish stopped/);
+assert.equal(triggerChecks,1,'panel force-publish repairs auto-update triggers before publishing');
 // Logger storage outages fall back once per execution without hiding the action's error.
 sheet.appendRow=()=>{throw Error('storage '+secret)};const logCount=logs.length;assert.doesNotThrow(()=>ctx.slog_('ERROR','E-601','logger outage','problem'));assert.doesNotThrow(()=>ctx.slog_('ERROR','E-601','logger outage again','problem'));assert(logs.length>logCount);assert(!logs.join(' ').includes('PRIVATE_TOKEN'));
 // Signup source acknowledgement failure cannot duplicate a deterministic submission on manual retry.

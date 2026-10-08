@@ -443,6 +443,32 @@ function replaceManagedTriggers_(handlers, create) {
   finally{if(!held){try{lock.releaseLock();}catch(e){if(primary)log_('trigger.unlock',e);else throw e;}}}
 }
 
+/** Link setup and explicit publishing also call this: startup may have run before
+ * a public file existed. Verify types and spreadsheet ID, not just handler names.
+ * No checks on the keystroke path; valid trigger sets are left intact. */
+function ensurePublicPublishingTriggers_(force) {
+  const linked=!!String(PropertiesService.getDocumentProperties().getProperty('PUBLIC_ROSTER_ID')||'').trim();
+  const ss=SpreadsheetApp.getActive(),handlers=['publishPublicRoster','publishOnChange','publishSweep'];
+  const lock=LockService.getScriptLock(),held=lock.hasLock();
+  if(!held&&!lock.tryLock(8000))throw new Error('Public auto-update trigger verification is busy. Retry Install Triggers shortly.');
+  try {
+    const owned=ScriptApp.getProjectTriggers().filter(t=>handlers.indexOf(t.getHandlerFunction())!==-1);
+    if(!linked&&!owned.length)return {linked:false,installed:false};
+    if(linked&&!force){
+      const editType=ScriptApp.EventType.ON_EDIT,changeType=ScriptApp.EventType.ON_CHANGE,clockType=ScriptApp.EventType.CLOCK;
+      const count=(name,type,source)=>owned.filter(t=>t.getHandlerFunction()===name&&t.getEventType()===type&&(!source||t.getTriggerSourceId()===ss.getId())).length;
+      if(owned.length===3&&count('publishOnChange',editType,true)===1&&count('publishOnChange',changeType,true)===1&&count('publishSweep',clockType,false)===1)return {linked:true,installed:false};
+    }
+    replaceManagedTriggers_(handlers,add=>{
+      if(!linked)return;
+      add(ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onEdit().create());
+      add(ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onChange().create());
+      add(ScriptApp.newTrigger('publishSweep').timeBased().everyMinutes(1).create());
+    });
+    return {linked,installed:linked};
+  } finally {if(!held)lock.releaseLock();}
+}
+
 /** Shared installer for startup, menu and panel repair. Validates before changing any triggers. */
 function installConfiguredTriggers_() {
     const hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; // preflight before deleting any existing triggers
@@ -458,13 +484,7 @@ function installConfiguredTriggers_() {
     let pubLine = '';
     try {
       if (typeof publishOnChange === 'function') {
-        const linked=!!PropertiesService.getDocumentProperties().getProperty('PUBLIC_ROSTER_ID');
-        replaceManagedTriggers_(['publishPublicRoster','publishOnChange','publishSweep'],add=>{
-          if(!linked)return;
-          add(ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onEdit().create());
-          add(ScriptApp.newTrigger('publishOnChange').forSpreadsheet(ss).onChange().create());
-          add(ScriptApp.newTrigger('publishSweep').timeBased().everyMinutes(1).create());
-        });
+        const {linked}=ensurePublicPublishingTriggers_(true);
         pubLine = linked?'\n• Public roster: live on edit + row delete (1-min catch-up)':'\n• Public roster: not linked; publishing triggers skipped';
       }
     } catch (e) { log_('installTriggers.publish', e); failures.push('public publishing triggers'); }
