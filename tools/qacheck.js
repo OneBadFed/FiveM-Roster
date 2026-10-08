@@ -23,4 +23,10 @@ assert.equal(deliberate[0][2],'FAIL');assert.equal(deliberate[1][2],'PASS');asse
 const expired=ctx.qaExecuteCases_([{id:'deadline',area:'Runner',run(){throw Error('must not run')}}],()=>1001,1000);
 assert.equal(expired[0][2],'NOT RUN');
 const duplicate=ctx.qaCases_().map(test=>test.id);assert.equal(new Set(duplicate).size,duplicate.length,'case identifiers are unique');
+assert.throws(()=>ctx.qaEqual_(new Date(NaN),null),'an invalid Date cannot masquerade as null');
+assert.throws(()=>ctx.qaEqual_(NaN,null),'a non-finite number cannot masquerade as null');
+assert.throws(()=>ctx.qaEqual_({a:undefined},{}),'missing keys and explicit undefined are distinct');
+assert.throws(()=>ctx.qaEqual_([1,undefined],[1,null]),'undefined array elements and null are distinct');
+assert.throws(()=>ctx.qaEqual_(Array(1),[]),'sparse arrays retain their length');
+ctx.qaEqual_({a:1,b:2},{b:2,a:1});
 console.log('Fresh QA runner: failure isolation, continued execution, deadline reporting and unique IDs passed.');

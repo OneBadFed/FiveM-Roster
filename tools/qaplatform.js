@@ -108,12 +108,13 @@ ctx.SpreadsheetApp.create=()=>{throw Error('QA cannot create another workbook')}
 const realReport=ctx.qaWriteReport_;ctx.qaWriteReport_=(...args)=>{realReport(...args);if(reportFails)throw Error('injected formatting failure')};
 ctx.qaCases_=()=>[{id:'runner.synthetic',area:'Runner',run(){}}];const realPlatformCases=ctx.qaPlatformCases_;
 vm.runInContext('DEV_WEBHOOKS_OFF_=false',ctx);
-let summary=ctx.qaRun_('all');assert.equal(summary.passed,8);assert(summary.reportReady);assert.equal(released,1);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',ctx),false);
+const expectedCount=1+realPlatformCases(source).length;
+let summary=ctx.qaRun_('all');assert.equal(summary.passed,expectedCount);assert(summary.reportReady);assert.equal(released,1);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',ctx),false);
 assert.equal(source.sheets.length,4,'only the three pre-existing tabs and one results tab remain');const report=lastSandbox;
 assert.equal(report.name,'🧪 QA Results');assert(summary.url.endsWith('#gid='+report.id),'same sandbox ID becomes the results link');assert.equal(source.active,report);
 assert.equal(report.rows[0][0].value,'Dev / QA — Test results');assert.equal(report.rows[7][0].value,'Case');assert.equal(report.rows[8][0].value,'runner.synthetic');assert.equal(report.rules.length,0);
 assert(report.rows.every(row=>row.every(cell=>!cell.validation&&!cell.formula)),'report has no stale fixtures');
-assert.equal(report.rows[4][0].value,8);assert.equal(report.rows[4][1].value,0);assert.equal(report.rows[4][3].value,8);
+assert.equal(report.rows[4][0].value,expectedCount);assert.equal(report.rows[4][1].value,0);assert.equal(report.rows[4][3].value,expectedCount);
 assert.equal(report.rows[0][0].bg,'#202c3b');assert.equal(report.rows[8][2].bg,'#203e30');assert.equal(report.rows[8][2].color,'#76dda3');
 assert.equal(report.rows[8][0].font,'Roboto Mono');assert.equal(report.frozenRows,8);assert(report.hiddenGridlines);assert.deepEqual(report.hiddenColumns,[6,35]);assert.equal(report.columnWidths[5],600);assert.equal(report.filter.range.r,8);
 assert(report.rows.at(-1).slice(0,5).every(c=>c.bg==='#191d23'),'bottom padding is dark, not white');

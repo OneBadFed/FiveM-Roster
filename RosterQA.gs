@@ -1,6 +1,15 @@
 /** Fresh QA specification shared by Apps Script and the local runner. No legacy test cases imported. */
 function qaAssert_(condition,detail) { if(!condition)throw new Error(detail||'Assertion failed'); }
-function qaEqual_(actual,expected) { qaAssert_(JSON.stringify(actual)===JSON.stringify(expected),'Expected '+JSON.stringify(expected)+'; received '+JSON.stringify(actual)); }
+function qaEqual_(actual,expected) {
+  const same=(a,b)=>{
+    if(a===b)return true;
+    if(a==null||b==null||typeof a!==typeof b||typeof a!=='object')return false;
+    if(a instanceof Date||b instanceof Date)return a instanceof Date&&b instanceof Date&&Number.isFinite(a.getTime())&&a.getTime()===b.getTime();
+    if(Array.isArray(a)!==Array.isArray(b)||(Array.isArray(a)&&a.length!==b.length))return false;
+    const keys=Object.keys(a);return keys.length===Object.keys(b).length&&keys.every(k=>Object.prototype.hasOwnProperty.call(b,k)&&same(a[k],b[k]));
+  };
+  qaAssert_(same(actual,expected),'Expected '+JSON.stringify(expected)+'; received '+JSON.stringify(actual));
+}
 function qaCase_(id,area,run) { return {id,area,run}; }
 
 /** Deterministic fixtures make every failed boundary reproducible. */
@@ -66,6 +75,112 @@ function qaCases_() {
     const plan=configSheetStylePlan_([['RE_CONFIG','Title','Help','',''],['[THEME]','','','',''],['ACCENT','#123456','Help','','']]);
     qaEqual_(plan[0].kind,'title');qaEqual_(plan[2].backgrounds[1],'#123456');
   });
+  return cases.concat(qaWhatIfCases_());
+}
+
+/** Broader contracts run identically in Node and the in-roster sandbox runner.
+ * Only synthetic inputs are passed to pure functions; never override live globals. */
+function qaWhatIfCases_() {
+  const cases=[],add=(id,area,fn)=>cases.push(qaCase_(id,area,fn));
+  const rejects=(fn)=>{let failed=false;try{fn();}catch(e){failed=true;}qaAssert_(failed,'Invalid input was accepted');};
+  Object.keys(BLOCK_SPECS_).forEach(block=>{
+    const spec=BLOCK_SPECS_[block];if(spec.type!=='kv')return;
+    Object.keys(spec.keys).forEach(key=>{
+      const s=spec.keys[key],id='schema.'+block+'.'+key;
+      if(String(s.d||'').trim()||!s.req)add(id+'.default','Config fields',()=>{
+        const problems=[];coerce_(id,s.d,s,problems);qaEqual_(problems,[]);
+      });
+      if(s.req)add(id+'.required','Config fields',()=>{const p=[];coerce_(id,'',s,p);qaAssert_(p.some(x=>x.sev==='ERROR'));});
+      const invalid={int:'1.5junk',bool:'maybe',enum:'__QA_INVALID__',color:'#GGGGGG'}[s.t];
+      if(invalid)add(id+'.invalid','Config fields',()=>{const p=[];coerce_(id,invalid,s,p);qaAssert_(p.some(x=>x.sev==='ERROR'));});
+      if(s.t==='enum')(s.enum||[]).forEach((value,i)=>add(id+'.option.'+i,'Config fields',()=>{const p=[];qaEqual_(coerce_(id,' '+value.toLowerCase()+' ',s,p),value);qaEqual_(p,[]);}));
+      if(s.t==='int')['min','max'].forEach(bound=>{if(s[bound]==null)return;
+        add(id+'.'+bound,'Config fields',()=>{const p=[];qaEqual_(coerce_(id,String(s[bound]),s,p),s[bound]);qaEqual_(p,[]);coerce_(id,String(s[bound]+(bound==='min'?-1:1)),s,p);qaAssert_(p.some(x=>x.sev==='ERROR'));});
+      });
+      if(s.aka)add(id+'.alias','Config migration',()=>{
+        const at=String(s.aka).split('.'),source=at.length===2?at[0]:block,old=at[at.length-1];
+        const raw={};raw[source]={kind:'kv',kv:{}};raw[source].kv[old]=s.d;
+        const result=validateConfig_(raw);qaAssert_(result.config.kv[block][key]!==undefined);qaAssert_(!Object.prototype.hasOwnProperty.call(raw[source].kv,old));
+        const conflict={};conflict[source]={kind:'kv',kv:{}};conflict[source].kv[old]='__OLD__';conflict[block]=conflict[block]||{kind:'kv',kv:{}};conflict[block].kv[key]=s.d;
+        qaEqual_(validateConfig_(conflict).config.kv[block][key],result.config.kv[block][key]);
+      });
+    });
+  });
+  ['TRUE','true','Yes','1','FALSE','false','No','0'].forEach((v,i)=>add('config.boolean.spelling.'+i,'Config fields',()=>qaEqual_(coerce_('bool',v,{t:'bool',d:false},[]),i<4)));
+  ['1.2','1e3','NaN','Infinity','9007199254740992','2 junk'].forEach((v,i)=>add('config.integer.strict.'+i,'Config fields',()=>{const p=[];coerce_('integer',v,{t:'int',d:1},p);qaAssert_(p.length>0);}));
+  add('config.optional.empty','Config fields',()=>{qaEqual_(coerce_('list','',{t:'list',d:'Old'},[]),[]);qaEqual_(coerce_('text','',{t:'string',d:'Old'},[]),'');});
+  const rawTable=(name,rows)=>{const raw={};raw[name]={kind:'table',rows};return raw;};
+  const errorFor=(raw,key)=>qaAssert_(validateConfig_(raw).problems.some(p=>p.sev==='ERROR'&&p.key.indexOf(key)!==-1),'Expected validation error for '+key);
+  ['-1','5hours','Infinity','NaN','1e999'].forEach((v,i)=>add('config.tier.numeric.'+i,'Statuses',()=>errorFor(rawTable('STATUSES',[['Floor','TIER','0'],['High','TIER',v]]),'STATUSES')));
+  ['5hours','Infinity','NaN','1e999',''].forEach((v,i)=>add('config.rule.numeric.'+i,'Statuses',()=>errorFor(rawTable('STATUS_RULES',[['*','>=',v,'Active']]),'STATUS_RULES')));
+  add('config.ladder.overflow','Statuses',()=>qaEqual_(parseLadder_('High:'+ '9'.repeat(400)+', Floor:0'),null));
+  [-1,NaN,Infinity].forEach((min,i)=>add('config.ladder.finite.'+i,'Statuses',()=>{const p=[];checkLadder_([{name:'Floor',min:0},{name:'High',min}], 'QA',p);qaAssert_(p.some(x=>x.sev==='ERROR'));}));
+  ['constructor','__proto__','toString'].forEach((name,i)=>add('status.prototype.name.'+i,'Statuses',()=>{
+    const r=validateConfig_(rawTable('STATUSES',[[name,'TIER','0']]));qaAssert_(!r.problems.some(p=>p.sev==='ERROR'));qaEqual_(r.config.tiers[0].name,name);
+    qaEqual_(applyStatusRules_(name,1,[{source:name.toUpperCase(),op:'*',target:'Done'}]),'Done');
+  }));
+  [['Flag','WHAT',''],['Floor','TIER',''],['Floor','TIER','0'],['floor','TIER','1']].forEach((r,i)=>{
+    if(i<2)add('config.status.invalid.'+i,'Statuses',()=>errorFor(rawTable('STATUSES',[r]),'STATUSES'));
+  });
+  add('config.status.duplicates','Statuses',()=>errorFor(rawTable('STATUSES',[['Floor','TIER','0'],[' floor ','PROTECTED','']]),'STATUSES'));
+  ['junk','[]','null','{"fields":{}}','{"fields":[null]}','{"fields":[[]]}'].forEach((v,i)=>add('config.embed.invalid.'+i,'Notifications',()=>errorFor(rawTable('EMBEDS',[['event',v]]),'EMBEDS')));
+  ['{}','{"sendEmbed":false}','{"fields":[{"n":"QA","v":"0","inline":true}]}'].forEach((v,i)=>add('config.embed.valid.'+i,'Notifications',()=>qaAssert_(!validateConfig_(rawTable('EMBEDS',[['event',v]])).problems.some(p=>p.key.indexOf('EMBEDS')!==-1))));
+  Object.keys(BLOCK_SPECS_).filter(name=>BLOCK_SPECS_[name].type==='table').forEach(name=>add('config.table.header.'+name,'Config tables',()=>{
+    const r=validateConfig_({[name]:{kind:'table',header:['BROKEN'],rows:[]}});qaAssert_(r.problems.some(p=>p.type==='header'&&p.key==='['+name+']'));
+  }));
+  ['TRACKER','PATROL_LOG','SIGNUPS','WELCOME','HOURS_HISTORY','COVERAGE','INTEGRITY','SNAPSHOTS'].forEach(role=>add('config.sheet.collision.'+role,'Startup',()=>errorFor({SHEETS:{kind:'kv',kv:{ROSTER:'Same tab',[role]:' same TAB '}}},'SHEETS')));
+  add('config.activity.panel.collision','Startup',()=>errorFor({SHEETS:{kind:'kv',kv:{ROSTER:'Roster'}},ACTIVITY:{kind:'kv',kv:{PANEL_TAB:'Roster'}}},'PANEL_TAB'));
+  ['APPROVED_STATUS','EXPIRED_STATUS'].forEach(key=>add('leave.flow.missing.'+key,'Leave lifecycle',()=>errorFor({LEAVE:{kind:'kv',kv:{[key]:'Not in flow'}}},key)));
+  add('leave.empty.configuration','Leave lifecycle',()=>{
+    const raw={LEAVE:{kind:'kv',kv:{LEAVE_TYPES:'',RETURN_STATUS:''}}};['STATUSES','STATUS_OVERRIDES','STATUS_RULES'].forEach(n=>raw[n]={kind:'table',rows:[]});
+    const r=validateConfig_(raw);qaAssert_(!r.problems.some(p=>p.sev==='ERROR'));qaEqual_(materialize_(r.config,false).legacy.protectedStatuses,[]);
+  });
+  [['2024-02-29',true],['2025-02-29',false],['2026-04-31',false],['2026-13-01',false],['2026-00-10',false],['2026-01-00',false],['2026-10-08',true],['bad',false],['',false]].forEach((pair,i)=>add('leave.date.calendar.'+i,'Leave lifecycle',()=>qaEqual_(Number.isFinite(cpParseYMD_(pair[0]).getTime()),pair[1])));
+  [0,0.25,0.5,0.99999].forEach((time,i)=>add('patrol.combine.valid.'+i,'Patrol',()=>{const d=combineDateTime_(new Date(2026,9,8),time);qaAssert_(Number.isFinite(d.getTime()));qaEqual_(d.getDate(),8);}));
+  [NaN,Infinity,-0.5,1,1.5,new Date(NaN),'12:00',null,''].forEach((time,i)=>add('patrol.combine.invalid.'+i,'Patrol',()=>qaAssert_(combineDateTime_(new Date(2026,9,8),time)===null,'Invalid time must return null, not an invalid Date')));
+  [new Date(NaN),'bad',null,''].forEach((date,i)=>add('patrol.date.invalid.'+i,'Patrol',()=>qaEqual_(combineDateTime_(date,0.5),null)));
+  [1,26,27,52,53,78].forEach(c=>add('patrol.formula.columns.'+c,'Patrol',()=>{
+    const formula=patrolTotalFormula_({startDate:c,startTime:c+1,endDate:c+2,endTime:c+3},8);
+    [0,1,2,3].forEach(offset=>qaAssert_(formula.indexOf(groupColLetter_(c+offset)+'8')!==-1));
+  }));
+  const now=new Date('2026-10-08T12:00:00Z'),date=h=>new Date(now.getTime()+h*3600000);
+  [-1,8].forEach(member=>[null,new Date(NaN),date(-2)].forEach((start,si)=>[null,new Date(NaN),date(-1)].forEach((end,ei)=>add('patrol.identity.dates.'+member+'.'+si+'.'+ei,'Patrol',()=>{
+    const r=evaluatePatrolLogCore_(member,start,end,1,now,{maxHours:12,futureGraceHours:6});
+    qaEqual_(r.blocking,member===-1||si!==2||ei!==2);qaEqual_(r.reason==='',member!==-1&&si===2&&ei===2);
+  }))));
+  [NaN,-1,0,0.01,12,12.01,24,24.01,Infinity].forEach((hours,i)=>add('patrol.duration.boundary.'+i,'Patrol',()=>{
+    const r=evaluatePatrolLogCore_(8,date(-2),date(-1),hours,now,{maxHours:12,futureGraceHours:6});
+    qaEqual_(r.blocking,!(hours>0)||hours>24);qaEqual_(r.reason==='',hours>0&&hours<=12);
+  }));
+  [0,6].forEach(grace=>[-0.01,0,0.01,5.99,6,6.01].forEach(offset=>add('patrol.future.'+grace+'.'+offset,'Patrol',()=>{
+    const r=evaluatePatrolLogCore_(8,date(offset-1),date(offset),1,now,{maxHours:12,futureGraceHours:grace});qaEqual_(r.blocking,false);qaEqual_(r.reason!=='',offset>grace);
+  })));
+  [null,undefined,NaN,Infinity,-1,'bad'].forEach((grace,i)=>add('patrol.grace.invalid.'+i,'Patrol',()=>qaEqual_(evaluatePatrolLogCore_(8,date(5),date(6),1,now,{maxHours:12,futureGraceHours:grace}).reason,'')));
+  add('patrol.now.invalid','Patrol',()=>qaAssert_(evaluatePatrolLogCore_(8,date(-2),date(-1),1,new Date(NaN),{maxHours:12}).blocking));
+  add('patrol.priority','Patrol',()=>{qaEqual_(evaluatePatrolLogCore_(-1,null,null,30,now,{}).reason,'Unique ID not on roster.');qaEqual_(evaluatePatrolLogCore_(8,date(10),date(12),25,now,{maxHours:12}).reason,'Over 24 hrs — check the dates.');});
+  [['https://example.invalid/image',true],['http://example.invalid/a',true],['javascript:alert(1)',false],['data:image/png;base64,x',false],['file:///a',false],['https://example.invalid/a b',false],['',false]].forEach((pair,i)=>add('notification.url.'+i,'Notifications',()=>qaEqual_(!!embedUrl_(pair[0]),pair[1])));
+  add('notification.chrome.limits','Notifications',()=>{const e=embedChromeFrom_({authorName:'X'.repeat(500),authorIcon:'javascript:x',thumbnail:'https://example.invalid/a',image:'data:x',footerText:'Y'.repeat(3000)},'QA');qaEqual_(e.author.name.length,256);qaEqual_(e.footer.text.length,2048);qaAssert_(!e.author.icon_url&&!e.image);qaAssert_(!!e.thumbnail);});
+  add('notification.tokens.values','Notifications',()=>qaEqual_(fill_('{zero} {no} {missing} {name}',{zero:0,no:false,name:'$& <@123>'}),'0 false {missing} $& <@123>'));
+  add('notification.channel.recognition','Notifications',()=>qaEqual_(webhookChannelList_([' loa ','LOA','ERRORS','invalid','PATROL']),['LOA','ERRORS','PATROL']));
+  const embedLength=e=>String(e.title||'').length+String(e.description||'').length+String(e.author&&e.author.name||'').length+String(e.footer&&e.footer.text||'').length+(e.fields||[]).reduce((n,f)=>n+f.name.length+f.value.length,0);
+  [0,1,255,256,1024,2000,4096,5999,6000,6001,10000].forEach(size=>add('notification.payload.budget.'+size,'Notifications',()=>{
+    const p={content:'M'.repeat(size),embeds:[{title:'T'.repeat(size),description:'D'.repeat(size),author:{name:'A'.repeat(size)},footer:{text:'F'.repeat(size)},fields:Array.from({length:30},()=>({name:'N'.repeat(size),value:'V'.repeat(size),inline:true}))}]};
+    const before=JSON.stringify(p),out=boundedWebhookPayload_(p);qaEqual_(JSON.stringify(p),before);qaAssert_(out.content.length<=2000);
+    qaAssert_((out.embeds||[]).reduce((n,e)=>n+embedLength(e),0)<=6000);
+    (out.embeds||[]).forEach(e=>{qaAssert_(String(e.title||'').length<=256);qaAssert_(String(e.description||'').length<=4096);qaAssert_((e.fields||[]).length<=25);(e.fields||[]).forEach(f=>qaAssert_(f.name.length>0&&f.name.length<=256&&f.value.length>0&&f.value.length<=1024));});
+  }));
+  add('notification.payload.multiple','Notifications',()=>{const out=boundedWebhookPayload_({embeds:Array.from({length:12},()=>({description:'X'.repeat(1000)}))});qaEqual_(out.embeds.length,6);qaEqual_(out.embeds.reduce((n,e)=>n+embedLength(e),0),6000);});
+  [null,[],{embeds:{}},{embeds:[null]},{embeds:[{fields:{}}]},{embeds:[{fields:[null]}]}].forEach((p,i)=>add('notification.payload.invalid.'+i,'Notifications',()=>rejects(()=>boundedWebhookPayload_(p))));
+  add('notification.payload.small.unchanged','Notifications',()=>{const p={content:'QA',embeds:[{description:'Hello',footer:{text:'Footer'},fields:[{name:'Hours',value:'0',inline:true}]}]};qaEqual_(boundedWebhookPayload_(p),p);});
+  [new Date(NaN),NaN,Infinity,-Infinity].forEach((v,i)=>add('transfer.invalid.field.'+i,'Transfers',()=>rejects(()=>memberMoveCellValue_(v))));
+  [0,false,'',null,'1234567890123456789'].forEach((v,i)=>add('transfer.valid.field.'+i,'Transfers',()=>qaEqual_(memberMoveCellValue_(v),{value:v})));
+  add('transfer.date.exact','Transfers',()=>qaEqual_(memberMoveCellValue_(new Date(1700000000123)),{date:1700000000123}));
+  add('transfer.formula.identity','Transfers',()=>{qaAssert_(memberMoveCellMatches_({formula:'=RC[-1]',content:{value:1}},{formula:'=RC[-1]',content:{value:2}}));qaAssert_(!memberMoveCellMatches_({formula:'=RC[-1]'},{formula:'=RC[-2]'}));});
+  [['Day Shift','Shift','Day'],['Division North','Division','North'],['Troop A','Troop','A'],['Night Watch','Watch','Night']].forEach((p,i)=>add('groups.infer.'+i,'Academy/groups',()=>{const r=inferGroup_(p[0]);qaEqual_(r.column,p[1]);qaEqual_(r.values,[p[2]]);}));
+  add('groups.identity.cell.diagnostics','Academy/groups',()=>qaAssert_(groupIdentityProblem_([['A','']],2,1,{sheet:'QA',start:8,key:28}).indexOf('AB8')!==-1));
+  [null,'broken','{"token":"QA","attempts":2,"next":3}'].forEach((v,i)=>add('queue.parse.'+i,'Concurrency',()=>qaAssert_(typeof deferredJobState_(v).token==='string')));
+  ['Bearer QA_SECRET','refresh_token=QA_SECRET','https://discord.com/api/webhooks/123/QA_SECRET'].forEach((v,i)=>add('errors.secret.forms.'+i,'Error handling',()=>qaAssert_(diagnosticText_(v).indexOf('QA_SECRET')===-1)));
+  add('errors.hostile.context','Error handling',()=>{const o={get value(){throw new Error('QA getter');}};qaAssert_(typeof diagnosticContext_(o)==='string');});
   return cases;
 }
 
@@ -85,6 +200,27 @@ function qaPlatformCases_(book, sandbox, owned) {
     qaEqual_(parseBlocks_(sh).RANKS.rows.length,3);
     setTableRows_(sh,'RANKS',[]);qaEqual_(parseBlocks_(sh).RANKS.rows.length,0);
     qaEqual_(parseBlocks_(sh).SYSTEM.kv.SYSTEM_NAME,'New QA');
+  });
+  Object.keys(BLOCK_SPECS_).filter(n=>BLOCK_SPECS_[n].type==='table').forEach(name=>add('platform.config.table.'+name,'Config tables',()=>{
+    const sh=fixture('QA '+name),spec=BLOCK_SPECS_[name],pad=r=>r.concat(Array(5-r.length).fill(''));
+    sh.getRange(1,1,6,5).setValues([pad(['RE_CONFIG']),pad(['['+name+']']),pad(spec.cols),pad(['[SYSTEM]']),pad(['SYSTEM_NAME','Following block']),pad(['SCHEMA_VERSION','2'])]);
+    const rows=Array.from({length:4},(_,r)=>spec.cols.map((c,i)=>'QA '+r+' '+i));
+    setTableRows_(sh,name,rows);qaEqual_(parseBlocks_(sh)[name].rows,rows.map(pad));
+    qaEqual_(parseBlocks_(sh).SYSTEM.kv.SYSTEM_NAME,'Following block');
+    qaEqual_(sh.getRange(4,1).getNumberFormat(),'@');qaEqual_(sh.getRange(4,1).getFontFamily(),'Arial');
+    qaEqual_(sh.getRange(4,1).getBackgrounds()[0][0],'#24374a');
+    setTableRows_(sh,name,[rows[0]]);qaEqual_(parseBlocks_(sh)[name].rows,[pad(rows[0])]);
+    setTableRows_(sh,name,[]);qaEqual_(parseBlocks_(sh)[name].rows,[]);
+    qaEqual_(parseBlocks_(sh).SYSTEM.kv.SCHEMA_VERSION,'2');qaEqual_(sh.getRange(3,1,1,spec.cols.length).getDisplayValues()[0],spec.cols);
+  }));
+  add('platform.config.column.ownership','Config tables',()=>{
+    const sh=fixture('QA Columns');
+    sh.getRange(1,1,6,5).setValues([['RE_CONFIG','','','',''],['[COLUMNS]','','','',''],['Role','Match','Class','Required',''],['NAME','NAME','MEMBER','TRUE',''],['[SYSTEM]','','','',''],['SYSTEM_NAME','Following block','','','']]);
+    setColumnClassRow_(sh,'Qualification','SLOT');setColumnClassRow_(sh,'qualification','MEMBER');
+    const rows=parseBlocks_(sh).COLUMNS.rows;qaEqual_(rows.length,2);qaEqual_(rows[0],['NAME','NAME','MEMBER','TRUE','']);qaEqual_(rows[1],['','Qualification','MEMBER','','']);
+    qaEqual_(parseBlocks_(sh).SYSTEM.kv.SYSTEM_NAME,'Following block');
+    const before=sh.getRange(1,1,sh.getLastRow(),5).getDisplayValues();
+    let refused=false;try{setColumnClassRow_(sh,'Qualification','INVALID');}catch(e){refused=true;}qaAssert_(refused);qaEqual_(sh.getRange(1,1,sh.getLastRow(),5).getDisplayValues(),before);
   });
   add('platform.graduate.banner','Sheets platform',()=>{
     const sh=fixture('QA Academy');

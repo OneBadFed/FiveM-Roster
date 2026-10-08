@@ -3311,15 +3311,15 @@ function combineDateTime_(dateVal, timeVal) {
   const d = (dateVal instanceof Date) ? dateVal : (dateVal === '' || dateVal == null ? null : new Date(dateVal));
   if (!d || isNaN(d.getTime())) return null;
   let hh = 0, mm = 0, ss = 0;
-  if (timeVal instanceof Date) { hh = timeVal.getHours(); mm = timeVal.getMinutes(); ss = timeVal.getSeconds(); }
-  else if (typeof timeVal === 'number') { const s = Math.round(timeVal * 86400); hh = Math.floor(s / 3600) % 24; mm = Math.floor((s % 3600) / 60); ss = s % 60; }
+  if (timeVal instanceof Date) { if (!Number.isFinite(timeVal.getTime())) return null; hh = timeVal.getHours(); mm = timeVal.getMinutes(); ss = timeVal.getSeconds(); }
+  else if (typeof timeVal === 'number') { if (!Number.isFinite(timeVal) || timeVal < 0 || timeVal >= 1) return null; const s = Math.round(timeVal * 86400) % 86400; hh = Math.floor(s / 3600); mm = Math.floor((s % 3600) / 60); ss = s % 60; }
   else return null; // blank/text time → treat the log as incomplete
   return new Date(d.getFullYear(), d.getMonth(), d.getDate(), hh, mm, ss);
 }
 
 /** ISNUMBER-guarded TOTAL TIME formula (hours, 2dp) for a Patrol Log row r: ((endDate+endTime)−(startDate+startTime))*24. */
 function patrolTotalFormula_(PC, r) {
-  const A1 = (c) => String.fromCharCode(64 + c) + r; // Patrol Log lives in columns A..O (single letters)
+  const A1 = (c) => { let letters = ''; for (let n = c; n > 0; n = Math.floor((n - 1) / 26)) letters = String.fromCharCode(65 + (n - 1) % 26) + letters; return letters + r; };
   const sd = A1(PC.startDate), st = A1(PC.startTime), ed = A1(PC.endDate), et = A1(PC.endTime);
   return `=IF(AND(ISNUMBER(${sd}),ISNUMBER(${st}),ISNUMBER(${ed}),ISNUMBER(${et})),ROUND(((${ed}+${et})-(${sd}+${st}))*24,2),"")`;
 }
@@ -3333,17 +3333,24 @@ function patrolTotalFormula_(PC, r) {
  * Priority: unknown member → bad duration → over-a-day → over-max → future.
  */
 function evaluatePatrolLog_(memberRow, startDT, endDT, hours, now) {
+  return evaluatePatrolLogCore_(memberRow, startDT, endDT, hours, now, CONFIG.patrol);
+}
+
+/** Explicit policy allows deterministic QA without replacing the department's live config. */
+function evaluatePatrolLogCore_(memberRow, startDT, endDT, hours, now, policy) {
+  policy = policy || {};
   if (memberRow === -1) return { reason: 'Unique ID not on roster.', blocking: true };
-  if (!startDT || !endDT) return { reason: 'Missing or invalid start/end.', blocking: true };
+  if (!(startDT instanceof Date) || !(endDT instanceof Date) || !Number.isFinite(startDT.getTime()) || !Number.isFinite(endDT.getTime()) || !(now instanceof Date) || !Number.isFinite(now.getTime())) return { reason: 'Missing or invalid start/end.', blocking: true };
   if (!(hours > 0)) return { reason: 'End is not after start.', blocking: true };
   if (hours > 24) return { reason: 'Over 24 hrs — check the dates.', blocking: true }; // a single session can't exceed a day → force a fix, don't let it be approved
-  if (hours > CONFIG.patrol.maxHours) return { reason: `Exceeds ${CONFIG.patrol.maxHours} hr max.`, blocking: false };
+  if (hours > policy.maxHours) return { reason: `Exceeds ${policy.maxHours} hr max.`, blocking: false };
   // A patrol is a COMPLETED session, so its END must be in the PAST. Flag anything ending after "now" — a future DAY
   // OR a future TIME today (e.g. a 10:00–12:00 log submitted at 01:55). The grace window ([PATROL].FUTURE_GRACE_HOURS,
   // default 6h) exists because members ABROAD enter THEIR local times: a UK member on a US-East sheet runs ~5h "ahead"
   // of sheet time and must not false-flag. It also absorbs clock/DST skew. Advisory either way — an admin can Approve.
-  const graceH = (CONFIG.patrol && CONFIG.patrol.futureGraceHours != null) ? Number(CONFIG.patrol.futureGraceHours) : 6;
-  const graceMs = (isNaN(graceH) ? 6 : graceH) * 3600000;
+  const configuredGrace = policy.futureGraceHours == null ? 6 : Number(policy.futureGraceHours);
+  const graceH = Number.isFinite(configuredGrace) && configuredGrace >= 0 ? configuredGrace : 6;
+  const graceMs = graceH * 3600000;
   if (endDT.getTime() > now.getTime() + graceMs || startDT.getTime() > now.getTime() + graceMs) return { reason: 'Dated in the future — ends more than ' + graceH + 'h past now (sheet time).', blocking: false };
   return { reason: '', blocking: false };
 }
@@ -4255,11 +4262,48 @@ function postToWebhook_(url, payload) {
 /** Posts to the MAIN webhook. @return {{ok:boolean, code:number, error?:string}} (callers may ignore the return). */
 let DEV_WEBHOOKS_OFF_ = false; // set by the DevQA runners for the length of a test execution: the suite must NEVER post to Discord (globals reset per execution, so live behavior is untouched)
 
+/** Bound both individual fields and the shared 6,000-character embed budget.
+ * Works on a copy: templates/cached fallback embeds remain reusable. Titles/body and
+ * author precede fields/footer; excess fields/embeds are omitted once no text fits.
+ * Limits: https://docs.discord.com/developers/resources/message#embed-limits */
+function boundedWebhookPayload_(payload) {
+  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) throw new Error('Webhook payload must be an object.');
+  const out=Object.assign({},payload);let remaining=6000;
+  const take=(value,max)=>{const text=String(value==null?'':value).slice(0,Math.min(max,remaining));remaining-=text.length;return text;};
+  if(out.content!=null)out.content=String(out.content).slice(0,2000);
+  if(out.embeds!=null){
+    if(!Array.isArray(out.embeds))throw new Error('Webhook embeds must be an array.');
+    out.embeds=out.embeds.slice(0,10).map(original=>{
+      if(!original || typeof original!=='object' || Array.isArray(original))throw new Error('Webhook embed must be an object.');
+      const e=Object.assign({},original);
+      ['title','description'].forEach(k=>{if(e[k]!=null){e[k]=take(e[k],k==='title'?256:4096);if(!e[k])delete e[k];}});
+      if(e.author){e.author=Object.assign({},e.author,{name:take(e.author.name,256)});if(!e.author.name)delete e.author;}
+      if(e.fields!=null){
+        if(!Array.isArray(e.fields))throw new Error('Webhook fields must be an array.');
+        e.fields=[];
+        original.fields.slice(0,25).forEach(f=>{
+          if(!f||typeof f!=='object'||Array.isArray(f))throw new Error('Webhook field must be an object.');
+          if(remaining<2)return;
+          const name=take(String(f.name||'').trim()||'\u200b',Math.min(256,remaining-1));
+          const value=take(String(f.value||'').trim()||'\u200b',1024);
+          e.fields.push(Object.assign({},f,{name,value}));
+        });
+        if(!e.fields.length)delete e.fields;
+      }
+      if(e.footer){e.footer=Object.assign({},e.footer,{text:take(e.footer.text,2048)});if(!e.footer.text)delete e.footer;}
+      return e;
+    }).filter(e=>e.title||e.description||e.author||e.footer||e.fields||e.image||e.thumbnail);
+    if(!out.embeds.length)delete out.embeds;
+  }
+  return out;
+}
+
 function sendWebhookPayload_(payload, channel) {
   if (DEV_WEBHOOKS_OFF_) return { ok: true, code: 0, suppressed: true }; // DevQA run — sandbox activity makes no Discord traffic
   const url = webhookFor_(channel || 'LOA');
   if (!url) return { ok: false, code: 0, error: 'no-url' }; // channel unconfigured, or this account can't read the admin file
-  return postToWebhook_(url, payload);
+  try { return postToWebhook_(url, boundedWebhookPayload_(payload)); }
+  catch(e) { return {ok:false,code:0,error:diagnosticText_(e&&e.message||e,500)}; }
 }
 
 /** sendWebhookPayload_ with the channel first — keeps multi-line payload call sites tidy. */

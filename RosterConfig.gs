@@ -639,7 +639,7 @@ function coerce_(key, rawValue, keySpec, problems) {
   switch (keySpec.t) {
     case 'int': {
       const n = parseInt(raw, 10);
-      if (isNaN(n) || String(n) !== raw.replace(/^\+/, '')) return bad('a whole number');
+      if (!Number.isSafeInteger(n) || String(n) !== raw.replace(/^\+/, '')) return bad('a safe whole number');
       if (keySpec.min != null && n < keySpec.min) return bad(`>= ${keySpec.min}`);
       if (keySpec.max != null && n > keySpec.max) return bad(`<= ${keySpec.max}`);
       return n;
@@ -674,7 +674,9 @@ function parseLadder_(raw) {
   for (let i = 0; i < parts.length; i++) {
     const m = parts[i].match(/^([^:,]+?)\s*:\s*(\d+(?:\.\d+)?)$/);
     if (!m) return null;
-    out.push({ name: m[1].trim(), min: parseFloat(m[2]) });
+    const min = Number(m[2]);
+    if (!Number.isFinite(min)) return null;
+    out.push({ name: m[1].trim(), min });
   }
   out.sort((a, b) => b.min - a.min);
   return out;
@@ -682,6 +684,7 @@ function parseLadder_(raw) {
 
 /** Validate a tier ladder: unique thresholds + exactly one zero. Pushes E-110 problems. */
 function checkLadder_(ladder, label, problems) {
+  if (ladder.some(t => !Number.isFinite(t.min) || t.min < 0)) problems.push({ sev: 'ERROR', code: 'E-110', key: label, type: 'ladder', expected: 'finite, non-negative thresholds' });
   const zeros = ladder.filter((t) => t.min === 0).length;
   if (zeros !== 1) problems.push({ sev: 'ERROR', code: 'E-110', key: label, value: ladder.map((t) => `${t.name}:${t.min}`).join(', '), type: 'ladder', expected: 'exactly one entry with MinHours 0', reason: `${label} has ${zeros} zero-threshold entries` });
   const mins = {};
@@ -780,8 +783,8 @@ function validateConfig_(raw) {
     seen[norm_(row.Status)] = true;
     // WARN, not ERROR: an unreadable colour costs the status its pill on the panel, nothing more.
     if (row.Color && !/^#[0-9a-fA-F]{6}$/.test(String(row.Color).trim())) problems.push({ sev: 'WARN', code: 'E-103', key: `[STATUSES].${row.Status}`, value: row.Color, type: 'color', expected: 'a #rrggbb hex color — this status renders uncoloured until it is one' });
-    const min = (kind === 'TIER') ? parseFloat(row.MinHours) : null;
-    if (kind === 'TIER' && (row.MinHours === '' || isNaN(min))) { problems.push({ sev: 'ERROR', code: 'E-103', key: `[STATUSES].${row.Status}`, value: row.MinHours, type: 'number', expected: 'MinHours for a TIER' }); return; }
+    const min = (kind === 'TIER') ? Number(row.MinHours) : null;
+    if (kind === 'TIER' && (row.MinHours === '' || !Number.isFinite(min) || min < 0)) { problems.push({ sev: 'ERROR', code: 'E-103', key: `[STATUSES].${row.Status}`, value: row.MinHours, type: 'number', expected: 'finite, non-negative MinHours for a TIER' }); return; }
     statuses.push({ name: row.Status, kind, min, color: row.Color || '' });
   });
   const tiers = statuses.filter((s) => s.kind === 'TIER').sort((a, b) => b.min - a.min);
@@ -812,12 +815,12 @@ function validateConfig_(raw) {
     const target = String(row.Target || '').trim();
     const isAny = source === '*';
     if (RULE_OPS.indexOf(op) === -1) { problems.push({ sev: 'ERROR', code: 'E-103', key: '[STATUS_RULES].Op', value: row.Op, type: 'op', expected: '< · <= · > · >= · == · *' }); return; }
-    const hrs = parseFloat(row.Hours);
-    if (op !== '*' && (row.Hours === '' || isNaN(hrs))) { problems.push({ sev: 'ERROR', code: 'E-103', key: `[STATUS_RULES].${source || '*'}`, value: row.Hours, type: 'number', expected: 'a numeric Hours threshold' }); return; }
+    const hrs = Number(row.Hours);
+    if (op !== '*' && (row.Hours === '' || !Number.isFinite(hrs))) { problems.push({ sev: 'ERROR', code: 'E-103', key: `[STATUS_RULES].${source || '*'}`, value: row.Hours, type: 'number', expected: 'a finite numeric Hours threshold' }); return; }
     if (!target) { problems.push({ sev: 'ERROR', code: 'E-103', key: '[STATUS_RULES]', value: '(blank Target)', type: 'status', expected: 'a Target status' }); return; }
     if (!seen[norm_(target)]) problems.push({ sev: 'ERROR', code: 'E-103', key: '[STATUS_RULES].Target', value: target, type: 'status', expected: 'a status defined in [STATUSES]' });
     if (!isAny && !seen[norm_(source)]) problems.push({ sev: 'WARN', code: 'E-103', key: '[STATUS_RULES].Source', value: source, type: 'status', expected: 'a status in [STATUSES] (or * for any) — this rule never matches' });
-    statusRules.push({ source: isAny ? '*' : norm_(source), op, hours: isNaN(hrs) ? 0 : hrs, target });
+    statusRules.push({ source: isAny ? '*' : norm_(source), op, hours: Number.isFinite(hrs) ? hrs : 0, target });
   });
   // Convergence advisory: a Source→Target cycle would loop (the runtime evaluator caps iteration + converges, but WARN so the author knows).
   (function () {
