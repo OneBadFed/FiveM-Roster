@@ -330,7 +330,7 @@ function syncColumnConfig_() {
 /** Menu action: re-scan roster headers into the [COLUMNS] block on ⚙️ Config and report exactly which columns were newly classified. */
 function syncColumnConfig() {
   runAction_('Sync Column Config', () => {
-    const res = syncColumnConfig_();
+    const res = withPatrolCreditLock_(()=>syncColumnConfig_());
     if (!res) { SpreadsheetApp.getUi().alert(`Roster tab "${CONFIG.sheets.roster}" not found.`); return; }
     const head = res.added.length
       ? `🧩 Added ${res.added.length} new column${res.added.length === 1 ? '' : 's'} to the config:\n` +
@@ -358,46 +358,58 @@ function syncColumnConfig() {
 function buildMenus_(prefix) {
   const p = prefix || '';
   try {
-    // Grouped by WORKFLOW (panels → members → leave → hours → presentation → setup), not by feature age —
-    // an admin scans for the job they're doing, so each separator block is one job family.
-    SpreadsheetApp.getUi().createMenu('👥 Roster')
-      // Open
-      .addItem('🎛️ Open Control Panel', p + 'openControlPanel')
-      .addItem('⚙️ Engine Settings', p + 'openSettingsPanel')
-      .addSeparator()
-      // Daily operations
-      .addItem('🔄 Refresh & Update All', p + 'refreshDashboard')
-      .addItem('📥 Sync Leave Forms to Tracker', p + 'manualSyncLOA')
-      .addItem('🧾 Sync Signup Form to Review', p + 'manualSyncSignups')
-      .addItem('📋 Review Roster Signups', p + 'openSignupsDialog')
-      .addItem('🚔 Sync Patrol Forms to Log', p + 'manualSyncPatrol')
-      .addItem('📸 Capture & Reset Activity', p + 'weeklyResetWithHistory')
-      .addItem('🔍 Run Integrity Scan', p + 'scanIntegrity')
-      .addItem('🛠️ Recover Interrupted Transfer', p + 'recoverMemberMove')
-      .addItem('🌐 Publish Public Roster', p + 'publishPublicRosterNow')
-      .addSeparator()
-      // Roster editing
-      .addItem('➕ Add Member Rows…', p + 'addMemberRow')
-      .addItem('🎙️ Fix All Callsign Numbers', p + 'updateUnitNumbers')
-      .addItem('🗂️ Build / Refresh Group Sheets', p + 'buildGroupSheets')
-      .addItem('🎓 Build / Refresh Police Academy', p + 'buildAcademySheets')
-      .addItem('📊 Build / Refresh Activity Panel', p + 'buildActivityPanel')
-      .addSeparator()
-      // Setup & wiring (run rarely)
-      .addItem('🌐 Set Up Public Roster', p + 'setupPublicRoster')
-      .addSubMenu(SpreadsheetApp.getUi().createMenu('🆔 Unique ID Type')
-        .addItem('Discord ID (17–19 digits)', p + 'idTypeDiscord')
-        .addItem('Community ID (1–8 digits)', p + 'idTypeCommunity'))
-      .addItem('🧩 Sync Column Config', p + 'syncColumnConfig')
-      .addItem('🚀 First-Run Setup', p + 'setupWizard')
-      .addItem('🎨 Restyle Config sheet', p + 'restyleConfigSheet')
-      .addItem('🔌 Install Triggers', p + 'installTriggers')
-      .addToUi();
+    // Opening a workbook builds menus only: no config parsing, scans or network requests.
+    const ui = SpreadsheetApp.getUi();
+    const menu = rosterMenu_(ui, '👥 Roster', [
+      ['🎛️ Open Control Panel', 'openControlPanel', typeof openControlPanel === 'function'],
+      ['⚙️ Engine Settings', 'openSettingsPanel', typeof openSettingsPanel === 'function'],
+      ['📋 Review Roster Signups', 'openSignupsDialog', typeof openSignupsDialog === 'function'],
+      ['🔄 Refresh & Update All', 'refreshDashboard'],
+      ['🌐 Public roster', [
+        ['Publish now', 'publishPublicRosterNow', typeof publishPublicRosterNow === 'function'],
+        ['Set up / change public roster…', 'setupPublicRoster', typeof setupPublicRoster === 'function']]],
+      ['📥 Form sync', [
+        ['Leave forms → tracker', 'manualSyncLOA'],
+        ['Signup form → review', 'manualSyncSignups', typeof manualSyncSignups === 'function'],
+        ['Patrol forms → log', 'manualSyncPatrol']]],
+      ['🛠️ Maintenance', [
+        ['Add member rows…', 'addMemberRow'],
+        ['Renumber callsigns', 'updateUnitNumbers'],
+        ['Refresh views', [
+          ['Group sheets', 'buildGroupSheets', typeof buildGroupSheets === 'function'],
+          ['Police Academy', 'buildAcademySheets', typeof buildAcademySheets === 'function'],
+          ['Activity Panel', 'buildActivityPanel', typeof buildActivityPanel === 'function']]],
+        ['Run integrity scan', 'scanIntegrity', typeof scanIntegrity === 'function'],
+        ['Recover interrupted member changes', 'recoverMemberMove'],
+        ['Sync column configuration', 'syncColumnConfig'],
+        ['Restyle Config sheet', 'restyleConfigSheet', typeof restyleConfigSheet === 'function'],
+        ['Capture & reset activity…', 'weeklyResetWithHistory', typeof weeklyResetWithHistory === 'function']]],
+      ['🚀 Setup', [
+        ['First-Run Setup', 'setupWizard'],
+        ['Install / repair triggers', 'installTriggers'],
+        ['Unique ID type', [
+          ['Discord ID (17–19 digits)', 'idTypeDiscord'],
+          ['Community ID (1–8 digits)', 'idTypeCommunity']]]]],
+    ], p);
+    if (menu) menu.addToUi();
   } catch (err) {
     log_('onOpen', err);
   }
   // Companion-file menu (guarded with typeof so a not-yet-pasted add-on never breaks the core menu).
   try { if (typeof addDevMenu_ === 'function') addDevMenu_(p); } catch (err) { log_('onOpen.devqa', err); }           // 🧪 Dev / QA (RosterDevQA.gs)
+}
+
+/** Build a nonempty menu; unavailable companion-file actions never become dead links. */
+function rosterMenu_(ui, title, entries, prefix) {
+  const menu = ui.createMenu(title); let count = 0;
+  entries.forEach(entry => {
+    if (entry[2] === false) return;
+    if (Array.isArray(entry[1])) {
+      const child = rosterMenu_(ui, entry[0], entry[1], prefix);
+      if (child) { menu.addSubMenu(child); count++; }
+    } else { menu.addItem(entry[0], prefix + entry[1]); count++; }
+  });
+  return count ? menu : null;
 }
 
 /** Simple trigger: builds the custom menus when the spreadsheet opens (bound mode). */
@@ -509,6 +521,13 @@ function installConfiguredTriggers_() {
 function setupWizard() {
   runAction_('First-Run Setup', () => {
     const ui = SpreadsheetApp.getUi();
+    const result=withPatrolCreditLock_(()=>setupWizardCore_());
+    ui.alert('🚀 First-Run Setup',result,ui.ButtonSet.OK);
+  });
+}
+
+/** Serialized startup writes; show the result only after releasing the lock. */
+function setupWizardCore_() {
     const ss = SpreadsheetApp.getActive();
     const steps = [];
 
@@ -524,7 +543,7 @@ function setupWizard() {
         : `✅ Config: "${CONFIG_SHEET_NAME}" verified${mig.added ? ` — ${mig.added} missing entr${mig.added === 1 ? 'y' : 'ies'} added` : ''}${mig.from < mig.to ? ` (schema v${mig.from} → v${mig.to})` : ''}.`);
       if (imported) steps.push(`✅ Config: imported ${imported} column classification(s) from the legacy "_Columns" tab.`);
       cfg_(); // parse + validate now so problems surface HERE, not mid-action (throws aggregate E-102 if broken)
-    } catch (e) { steps.push(`⚠️ Config: ${e.message}`); ui.alert('First-Run Setup stopped',steps.join('\n'),ui.ButtonSet.OK); return; }
+    } catch (e) { throw e; } // Invalid config stops startup before other tabs or triggers change.
 
     // Prepare empty support tabs without running scans, capturing members or replacing existing data.
     try { const names=ensureStartupSupportSheets_(ss); steps.push(names.length ? '✅ Support sheets created: '+names.join(', ')+'.' : '✅ Support sheets already exist; existing data preserved.'); }
@@ -601,8 +620,8 @@ function setupWizard() {
     } catch (e) { /* RosterTrust not pasted — skip */ }
 
     logInfo_('setupWizard', `setup run — ${steps.length} step(s).`);
-    ui.alert('🚀 First-Run Setup', `${steps.join('\n')}${healthLine}`, ui.ButtonSet.OK);
-  });
+    SpreadsheetApp.flush();
+    return `${steps.join('\n')}${healthLine}`;
 }
 
 /** Create missing support tabs, apply the shared theme, filters and newest-first order. */
@@ -1217,77 +1236,89 @@ function refreshDashboardOnOneSheet_(sheet) {
  * they can't collide with a trigger or another run; webhooks/audit for the form path fire AFTER the lock releases.
  */
 function refreshDashboard() {
-  runAction_('Refresh & Update', () => {
-    const ui = SpreadsheetApp.getUi();
-    const ss = SpreadsheetApp.getActive();
-    const roster = ss.getSheetByName(CONFIG.sheets.roster);
-    if (!roster) {
-      ui.alert(`Member-data tab "${CONFIG.sheets.roster}" was not found. Rename your roster tab to exactly "${CONFIG.sheets.roster}", or set it under Engine Settings ▸ Sheets & layout.`);
-      return;
-    }
-    const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
-    const form = ss.getSheetByName(CONFIG.sheets.form);
-
-    let newLeaves = [], sched = null, recompute = null, tir = 0;
-    // INTERACTIVE-FIRST: stand the publisher down before waiting — its pass holds the shared lock for the length of a
-    // full publish, which made this menu action collide "randomly" right after edits (the ~8s catch-up) or on the
-    // 1-minute sweep. Stamped here, the in-flight pass finishes inside the 30s wait and no new pass starts against us.
-    try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_, String(Date.now() + PUBLISH_BACKOFF_MS_)); } catch (e) { /* best-effort priority hint */ }
-    const lock = LockService.getScriptLock();
-    if (!lock.tryLock(30000)) { ui.alert('Another roster operation is running — try again in a moment.'); return; }
+  runAction_('Refresh & Update All', () => {
+    const ui=SpreadsheetApp.getUi(),ss=SpreadsheetApp.getActive();
+    const roster=ss.getSheetByName(CONFIG.sheets.roster);
+    if(!roster){ui.alert('Roster tab "'+CONFIG.sheets.roster+'" was not found. Check Engine Settings → Sheets & layout.');return;}
+    const lines=[];let warnings=0,newLeaves=[],committed=false;
+    // Independent stages continue after a failure, but the summary never calls a partial refresh successful.
+    const stage=(name,fn)=>{
+      try {
+        const result=fn();
+        if(result===false)throw new Error('Busy — this step did not run.');
+        if(result&&Array.isArray(result.skipped)&&result.skipped.length)
+          throw new Error(result.skipped.map(s=>s.name+': '+s.why).join('; '));
+        lines.push('✓ '+name+(typeof result==='string'?': '+result:''));
+        return result;
+      }catch(e){
+        warnings++;log_('refreshDashboard.'+name,e);
+        lines.push('⚠ '+name+': '+diagnosticText_(e&&e.message||e,400));
+        return null;
+      }
+    };
+    const skip=(name,why)=>lines.push('• '+name+': '+why+' — skipped');
+    try{PropertiesService.getDocumentProperties().setProperty(PUBLISH_BACKOFF_PROP_,String(Date.now()+PUBLISH_BACKOFF_MS_));}catch(e){/* optional priority hint */}
+    const lock=LockService.getScriptLock();
+    if(!lock.tryLock(30000)){ui.alert('Another roster operation is running. Refresh did not start; retry shortly.');return;}
     try {
-      // 1) Pull any new leave-form submissions onto the tracker (webhooks/audit deferred until the lock releases).
-      if (form && tracker) { try { newLeaves = syncFormToTracker_(form, tracker, { sendWebhooks: false }); } catch (e) { log_('refreshDashboard.sync', e); } }
-      // 2) Start due leaves + expire ended ones (matches the nightly schedule check).
-      if (tracker) { try { sched = processDailyLOAs_(roster, tracker, todayInSheetTz_(), { sendWebhooks: true }); } catch (e) { log_('refreshDashboard.schedule', e); } }
-      // 3) Recompute every member's status from current hours — leave/protected rows are left alone.
-      try { recompute = recomputeStatuses_(roster, false); } catch (e) { log_('refreshDashboard.status', e); }
-      // 3b) Keep TIME IN RANK live for EVERY member (days since LAST PROMOTION) — fills empties + new rows.
-      try { tir = fillTimeInRank_(roster); } catch (e) { log_('refreshDashboard.tir', e); }
-      // 3c) Re-process the manual Patrol Log — matures once-future logs, reconciles any credit deltas, re-groups.
-      try { refreshPatrolLog_(); } catch (e) { log_('refreshDashboard.patrol', e); }
-      // 3d) Re-group the other two status tabs too — Refresh & Update All must leave EVERYTHING in canonical order
-      // (status groups, newest first inside each) even when no new rows arrived. Patrol was just sorted by 3c.
-      try { sortTracker_(); } catch (e) { log_('refreshDashboard.sortTracker', e); }
-      try { const sgs = CONFIG.sheets.signups ? SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.signups) : null; if (sgs) sortSignups_(sgs); } catch (e) { log_('refreshDashboard.sortSignups', e); }
-    } finally {
-      lock.releaseLock();
-    }
-    try { if (typeof publishPublicRoster === 'function') publishPublicRoster(); } catch (e) { log_('refreshDashboard.publish', e); } // refresh the public copy
-    // Deferred side-effects for the form path (post after the lock, like manualSyncLOA does).
-    newLeaves.forEach((L) => { try { sendDiscordWebhook(L.name, L.rank, L.callsign, L.type, L.startStr, L.endStr, L.durationStr, L.discord); } catch (e) { log_('refreshDashboard.leafwh', e); } });
-    if (newLeaves.length && typeof auditEvent_ === 'function') {
-      newLeaves.forEach((L) => { try { auditEvent_('leave', '', `${L.type} ${L.startStr}–${L.endStr} (form)`, '', L.name); } catch (e) { /* best-effort */ } });
-    }
-    // 4) Repaint the dashboard (#tags), the promotions feed and the patrol leaderboard.
-    let cells = 0;
-    try { cells = refreshDashboard_(true); } catch (e) { log_('refreshDashboard.dash', e); }
-    try { renderPromotions_(true); } catch (e) { log_('refreshDashboard.promos', e); } // full rescan — rediscovers newly-added promo tables
-    try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(); } catch (e) { log_('refreshDashboard.groups', e); } // refresh any #group division tabs
-    try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('refreshDashboard.academy', e); } // sync the editable Police Academy tab(s)
-    try { if (typeof buildActivityPanel_ === 'function') buildActivityPanel_(); } catch (e) { log_('refreshDashboard.activity', e); } // rebuild the Activity Panel board (3c already re-processed the log it reads)
-
-    // 5) Integrity scan — duplicate/malformed IDs, status-vs-hours mismatches, orphaned/mis-targeted leaves.
-    //    Guarded (the checks live in RosterExtras.gs); logs to the Integrity Log + posts a Discord summary.
-    let issues = null;
-    try { if (typeof scanIntegrityCore_ === 'function') issues = scanIntegrityCore_(); } catch (e) { log_('refreshDashboard.integrity', e); }
-
-    const started = sched ? sched.started.length : 0;
-    const expired = sched ? sched.expired.length : 0;
-    const changed = recompute ? recompute.changed.length : 0;
-    const total = recompute ? recompute.total : 0;
-    const intLine = issues == null
-      ? '\n• Integrity scan skipped (Extras file not loaded)'
-      : (issues.length
-        ? `\n\n⚠️ ${issues.length} integrity issue${issues.length === 1 ? '' : 's'}:\n${issues.slice(0, 8).join('\n')}${issues.length > 8 ? `\n…and ${issues.length - 8} more (see the Integrity Log tab)` : ''}`
-        : '\n• Integrity scan: clean');
-    ui.alert('✅ Refresh & update complete.\n\n' +
-      `• ${newLeaves.length} new leave form${newLeaves.length === 1 ? '' : 's'} synced\n` +
-      `• ${started} leave${started === 1 ? '' : 's'} started · ${expired} expired\n` +
-      `• ${total} member${total === 1 ? '' : 's'} checked — ${changed} status change${changed === 1 ? '' : 's'}\n` +
-      `• ${tir} member${tir === 1 ? '' : 's'} — TIME IN RANK kept live\n` +
-      `• Dashboard, promotions & leaderboard updated${cells ? ` (${cells} cell${cells === 1 ? '' : 's'})` : ''}` +
-      intLine);
+      const tracker=ss.getSheetByName(CONFIG.sheets.tracker);
+      const form=CONFIG.sheets.form?ss.getSheetByName(CONFIG.sheets.form):null;
+      if(form&&tracker)stage('Leave forms',()=>{
+        newLeaves=syncFormToTracker_(form,tracker,{sendWebhooks:false});
+        return newLeaves.length+' new submission(s)';
+      });else skip('Leave forms','response tab or tracker not linked / found');
+      if(CONFIG.sheets.signupForm&&typeof syncSignupForm_==='function')stage('Signup forms',()=>{
+        const source=ss.getSheetByName(CONFIG.sheets.signupForm),review=ss.getSheetByName(CONFIG.sheets.signups);
+        if(!source||!review)throw new Error('Configured response or review tab is missing.');
+        return syncSignupForm_(source,review)+' new submission(s)';
+      });else skip('Signup forms','sync off or companion file unavailable');
+      if(CONFIG.sheets.patrol)stage('Patrol forms',()=>{
+        const res=syncPatrolFormNow_();
+        if(res.missing)throw new Error('Configured patrol response tab is missing.');
+        if(res.locked||res.res===false)throw new Error('Patrol sync is busy.');
+        if(res.res&&res.res.skipped&&res.res.skipped.length)throw new Error(res.res.skipped.map(s=>'Row '+s.row+': '+s.reason).join('; '));
+        if(res.res&&res.res.errored)throw new Error(res.res.errored+' submission(s) flagged; inspect the response tab.');
+        return (res.mode==='log'?(res.res&&res.res.added||0)+' new log row(s)':(res.res&&res.res.credited||[]).length+' credit(s)');
+      });else skip('Patrol forms','sync off');
+      // Credits are reconciled BEFORE statuses and derived views read the roster.
+      if(CONFIG.sheets.patrolLog&&ss.getSheetByName(CONFIG.sheets.patrolLog))stage('Patrol Log',()=>refreshPatrolLog_());
+      else skip('Patrol Log','tab not configured / found');
+      if(tracker) {
+        stage('Leave schedule',()=>{
+          const res=processDailyLOAs_(roster,tracker,todayInSheetTz_(),{sendWebhooks:true});
+          return res.started.length+' started; '+res.expired.length+' expired';
+        });
+        stage('Tracker order',()=>sortTrackerForMenu_(tracker));
+      }else skip('Leave schedule / tracker order','tracker not found');
+      stage('Member statuses',()=>{const res=recomputeStatuses_(roster,false);return res.changed.length+' changed / '+res.total+' checked';});
+      stage('Time in rank',()=>fillTimeInRank_(roster)+' member(s)');
+      const review=CONFIG.sheets.signups?ss.getSheetByName(CONFIG.sheets.signups):null;
+      if(review&&typeof sortSignups_==='function')stage('Signup order',()=>sortSignups_(review));
+      else skip('Signup order','review tab not found or companion file unavailable');
+      stage('Dashboard',()=>refreshDashboard_(true));
+      stage('Promotions',()=>renderPromotions_(true));
+      if(typeof buildGroupSheets_==='function')stage('Group sheets',()=>buildGroupSheets_());else skip('Group sheets','Extras file unavailable');
+      if(typeof buildAcademySheets_==='function')stage('Police Academy',()=>buildAcademySheets_());else skip('Police Academy','Extras file unavailable');
+      if(typeof buildActivityPanel_==='function')stage('Activity Panel',()=>buildActivityPanel_()||'off / response tab unavailable');else skip('Activity Panel','Extras file unavailable');
+      if(typeof scanIntegrityCore_==='function')stage('Integrity scan',()=>{
+        const issues=scanIntegrityCore_();
+        if(issues.length)throw new Error(issues.length+' issue(s); see Integrity Log.');
+        return 'clean';
+      });else skip('Integrity scan','Extras file unavailable');
+      stage('Commit sheet updates',()=>{SpreadsheetApp.flush();committed=true;});
+    }finally{lock.releaseLock();}
+    if(newLeaves.length)stage('Leave notifications',()=>newLeaves.forEach(L=>sendDiscordWebhook(L.name,L.rank,L.callsign,L.type,L.startStr,L.endStr,L.durationStr,L.discord)));
+    if(newLeaves.length&&typeof auditEvent_==='function')stage('Leave audit',()=>newLeaves.forEach(L=>auditEvent_('leave','',L.type+' '+L.startStr+'–'+L.endStr+' (form)','',L.name)));
+    // Publishing happens after ALL derived views and pending cell writes, outside the writer lock.
+    if(!committed)skip('Public roster','sheet commit failed');
+    else if(typeof publishPublicRoster==='function')stage('Public roster',()=>{
+      const res=publishPublicRoster();
+      if(res===false)throw new Error('Publish busy — pending updates will retry automatically.');
+      if(!res.linked)return 'not linked';
+      if(res.failed||res.aborted)throw new Error('Incomplete; queued for retry. '+(res.detail||[]).join('; '));
+      return res.rows+' row(s), '+res.tabs.length+' tab(s)';
+    });else skip('Public roster','Control Panel file unavailable');
+    ui.alert(warnings?'⚠ Refresh finished with '+warnings+' issue(s)':'✓ Refresh & update complete',lines.join('\n'),ui.ButtonSet.OK);
   });
 }
 
@@ -2090,14 +2121,15 @@ function setIdType_(type) {
   if (!configSheet) { seedConfigTab_(ss); configSheet = findConfigSheet_(ss); }
   if (configSheet) setKvValue_(configSheet, 'ROSTER_LAYOUT', 'ID_TYPE', type);
   cfgInvalidate_();
-  try { installDataValidation_(); } catch (e) { log_('setIdType_.validation', e); } // refresh the ID rule to the new range
+  try { installDataValidation_(); }
+  catch(e){throw new AppError('E-504',{operation:'Change ID type',completed:1,reason:'The ID type was saved, but validation could not be refreshed. Run Setup → First-Run Setup after resolving the error.'});}
   return idDigitsLabel_();
 }
 
 /** Menu: switch this department to Discord IDs (17-19 digits — @mention pings work). */
 function idTypeDiscord() {
   runAction_('ID Type: Discord', () => {
-    const label = setIdType_('DISCORD');
+    const label = withPatrolCreditLock_(()=>setIdType_('DISCORD'));
     SpreadsheetApp.getUi().alert('🆔 Unique ID type → DISCORD (' + label + ' digits).\n\nExisting IDs are unchanged; new entries must be ' + label + ' digits. Discord @mention pings work with these IDs.');
   });
 }
@@ -2105,7 +2137,7 @@ function idTypeDiscord() {
 /** Menu: switch this department to short Community IDs / CIDs (1-8 digits). */
 function idTypeCommunity() {
   runAction_('ID Type: Community', () => {
-    const label = setIdType_('COMMUNITY');
+    const label = withPatrolCreditLock_(()=>setIdType_('COMMUNITY'));
     SpreadsheetApp.getUi().alert('🆔 Unique ID type → COMMUNITY (' + label + ' digits).\n\nNew entries must be ' + label + ' digits. Note: Discord @mention pings are skipped for community IDs (they aren\'t Discord accounts). Any existing 17-19 digit IDs will show a validation warning until updated.');
   });
 }
@@ -2749,12 +2781,25 @@ function manualSyncLOA() {
     const res = syncFormToTracker();
     // Always re-group — even with nothing new to add, the menu action must leave the tracker in the canonical order
     // (status groups, oldest submission first inside each), e.g. right after an ordering-rule change.
-    if (res !== false) { try { sortTracker_(); } catch (e) { log_('manualSyncLOA.sort', e); } }
+    if (res !== false) {
+      try { withPatrolCreditLock_(()=>sortTrackerForMenu_()); }
+      catch(e){throw new AppError('E-504',{operation:'Leave form sync',completed:res,reason:'Submissions were synced, but tracker ordering did not finish. Retry Form sync → Leave forms → tracker; imported records are kept.'});}
+    }
     SpreadsheetApp.getUi().alert(
       res === false ? 'Sync skipped — another sync is already running.'
         : res > 0 ? `✅ Synced ${res} new leave form${res === 1 ? '' : 's'} to the tracker.`
           : '✅ Sync complete — no new leave forms to add.');
   });
+}
+
+/** Menu ordering must explain malformed layouts instead of treating a safe core no-op as success. */
+function sortTrackerForMenu_(sheet) {
+  const tracker=sheet||SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.tracker);
+  if(!tracker)throw new Error('The configured LOA Tracker was not found.');
+  const cols=trackerCols_(tracker);
+  if(!cols.status)throw new Error('LOA Tracker STATUS column could not be resolved. Check its headers.');
+  if(cols.labelRow&&CONFIG.trackerStartRow<=cols.labelRow)throw new Error('TRACKER_START_ROW must be below the tracker header; ordering was skipped to protect it.');
+  return sortTracker_(null,tracker);
 }
 
 /* ======================================================================
@@ -2993,9 +3038,10 @@ function syncPatrolHours() {
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
   if (!patrolSheet || !roster) return { credited: [], hoursAdded: 0, errored: 0, scanned: 0, missing: true };
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(20000)) return false;
+  const owned=lock.hasLock();
+  if (!owned && !lock.tryLock(20000)) return false;
   try { return syncPatrolHours_(patrolSheet, roster, { sendWebhooks: true }); }
-  finally { lock.releaseLock(); }
+  finally { if(!owned)lock.releaseLock(); }
 }
 
 /**
@@ -3216,9 +3262,10 @@ function syncPatrolFormNow_() {
     return { mode: 'credit', logless: !log, res };
   }
   const lock = LockService.getScriptLock();
-  if (!lock.tryLock(30000)) return { locked: true };
+  const owned=lock.hasLock();
+  if (!owned && !lock.tryLock(30000)) return { locked: true };
   let res;
-  try { res = syncPatrolFormToLog_(form, log, ss.getSheetByName(CONFIG.sheets.roster)); } finally { lock.releaseLock(); }
+  try { res = syncPatrolFormToLog_(form, log, ss.getSheetByName(CONFIG.sheets.roster)); } finally { if(!owned)lock.releaseLock(); }
   try { refreshPatrolLog_(); } catch (e) {
     reportError_('syncPatrolFormNow_.refresh', e, true);
     throw new AppError('E-504', {operation:'Patrol form sync', completed:res && res.added || 0, reason:'Submissions were transferred, but log evaluation, crediting or sorting failed. Inspect the Patrol Log before retrying.'});
@@ -4677,39 +4724,69 @@ function addMemberRow() {
     }
     const resp = ui.prompt('➕ Add Member Rows', 'How many member rows to add? (1–100)', ui.ButtonSet.OK_CANCEL);
     if (resp.getSelectedButton() !== ui.Button.OK) return;
-    let count = parseInt(String(resp.getResponseText()).trim(), 10);
-    if (isNaN(count) || count < 1) count = 1;      // blank / bad input → add one
-    count = Math.min(count, 100);
+    const count=memberRowCount_(resp.getResponseText());
+    if(count===null){ui.alert('Enter a whole number from 1 to 100. No rows were added.');return;}
+    const added=withPatrolCreditLock_(()=>{
     let currentRow = sheet.getActiveCell().getRow();
     if (currentRow < CONFIG.rosterStartRow) currentRow = CONFIG.rosterStartRow;
+    if(currentRow>sheet.getLastRow())throw new Error('Select an existing roster data row; no rows were inserted.');
     const RC = rosterCols_(sheet);
     // TEMPLATE row: the nearest REAL member row at/above the cursor (then below, then the cursor itself) —
     // copying a section-divider band would stamp its merged banner formatting onto every new row.
+    const rankValues=sheet.getRange(CONFIG.rosterStartRow,RC.rank,sheet.getLastRow()-CONFIG.rosterStartRow+1,1).getDisplayValues();
     const isMemberRowAt = (r) => {
       if (r < CONFIG.rosterStartRow || r > sheet.getLastRow()) return false;
-      const rk = String(sheet.getRange(r, RC.rank).getDisplayValue()).trim();
+      const rk = String(rankValues[r-CONFIG.rosterStartRow][0]).trim();
       return rk !== '' && !isDividerValue_(rk);
     };
     let template = 0;
     for (let r = currentRow; r >= CONFIG.rosterStartRow && !template; r--) { if (isMemberRowAt(r)) template = r; }
     for (let r = currentRow + 1; r <= sheet.getLastRow() && !template; r++) { if (isMemberRowAt(r)) template = r; }
-    if (!template) template = currentRow;
+    if (!template) throw new Error('No member-row template was found. Add a rank to an existing data row first; no rows were inserted.');
+    const w = Math.max(1, sheet.getLastColumn());
+    // Keep vertical RANK GROUP bands intact. Copying / unmerging a partial band would destroy its label.
+    const bands=sheet.getRange(template,1,1,w).getMergedRanges().filter(r=>r.getNumRows()>1)
+      .map(r=>({row:r.getRow(),end:r.getLastRow(),col:r.getColumn(),width:r.getNumColumns()}));
     sheet.insertRowsAfter(currentRow, count);
     const tRow = template > currentRow ? template + count : template; // a below-cursor template shifted down with the insert
-    const w = Math.max(1, sheet.getLastColumn()); // FULL width incl. col A — the new rows should look exactly like a member row
-    const src = sheet.getRange(tRow, 1, 1, w);
-    const tgt = sheet.getRange(currentRow + 1, 1, count, w);
-    try { tgt.breakApart(); } catch (e) { /* nothing merged */ }
-    src.copyTo(tgt, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);          // copyTo tiles the template row's format across every new row
-    src.copyTo(tgt, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false); // dropdowns (status etc.) carry over too
-    tgt.clearContent();
+    const excluded=new Set();bands.forEach(b=>{for(let c=b.col;c<b.col+b.width;c++)excluded.add(c);});
+    const spans=[];
+    for(let c=1;c<=w;){if(excluded.has(c)){c++;continue;}const first=c;while(c<=w&&!excluded.has(c))c++;spans.push({col:first,width:c-first});}
+    // copyTo uses only the destination's top-left cell; explicitly copy EVERY inserted row.
+    spans.forEach(s=>{
+      const src=sheet.getRange(tRow,s.col,1,s.width);
+      for(let i=1;i<=count;i++){
+        const dst=sheet.getRange(currentRow+i,s.col,1,s.width);
+        src.copyTo(dst,SpreadsheetApp.CopyPasteType.PASTE_FORMAT,false);
+        src.copyTo(dst,SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION,false);
+        src.copyTo(dst,SpreadsheetApp.CopyPasteType.PASTE_CONDITIONAL_FORMATTING,false);
+      }
+    });
+    bands.filter(b=>b.row<=currentRow&&b.end>=currentRow).forEach(b=>{
+      // Insertion at a band's final row may not extend the merge automatically.
+      const expanded=sheet.getRange(b.row,b.col,b.end-b.row+1+count,b.width);
+      expanded.breakApart();expanded.merge();
+    });
+    spans.forEach(s=>sheet.getRange(currentRow+1,s.col,count,s.width).clearContent());
     const th = sheet.getRowHeight(tRow);
-    for (let i = 0; i < count; i++) sheet.setRowHeight(currentRow + 1 + i, th); // copyTo doesn't carry row height
+    sheet.setRowHeights(currentRow+1,count,th); // copyTo doesn't carry row height
     sheet.getRange(currentRow + 1, RC.rank, count, 1).setValue('Rank');
     updateUnitNumbers_(); // renumber using the configured [ROSTER_LAYOUT].UNIT_FORMAT (call the core, avoid nesting the error wrapper)
     try { fillTimeInRank_(sheet); } catch (e) { log_('addMemberRow.tir', e); } // new rows get the live TIME IN RANK formula
-    ui.alert(`✅ Added ${count} member row${count === 1 ? '' : 's'} after row ${currentRow}.\n\nFill in each rank + name — callsigns are assigned automatically.`);
+    SpreadsheetApp.flush();
+    return currentRow;
+    });
+    deferWork_('groups');deferWork_('academy');deferWork_('dashboard');
+    try{if(typeof publishMarkDirty_==='function')publishMarkDirty_([CONFIG.sheets.roster]);if(typeof publishAfterWrite_==='function')publishAfterWrite_([CONFIG.sheets.roster]);}catch(e){log_('addMemberRow.publish',e);}
+    ui.alert(`✅ Added ${count} member row${count === 1 ? '' : 's'} after row ${added}.\n\nFill in each rank + name — callsigns are assigned automatically.`);
   });
+}
+
+/** Reject malformed input instead of silently inserting or clamping rows. */
+function memberRowCount_(text) {
+  const value=String(text==null?'':text).trim();
+  if(!/^\d{1,3}$/.test(value))return null;
+  const count=Number(value);return count>=1&&count<=100?count:null;
 }
 
 /** Menu action: set the callsign/unit format (persisted to config so new members inherit it) and renumber, skipping dividers. */
@@ -4717,7 +4794,9 @@ function updateUnitNumbers() {
   runAction_('Fix Callsign Numbers', () => {
     // No input prompt: the format is config ([ROSTER_LAYOUT].UNIT_FORMAT), edited in Engine Settings ▸ Sheets & layout.
     const ui = SpreadsheetApp.getUi();
-    const count = updateUnitNumbers_(); // reads CONFIG.unitFormat via formatUnit_
+    const count = withPatrolCreditLock_(()=>{const n=updateUnitNumbers_();SpreadsheetApp.flush();return n;});
+    if(count){deferWork_('groups');deferWork_('academy');deferWork_('dashboard');}
+    try{if(count&&typeof publishMarkDirty_==='function')publishMarkDirty_([CONFIG.sheets.roster]);if(typeof publishAfterWrite_==='function')publishAfterWrite_([CONFIG.sheets.roster]);}catch(e){log_('updateUnitNumbers.publish',e);}
     if (!count) { ui.alert('No member slots found to renumber.\n\n(Add member rows first, or check that the roster tab is correct.)'); return; }
     ui.alert(`✅ Renumbered ${count} callsign${count === 1 ? '' : 's'} — ${formatUnit_(1)} … ${formatUnit_(count)}.\n\nThe format comes from Engine Settings ▸ Sheets & layout ▸ UNIT FORMAT.`);
   });

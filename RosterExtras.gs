@@ -1820,7 +1820,8 @@ function seedDemoPatrolLog_(ss, memberRows, people, calls, start) {
   if (!PC.discord || !PC.startDate || !PC.endDate || !PC.startTime || !PC.endTime || !PC.status) return 0;
   const ds = CONFIG.patrolStartRow, W = Math.max(PC.width, 14);
   if (PC.labelRow && ds <= PC.labelRow) return 0; // misconfigured start row — never stomp the header
-  if (patrol.getLastRow() >= ds) patrol.getRange(ds, 1, patrol.getLastRow() - ds + 1, Math.max(patrol.getLastColumn(), W)).clearContent(); // keep header + formatting
+  const frame=framedTable_(patrol,ds),end=Math.min(frame.cap-1,patrol.getMaxRows());
+  if(end>=ds)patrol.getRange(ds,1,end-ds+1,frame.width).clearContent();
 
   const recs = [];
   memberRows.forEach((m, i) => {
@@ -1840,7 +1841,7 @@ function seedDemoPatrolLog_(ss, memberRows, people, calls, start) {
     });
   });
   if (!recs.length) return 0;
-  if (patrol.getMaxRows() < ds + recs.length - 1) patrol.insertRowsAfter(patrol.getMaxRows(), ds + recs.length - 1 - patrol.getMaxRows());
+  ensureRoomAboveCap_(patrol,ds+recs.length-1,ds);
   if (PC.discord) patrol.getRange(ds, PC.discord, recs.length, 1).setNumberFormat('@'); // 18-digit ID exact...
   if (PC.mark) patrol.getRange(ds, PC.mark, recs.length, 1).setNumberFormat('@');       // ...and the "hours|id" marker as text
   const grid = recs.map((r) => {
@@ -1857,7 +1858,7 @@ function seedDemoPatrolLog_(ss, memberRows, people, calls, start) {
   patrol.getRange(ds, PC.endDate, recs.length, 1).setNumberFormat(PATROL_DATE_FMT_);
   patrol.getRange(ds, PC.startTime, recs.length, 1).setNumberFormat(PATROL_TIME_FMT_);
   patrol.getRange(ds, PC.endTime, recs.length, 1).setNumberFormat(PATROL_TIME_FMT_);
-  try { if (typeof sortPatrolLog_ === 'function') sortPatrolLog_(patrol); } catch (e) { log_('seedDemoPatrolLog_.sort', e); }
+  if (typeof sortPatrolLog_ === 'function') sortPatrolLog_(patrol);
   return recs.length;
 }
 
@@ -1875,7 +1876,8 @@ function seedDemoSignups_(ss, memberRows, people) {
   const SC = signupCols_(sh);
   if (!SC.status || !SC.name || !SC.discord) return out;
   const ds = SC.dataStart, W = SC.width;
-  if (sh.getLastRow() >= ds) sh.getRange(ds, 1, sh.getLastRow() - ds + 1, W).clearContent(); // keep banner/header
+  const frame=framedTable_(sh,ds),end=Math.min(frame.cap-1,sh.getMaxRows());
+  if(end>=ds)sh.getRange(ds,1,end-ds+1,frame.width).clearContent();
 
   const recs = [];
   const mkRow = (o) => {
@@ -1904,34 +1906,49 @@ function seedDemoSignups_(ss, memberRows, people) {
     out.pending++;
   }
   if (!recs.length) return out;
-  if (sh.getMaxRows() < ds + recs.length - 1) sh.insertRowsAfter(sh.getMaxRows(), ds + recs.length - 1 - sh.getMaxRows());
+  ensureRoomAboveCap_(sh,ds+recs.length-1,ds);
   if (SC.discord) sh.getRange(ds, SC.discord, recs.length, 1).setNumberFormat('@'); // ID exact BEFORE the write
   sh.getRange(ds, 1, recs.length, W).setValues(recs);
   if (SC.dob) sh.getRange(ds, SC.dob, recs.length, 1).setNumberFormat('d mmm yyyy');
   if (SC.join) sh.getRange(ds, SC.join, recs.length, 1).setNumberFormat('d mmm yyyy');
   if (SC.timestamp) sh.getRange(ds, SC.timestamp, recs.length, 1).setNumberFormat('d mmm yyyy h:mm am/pm');
-  try { if (typeof sortSignups_ === 'function') sortSignups_(sh); } catch (e) { log_('seedDemoSignups_.sort', e); }
+  if (typeof sortSignups_ === 'function') sortSignups_(sh);
   return out;
 }
 
 /** Menu / command: fill the member-info columns of the rows the operator already set up (see the header note). */
 function seedDemoRoster() {
-  runAction_('Load Demo Roster', () => {
-    const ui = SpreadsheetApp.getUi();
+  runAction_('Load Demo Roster',()=>{
+    const ui=SpreadsheetApp.getUi();
+    const answer=ui.prompt('Load demo data into this copy',
+      'This OVERWRITES member identities, dates, shifts, hours, statuses, LOAs, patrol logs, signups, history and demo dashboard / promotion data. Ranks, callsigns and template layout stay. Use a demo COPY.\n\nType LOAD DEMO to continue.',ui.ButtonSet.OK_CANCEL);
+    if(answer.getSelectedButton()!==ui.Button.OK||answer.getResponseText().trim()!=='LOAD DEMO')return;
+    const message=withPatrolCreditLock_(()=>{
+      const previous=DEV_WEBHOOKS_OFF_;DEV_WEBHOOKS_OFF_=true;
+      try{return seedDemoRosterCore_();}
+      finally{DEV_WEBHOOKS_OFF_=previous;}
+    });
+    if(typeof publishMarkDirty_==='function')publishMarkDirty_();
+    ui.alert(message.indexOf('⚠')===-1?'Demo data loaded':'Demo loaded with issues',message,ui.ButtonSet.OK);
+  });
+}
+
+/** Caller holds the writer lock; no modal UI or outward notifications while mutating the demo copy. */
+function seedDemoRosterCore_() {
+    const warnings=[];
     const ss = SpreadsheetApp.getActive();
     const roster = getSheetOrWarn_(ss, CONFIG.sheets.roster);
-    if (!roster) return;
+    if (!roster) throw new Error('The configured roster tab was not found.');
     const RC = rosterCols_(roster);           // header-resolved — respects THIS sheet's layout (CALLSIGN, HOURS/ACTIVITY order)
     const laCol = lastActivityCol_(roster);   // -1 when the sheet has no LAST ACTIVITY column
     const start = CONFIG.rosterStartRow;
     const lastRow = roster.getLastRow();
-    if (lastRow < start) { ui.alert('🎬 Load Demo Roster', 'This roster has no member rows yet. Add your ranks and callsigns first, then run this again.', ui.ButtonSet.OK); return; }
+    if (lastRow < start) throw new Error('This roster has no member rows. Add ranks and callsigns before loading a demo.');
 
     // ---- Identify the member rows (rank + callsign are the OPERATOR's; we only read them) ----
     const n = lastRow - start + 1;
     const ranks = roster.getRange(start, RC.rank, n, 1).getDisplayValues();     // rank label OR (on a legacy divider) a section title
     const calls = roster.getRange(start, RC.unit, n, 1).getDisplayValues();     // callsign; blank on divider rows
-    const names0 = roster.getRange(start, RC.name, n, 1).getDisplayValues();    // existing names (overwrite guard)
     const bandCol = RC.rank > 1 ? RC.rank - 1 : 0;                              // the merged RANK GROUP column sits just left of RANK
     const bands = bandCol ? roster.getRange(start, bandCol, n, 1).getDisplayValues() : null;
     const memberRows = [];                                                      // { r, rank, section } for every real member row
@@ -1944,12 +1961,7 @@ function seedDemoRoster() {
       if (call || (rank && isMemberSlot_(rank))) memberRows.push({ r: start + i, rank: rank || 'Member', section: currentSection }); // member row
       else if (rank && !isMemberSlot_(rank)) currentSection = rank;             // legacy: ALL-CAPS section-divider label in the rank column
     }
-    if (!memberRows.length) { ui.alert('🎬 Load Demo Roster', 'No member rows found — make sure your rows have ranks and/or callsigns filled in.', ui.ButtonSet.OK); return; }
-
-    const already = memberRows.filter((m) => String(names0[m.r - start][0] || '').trim()).length;
-    if (already > 0 && ui.alert('🎬 Load Demo Roster',
-      `${already} of ${memberRows.length} member rows already have a name. Loading demo data OVERWRITES the name and activity columns — your RANKS, CALLSIGNS, banner, headers, colours and dropdowns are KEPT.\n\nContinue?`,
-      ui.ButtonSet.YES_NO) !== ui.Button.YES) return;
+    if (!memberRows.length) throw new Error('No member rows found. Fill ranks / callsigns before loading a demo.');
 
     // ---- Build a believable person for each member row (some slots stay blank = open positions) ----
     const total = memberRows.length;
@@ -2012,7 +2024,8 @@ function seedDemoRoster() {
     const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
     if (tracker) {
       const ts = CONFIG.trackerStartRow;
-      if (tracker.getLastRow() >= ts) tracker.getRange(ts, 1, tracker.getLastRow() - ts + 1, Math.max(tracker.getLastColumn(), 16)).clearContent();
+      const frame=framedTable_(tracker,ts),end=Math.min(frame.cap-1,tracker.getMaxRows());
+      if(end>=ts)tracker.getRange(ts,1,end-ts+1,frame.width).clearContent();
       const leaves = [];
       memberRows.forEach((m, i) => {
         const p = people[i];
@@ -2022,9 +2035,9 @@ function seedDemoRoster() {
         if (p.leave) leaves.push({ m: who, L: p.leave, oi: oi });
         (p.pastLeaves || []).forEach((pl) => leaves.push({ m: who, L: { type: pl.type, from: pl.from, to: pl.to, status: CONFIG.expiredStatus || 'Expired' }, oi: oi }));
       });
-      if (leaves.length && tracker.getMaxRows() < ts + leaves.length - 1) tracker.insertRowsAfter(tracker.getMaxRows(), ts + leaves.length - 1 - tracker.getMaxRows());
+      if(leaves.length)ensureRoomAboveCap_(tracker,ts+leaves.length-1,ts);
       leaves.forEach((x, i) => demoWriteLeave_(tracker, x.m, x.L, ts + i, x.oi));
-      try { if (typeof sortTracker_ === 'function') sortTracker_(null, tracker); } catch (e) { log_('seedDemoRoster.sortTracker', e); } // group the demo leaves by status too
+      if (typeof sortTracker_ === 'function') sortTracker_(null, tracker);
       leaveCount = leaves.length;
     }
 
@@ -2040,6 +2053,7 @@ function seedDemoRoster() {
       for (let k = 0; k < 4; k++) hrows.push([demoSunday_((3 - k) * 2), p.id, p.name, m.rank, hs[k], p.checks[k] || p.act]); // *2 = fortnightly cadence
     });
     if (hrows.length) {
+      if(hist.getMaxRows()<hrows.length+1)hist.insertRowsAfter(hist.getMaxRows(),hrows.length+1-hist.getMaxRows());
       hist.getRange(2, 2, hrows.length, 1).setNumberFormat('@');
       hist.getRange(2, 1, hrows.length, 6).setValues(hrows);
       hist.getRange(2, 1, hrows.length, 1).setNumberFormat('d mmm yyyy');
@@ -2059,32 +2073,31 @@ function seedDemoRoster() {
       leaders.push({ rank: m.rank, callsign: String(calls[m.r - start][0] || '').trim(), name: people[i].name });
     }
     let statsFilled = false;
-    try { statsFilled = seedDemoStats_(ss, groups, leaders); } catch (e) { log_('seedDemoRoster.stats', e); }
+    try { statsFilled = seedDemoStats_(ss, groups, leaders); } catch (e) { warnings.push('stats: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.stats', e); }
 
     // ---- RECENT PROMOTIONS feed: a believable rolling history so the Welcome-page table demos full ----
     let promoCount = 0;
-    try { promoCount = seedDemoPromotions_(memberRows, people); } catch (e) { log_('seedDemoRoster.promotions', e); }
+    try { promoCount = seedDemoPromotions_(memberRows, people); } catch (e) { warnings.push('promotions: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.promotions', e); }
 
     // ---- PATROL LOG: valid sessions per member that sum to their current hours (log reconciles to the roster) ----
     let patrolCount = 0;
-    try { patrolCount = seedDemoPatrolLog_(ss, memberRows, people, calls, start); } catch (e) { log_('seedDemoRoster.patrol', e); }
+    try { patrolCount = seedDemoPatrolLog_(ss, memberRows, people, calls, start); } catch (e) { warnings.push('patrol: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.patrol', e); }
 
     // ---- SIGNUPS: every member reflects a processed signup; a few fresh Pending applicants left to review ----
     let signupInfo = { processed: 0, pending: 0 };
-    try { signupInfo = seedDemoSignups_(ss, memberRows, people); } catch (e) { log_('seedDemoRoster.signups', e); }
+    try { signupInfo = seedDemoSignups_(ss, memberRows, people); } catch (e) { warnings.push('signups: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.signups', e); }
 
-    try { refreshDashboard_(); } catch (e) { log_('seedDemoRoster.dashboard', e); }
+    try { refreshDashboard_(); } catch (e) { warnings.push('dashboard: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.dashboard', e); }
     try { if (typeof cpInvalidateHealth_ === 'function') cpInvalidateHealth_(); } catch (e) { /* Trust.gs may be absent */ }
     logInfo_('seedDemoRoster', `demo filled ${filledCount}/${total} member rows (${total - filledCount} open); ${leaveCount} leave record(s); ${patrolCount} patrol log(s); signups ${signupInfo.processed} processed + ${signupInfo.pending} pending; ${promoCount} promotion(s); stats ${statsFilled ? 'populated' : 'not found'}.`);
-    ui.alert('🎬 Demo Roster Loaded',
-      `Filled ${filledCount} of ${total} member rows with names, Discord IDs, join/promotion dates, hours and activity status — the other ${total - filledCount} are left as open positions.\n\n` +
+    SpreadsheetApp.flush();
+    return `Filled ${filledCount} of ${total} member rows with names, Discord IDs, join/promotion dates, hours and activity status — the other ${total - filledCount} are left as open positions.\n\n` +
       `• LOA/ROA Tracker — ${leaveCount} leave record(s): a few active, plus a deep history of expired leaves.\n` +
       (patrolCount ? `• Patrol Log — ${patrolCount} session(s); each member's logged hours add up to the hours shown on the roster.\n` : '') +
       (signupInfo.processed || signupInfo.pending ? `• Roster Signups — ${signupInfo.processed} processed (every member came through a signup) + ${signupInfo.pending} fresh Pending applicant(s) to review.\n` : '') +
       `• Added 4 weeks of activity-check history${statsFilled ? ', populated the stats sheet (employee counts + leadership)' : ''}${promoCount ? `, and seeded ${promoCount} recent promotions` : ''}.\n\n` +
-      `Your ranks, callsigns, section dividers, colours and dropdowns were left untouched. Open 🎛️ Control Panel ▸ Signups to review the pending applicants.`,
-      ui.ButtonSet.OK);
-  });
+      `Your ranks, callsigns, section dividers, colours and dropdowns were left untouched. Open 🎛️ Control Panel ▸ Signups to review the pending applicants.`+(warnings.length?'\n\n⚠ These steps did not finish:\n'+warnings.join('\n'):'');
+
 }
 
 /**

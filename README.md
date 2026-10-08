@@ -28,19 +28,19 @@ within seconds of any change here.
 
 1. **Open the workbook.** After a moment a **👥 Roster** menu appears in the menu bar. (First use asks Google
    for authorization — that's the script asking to manage *this* spreadsheet on your behalf.)
-2. **👥 Roster ▸ 🚀 First-Run Setup** — creates/verifies the ⚙️ Config tab and prepares missing support sheets: snapshots, integrity log, leave coverage and hours history (using configured tab names). New support sheets contain formatted headers only; existing records are preserved. Startup applies the shared dark layout and column filters to SYS Log, Edit Log and these four support sheets, with readable headers, wrapped text, suitable column widths and a dark background through the unused rows. Logs and snapshots show newest records first; Hours History shows newest weeks first, including legacy date cells. New writes maintain this order and resize filters as needed, preserving filter criteria. Retention removes oldest records from the bottom and keeps complete snapshots. Leave Coverage rebuilds with newest requests first (legacy requests without submission timestamps fall back to their start date); its summary stays outside the filter. Run First-Run Setup once on an existing roster to apply these changes, then rebuild Leave Coverage to refresh that view. Unused columns are hidden while populated custom columns stay visible. Newly created snapshots and hours history are hidden. The main roster/template sheets must already exist.
+2. **👥 Roster ▸ 🚀 Setup ▸ First-Run Setup** — creates/verifies the ⚙️ Config tab and prepares missing support sheets: snapshots, integrity log, leave coverage and hours history (using configured tab names). New support sheets contain formatted headers only; existing records are preserved. Startup applies the shared dark layout and column filters to SYS Log, Edit Log and these four support sheets, with readable headers, wrapped text, suitable column widths and a dark background through the unused rows. Logs and snapshots show newest records first; Hours History shows newest weeks first, including legacy date cells. New writes maintain this order and resize filters as needed, preserving filter criteria. Retention removes oldest records from the bottom and keeps complete snapshots. Leave Coverage rebuilds with newest requests first (legacy requests without submission timestamps fall back to their start date); its summary stays outside the filter. Run First-Run Setup once on an existing roster to apply these changes, then rebuild Leave Coverage to refresh that view. Unused columns are hidden while populated custom columns stay visible. Newly created snapshots and hours history are hidden. The main roster/template sheets must already exist.
    Safe to run again any time; it never deletes your data.
-3. First-Run Setup also installs the configured triggers. **👥 Roster ▸ 🔌 Install Triggers** reinstalls them
+3. First-Run Setup also installs the configured triggers. **👥 Roster ▸ 🚀 Setup ▸ Install / repair triggers** reinstalls them
    after schedule changes or repairs. Public edit/change and minute catch-up triggers are installed when a
    public roster is linked. No Google Form is created or relinked; existing response-sheet formatting is retained.
-4. **Pick your ID type:** 👥 Roster ▸ 🆔 Unique ID Type — Discord IDs (17–19 digits) or Community IDs (1–8
+4. **Pick your ID type:** 👥 Roster ▸ 🚀 Setup ▸ Unique ID type — Discord IDs (17–19 digits) or Community IDs (1–8
    digits). Every member is keyed by this ID; it's how forms, patrol logs, and transfers find people.
-5. **Want to see it working before adding real people?** 🧪 Dev / QA ▸ **🎬 Load Demo Roster** fills the whole
+5. **Want to see it working before adding real people?** 🧪 Dev / QA ▸ Demo / department reset ▸ **Load demo data (overwrites this copy)…** fills the whole
    system with a realistic fictional department — members, processed signups, patrol hours that add up, LOA
    history. ⚠️ It **overwrites the roster**, so only use it on a fresh copy, never after real data exists.
-6. **Publish the public roster:** 👥 Roster ▸ **🌐 Set Up Public Roster**, then copy the tabs you want public
+6. **Publish the public roster:** 👥 Roster ▸ 🌐 Public roster ▸ **Set up / change public roster…**, then copy the tabs you want public
    into that file (the public file's tab list is the allow-list). From then on it stays current by itself;
-   🌐 Publish Public Roster forces a pass any time. Rows that land past the styled area of a public tab are
+   🌐 Public roster ▸ Publish now forces a pass any time. Rows that land past the styled area of a public tab are
    dressed to match the rows above them, so a growing roster keeps its banding and status chips.
    Completed tables publish together; catch-ups retry only remaining work while retaining concurrent edits.
    Dimension copying uses a bulk Sheets API path when available, with a complete fallback. Full publishes and
@@ -54,6 +54,8 @@ within seconds of any change here.
 ---
 
 ## 🎛️ Daily driving: the Control Panel
+
+The Roster menu has eight main entries: Control Panel, Engine Settings, Review Roster Signups, Refresh & Update All, Public roster, Form sync, Maintenance and Setup. Infrequent repairs and destructive resets are grouped inside submenus. **Refresh & Update All** imports all linked forms, reconciles credits and statuses, updates derived views, then publishes; its summary identifies failed or skipped steps. See [MENU_AUDIT.md](MENU_AUDIT.md) for every action reviewed and the verification limits.
 
 **👥 Roster ▸ 🎛️ Open Control Panel** is where day-to-day management happens:
 
@@ -77,7 +79,7 @@ Academy and shift/division refreshes use the same member-row rules as the main r
 ## 📥 How people get onto the roster
 
 1. **They fill out your signup Google Form.** Submissions land on a response tab and sync into the
-   **Roster Signups** review tab as *Pending* (automatic; or 👥 Roster ▸ 🧾 Sync Signup Form to Review).
+   **Roster Signups** review tab as *Pending* (automatic; or 👥 Roster ▸ 📥 Form sync ▸ Signup form → review).
 2. **You review and approve** — Control Panel ▸ Signups (or the sheet-side STATUS dropdown). Approving seats
    them in an open slot, copies their private details onto their roster row, carries their join date, and marks
    the signup *Processed*.
@@ -109,7 +111,7 @@ treat it as read-only: statuses are managed on the Patrol Log, and hand edits on
 
 ## 📸 Activity cycles
 
-**👥 Roster ▸ 📸 Capture & Reset Activity** archives everyone's hours to history and zeroes the week (cadence —
+**👥 Roster ▸ 🛠️ Maintenance ▸ Capture & reset activity…** archives everyone's hours to history and zeroes the week (cadence —
 weekly, biweekly, monthly — is configurable in Settings, and can run itself on schedule). It also rolls your
 PREVIOUS-ACTIVITY columns one period older and re-applies their colouring per ⚙️ Engine Settings ▸ Sheets &
 layout ▸ *Previous-activity style* (match the status colours, or a calm grey).
@@ -167,8 +169,8 @@ restructure, or reformat your sheets.
 - Unique IDs are the backbone — keep them accurate, one per member.
 - Don't edit the hidden first column on the Patrol Log.
 - 🎬 Load Demo Roster is for fresh copies only — it overwrites.
-- To prepare a demo copy for another department, use **🧪 Dev / QA ▸ 🗑️ Reset for a new department…** and type **RESET DEPARTMENT**. This permanently clears members (including custom MEMBER columns), LOAs, patrol logs, signups, linked response-sheet rows, history, snapshots, webhooks, rank icons and saved department configuration. SLOT values such as ranks/callsigns, dividers, borders, formatting, custom tab names and structural column mappings remain. Other settings return to defaults with scheduled activity reset off. The public roster is disconnected before cleanup; no other spreadsheet or Google Form is changed. Engine triggers belonging to the current user are removed; any other trigger owners must remove theirs separately. Run it on a copy, inspect any manually maintained content, then link the new department's own response tabs, configure its connections and run First-Run Setup. The reset is not transactional: if it reports a failure, keep the copy private and retry after resolving the error.
-- The old in-sheet test suite was replaced by freshly authored QA scenarios. **Dev / QA → QA — all new scenarios** runs 775 core scenarios and 17 Sheets platform checks using synthetic data in a new sandbox tab **inside your internal roster**; **core logic** and **Sheets platform** can run separately. After testing, run-owned helper tabs are removed and that same sandbox becomes **🧪 QA Results**, styled like Config with a summary, filterable case results, status colours and wrapped diagnostics. Older reports and live roster tabs stay intact. QA tabs are excluded from public publishing, dashboards, Settings pickers and edit-audit notifications. No live roster writers, forms, triggers or public publishing actions are executed by this suite. Repository verification uses `node tools/qa.js`: 22 suites/checks, including 279 additional local service/feature fault scenarios and existing regressions. See [QA_TESTING.md](QA_TESTING.md) for coverage and limits. Demo loading, department reset and old sandbox cleanup remain separate tools.
+- To prepare a demo copy for another department, use **🧪 Dev / QA ▸ Demo / department reset ▸ Reset for a new department…** and type **RESET DEPARTMENT**. This permanently clears members (including custom MEMBER columns), LOAs, patrol logs, signups, linked response-sheet rows, history, snapshots, webhooks, rank icons and saved department configuration. SLOT values such as ranks/callsigns, dividers, borders, formatting, custom tab names and structural column mappings remain. Other settings return to defaults with scheduled activity reset off. The public roster is disconnected before cleanup; no other spreadsheet or Google Form is changed. Engine triggers belonging to the current user are removed; any other trigger owners must remove theirs separately. Run it on a copy, inspect any manually maintained content, then link the new department's own response tabs, configure its connections and run First-Run Setup. The reset is not transactional: if it reports a failure, keep the copy private and retry after resolving the error.
+- The old in-sheet test suite was replaced by freshly authored QA scenarios. **Dev / QA → Run all QA tests** runs 775 core scenarios and 17 Sheets platform checks using synthetic data in a new sandbox tab **inside your internal roster**; **core logic** and **Sheets platform** can run separately. After testing, run-owned helper tabs are removed and that same sandbox becomes **🧪 QA Results**, styled like Config with a summary, filterable case results, status colours and wrapped diagnostics. Older reports and live roster tabs stay intact. QA tabs are excluded from public publishing, dashboards, Settings pickers and edit-audit notifications. No live roster writers, forms, triggers or public publishing actions are executed by this suite. Repository verification uses `node tools/qa.js`: 23 suites/checks, including 279 additional local service/feature fault scenarios and existing regressions. See [QA_TESTING.md](QA_TESTING.md) for coverage and limits. Demo loading, department reset and old sandbox cleanup remain separate tools.
 
 ---
 
@@ -178,11 +180,11 @@ all works inside.*
 
 ## Automatic Apps Script updates from GitHub
 
-The local [data-integrity and recovery audit](DATA_INTEGRITY_AUDIT.md) documents interrupted patrol credits/imports, member transfers/assignments, activity-reset checkpoints and the recovery procedure. It includes local verification and live acceptance checks; these audit changes are not deployed until pushed and uploaded. Use **Roster → Recover Interrupted Transfer** for pending transfers, member assignments or linked signup approvals. An interrupted activity reset requires the checkpoint review described in that report before rerunning it.
+The local [data-integrity and recovery audit](DATA_INTEGRITY_AUDIT.md) documents interrupted patrol credits/imports, member transfers/assignments, activity-reset checkpoints and the recovery procedure. It includes local verification and live acceptance checks; these audit changes are not deployed until pushed and uploaded. Use **Roster → Maintenance → Recover interrupted member changes** for pending transfers, member assignments or linked signup approvals. An interrupted activity reset requires the checkpoint review described in that report before rerunning it.
 
 **Reset for a new department** clears statuses, per-rank ladders, status rules, the Ranks configuration, section tags, dashboard headcount groups and embed overrides. Column mappings and physical roster layout remain intact. Empty configuration tables stay empty through startup. Without tiers, activity statuses stay unchanged; without configured leave types, leave imports and activation pause until setup is complete. Existing form submissions remain available for later import.
 
-**Config sheet appearance:** use **Roster → Restyle Config sheet** to apply the dark layout without resetting configuration. Section headers, blue input cells, wrapped help text and colour swatches make the sheet easier to scan. Only the engine's A–E area is styled; extra columns remain untouched. First-Run Setup applies the current design once, then skips repainting an unchanged configuration.
+**Config sheet appearance:** use **Roster → Maintenance → Restyle Config sheet** to apply the dark layout without resetting configuration. Section headers, blue input cells, wrapped help text and colour swatches make the sheet easier to scan. Only the engine's A–E area is styled; extra columns remain untouched. First-Run Setup applies the current design once, then skips repainting an unchanged configuration.
 
 `.github/workflows/apps-script.yml` checks the code and uploads it to the configured sheet script whenever `main` changes. It can also be run manually from GitHub Actions ? Sync Apps Script ? Run workflow. The target Script ID is `1SoCIV1N8-h_yyG9GtUgOWNO83yKxyexEUJ14dTnYRvnb5v58JGW8BQUg`.
 
@@ -195,6 +197,6 @@ One-time setup:
 
 The workflow replaces the target script's source files and manifest with the repository versions. It does not run First-Run Setup, create forms, install triggers, or change spreadsheet data. Edit code in GitHub/local files going forward; manual edits in the Apps Script editor are overwritten by the next sync. Existing versioned library/web-app deployments are not updated by this workflow; it uploads the current project source only. Separate copied sheets require their own target configuration.
 
-If **Install Triggers** previously stopped with "Another trigger installation is running," update the script and retry **Roster → Install Triggers**. Trigger setup now uses a separate user lock so public publishing and member changes cannot occupy its setup lock. Approve permissions if prompted and check that the completion message includes **Public roster: live on edit**. Automatic publishing requires a linked public file and those installed triggers.
+If **Install Triggers** previously stopped with "Another trigger installation is running," update the script and retry **Roster → Setup → Install / repair triggers**. Trigger setup now uses a separate user lock so public publishing and member changes cannot occupy its setup lock. Approve permissions if prompted and check that the completion message includes **Public roster: live on edit**. Automatic publishing requires a linked public file and those installed triggers.
 
 Google's clasp guide: https://developers.google.com/apps-script/guides/clasp.

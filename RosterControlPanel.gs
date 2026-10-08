@@ -1781,11 +1781,13 @@ function manualSyncSignups() {
     const ss = SpreadsheetApp.getActive();
     if (!ss.getSheetByName(CONFIG.sheets.signupForm)) { ui.alert('🧾 Sync Signup Form', `The form response tab "${CONFIG.sheets.signupForm}" was not found.`, ui.ButtonSet.OK); return; }
     if (!ss.getSheetByName(CONFIG.sheets.signups)) { ui.alert('🧾 Sync Signup Form', `The review tab "${CONFIG.sheets.signups}" was not found.`, ui.ButtonSet.OK); return; }
-    const added = syncSignupForm();
-    // Always re-group/compact the review tab — tidies away any leftover blank "Pending" scaffolding rows even when
-    // there was nothing new to add.
-    let cleaned = 0;
-    const rev = ss.getSheetByName(CONFIG.sheets.signups); if (rev) cleaned = sortSignups_(rev);
+    // Import and sort are one serialized operation, including when there are no new submissions.
+    const result=cpWithLock_(()=>{
+      const form=ss.getSheetByName(CONFIG.sheets.signupForm),rev=ss.getSheetByName(CONFIG.sheets.signups);
+      const added=syncSignupForm_(form,rev),cleaned=sortSignups_(rev);
+      return {added,cleaned};
+    });
+    const added=result.added,cleaned=result.cleaned;
     ui.alert('🧾 Sync Signup Form', added ? `✅ Added ${added} new signup${added === 1 ? '' : 's'} to "${CONFIG.sheets.signups}" (Pending).` : (cleaned ? `No new signups — tidied the review tab (${cleaned} row${cleaned === 1 ? '' : 's'} kept).` : 'No new signups to add — everything on the form is already synced.'), ui.ButtonSet.OK);
   });
 }
@@ -3504,12 +3506,18 @@ function setupPublicRoster() {
     if (file.getId() === SpreadsheetApp.getActive().getId()) { ui.alert('Choose a separate public spreadsheet. The internal roster cannot publish onto itself.'); return; }
     PropertiesService.getDocumentProperties().setProperty(PUBLIC_FILE_PROP_, file.getId());
     _publicFileMemo_ = file; // a link change must invalidate any earlier per-execution lookup
+    _pubDirtyMemo_=false;
+    if(typeof publishMarkDirty_==='function')publishMarkDirty_(); // retain a full retry if an older-file pass is still busy
     if(typeof ensurePublicPublishingTriggers_==='function')ensurePublicPublishingTriggers_(false);
     const sum = publishPublicRoster();
+    const publishNote=sum===false?'First publish is busy; the automatic sweep will retry.'
+      :sum.failed||sum.aborted?'First publish is incomplete; inspect SYS Log. Updates are queued for retry.'
+      :'First publish completed: '+sum.rows+' row(s) across '+sum.tabs.length+' tab(s).';
     logInfo_('setupPublicRoster', `public roster linked: ${file.getId()}`);
     ui.alert('🌐 Public roster linked',
       file.getName() + '\n' + file.getUrl() + '\n\n' +
       'Automatic updates are installed: cell edits, structural changes and a one-minute retry sweep.\n\n' +
+      publishNote+'\n\n'+
       'NEXT — copy the tabs you want members to see into that file (right-click a tab ▸ Copy to ▸ that spreadsheet), ' +
       'then rename each copy to EXACTLY match its name here. Publishing mirrors every public tab whose name matches a ' +
       'tab here, matching columns by header — so delete a column there and it simply stops being filled.\n\n' +

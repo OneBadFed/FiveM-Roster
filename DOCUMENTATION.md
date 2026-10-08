@@ -582,17 +582,15 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
 
 ## 12 · Menus & Triggers
 
-**👥 Roster:** 🎛️ Open Control Panel · ⚙️ Engine Settings │ 🔄 Refresh & Update All · 📥 Sync Leave Forms to
-Tracker · 🧾 Sync Signup Form to Review · 🚔 Sync Patrol Forms to Log (START_END submissions transfer onto the
-Patrol Log — marker-deduped on the form — and credit through the log's own path; DURATION mode or no log tab →
-the classic direct credit) · 🧾 Review Roster Signups (deep-links Control Panel ▸ Signups) · 📸 Capture & Reset
-Activity · 🔍 Run Integrity Scan · 🌐 Publish
-Public Roster │ ➕ Add Member Rows… · 🎙️ Fix All Callsign Numbers · 🗂️ Build / Refresh Group Sheets · 🎓 Build /
-Refresh Police Academy · 📊 Build / Refresh Activity Panel │ 🌐 Set Up Public Roster · 🆔 Unique ID Type ▸
-(Discord / Community) · 🧩 Sync Column
-Config · 🚀 First-Run Setup · 🔌 Install Triggers.
+**👥 Roster:** Open Control Panel · Engine Settings · Review Roster Signups · Refresh & Update All ·
+Public roster (Publish now, Set up / change) · Form sync (leave, signup, patrol) ·
+Maintenance (add rows, callsigns, refresh views, integrity, member recovery, columns, restyle, activity reset) ·
+Setup (First-Run Setup, install / repair triggers, ID type). All 23 existing callbacks remain available.
+START_END patrol submissions transfer onto the log and credit through its journaled path; DURATION mode or
+no log tab retains direct credit. Refresh All imports all configured forms, reconciles credits/statuses and
+updates views before final publishing. Failed/skipped stages are included in its summary. See [MENU_AUDIT.md](MENU_AUDIT.md).
 
-**🧪 Dev / QA:** QA — all new scenarios / core logic / Sheets platform · 🎬 Load Demo Roster · 🗑️ Reset for a new department · 🧹 Delete old Sandbox / Results Tabs. Tests create and reuse a blank sandbox tab inside the internal roster, then repurpose it as 🧪 QA Results and remove only run-owned helper tabs; see [QA_TESTING.md](QA_TESTING.md). Older reports stay intact. The old test sections and random generators remain removed.
+**🧪 Dev / QA:** Run all QA tests · More testing tools (core-only, platform-only, cleanup) · Demo / department reset. Tests create and reuse a blank sandbox tab inside the internal roster, then repurpose it as 🧪 QA Results and remove only run-owned helper tabs; see [QA_TESTING.md](QA_TESTING.md). Older reports stay intact. Explicit cleanup confirms reviewed tab IDs and shares the QA lock. Demo loading requires `LOAD DEMO`; department reset requires `RESET DEPARTMENT`. The old test sections and random generators remain removed.
 
 Every action reports what it actually did (counts, names, changes).
 
@@ -668,11 +666,11 @@ ending switches reach a real consumer. Run it after any config-layer change.
 ## 15 · Maintenance
 
 **Release recipe:** bump `ENGINE_VERSION` (+ `CP_VERSION`) → syntax-check every file → commit → `clasp push -f`
-→ run QA — all new scenarios → live smoke test. After schema-affecting changes: run 🚀 First-Run Setup once
+→ run Dev / QA → Run all QA tests → live smoke test. After schema-affecting changes: run Setup → First-Run Setup once
 (idempotent).
 
 **Sync rules:** `clasp push -f` syncs every engine file (`.claspignore` keeps `TEMPLATE-SHIM.gs` out — it ships
-only inside community templates). Library users re-paste `TEMPLATE-SHIM.gs` whenever the endpoint list changes.
+only inside community templates). Library users re-paste `TEMPLATE-SHIM.gs` whenever the endpoint list or trigger handlers change.
 
 **Time zone:** `appsscript.json` pins the script to `America/New_York` — engine-written dates (join dates, LOA
 dates, log stamps) format Eastern. The spreadsheet's own File ▸ Settings time zone is separate and drives the

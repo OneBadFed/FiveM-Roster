@@ -4,23 +4,29 @@ const RESULTS_TAB = '🧪 Test Results'; // legacy results cleanup only
 
 function addDevMenu_(prefix) {
   const p=prefix||'';
-  SpreadsheetApp.getUi().createMenu('🧪 Dev / QA')
-    .addItem('✅ QA — all new scenarios',p+'qaRunAll')
-    .addItem('🧠 QA — core logic',p+'qaRunCore')
-    .addItem('📐 QA — Sheets platform',p+'qaRunPlatform')
-    .addSeparator()
-    .addItem('🎬 Load Demo Roster (preview)',p+'seedDemoRoster')
-    .addItem('🗑️ Reset for a new department…',p+'devResetForNewDepartment')
-    .addItem('🧹 Delete old Sandbox / Results Tabs',p+'devCleanup')
-    .addToUi();
+  const menu=rosterMenu_(SpreadsheetApp.getUi(),'🧪 Dev / QA',[
+    ['✅ Run all QA tests','qaRunAll',typeof qaRunAll==='function'],
+    ['More testing tools',[
+      ['Core logic only','qaRunCore',typeof qaRunCore==='function'],
+      ['Sheets platform only','qaRunPlatform',typeof qaRunPlatform==='function'],
+      ['Delete sandbox / results tabs…','devCleanup']]],
+    ['Demo / department reset',[
+      ['Load demo data (overwrites this copy)…','seedDemoRoster',typeof seedDemoRoster==='function'],
+      ['Reset for a new department…','devResetForNewDepartment']]],
+  ],p);
+  if(menu)menu.addToUi();
 }
 
 function devCleanup() {
-  const ss=SpreadsheetApp.getActive();
-  devDeleteSandbox_();
-  const results=ss.getSheetByName(RESULTS_TAB);
-  if(results)ss.deleteSheet(results);
-  SpreadsheetApp.getUi().alert('Removed old sandbox and results tabs.');
+  runAction_('Delete QA tabs',()=>{
+    const ss=SpreadsheetApp.getActive(),ui=SpreadsheetApp.getUi();
+    const candidates=ss.getSheets().filter(sh=>devIsQaTab_(sh.getName()));
+    if(!candidates.length){ui.alert('No sandbox or QA results tabs to remove.');return;}
+    if(ui.alert('Delete QA tabs', 'Permanently delete these '+candidates.length+' tabs?\n\n'+candidates.map(sh=>sh.getName()).join('\n'),ui.ButtonSet.YES_NO)!==ui.Button.YES)return;
+    // QA and department reset use the same writer lock. Never remove a running sandbox.
+    const count=withPatrolCreditLock_(()=>devDeleteSandbox_(new Set(candidates.map(sh=>sh.getSheetId()))));
+    ui.alert('Removed '+count+' sandbox / results tab(s).');
+  });
 }
 
 function devResetForNewDepartment() {
@@ -33,15 +39,19 @@ function devResetForNewDepartment() {
   // Match cpWithLock_ / sync / restore: a different lock would allow overlapping writes.
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) { ui.alert('The roster is busy. Wait for the current action to finish and retry.'); return; }
-  let message;
+  let message; const previousSuppression=DEV_WEBHOOKS_OFF_;
   try {
     DEV_WEBHOOKS_OFF_ = true;
     const plan = devDepartmentResetPlan_(ss);
     devApplyDepartmentReset_(ss, plan);
     message = 'Reset complete. Member data and department settings were cleared; layout and formatting were retained.\n\nLink the new department’s own form response tabs in Settings, configure its connections, then run First-Run Setup. No Google Form was created.';
   } catch (e) {
+    reportError_('devResetForNewDepartment',e,false);
     message = 'Reset did not finish: ' + (e && e.message || e) + '\nSome data may already have been cleared. Keep this copy private and retry after fixing the problem.';
-  } finally { lock.releaseLock(); }
+  } finally {
+    DEV_WEBHOOKS_OFF_=previousSuppression;
+    try{lock.releaseLock();}catch(e){reportError_('devResetForNewDepartment.release',e,false);message+='\nWriter-lock cleanup failed; wait before running another action.';}
+  }
   ui.alert(message);
 }
 
@@ -136,7 +146,19 @@ function devApplyDepartmentReset_(ss, plan) {
 }
 
 
-function devDeleteSandbox_() {
+function devIsQaTab_(name) {
+  return name===RESULTS_TAB || /^🧪SANDBOX_[A-Za-z0-9_-]+$/.test(name) || /^🧪 QA Results(?: [1-9]\d*)?$/.test(name);
+}
+
+/** Caller holds the writer lock; optional IDs limit cleanup to the user's reviewed list. */
+function devDeleteSandbox_(allowedIds) {
   const ss = SpreadsheetApp.getActive();
-  ss.getSheets().forEach((sh) => { if (sh.getName().indexOf(SANDBOX_PREFIX) === 0) ss.deleteSheet(sh); });
+  const all=ss.getSheets(),targets=all.filter(sh=>devIsQaTab_(sh.getName())&&(!allowedIds||allowedIds.has(sh.getSheetId())));
+  if(targets.length&&targets.length===all.length)throw new Error('Keep at least one workbook tab before deleting all QA tabs.');
+  let count=0;
+  targets.forEach(sh=>{
+    try { ss.deleteSheet(sh);count++; }
+    catch(e){throw new Error('Removed '+count+' QA tab(s); could not delete "'+sh.getName()+'": '+(e&&e.message||e));}
+  });
+  return count;
 }

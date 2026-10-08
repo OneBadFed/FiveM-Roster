@@ -1444,6 +1444,7 @@ function ensureConfigSheetStyle_(sheet,grid,force) {
 /** Menu action: apply the dark Config design without resetting any setting. */
 function restyleConfigSheet() {
   runAction_('Restyle Config sheet',()=>{
+    withPatrolCreditLock_(()=>{
     const sheet=findConfigSheet_(SpreadsheetApp.getActive());
     if(!sheet)throw new Error('Run First-Run Setup to create the Config sheet first.');
     const grid=sheet.getRange(1,1,sheet.getLastRow(),5).getDisplayValues();
@@ -1453,6 +1454,7 @@ function restyleConfigSheet() {
     grid.forEach((row,i)=>{const marker=String(row[0]).match(MARKER_RE_);if(marker){row[2]=configBlockLabel_(marker[1]);sheet.getRange(i+1,3).setValue(row[2]);}});
     ensureConfigSheetStyle_(sheet,grid,true);
     SpreadsheetApp.flush();
+    });
     SpreadsheetApp.getUi().alert('Config styling updated. Your settings and table entries were preserved.');
   });
 }

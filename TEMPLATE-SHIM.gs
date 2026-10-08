@@ -12,7 +12,7 @@
  *   2. In the template spreadsheet's bound project: paste ONLY this file, then
  *      Editor ▸ Libraries ▸ + ▸ paste the engine's Script ID ▸ pick the newest
  *      version ▸ identifier MUST be:  RE
- *   3. Reload the sheet → 📋 Roster menu appears → 🚀 First-Run Setup.
+ *   3. Reload the sheet → 👥 Roster ▸ 🚀 Setup ▸ First-Run Setup.
  *
  * WHY THIS EXISTS:
  *   • Simple triggers (onOpen/onEdit) and installable-trigger HANDLER NAMES must
@@ -60,7 +60,8 @@ function onEdit(e) { RE.onEdit(e); }
 /* ---- Installable-trigger handlers (trigger handler names resolve here) ----
  * This list must cover EVERY name the engine passes to ScriptApp.newTrigger():
  * onFormSubmit · processDailyLOAs · weeklyResetScheduled · scanIntegrity ·
- * buildCoverage · auditEdit · weeklySnapshotScheduled (panel Auto-weekly toggle). */
+ * buildCoverage · auditEdit · weeklySnapshotScheduled · publishOnChange ·
+ * publishSweep · publishCatchup. publishPublicRoster supports legacy triggers. */
 function onFormSubmit(e) { RE.onFormSubmit(e); }
 function processDailyLOAs() { RE.processDailyLOAs(); }
 function weeklyResetScheduled() { RE.weeklyResetScheduled(); }
@@ -68,4 +69,7 @@ function scanIntegrity() { RE.scanIntegrity(); }
 function buildCoverage() { RE.buildCoverage(); }
 function auditEdit(e) { RE.auditEdit(e); }
 function weeklySnapshotScheduled() { RE.weeklySnapshotScheduled(); }
-function publishCatchup() { RE.publishCatchup(); }
+function publishOnChange(e) { return RE.publishOnChange(e); }
+function publishSweep() { return RE.publishSweep(); }
+function publishCatchup(e) { return RE.publishCatchup(e); }
+function publishPublicRoster() { return RE.publishPublicRoster(); }
