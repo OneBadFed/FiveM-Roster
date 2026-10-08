@@ -706,9 +706,10 @@ function cpEnsureAuditTrigger(force) {
   const key = 'cp:audit-trigger:' + SpreadsheetApp.getActive().getId();
   let cache = null;
   try { cache = CacheService.getUserCache(); if (!force && cache.get(key)) return true; } catch (e) { /* verify without cache */ }
-  // Lock so two near-simultaneous panel opens can't both pass the "no auditEdit" check and create duplicate triggers (double-logging).
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(8000)) return false; // someone else is already ensuring it
+  // The trigger inventory belongs to this user. Panel opens/installation must
+  // serialize without waiting behind public publishing or member mutations.
+  const lock = LockService.getUserLock(), held = lock.hasLock();
+  if (!held && !lock.tryLock(8000)) return false; // this user's trigger setup is already running
   try {
     let kept = false;
     ScriptApp.getProjectTriggers().forEach((t) => {
@@ -723,6 +724,6 @@ function cpEnsureAuditTrigger(force) {
     try { if (cache) cache.put(key, '1', 300); } catch (e) { /* best-effort */ }
     return true;
   } finally {
-    lock.releaseLock();
+    if (!held) lock.releaseLock();
   }
 }

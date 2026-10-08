@@ -429,9 +429,11 @@ function installTriggers() {
   runAction_('Install Triggers', () => { const result=installConfiguredTriggers_();SpreadsheetApp.getUi().alert(result); });
 }
 
-/** Build replacements before deleting working triggers; clean up a failed creation batch. */
+/** Build replacements before deleting working triggers; clean up a failed creation batch.
+ * ScriptApp lists only the current user's triggers. Serialize that user's setup
+ * separately from the script lock used by publishers and member mutations. */
 function replaceManagedTriggers_(handlers, create) {
-  const lock=LockService.getScriptLock(),held=lock.hasLock();
+  const lock=LockService.getUserLock(),held=lock.hasLock();
   if(!held && !lock.tryLock(8000))throw new Error('Another trigger installation is running. Retry shortly.');
   let primary;
   try {
@@ -449,7 +451,7 @@ function replaceManagedTriggers_(handlers, create) {
 function ensurePublicPublishingTriggers_(force) {
   const linked=!!String(PropertiesService.getDocumentProperties().getProperty('PUBLIC_ROSTER_ID')||'').trim();
   const ss=SpreadsheetApp.getActive(),handlers=['publishPublicRoster','publishOnChange','publishSweep'];
-  const lock=LockService.getScriptLock(),held=lock.hasLock();
+  const lock=LockService.getUserLock(),held=lock.hasLock();
   if(!held&&!lock.tryLock(8000))throw new Error('Public auto-update trigger verification is busy. Retry Install Triggers shortly.');
   try {
     const owned=ScriptApp.getProjectTriggers().filter(t=>handlers.indexOf(t.getHandlerFunction())!==-1);

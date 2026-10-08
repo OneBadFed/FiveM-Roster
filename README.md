@@ -193,4 +193,6 @@ One-time setup:
 
 The workflow replaces the target script's source files and manifest with the repository versions. It does not run First-Run Setup, create forms, install triggers, or change spreadsheet data. Edit code in GitHub/local files going forward; manual edits in the Apps Script editor are overwritten by the next sync. Existing versioned library/web-app deployments are not updated by this workflow; it uploads the current project source only. Separate copied sheets require their own target configuration.
 
+If **Install Triggers** previously stopped with "Another trigger installation is running," update the script and retry **Roster → Install Triggers**. Trigger setup now uses a separate user lock so public publishing and member changes cannot occupy its setup lock. Approve permissions if prompted and check that the completion message includes **Public roster: live on edit**. Automatic publishing requires a linked public file and those installed triggers.
+
 Google's clasp guide: https://developers.google.com/apps-script/guides/clasp.

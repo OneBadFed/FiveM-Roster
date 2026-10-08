@@ -1,14 +1,19 @@
 // Real startup trigger functions, with in-memory services and creation failures.
 const fs=require('fs'),vm=require('vm'),assert=require('assert');
 let held=false,triggers=[],created=0,failAt=0,linked=false,audit=true;
+let triggerBusy=false,scriptLockReads=0;
 const config={kv:{SCHEDULE:{NIGHTLY_HOUR:21},ACTIVITY:{AUTO_RESET:true,RESET_CADENCE:'MONTHLY',WEEKLY_HOURS_RESET:'OFF',RESET_DOM:8,WEEKLY_RESET_HOUR:4}}};
 const ctx={cfg_:()=>config,PropertiesService:{getDocumentProperties:()=>({getProperty:()=>linked?'public':null})},SpreadsheetApp:{getActive:()=>({})},LockService:{getScriptLock:()=>({hasLock:()=>held,tryLock(){held=true;return true},releaseLock(){held=false}})},log_(){},logInfo_(){},cpEnsureAuditTrigger:()=>audit,cpInvalidateHealth_(){},publishOnChange(){},AppError:class extends Error{constructor(code,detail){super(detail.reason)}},ScriptApp:{WeekDay:{SUNDAY:1},getProjectTriggers:()=>triggers.slice(),deleteTrigger:t=>{triggers=triggers.filter(x=>x!==t)},newTrigger(name){const schedule={};const builder=new Proxy({}, {get:(target,key)=>key==='create'?()=>{created++;if(created===failAt)throw Error('creation quota');const trigger={name,schedule,getHandlerFunction:()=>name};triggers.push(trigger);return trigger}:(...args)=>{schedule[key]=args;return builder}});return builder}}};
 vm.createContext(ctx);
+// Roster publishing/mutations occupy the script lock; trigger setup has its own
+// current-user lock. The installer must not even request the busy writer lock.
+ctx.LockService.getScriptLock=()=>{scriptLockReads++;throw Error('writer lock occupied by publishing');};
+ctx.LockService.getUserLock=()=>({hasLock:()=>held,tryLock(){if(triggerBusy)return false;held=true;return true;},releaseLock(){held=false;}});
 ctx.SpreadsheetApp.getActive=()=>({getId:()=> 'bound',getName:()=> 'Internal'});
 ctx.ScriptApp.EventType={ON_EDIT:'EDIT',ON_CHANGE:'CHANGE',CLOCK:'CLOCK'};
 ctx.ScriptApp.getProjectTriggers=()=>{
  triggers.forEach(t=>{
-  if(!t.getEventType)t.getEventType=()=>t.schedule?.onEdit?'EDIT':t.schedule?.onChange?'CHANGE':'CLOCK';
+  if(!t.getEventType)t.getEventType=()=>t.schedule?.onEdit?ctx.ScriptApp.EventType.ON_EDIT:t.schedule?.onChange?ctx.ScriptApp.EventType.ON_CHANGE:ctx.ScriptApp.EventType.CLOCK;
   if(!t.getTriggerSourceId)t.getTriggerSourceId=()=>t.schedule?.forSpreadsheet?.[0]?.getId()||null;
  });return triggers.slice();
 };
@@ -23,6 +28,10 @@ assert.equal(triggers.find(t=>t.name==='processDailyLOAs').schedule.atHour[0],21
 assert(triggers.some(t=>t.name==='customJob'));
 assert(!triggers.some(t=>t.name==='publishSweep'),'unlinked public publishing has no minute trigger');
 assert.equal(triggers.find(t=>t.name==='weeklyResetScheduled').schedule.onMonthDay[0],8,'monthly cadence ignores weekly OFF');
+assert.equal(scriptLockReads,0,'core/extras setup must succeed while the roster writer lock is busy');
+const busyBefore=triggers.slice(),busyCreated=created;triggerBusy=true;
+assert.throws(()=>ctx.installConfiguredTriggers_(),/Another trigger installation/);
+assert.deepEqual(triggers,busyBefore);assert.equal(created,busyCreated,'competing trigger setup fails before any mutation');triggerBusy=false;
 // Startup before linking, then link: install just public triggers without rerunning core/extras.
 linked=true;const core=triggers.find(t=>t.name==='onFormSubmit');assert(ctx.ensurePublicPublishingTriggers_(false).installed);
 assert(triggers.includes(core));assert.equal(triggers.filter(t=>t.name==='publishOnChange').length,2);
@@ -55,6 +64,22 @@ let publishes=0;ctx.publishPublicRoster=()=>{publishes++;assert.equal(triggers.f
 linked=false;ctx.ensurePublicPublishingTriggers_(false);ctx.setupPublicRoster();assert.equal(publishes,1);
 triggers=triggers.filter(t=>t.name!=='publishOnChange');ctx.publishPublicRosterNow();assert.equal(publishes,2);assert.equal(triggers.filter(t=>t.name==='publishOnChange').length,2,'manual publishing repairs existing departments');
 console.log('Public auto-update: startup-before-link, idempotent repair, event/source checks, rollback and real link/menu wiring passed.');
+// Real audit setup shares the trigger lock, including reentrant callers, quota
+// failures and simultaneous panel opens. It also ignores the busy writer lock.
+load('RosterTrust.gs','cpEnsureAuditTrigger');
+const cached=new Map();ctx.CacheService={getUserCache:()=>({get:k=>cached.get(k),put:(k,v)=>cached.set(k,v)})};
+triggers.push({name:'recordEdit',getHandlerFunction:()=> 'recordEdit',getEventType:()=> 'ON_EDIT'});
+ctx.ScriptApp.EventType.ON_EDIT='ON_EDIT';ctx.ScriptApp.EventType.ON_CHANGE='ON_CHANGE';
+assert(ctx.cpEnsureAuditTrigger(true));assert(!held);assert.equal(scriptLockReads,0);
+const auditCreated=created;assert(ctx.cpEnsureAuditTrigger());assert.equal(created,auditCreated,'cached panel opens do not create triggers');
+triggers.push({name:'auditEdit',getHandlerFunction:()=> 'auditEdit',getEventType:()=> 'ON_EDIT'});
+assert(ctx.cpEnsureAuditTrigger(true));assert.equal(triggers.filter(t=>t.name==='auditEdit').length,1,'audit setup removes duplicates');
+assert(!triggers.some(t=>t.name==='recordEdit'),'legacy audit trigger removed');
+held=true;assert(ctx.cpEnsureAuditTrigger(true));assert(held,'nested audit setup does not release caller lock');held=false;
+triggerBusy=true;const auditBefore=triggers.slice();assert.equal(ctx.cpEnsureAuditTrigger(true),false);assert.deepEqual(triggers,auditBefore);triggerBusy=false;
+triggers=triggers.filter(t=>t.name!=='auditEdit');failAt=created+1;assert.throws(()=>ctx.cpEnsureAuditTrigger(true),/creation quota/);assert(!held,'audit creation failure releases trigger lock');failAt=0;
+ctx.installConfiguredTriggers_();assert.equal(scriptLockReads,0,'complete installer including audit is independent of writer activity');assert(!held);
+console.log('Trigger lock isolation: busy writer, competing setup, no premature changes, nested ownership, real audit installation/duplicates/cache and quota cleanup passed.');
 // Support initialization uses runtime names and never touches existing tabs or adds sample records.
 ctx.SYS_LOG_SHEET='SYS Log';
 ctx.TRUST={snapshotSheet:'Custom snapshots',auditSheet:'Edit Log'};
