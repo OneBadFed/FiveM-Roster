@@ -555,6 +555,7 @@ function findConfigSheet_(ss) {
   if (byName) return byName;
   const sheets = s.getSheets();
   for (let i = 0; i < sheets.length; i++) {
+    if(sheets[i].getName().indexOf('🧪')===0)continue; // a QA roundtrip fixture may carry RE_CONFIG temporarily
     try { if (String(sheets[i].getRange(1, 1).getDisplayValue()).trim() === CONFIG_MARKER) return sheets[i]; } catch (e) { /* keep scanning */ }
   }
   return null;

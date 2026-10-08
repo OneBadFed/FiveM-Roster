@@ -2220,6 +2220,7 @@ function publicFile_() {
 function publishTabBlocked_(name) {
   const n = norm_(name);
   if (!n) return true;
+  if(String(name).indexOf('🧪')===0)return true; // local QA fixtures/reports are internal only
   const sheets = CONFIG.sheets || {};
   if ([sheets.audit,sheets.integrity,sheets.snapshots,sheets.hoursHistory,sheets.signups,sheets.signupForm,sheets.form,sheets.patrol].some((tab) => tab && norm_(tab) === n)) return true;
   try {

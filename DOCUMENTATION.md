@@ -30,7 +30,7 @@ ever flows back. There is no separate "admin file" — `adminFile_()` resolves t
 | `RosterControlPanel.gs` | Control Panel server: the D5 `dispatch()` whitelist gateway and every `cp*` endpoint; signup sync + approval; the public-roster publish pipeline; webhooks; rank-icon storage |
 | `RosterTrust.gs` | Snapshots/restore, the always-on Edit Log audit (with editor-name resolution), health & schema checks |
 | `RosterExtras.gs` | Integrity scan, leave coverage board, the Activity Panel board (§5a), hours history + cadence-aware reset + period archive, group / Police Academy tab builders, full-lifecycle demo seeder |
-| `RosterDevQA.gs` / `RosterQA.gs` | Demo/reset utilities and the fresh core/platform QA suite; a blank sandbox in a separate workbook becomes the results worksheet |
+| `RosterDevQA.gs` / `RosterQA.gs` | Demo/reset utilities and the fresh core/platform QA suite; a blank sandbox tab inside the internal roster becomes the Config-style results report |
 | `ControlPanel.html` | Control Panel UI (single HtmlService dialog, Studio design system, deep-linkable tabs) |
 | `SettingsPanel.html` | Settings Studio UI (full-screen config editor incl. the per-channel Discord embed builder) |
 | `TEMPLATE-SHIM.gs` | **Library mode only** — endpoint whitelist mirror + trigger forwarders. Held out of `clasp push` by `.claspignore`; never paste alongside the engine |
@@ -576,7 +576,7 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
 8. The engine fills user sheets — it never restructures or reformats their layout. (Sole carve-out: auto-rows
    manages the data-region row COUNT on the three tracker-style tabs — §3 — inserting inside the styled band
    and trimming trailing blanks; `[LIMITS].BLANK_TAIL_ROWS = 0` turns it off.)
-9. QA tests use a run-owned sandbox in a separate workbook; that same worksheet becomes the results page. Demo/reset tools are separate and must be invoked explicitly.
+9. QA tests use a run-owned sandbox tab inside the internal roster; that same tab becomes the results report. Cleanup only removes helpers owned by the current run. Demo/reset tools are separate and must be invoked explicitly.
 
 ---
 
@@ -592,7 +592,7 @@ Refresh Police Academy · 📊 Build / Refresh Activity Panel │ 🌐 Set Up Pu
 (Discord / Community) · 🧩 Sync Column
 Config · 🚀 First-Run Setup · 🔌 Install Triggers.
 
-**🧪 Dev / QA:** QA — all new scenarios / core logic / Sheets platform · 🎬 Load Demo Roster · 🗑️ Reset for a new department · 🧹 Delete old Sandbox / Results Tabs. Tests reset and reuse a blank sandbox worksheet in a separate workbook, then repurpose that same worksheet as QA Results and remove helper worksheets; see [QA_TESTING.md](QA_TESTING.md). The old test sections and random generators remain removed.
+**🧪 Dev / QA:** QA — all new scenarios / core logic / Sheets platform · 🎬 Load Demo Roster · 🗑️ Reset for a new department · 🧹 Delete old Sandbox / Results Tabs. Tests create and reuse a blank sandbox tab inside the internal roster, then repurpose it as 🧪 QA Results and remove only run-owned helper tabs; see [QA_TESTING.md](QA_TESTING.md). Older reports stay intact. The old test sections and random generators remain removed.
 
 Every action reports what it actually did (counts, names, changes).
 
@@ -633,14 +633,17 @@ snapshot. In library mode the shim forwards all of these.
 ## 14 · The QA System
 
 `RosterQA.gs` contains freshly authored deterministic core scenarios and Google Sheets platform fixtures.
-The menu supports all scenarios, core logic, or platform checks. Each run creates a separate QA workbook
-and a blank sandbox worksheet. Platform tests reset and reuse it, including merged headers, formatting,
+The menu supports all scenarios, core logic, or platform checks. Each run creates a blank sandbox tab
+inside the current internal roster. Platform tests reset and reuse it, including merged headers, formatting,
 validation, conditional rules and multi-width frame growth. Native-copy tests may use a temporary helper
 worksheet. After testing, helper worksheets are removed and the original sandbox is cleared and renamed
-QA Results; its sheet ID is retained. Failures and unstarted cases remain FAIL / NOT RUN.
+🧪 QA Results; its sheet ID is retained. Failures and unstarted cases remain FAIL / NOT RUN.
 
-The runner checks workbook identity before writing, acquires the shared script lock, suppresses Discord
-for testing and restores its previous suppression setting. Only the newly created QA workbook is cleaned.
+The runner rejects pre-existing tab IDs before writing, acquires the shared script lock, suppresses Discord
+for testing and restores its previous suppression setting. Only registered run-owned helper tabs are deleted.
+Live tabs and older reports stay intact. QA tabs are excluded from public publishing and edit-audit traffic;
+Config discovery ignores their temporary configuration fixtures. Results use Config's dark style, summary
+counts, frozen headers, a filtered case table, status colours, wrapped diagnostics and dark bottom padding.
 The tests do not call production member writers, form/trigger creation, reset or public publishing actions.
 The execution budget stops starting cases after three minutes; a hard platform termination can leave an
 unfinished sandbox. Report/cleanup failures are failures, not successful test outcomes.

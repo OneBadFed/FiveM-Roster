@@ -528,6 +528,7 @@ function auditEdit(e) {
   try {
     if (!e || !e.range) return;
     const sheetName = e.range.getSheet().getName();
+    if(sheetName.indexOf('🧪')===0)return; // QA fixtures/results are internal working tabs, never Discord audit traffic
     // Never audit the system/working tabs.
     // System tabs are never audited. ⚙️ Config is deliberately NOT skipped — who changed the config is
     // exactly what an audit trail is for. SYS Log is engine diagnostics (script writes don't fire onEdit,
