@@ -528,7 +528,7 @@ const BLOCK_SPECS_ = Object.freeze({
     INFO: { t: 'color', d: THEME_DEFAULTS.INFO, req: true, help: 'Semantic blue (INFO).' },
   } },
   DASHBOARD: { type: 'kv', keys: {
-    ENABLE: { t: 'bool', d: true, req: true, help: 'Master switch for the #stat-tag renderer: type #members, #active, #hours (or any group name) into a cell and the engine keeps it live.' },
+    ENABLE: { t: 'bool', d: true, req: true, help: 'Master switch for live Welcome statistic boxes, #stat tags and the patrol leaderboard. Use #members, #active, #hours or #group:label for a headcount group. Off preserves the last displayed values.' },
   } },
   DASHBOARD_GROUPS: { type: 'table', cols: ['Group', 'Categories'],
     seed: [['Supervisors', 'Executive, Administrative, Supervisor'], ['Troopers', 'Patrol, Training, Cadet'], ['Auxiliary', 'Auxiliary']],
@@ -870,6 +870,20 @@ function validateConfig_(raw) {
     if (!row.Value && !row.Kind) return;
     const kind = norm_(row.Kind);
     if (kind !== 'RANK' && kind !== 'DIVIDER' && kind !== 'TRAINING') problems.push({ sev: 'ERROR', code: 'E-103', key: `[RANKS].${row.Value || '(blank)'}`, value: row.Kind, type: 'kind', expected: 'RANK · DIVIDER · TRAINING' });
+    if(!row.Value)problems.push({sev:'ERROR',code:'E-103',key:'[RANKS]',value:row.Kind,type:'rank',expected:'a nonempty rank/divider name'});
+  });
+  const listedRanks=new Set();c.tables.RANKS.forEach(row=>{if(!row.Value)return;const key=norm_(row.Value);if(listedRanks.has(key))problems.push({sev:'ERROR',code:'E-103',key:'[RANKS].'+row.Value,value:row.Kind,type:'rank',expected:'one unambiguous classification per rank/divider'});listedRanks.add(key);});
+  const groupTags=new Set();c.tables.DASHBOARD_GROUPS.forEach(row=>{
+    if(!row.Group&&!row.Categories)return;
+    const key=String(row.Group).toLowerCase().replace(/[^a-z0-9]/g,'');
+    if(!key||groupTags.has(key))problems.push({sev:'ERROR',code:'E-103',key:'[DASHBOARD_GROUPS].'+(row.Group||'(blank)'),value:row.Group,type:'group',expected:'a distinct group tag containing letters or digits (spaces/punctuation do not distinguish tags)'});
+    groupTags.add(key);
+  });
+  const sectionLabels=new Set();c.tables.SECTION_TAGS.forEach(row=>{
+    if(!row.Label&&!row.Keywords&&!row.Tone)return;
+    const label=norm_(row.Label);
+    if(!label||!String(row.Keywords).split(',').some(k=>k.trim())||sectionLabels.has(label))problems.push({sev:'ERROR',code:'E-103',key:'[SECTION_TAGS].'+(row.Label||'(blank)'),value:row.Keywords,type:'section',expected:'a unique section label and at least one nonempty keyword'});
+    sectionLabels.add(label);
   });
   if (norm_(c.kv.ROSTER_LAYOUT.DIVIDER_MODE) === 'EXPLICIT_LIST' && !c.tables.RANKS.some((r) => String(r.Value || '').trim() !== '')) {
     problems.push({ sev: 'WARN', code: 'E-103', key: '[RANKS]', value: '(empty)', type: 'ranks', expected: 'DIVIDER_MODE is EXPLICIT_LIST but [RANKS] is empty — the all-caps heuristic is used until you list ranks/dividers' });
@@ -1055,8 +1069,8 @@ function materialize_(c, fromTab) {
                 :                          { min: 17, max: 19 }; // DISCORD (default)
 
   // Dashboard headcount buckets from [DASHBOARD_GROUPS] (each is also a #tag).
-  const groups = {};
-  c.tables.DASHBOARD_GROUPS.forEach((r) => { if (r.Group) groups[r.Group] = String(r.Categories).split(',').map((x) => x.trim()).filter(Boolean); });
+  const groups = Object.create(null),groupOrder=[];
+  c.tables.DASHBOARD_GROUPS.forEach((r) => { if (r.Group) {if(!Object.prototype.hasOwnProperty.call(groups,r.Group))groupOrder.push(r.Group);groups[r.Group] = String(r.Categories).split(',').map((x) => x.trim()).filter(Boolean);} });
 
   // Per-event Discord embed templates (the Settings Studio's builder writes valid JSON; a hand-broken row is ignored).
   const embedTpl = {};
@@ -1176,7 +1190,7 @@ function materialize_(c, fromTab) {
     dividerMode: kv.ROSTER_LAYOUT.DIVIDER_MODE,                                  // v1.0: ALLCAPS_RANK | EXPLICIT_LIST
     rankList,                                                                    // v1.0: {ranks:[NORM], dividers:[NORM]} — for EXPLICIT_LIST mode
     columns: { configSheet: '_Columns' }, // retained for the one-time import + dashboardSkip_'s hidden-tab list
-    dashboard: { groups },
+    dashboard: { groups, order:groupOrder },
     embedTpl,
   };
 

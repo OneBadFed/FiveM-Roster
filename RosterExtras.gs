@@ -2184,8 +2184,8 @@ function fillEmployeeBox_(sheet, groups) {
     const r = hit.row + 1 + k;
     if (r > sheet.getMaxRows()) return;
     sheet.getRange(r, leftCol).setValue(rw[0]).clearNote();                     // label (top-left of any E:F-style merge on the row)
-    // clearNote keeps this count OUT of the engine's KPI-adoption path (else a re-run would overwrite it with the
-    // engine's own group count — 0 for sections the operator hasn't mapped to [DASHBOARD_GROUPS]).
+    // Drop prior tag ownership for the demo seed. The next live dashboard refresh adopts these titled boxes
+    // using the configured headcount groups, including zero for labels without a matching group.
     sheet.getRange(r, rightCol).setValue(rw[1]).clearNote();                    // count
     wrote++;
   });

@@ -81,6 +81,7 @@ const DISPATCH_ENDPOINTS_ = Object.freeze({
   cpApplyConfig: (p) => cpApplyConfig(p),
   cpOpenSettings: () => { openSettingsPanel(); return true; },
   cpRankIcons: () => cpRankIcons(),
+  cpDashboardPreview: () => cpDashboardPreview(),
   cpSetRankIcon: (rank, dataUri) => cpSetRankIcon(rank, dataUri),
   cpDeleteRankIcon: (rank) => cpDeleteRankIcon(rank),
   cpSignupList: () => cpSignupList(),
@@ -441,6 +442,7 @@ function cpGetConfig() {
 
 /** Panel write: apply a Settings change set (locked; audited as a summary — values are config, not secrets). */
 function cpApplyConfig(payload) {
+  payload=payload||{};
   return cpWithLock_(() => {
     const res = cpApplyConfig_(findConfigSheet_(SpreadsheetApp.getActive()), payload);
     if (res.ok) {
@@ -456,6 +458,13 @@ function cpApplyConfig(payload) {
         catch(e){ log_('cpApplyConfig.derived',e); }
         try { if(typeof publishMarkDirty_==='function') publishMarkDirty_(); }
         catch(e){ log_('cpApplyConfig.publish',e); }
+      }
+      const statusChanged=Object.keys(payload.tables||{}).some(name=>['STATUSES','STATUS_OVERRIDES','STATUS_RULES'].indexOf(name)!==-1);
+      const dashboardChanged=trainingChanged||statusChanged||(payload.kv||[]).some(item=>['DASHBOARD','LEAVE'].indexOf(item.block)!==-1);
+      if(dashboardChanged){
+        if(statusChanged)['statuses','academy','groups'].forEach(deferWork_);
+        deferWork_('dashboard');publishMarkDirty_();
+        if(typeof scheduleCatchup_==='function')scheduleCatchup_();
       }
       res.state = cpGetConfig_(); // fresh state so the client can rebase without a second round-trip
     }
@@ -720,7 +729,7 @@ function migrateRankIconSheet_() {
 function rankIconsMap_() {
   migrateRankIconSheet_();
   const all = rankIconProps_().getProperties();
-  const parts = {};
+  const parts = Object.create(null);
   Object.keys(all).forEach((k) => {
     if (k.indexOf(RANK_ICON_PREFIX_) !== 0) return;
     const rest = k.slice(RANK_ICON_PREFIX_.length), at = rest.lastIndexOf(':'); // index is the numeric LAST segment — safe even if the rank had ':'
@@ -730,33 +739,52 @@ function rankIconsMap_() {
     if (!rank || isNaN(idx)) return;
     (parts[rank] || (parts[rank] = []))[idx] = all[k];
   });
-  const map = {};
+  const map = Object.create(null);
   Object.keys(parts).forEach((rank) => { const uri = parts[rank].join(''); if (uri) map[rank] = uri; }); // chunks were stored by substr() with NO separator — rejoin them raw (a separator corrupts any icon > 1 chunk)
   return map;
 }
 
 /** Panel endpoint: the distinct roster ranks (+ filled-member counts) merged with any stored icons — feeds the Settings editor's auto-detected list. */
+/** Read-only Settings preview: the same saved configuration/calculation as Welcome. */
+function cpDashboardPreview() {
+  const ss=SpreadsheetApp.getActive(),roster=ss.getSheetByName(CONFIG.sheets.roster);
+  if(!roster) throw new Error('Choose an existing roster tab in Sheets & layout before previewing statistics.');
+  const s=dashboardStats_(roster),counters=[];
+  [['members','Members'],['active','Active'],['semi','Intermediate activity'],['inactive','Inactive'],['onleave','On leave'],['openslots','Open slots'],['hours','Total hours']].forEach(([tag,label])=>counters.push({tag,label,value:statTagValue_(s,tag),category:'Roster'}));
+  Object.keys(s.tierCounts).forEach(label=>{const tag=statTagKey_(label);counters.push({tag,label,value:statTagValue_(s,tag),category:'Activity tiers'});});
+  const groupOrder=CONFIG.dashboard.order||Object.keys(s.groups);
+  groupOrder.forEach(label=>counters.push({tag:'group:'+statTagKey_(label),label,value:s.groups[label],category:'Headcount groups'}));
+  const props=PropertiesService.getDocumentProperties().getProperties();
+  return {stats:{total:s.total,active:s.active,leaves:s.leaves,openSlots:s.openSlots,totalHours:s.totalHours,groups:s.groups},counters,
+    groupOrder,readAt:Date.now(),enabled:cfg_().dashboardEnabled,
+    refreshPending:!!(props['RE_DEFER_JOB:statuses']||props['RE_DEFER_JOB:dashboard']),
+    publicLinked:!!props.PUBLIC_ROSTER_ID,publicPending:!!(props.PUBLIC_DIRTY||props.PUBLIC_PENDING_SCOPE_V1||props.PUBLIC_INFLIGHT_SCOPE_V1),
+    sections:(CONFIG.sectionCategories||[]).map(t=>t.label)};
+}
+
 function cpRankIcons() {
   const ss = SpreadsheetApp.getActive();
-  const counts = {}; const order = [];
+  const counts = Object.create(null),canonical=Object.create(null); const order = [];
+  const add=rank=>{const name=String(rank||'').trim(),key=norm_(name);if(!name)return null;if(!canonical[key]){canonical[key]=name;counts[name]=0;order.push(name);}return canonical[key];};
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
   if (roster) {
     const last = roster.getLastRow();
     if (last >= CONFIG.rosterStartRow) {
-      const n = last - CONFIG.rosterStartRow + 1;
       const RC = rosterCols_(roster);
-      const rows = roster.getRange(CONFIG.rosterStartRow, 1, n, Math.max(RC.rank, RC.name)).getDisplayValues();
+      const start=Math.max(CONFIG.rosterStartRow,(RC.headerRow||0)+1),n=last-start+1;
+      const rows = n>0?roster.getRange(start, 1, n, Math.max(RC.rank, RC.name)).getDisplayValues():[];
       for (let i = 0; i < n; i++) {
         const rank = String(rows[i][RC.rank - 1]).trim();
         if (rank === '' || rank === 'Rank' || !isMemberSlot_(rank)) continue;
-        if (!(rank in counts)) { counts[rank] = 0; order.push(rank); }
-        if (String(rows[i][RC.name - 1]).trim() !== '') counts[rank]++;
+        const label=add(rank);
+        if (isValidMemberValues_(rank,String(rows[i][RC.name - 1]).trim())) counts[label]++;
       }
     }
   }
+  (cfg_().tables.RANKS||[]).forEach(r=>{if(['RANK','TRAINING'].indexOf(norm_(r.Kind))!==-1)add(r.Value);});
   const icons = rankIconsMap_();
-  Object.keys(icons).forEach((r) => { if (!(r in counts)) { counts[r] = 0; order.push(r); } }); // keep icons for ranks no longer on the roster
-  return { ranks: order.map((r) => ({ rank: r, members: counts[r], icon: icons[r] || '' })) };
+  const byRank=Object.create(null);Object.keys(icons).forEach(r=>{add(r);byRank[norm_(r)]=icons[r];}); // keep icons for ranks no longer on the roster
+  return { ranks: order.map((r) => ({ rank: r, members: counts[r], icon: byRank[norm_(r)] || '' })) };
 }
 
 /** Panel endpoint: store/replace a rank's icon. `dataUri` is a small data:image/…;base64 string (already downscaled in the browser). */
@@ -836,6 +864,9 @@ function cpGetProfile(discordId) {
 /** Safe semantic audit write (no-op if RosterTrust.gs isn't pasted). */
 function cpAudit_(type, oldText, newText, cellA1, member) {
   publishMarkDirty_(); // panel actions are script writes -> no onEdit -> the sweep would otherwise never know
+  if(['status','bulk','add','move','leave'].indexOf(type)!==-1){
+    try{['academy','groups','dashboard'].forEach(deferWork_);if(typeof scheduleCatchup_==='function')scheduleCatchup_();}catch(e){log_('cpAudit_.derived',e);}
+  }
   if (typeof auditEvent_ === 'function') { try { auditEvent_(type, oldText, newText, cellA1, member); } catch (e) { log_('cpAudit_', e); } }
 }
 
@@ -3511,6 +3542,7 @@ function publishCatchup(e) {
 function publishPublicRoster(opts) {
   const interactive=!!(opts&&opts.interactive);
   if(interactive&&!String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_)||'').trim())return {linked:false,tabs:[],rows:0};
+  if(typeof runDeferredWork_==='function')runDeferredWork_(); // settle queued roster/settings statistics before taking the public snapshot
   if (!(interactive?publishManualClaim_():publishPassClaim_())) {
     if(!interactive)return false;
     return {linked:true,queued:true,tabs:[],rows:0,reason:_publishBusyReason_+' Your full publish request is queued for automatic retry after the current operation finishes.'};
@@ -3886,6 +3918,7 @@ function cpRoster_() {
 
 function cpAssertSlotRow_(roster, row, approvalKey) {
   if (!Number.isInteger(row) || row < CONFIG.rosterStartRow || row > roster.getMaxRows()) throw new Error('Invalid row.');
+  assertMemberEditMoveRows_(roster,[row]);
   if (memberAssignmentJournal_(roster,row)) throw new Error('This slot belongs to an interrupted member assignment. Retry that assignment or use Recover Interrupted Transfer before editing it.');
   if(pendingSignupApprovals_().some(({key,journal:j})=>key!==approvalKey && j.book===roster.getParent().getId() && j.rosterSheet===roster.getSheetId() && j.slotRow===row))throw new Error('This slot belongs to an interrupted signup approval. Use Recover Interrupted Transfer before editing it.');
   assertNoPendingActivityReset_(roster);

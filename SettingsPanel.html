@@ -39,6 +39,7 @@
     --red:#ff453a;   --red-soft:rgba(255,69,58,.14);
     --purple:#bf5af2; --purple-soft:rgba(191,90,242,.14);
     --cyan:#64d2ff;  --cyan-soft:rgba(100,210,255,.13);
+    --section-exec:#FF453A;--section-admin:#0A84FF;--section-super:#FFD60A;--section-patrol:#30D158;--section-training:#5E5CE6;--section-cadet:#FF9F0A;--section-aux:#8E8E93;
     --sh-1:0 1px 1.5px rgba(0,0,0,.24);
     --sh-2:0 2px 6px rgba(0,0,0,.3);
     --sh-3:0 14px 40px -6px rgba(0,0,0,.72),0 2px 8px rgba(0,0,0,.5);
@@ -550,6 +551,47 @@
   .rlt .rldel{cursor:pointer;margin-left:5px;opacity:.6;} .rlt .rldel:hover{opacity:1;}
   .rlrow .rkbtns{flex:0 0 auto;}
   .rlrow.rkbusy{opacity:.5;pointer-events:none;}
+  /* Ranks and Dashboard share the same restrained material and readable controls. */
+  .studio-body{padding:14px;}
+  .studio-help{font-size:12px;color:var(--txt-2);line-height:1.6;margin:0 0 12px;}
+  .studio-meta{font-size:11.5px;color:var(--txt-2);line-height:1.5;}
+  .studio-toolbar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;}
+  .studio-toolbar .in{flex:1;min-width:180px;max-width:360px;height:28px;}
+  .studio-toolbar .rkbtn,.group-actions .rkbtn{height:28px;}
+  .group-actions .rkbtn:disabled{opacity:.35;cursor:default;background:var(--ctl);}
+  .studio-toolbar .rkbtn[aria-pressed=true]{background:var(--accent-soft);color:var(--accent-2);}
+  .rank-table .rlrow{display:grid;grid-template-columns:32px minmax(155px,1fr) minmax(220px,2fr) 152px;align-items:start;padding:12px;gap:12px;}
+  .rank-table .rlnm{min-width:0;overflow-wrap:anywhere;}
+  .rank-table .rlnm small{color:var(--txt-2);}
+  .rank-table .rkbtns{flex-wrap:wrap;justify-content:flex-end;}
+  .rank-table .rlt{height:auto;min-height:28px;padding:4px 9px;white-space:normal;text-align:left;font-size:12px;border:none;font-family:inherit;}
+  .rank-table .rlt.on{background:var(--accent-soft);color:var(--accent-2);box-shadow:var(--ctlring);}
+  .rank-counted{width:100%;font-size:11.5px;color:var(--txt-2);margin-top:4px;}
+  .rank-table .rlav{border:0;background:var(--ctl);cursor:pointer;padding:0;color:var(--txt);font:inherit;}
+  .rank-table .rlav img{width:100%;height:100%;object-fit:contain;}
+  .stat-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(110px,1fr));gap:8px;margin-bottom:12px;}
+  .stat-tile{padding:12px;background:var(--panel-2);border-radius:var(--r-in);box-shadow:var(--hairline);}
+  .stat-tile b{display:block;font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;line-height:1.4;}
+  .stat-tile span{color:var(--txt-2);font-size:12px;}
+  .group-box{background:var(--panel-2);border-radius:var(--r-in);padding:12px;margin-bottom:10px;box-shadow:var(--hairline);}
+  .group-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:10px;}
+  .group-actions .in{flex:1;min-width:140px;height:28px;}
+  .group-order{font:12px var(--mono);color:var(--txt-2);min-width:18px;}
+  .group-choice-list{display:flex;flex-wrap:wrap;gap:6px;padding:8px 0;}
+  .group-choice{display:flex;gap:6px;align-items:center;padding:4px 8px;border-radius:5px;background:var(--ctl);color:var(--txt);font-size:12px;cursor:pointer;min-height:28px;}
+  .group-choice input{accent-color:var(--accent);margin:0;}
+  .group-box .chipadd .in{min-width:0;}
+  .group-warning{color:var(--amber);font-size:12px;line-height:1.5;margin:8px 0;}
+  .counter-row{display:grid;grid-template-columns:minmax(130px,1fr) 65px minmax(150px,1fr);gap:10px;align-items:center;padding:6px 0;}
+  .counter-row .rkbtn{text-align:left;height:28px;overflow:hidden;text-overflow:ellipsis;}
+  .counter-category{margin-top:14px;font-size:12px;font-weight:600;color:var(--txt-2);}
+  .section-line{display:grid;grid-template-columns:minmax(130px,1fr) minmax(160px,2fr) 135px 32px;gap:8px;align-items:start;margin-bottom:10px;}
+  .studio-select{height:28px;border:0;border-radius:var(--r-in);background:var(--ctl);color:var(--txt);font:12.5px var(--ui);padding:0 8px;box-shadow:var(--ctlring);color-scheme:dark;}
+  .tone-preview{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
+  .badge-dialog{border:0;background:var(--bg);color:var(--txt);border-radius:var(--r-card);padding:22px;box-shadow:var(--sh-3);max-width:360px;text-align:center;}
+  .badge-dialog::backdrop{background:rgba(0,0,0,.6);}
+  .badge-dialog img{display:block;width:180px;height:180px;object-fit:contain;margin:14px auto;}
+  @media(max-width:860px){.rank-table .rlrow{grid-template-columns:32px minmax(0,1fr);}.rank-table .rlchips,.rank-table .rkbtns{grid-column:2;justify-content:flex-start;}.section-line{grid-template-columns:1fr 1fr;}.counter-row{grid-template-columns:minmax(110px,1fr) 45px minmax(120px,1fr);}}
   .tagrow{display:flex;flex-wrap:wrap;gap:5px;margin-top:8px;}
   .fmtex{font-family:var(--mono);font-size:11px;color:var(--txt-2);margin-top:7px;}
 
@@ -775,7 +817,7 @@
   var TBLHELP={
     'STATUS_RULES':'Extra rules on top of the tiers: "when a member is SOURCE and their hours OP HOURS, set them to TARGET". Use * for any status, or always. First match wins; protected statuses are skipped unless a rule names one.',
     'SECTION_TAGS':'Colours + type for each divider keyword — a divider matches when its text CONTAINS the keyword. Tone must be one of: exec, admin, super, cadet, training, patrol, aux.',
-    'DASHBOARD_GROUPS':'Rows are PRIORITY ORDER — each member counts under the first group matching their rank or section. Everyday label editing is easier in the Ranks section; each group is also a #tag.',
+    'DASHBOARD_GROUPS':'Exact rank assignments take precedence over section matches. Within each, the first matching group wins, so members count once. Use #group:label for an unambiguous live count. Everyday label editing is easier in Ranks.',
     'FORM_MAP':'The leave form\'s question keywords — ONLY applied when First-Run Setup builds the form. Edits here do nothing until the form is rebuilt.',
     'RANKS':function(){ var m=KV['ROSTER_LAYOUT.DIVIDER_MODE'], ex=m&&String(m.value).trim().toUpperCase()==='EXPLICIT_LIST';
       return (ex?'ACTIVE — Divider mode is EXPLICIT_LIST. ':'Dormant right now — Divider mode is ALLCAPS_RANK (see Sheets & layout). ')
@@ -822,7 +864,7 @@
     'THEME.PASS':'Green — success and done rows.',
     'THEME.FAIL':'Red — errors and failures.',
     'THEME.INFO':'Blue — informational rows.',
-    'DASHBOARD.ENABLE':'Master switch — when off, #tags stop updating everywhere.',
+    'DASHBOARD.ENABLE':'Master switch for Welcome statistic boxes, #tags and the patrol leaderboard. Off keeps the last displayed values; turning it back on queues a refresh.',
     'ACTIVITY.AUTO_RESET':'Master switch. Off = hours are never zeroed on a schedule; the period closes only when you run 📸 Capture & Reset Activity yourself. Takes effect straight away.',
     'ACTIVITY.RESET_CADENCE':'How often hours reset to zero. MANUAL = only when you run it yourself.',
     'ACTIVITY.WEEKLY_HOURS_RESET':'Which day the reset runs — history is saved first. OFF disables the reset.',
@@ -865,7 +907,7 @@
              {t:'Public roster', keys:['SHEETS.WELCOME','PUBLISH.NEVER_PUBLISH','PUBLISH.KEEP_RANGES','PUBLISH.FORCE_RANGES']},
              {t:'System tabs', keys:['SHEETS.AUDIT','SHEETS.HOURS_HISTORY','SHEETS.COVERAGE','SHEETS.INTEGRITY','SHEETS.SNAPSHOTS']}]},
     {id:'statuses', a:'var(--amber)', title:'Statuses & tiers', desc:'The activity ladder and every status the engine may write — plus per-rank overrides and stateless status rules.', tables:true},
-    {id:'ranks', a:'var(--green)', title:'Ranks', desc:'Every rank found in your roster’s rank column — its badge icon, and the labels that group ranks together. Each label is also a live #tag: a "Supervisors" label makes #supervisors count everyone labeled with it.', custom:'ranklabels'},
+    {id:'ranks', a:'var(--green)', title:'Ranks & badges', desc:'Manage rank badges and assign ranks to headcount groups. Create and order your groups in Dashboard.', custom:'ranklabels'},
     {id:'leave', a:'var(--purple)', title:'Leave engine', desc:'How leaves are requested, approved, activated and ended.',
       cards:[{t:'1 · Request', keys:['LEAVE.LEAVE_TYPES','LEAVE.STATUS_FLOW','LEAVE.FORM_TYPE_POLICY','LEAVE.FLAGGED_STATUS','LEAVE.MAX_DAYS_WARN']},
              {t:'2 · Approval', keys:['LEAVE.APPROVED_STATUS']},
@@ -875,7 +917,7 @@
       cards:[{t:'Canvas & frame', keys:['THEME.CANVAS','THEME.BANNER','THEME.GRID','THEME.ACCENT']},
              {t:'Text', keys:['THEME.TEXT','THEME.TEXT_STRONG','THEME.SUBHEAD','THEME.SUBHEAD_TEXT']},
              {t:'Status colours', keys:['THEME.PASS','THEME.FAIL','THEME.INFO']}]},
-    {id:'dashboard', a:'var(--cyan)', title:'Dashboard & sections', desc:'The live #tags the dashboard keeps filled, the headcount groups behind them, and the tags that colour the Dividers view.',
+    {id:'dashboard', a:'var(--cyan)', title:'Dashboard', desc:'Preview Welcome Page statistics and manage the groups that count your members.',
       cards:[{t:'Live dashboard', keys:['DASHBOARD.ENABLE']}],
       tablesMulti:['SECTION_TAGS','DASHBOARD_GROUPS']},
     // Everything about the activity cycle in ONE place — the checks, the period columns they write, the previous-
@@ -912,6 +954,8 @@
   function fromData(d){
     $('content').setAttribute('aria-busy','false');
     DATA=d; KV={}; BASE={}; TBL={}; TBLBASE={}; TBLMETA={};
+    RANKLIST=null;RANKLOAD_GEN++;RANKLOAD_PENDING=false;
+    DASH_PREVIEW=null;DASH_GEN++;DASH_PENDING=false;GROUP_UNDO=null;
     d.blocks.forEach(function(b){
       if(b.type==='kv'){ b.keys.forEach(function(k){ var bk=b.name+'.'+k.key; KV[bk]={block:b.name,key:k.key,t:k.t,def:k.def,help:k.help,min:k.min,max:k.max,options:k.options,value:k.value}; BASE[bk]=k.value; }); }
       else { TBL[b.name]=b.rows.map(function(r){return r.slice();}); TBLBASE[b.name]=JSON.stringify(b.rows); TBLMETA[b.name]={cols:b.cols||[], help:b.help||''}; }
@@ -1251,7 +1295,6 @@
         +'<div class="stkind">'+kb('TIER','TIER')+kb('LEAVE','LEAVE')+kb('PROTECTED','PROT.')+'</div>'
         +(isTier?'<div class="strow">Min hours'+numIn('class="in" data-smin="1" placeholder="req."', r[2], 0, null)+'</div>':'')
         +'<div class="strow">Color<span class="cswatch" style="background:'+esc(hex||'#39414d')+'"><input type="color" data-scol="1" value="'+esc(hex||'#39414d')+'"></span></div>'
-        +'<div class="strow">Announce<label class="tgl"><input type="checkbox" data-sann="1"'+(boolOn(r[4])?' checked':'')+'><span class="tr"></span></label></div>'
         +'</div>';
     });
     h+='<button type="button" class="stadd" data-stadd="1">'+ICONS.plus+'Add status<small>A new LEAVE-kind status, ready to rename</small></button>';
@@ -1330,7 +1373,7 @@
     if(g.note) h+='<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+esc(g.note)+'</div>';
     if(g.id==='leave') h+='<div class="callout" id="leaveStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+leaveStoryText()+'</div>';
     if(g.id==='theme') h+=sheetPreview();
-    if(g.id==='dashboard') h+='<div class="callout" id="tagCheat" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+tagCheatText()+'</div>';
+    if(g.id==='dashboard') h+='<div class="card"><div class="card-h"><span class="cico">'+ICONS.dashboard+'</span><b>Welcome Page statistics</b><button type="button" class="rkbtn" data-dashrefresh="1" style="margin-left:auto">Refresh preview</button></div><div id="dashPreview" class="studio-body" role="status">Loading saved statistics…</div></div>';
     if(g.id==='activity') h+='<div class="callout" id="schedStory" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">'+schedStoryText()+'</div>';
     if(g.cards){
       g.cards.forEach(function(c){
@@ -1346,11 +1389,13 @@
     }
     if(g.tables){ h+=statusesCard()+overridesCard()+genericTableCard('STATUS_RULES','var(--amber)'); }
     if(g.table){ h+=genericTableCard(g.table, g.a); }
-    if(g.tablesMulti){ g.tablesMulti.forEach(function(n){ h+=genericTableCard(n, g.a); }); }
+    if(g.tablesMulti){ g.tablesMulti.forEach(function(n){ if(g.id==='dashboard')return; h+=genericTableCard(n, g.a); }); }
+    if(g.id==='dashboard') h+='<div id="headcountEditor">'+headcountEditor_()+'</div><details class="dcsec"><summary>Place a live counter on a sheet</summary><div class="dcsec-b" id="tagCheat">'+tagCheatText()+'</div></details><details class="dcsec"><summary>Roster section appearance</summary><div class="dcsec-b" id="sectionEditor">'+sectionEditor_()+'</div></details>';
     $('content').innerHTML=h;
     $('content').scrollTop=0;
     renderIssues(DATA.problems||[], false);
     applyPatrolVis(); applySchedVis(); refreshFmtExamples(); enhanceControls_($('content'));
+    if(g.id==='dashboard'){loadDashboardPreview_();loadRanksList();}
   }
   /* Patrol card: only the fields the selected MODE uses are shown, and an off-note appears while no
      patrol responses tab is picked. Cheap + null-safe, so it can run after every change from updateBar. */
@@ -1400,12 +1445,15 @@
   function refreshLeaveStory(){ var el=$('leaveStory'); if(el) el.innerHTML=leaveStoryText(); }
   /* Every #tag that works RIGHT NOW: built-ins, one per status tier, one per headcount group. Click to copy. */
   function tagCheatText(){
-    var tags=['members','active','semi','inactive','onleave','openslots','hours'];
-    var add=function(nm){ var k=String(nm||'').replace(/[^A-Za-z]/g,'').toLowerCase(); if(k&&tags.indexOf(k)===-1) tags.push(k); };
-    tierNames().forEach(add);
-    (TBL.DASHBOARD_GROUPS||[]).forEach(function(r){ add(r[0]); });
-    return '<b class="ct">Type any of these in a cell — the engine keeps the number live</b><div class="tagrow">'
-      +tags.map(function(t){ return '<span class="rlt" data-tagcopy="#'+esc(t)+'" title="Click to copy">#'+esc(t)+'</span>'; }).join('')+'</div>';
+    var rows=[['members','Members','Roster'],['active','Active','Roster'],['semi','Intermediate activity','Roster'],['inactive','Inactive','Roster'],['onleave','On leave','Roster'],['openslots','Open slots','Roster'],['hours','Total hours','Roster']];
+    var key=function(n){return String(n||'').replace(/[^A-Za-z0-9]/g,'').toLowerCase();};
+    tierNames().forEach(function(n){if(key(n))rows.push([key(n),n,'Activity tiers']);});
+    (TBL.DASHBOARD_GROUPS||[]).forEach(function(r){if(key(r[0]))rows.push(['group:'+key(r[0]),r[0],'Headcount groups']);});
+    var h='<p class="studio-help">Copy a tag, paste it into an empty sheet cell, then let the enabled dashboard keep its number updated. Current values use saved settings; new or renamed counters need Save first.</p>',category='';
+    rows.forEach(function(r){if(r[2]!==category){category=r[2];h+='<div class="counter-category">'+esc(category)+'</div>';}
+      var found=DASH_PREVIEW&&(DASH_PREVIEW.counters||[]).filter(function(c){return c.tag===r[0];})[0];
+      h+='<div class="counter-row"><span>'+esc(r[1])+'</span><span class="mono">'+(found?esc(found.value):'—')+'</span><button type="button" class="rkbtn mono" data-tagcopy="#'+esc(r[0])+'" aria-label="Copy counter for '+esc(r[1])+'">#'+esc(r[0])+'</button></div>';
+    });return h;
   }
   function refreshTagCheat(){ var el=$('tagCheat'); if(el) el.innerHTML=tagCheatText(); }
   /* Automation narrates itself too: what runs when, from the live values. */
@@ -1472,7 +1520,7 @@
     var dirty={}; Object.keys(TBL).forEach(function(t){ dirty[t]=JSON.stringify(TBL[t])!==TBLBASE[t]; }); TABLE_DIRTY=dirty;
     if(CUR==='sheets') applyPatrolVis();
     if(CUR==='leave') refreshLeaveStory();
-    if(CUR==='dashboard') refreshTagCheat();
+    if(CUR==='dashboard'){refreshTagCheat();renderDashboardPreview_();}
     if(CUR==='activity'){ applySchedVis(); refreshSchedStory(); }
     if(CUR==='activity'||CUR==='automation') refreshFmtExamples();
     var n=0;
@@ -1802,46 +1850,118 @@
   }
 
   /* ── ranks & labels (a friendlier editor over [DASHBOARD_GROUPS] rank entries) ── */
-  var RANKLIST=null;
+  var RANKLIST=null,RANKLOAD_GEN=0,RANKLOAD_PENDING=false;
+  var DASH_PREVIEW=null,DASH_GEN=0,DASH_PENDING=false,RANK_QUERY='',RANK_UNASSIGNED=false,GROUP_UNDO=null;
+  function dashboardDraft_(){return tblChanged('DASHBOARD_GROUPS')||tblChanged('SECTION_TAGS')||tblChanged('STATUSES')||Object.keys(KV).some(function(k){return kvChanged(k);});}
+  function renderDashboardPreview_(){
+    var host=$('dashPreview');if(!host||!DASH_PREVIEW)return;
+    var p=DASH_PREVIEW,s=p.stats;
+    host.innerHTML='<div class="stat-grid">'+[['Members',s.total],['Active',s.active],['On leave',s.leaves],['Open slots',s.openSlots],['Total hours',s.totalHours]].map(function(r){return '<div class="stat-tile"><b>'+esc(r[1])+'</b><span>'+esc(r[0])+'</span></div>';}).join('')+'</div>'
+      +'<div class="studio-help">'+(p.groupOrder||Object.keys(s.groups)).map(function(g){return esc(g)+': <b>'+esc(s.groups[g])+'</b>';}).join(' · ')+'</div>'
+      +'<div class="studio-meta">Saved configuration · Read at '+esc(new Date(p.readAt).toLocaleTimeString())+' · Preview refreshes every 30 seconds · Welcome updates '+(p.enabled?'enabled':'off')+(p.refreshPending?' · Statistics refresh queued':'')+(p.publicLinked?(p.publicPending?' · Public update queued or running':' · Public update queue clear'):' · Public roster not linked')+'</div>'
+      +(dashboardDraft_()?'<p class="group-warning">Unsaved edits are excluded from these counts. Save, then refresh the preview.</p>':'');
+    refreshTagCheat();
+  }
+  function loadDashboardPreview_(){
+    if(DASH_PENDING)return;DASH_PENDING=true;var generation=++DASH_GEN;
+    var host=$('dashPreview');if(host)host.setAttribute('aria-busy','true');
+    api(function(d){if(generation!==DASH_GEN)return;DASH_PENDING=false;DASH_PREVIEW=d;var h=$('dashPreview');if(h)h.setAttribute('aria-busy','false');renderDashboardPreview_();updateGroupCounts_();},function(e){if(generation!==DASH_GEN)return;DASH_PENDING=false;DASH_PREVIEW=null;var h=$('dashPreview');if(h){h.setAttribute('aria-busy','false');h.innerHTML='<p class="group-warning">Could not read statistics: '+esc(e&&e.message||e)+'. Use Refresh preview to retry.</p>'; }refreshTagCheat();updateGroupCounts_();},'cpDashboardPreview');
+  }
+  function groupWarnings_(){
+    var groups=TBL.DASHBOARD_GROUPS||[],seen=Object.create(null),owners=Object.create(null),warnings=[];
+    groups.forEach(function(r,i){var name=String(r[0]||'').trim(),key=name.replace(/[^A-Za-z0-9]/g,'').toLowerCase();if(!key)warnings.push('Group '+(i+1)+' needs a name containing letters or numbers.');else if(seen[key])warnings.push('“'+name+'” shares its counter name with “'+seen[key]+'”. Rename one before saving.');else seen[key]=name;
+      listOf(r[1]).forEach(function(c){var k=rankLabelKey_(c);if(owners[k]&&owners[k]!==name)warnings.push(c+' appears in '+owners[k]+' and '+name+'; the first matching group counts it.');else owners[k]=name;});
+    });return warnings;
+  }
+  function groupOptions_(){
+    var out=[],seen=Object.create(null),add=function(label,type){var k=rankLabelKey_(label);if(k&&!seen[k]){seen[k]=true;out.push({label:String(label).trim(),type:type});}};
+    (RANKLIST||[]).forEach(function(r){add(r.rank,'Rank');});(DATA.ranks||[]).forEach(function(r){add(r,'Rank');});
+    (TBL.RANKS||[]).forEach(function(r){if(/^(RANK|TRAINING)$/i.test(String(r[1]).trim()))add(r[0],'Rank');});
+    (TBL.SECTION_TAGS||[]).forEach(function(r){add(r[0],'Section');});
+    (TBL.DASHBOARD_GROUPS||[]).forEach(function(r){listOf(r[1]).forEach(function(c){add(c,'Custom');});});return out;
+  }
+  function headcountEditor_(){
+    var rows=TBL.DASHBOARD_GROUPS||[],options=groupOptions_(),h='<div class="card"><div class="card-h"><span class="cico">'+ICONS.table+'</span><b>Headcount groups</b><small>'+(tblChanged('DASHBOARD_GROUPS')?'Unsaved · press Save':'Saved settings')+'</small></div><div class="studio-body">'
+      +'<p class="studio-help">Choose ranks or section labels for each group. Exact rank matches take priority over section matches. Within either match type, the first group wins.</p>';
+    if(GROUP_UNDO)h+='<p class="studio-help" role="status">Group removed. <button type="button" class="rkbtn" data-groupundo="1">Undo deletion</button></p>';
+    h+='<div id="groupWarnings">'+groupWarnings_().map(function(w){return '<p class="group-warning">'+esc(w)+'</p>';}).join('')+'</div>';
+    rows.forEach(function(r,i){
+      var selected=listOf(r[1]);h+='<div class="group-box"><div class="group-actions"><span class="group-order">'+(i+1)+'</span><input class="in" data-groupname="'+i+'" value="'+esc(r[0])+'" aria-label="Group '+(i+1)+' name"><button type="button" class="rkbtn" data-groupmove="'+i+'" data-direction="-1"'+(i===0?' disabled':'')+' aria-label="Move '+esc(r[0])+' up">↑</button><button type="button" class="rkbtn" data-groupmove="'+i+'" data-direction="1"'+(i===rows.length-1?' disabled':'')+' aria-label="Move '+esc(r[0])+' down">↓</button><button type="button" class="rkbtn rkdel" data-groupdelete="'+i+'" aria-label="Delete '+esc(r[0])+'">Delete</button></div>'
+        +'<div class="studio-meta">Saved count: <span data-groupcount="'+i+'">'+(DASH_PREVIEW&&Object.prototype.hasOwnProperty.call(DASH_PREVIEW.stats.groups,r[0])?esc(DASH_PREVIEW.stats.groups[r[0]]):'—')+'</span> · '+selected.length+' selection'+(selected.length===1?'':'s')+'</div>'
+        +'<details data-grouppicker="'+i+'"><summary class="studio-help" style="cursor:pointer;margin:8px 0">Choose ranks and sections</summary><div class="group-choice-list">';
+      options.forEach(function(o){var checked=selected.some(function(c){return rankLabelKey_(c)===rankLabelKey_(o.label);});h+='<label class="group-choice"><input type="checkbox" data-groupchoice="'+i+'" value="'+esc(o.label)+'"'+(checked?' checked':'')+'>'+esc(o.label)+' <span class="studio-meta">'+esc(o.type)+'</span></label>';});
+      h+='</div></details><div class="chipbox">'+selected.map(function(c){return '<span class="chip">'+esc(c)+'<button type="button" data-groupremove="'+i+'" data-category="'+esc(c)+'" aria-label="Remove '+esc(c)+' from '+esc(r[0])+'">✕</button></span>';}).join('')+'</div><div class="chipadd"><input class="in" data-groupcustom="'+i+'" placeholder="Custom rank or section label" aria-label="Custom category for '+esc(r[0])+'"><button type="button" data-groupcustomadd="'+i+'">Add selection</button></div></div>';
+    });
+    if(!rows.length)h+='<p class="studio-help">Create a headcount group, choose its ranks or sections, then Save. For example: Supervisors → Sergeant, Lieutenant.</p>';
+    return h+'<div class="studio-toolbar"><input class="in" id="rlNew" placeholder="New group name, e.g. Supervisors" aria-label="New group name"><button type="button" class="rkbtn" data-rladd="1">Add group</button></div></div></div>';
+  }
+  function updateGroupCounts_(){document.querySelectorAll('[data-groupcount]').forEach(function(el){var row=(TBL.DASHBOARD_GROUPS||[])[Number(el.dataset.groupcount)];el.textContent=row&&DASH_PREVIEW&&Object.prototype.hasOwnProperty.call(DASH_PREVIEW.stats.groups,row[0])?DASH_PREVIEW.stats.groups[row[0]]:'—';});}
+  function refreshGroupEditor_(force){
+    var h=$('headcountEditor');if(h){
+      var active=document.activeElement,inside=h.contains(active);
+      if(!force&&inside){updateGroupCounts_();return;}
+      var focus=inside&&active.dataset?{choice:active.dataset.groupchoice,name:active.dataset.groupname,custom:active.dataset.groupcustom,value:active.value,start:active.selectionStart,end:active.selectionEnd}:null;
+      var open=[];h.querySelectorAll('[data-grouppicker][open]').forEach(function(d){open.push(d.dataset.grouppicker);});h.innerHTML=headcountEditor_();
+      h.querySelectorAll('[data-grouppicker]').forEach(function(d){d.open=open.indexOf(d.dataset.grouppicker)!==-1;});enhanceControls_(h);
+      if(focus)h.querySelectorAll('[data-groupchoice],[data-groupname],[data-groupcustom]').forEach(function(el){
+        if((focus.choice!==undefined&&el.dataset.groupchoice===focus.choice&&el.value===focus.value)||(focus.name!==undefined&&el.dataset.groupname===focus.name)||(focus.custom!==undefined&&el.dataset.groupcustom===focus.custom)){
+          el.focus();if(focus.custom!==undefined)el.value=focus.value;if(focus.start!=null&&el.setSelectionRange)el.setSelectionRange(focus.start,focus.end);
+        }
+      });
+    }renderDashboardPreview_();
+  }
+  function sectionEditor_(){
+    var tones=[['exec','Executive', 'var(--section-exec)'],['admin','Administration','var(--section-admin)'],['super','Supervisors','var(--section-super)'],['cadet','Cadets','var(--section-cadet)'],['training','Training','var(--section-training)'],['patrol','Patrol','var(--section-patrol)'],['aux','Auxiliary','var(--section-aux)']];
+    var h='<p class="studio-help">Match words in roster divider headings to a section label and appearance. Use these labels in headcount groups. Changes require Save.</p>';
+    (TBL.SECTION_TAGS||[]).forEach(function(r,i){var tone=tones.filter(function(t){return t[0]===r[2];})[0];h+='<div class="section-line"><label><span class="studio-meta">Section label</span><input class="in" data-sectionedit="'+i+'" data-col="0" value="'+esc(r[0])+'" aria-label="Section '+(i+1)+' label"></label><label><span class="studio-meta">Match words (comma separated)</span><input class="in" data-sectionedit="'+i+'" data-col="1" value="'+esc(r[1])+'" aria-label="Section '+(i+1)+' match words"></label><label><span class="studio-meta"><span class="tone-preview" style="background:'+(tone?tone[2]:'var(--txt-3)')+'"></span>Appearance</span><select class="studio-select" data-sectionedit="'+i+'" data-col="2" aria-label="Section '+(i+1)+' appearance">'+(!tone?'<option value="'+esc(r[2])+'" selected>'+esc(r[2]||'Choose appearance')+'</option>':'')+tones.map(function(t){return '<option value="'+t[0]+'"'+(t[0]===r[2]?' selected':'')+'>'+t[1]+'</option>';}).join('')+'</select></label><button type="button" class="rkbtn rkdel" data-sectiondelete="'+i+'" aria-label="Delete section '+esc(r[0])+'" style="margin-top:18px">✕</button></div>';});
+    return h+'<button type="button" class="rkbtn" data-sectionadd="1">Add section style</button>';
+  }
+  function refreshStudio_(){refreshGroupEditor_(true);var s=$('sectionEditor');if(s)s.innerHTML=sectionEditor_();renderRankLabels();updateBar();}
   function rankLabelsShell(){
-    return '<div class="callout" style="color:var(--txt-2);background:linear-gradient(155deg,var(--accent-soft),transparent),var(--e1)">Toggle a label on every rank it covers — a rank may carry several labels, but headcounts put each member under their <b>first</b> label. Icons save immediately; label changes wait for <b>Save</b>. A square PNG with transparency looks best — images are resized automatically.</div>'
+    return '<div class="studio-toolbar"><input class="in" id="rankSearch" value="'+esc(RANK_QUERY)+'" placeholder="Search ranks…" aria-label="Search ranks"><button type="button" class="rkbtn" data-rankfilter="1" aria-pressed="'+RANK_UNASSIGNED+'">Unassigned only</button><button type="button" class="rkbtn" data-secjump="dashboard">Manage headcount groups</button></div><p class="studio-help">Badge changes save immediately. Group assignments wait for Save; Discard only undoes settings edits.</p><details class="dcsec"><summary>Badge image tips</summary><div class="dcsec-b studio-help">Choose a square PNG with transparency. Images are resized automatically. Click a badge to preview it.</div></details>'
       +'<div id="ranklabelsHost"><div class="rkloading">Loading ranks…</div></div>';
   }
   function loadRanksList(){
-    if(RANKLIST){ renderRankLabels(); return; }
-    api(function(d){ RANKLIST=(d&&d.ranks)||[]; renderRankLabels(); },
-        function(e){ var h=$('ranklabelsHost'); if(h) h.innerHTML='<div class="rkloading">Could not load ranks.<br>'+esc((e&&e.message)||'')+'</div>'; },
+    if(RANKLIST)renderRankLabels();
+    if(RANKLOAD_PENDING)return;
+    RANKLOAD_PENDING=true;var generation=++RANKLOAD_GEN;
+    api(function(d){ if(generation!==RANKLOAD_GEN)return;RANKLOAD_PENDING=false;RANKLIST=(d&&d.ranks)||[]; renderRankLabels();refreshGroupEditor_(); },
+        function(e){ if(generation!==RANKLOAD_GEN)return;RANKLOAD_PENDING=false;var h=$('ranklabelsHost'); if(h) h.innerHTML='<div class="rkloading">Could not load ranks.<br>'+esc((e&&e.message)||'')+'</div>'; },
         'cpRankIcons');
   }
+  function rankLabelKey_(value){ return String(value==null?'':value).trim().replace(/\s+/g,' ').toUpperCase(); }
   function renderRankLabels(){
     var host=$('ranklabelsHost'); if(!host) return;
     var groups=TBL.DASHBOARD_GROUPS||[];
     var head='<div class="rlhead">';
     groups.forEach(function(r,gi){ var g0=String(r[0]||'').trim(); if(!g0) return;
-      head+='<span class="rlt on">'+esc(g0)+'<span class="rldel" data-rldel="'+gi+'" title="Delete this label (its whole group row)">✕</span></span>'; });
-    head+='<span class="rladd"><input class="in" id="rlNew" placeholder="New label… e.g. Supervisors" autocomplete="off"><button type="button" class="gtadd" data-rladd="1">Add label</button></span></div>';
+      head+='<span class="studio-meta">'+(gi+1)+'. '+esc(g0)+'</span>'; });
+    head+='<span class="studio-meta">'+(tblChanged('DASHBOARD_GROUPS')?'Assignments unsaved · press Save':'Assignments saved')+'</span></div>';
     if(!RANKLIST){ host.innerHTML=head+'<div class="rkloading">Loading ranks…</div>'; return; }
     if(!RANKLIST.length){ host.innerHTML=head+'<div class="rkloading">No ranks detected on the roster yet.<br>Fill in some ranks on your roster, then reopen this.</div>'; return; }
-    host.innerHTML=head+RANKLIST.map(function(r){
+    var ranks=RANKLIST.filter(function(r){return String(r.rank).toLowerCase().indexOf(RANK_QUERY.toLowerCase())!==-1&&(!RANK_UNASSIGNED||!groups.some(function(g){return listOf(g[1]).some(function(c){return rankLabelKey_(c)===rankLabelKey_(r.rank);});}));});
+    host.innerHTML=head+'<div class="rank-table">'+ranks.map(function(r){
       var av=r.icon?('<img src="'+esc(r.icon)+'" alt="">'):esc(rkInitials(r.rank));
+      var assigned=[];
       var chips=groups.map(function(g,gi){ var g0=String(g[0]||'').trim(); if(!g0) return '';
-        var on=listOf(g[1]).some(function(x){return x.toUpperCase()===String(r.rank).toUpperCase();});
-        return '<span class="rlt'+(on?' on':'')+'" data-rltog="1" data-gi="'+gi+'" data-rank="'+esc(r.rank)+'">'+esc(g0)+'</span>'; }).join('');
-      return '<div class="rlrow"><span class="rlav">'+av+'</span><span class="rlnm">'+esc(r.rank)
+        var on=listOf(g[1]).some(function(x){return rankLabelKey_(x)===rankLabelKey_(r.rank);});
+        if(on)assigned.push(g0);
+        return '<button type="button" class="rlt'+(on?' on':'')+'" aria-pressed="'+on+'" data-rltog="1" data-gi="'+gi+'" data-rank="'+esc(r.rank)+'">'+(on?'✓ ':'+ ')+esc(g0)+'</button>'; }).join('');
+      return '<div class="rlrow"><button type="button" class="rlav" data-badgepreview="'+esc(r.rank)+'" aria-label="Preview badge for '+esc(r.rank)+'">'+av+'</button><span class="rlnm">'+esc(r.rank)
         +'<small>'+(r.members===1?'1 member':((r.members||0)+' members'))+(r.icon?' · icon set':'')+'</small></span>'
-        +'<div class="rlchips">'+chips+'</div>'
+        +'<div class="rlchips">'+chips+'<span class="rank-counted">'+(assigned.length?'Counted under '+esc(assigned[0])+(assigned.length>1?' · multiple groups selected':''):'No exact rank assignment · may count under its roster section')+'</span></div>'
         +'<div class="rkbtns"><label class="rkbtn rkup">'+(r.icon?'Replace':'Upload')
           +'<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" data-rankfile="'+esc(r.rank)+'" hidden></label>'
           +(r.icon?'<button type="button" class="rkbtn rkdel" data-rankdel="'+esc(r.rank)+'">Remove</button>':'')
-        +'</div></div>';
-    }).join('');
+        +'<span class="studio-meta">Badges save immediately</span></div></div>';
+    }).join('')+'</div>'+(!ranks.length?'<p class="studio-help">No ranks match this filter.</p>':'')+(!groups.length?'<p class="studio-help">Create your first group in Dashboard to assign ranks here.</p>':'');
     enhanceControls_(host);
   }
   function rlToggle(gi,rank){
     var row=(TBL.DASHBOARD_GROUPS||[])[gi]; if(!row) return;
     var list=listOf(row[1]);
-    var has=list.some(function(x){return x.toUpperCase()===String(rank).toUpperCase();});
-    row[1]=(has?list.filter(function(x){return x.toUpperCase()!==String(rank).toUpperCase();}):list.concat([rank])).join(', ');
+    var has=list.some(function(x){return rankLabelKey_(x)===rankLabelKey_(rank);});
+    row[1]=(has?list.filter(function(x){return rankLabelKey_(x)!==rankLabelKey_(rank);}):list.concat([rank])).join(', ');
     renderRankLabels(); updateBar();
   }
   function rankIconsShell(){
@@ -1884,7 +2004,7 @@
   }
   function handleRankDelete(rank){ api(function(){ toast('Icon removed for '+rank+'.','ok'); rankIconsChanged(); }, onError, 'cpDeleteRankIcon', rank); }
   /* Icons changed server-side — drop the cached rank list and refresh whichever view is on screen. */
-  function rankIconsChanged(){ RANKLIST=null; if($('rankiconsHost')) loadRankIcons(); if($('ranklabelsHost')) loadRanksList(); }
+  function rankIconsChanged(){ RANKLIST=null;RANKLOAD_GEN++;RANKLOAD_PENDING=false; if($('rankiconsHost')) loadRankIcons(); if($('ranklabelsHost')) loadRanksList(); }
   // Normalise an upload to a UNIFORM SQUARE that fits the icon area: draw the whole image CONTAINED + centred on a
   // transparent square canvas (never cropped/stretched), then compress to fit script storage while PRESERVING
   // TRANSPARENCY where possible — PNG (lossless) for simple icons, else WebP (lossy but keeps alpha) for detailed
@@ -2011,13 +2131,44 @@
       }
     }
   });
+  $('content').addEventListener('input',function(e){
+    var t=e.target;
+    if(t.id==='rankSearch'){RANK_QUERY=t.value;renderRankLabels();return;}
+    if(t.dataset.groupname!==undefined){var row=(TBL.DASHBOARD_GROUPS||[])[Number(t.dataset.groupname)];if(row){row[0]=t.value;updateBar();renderDashboardPreview_();var w=$('groupWarnings');if(w)w.innerHTML=groupWarnings_().map(function(msg){return '<p class="group-warning">'+esc(msg)+'</p>';}).join('');}return;}
+    if(t.dataset.sectionedit!==undefined&&t.tagName!=='SELECT'){var sr=(TBL.SECTION_TAGS||[])[Number(t.dataset.sectionedit)];if(sr){sr[Number(t.dataset.col)]=t.value;updateBar();renderDashboardPreview_();}return;}
+  });
+  $('content').addEventListener('change',function(e){
+    var t=e.target;
+    if(t.dataset.groupchoice!==undefined){rlToggle(Number(t.dataset.groupchoice),t.value);refreshGroupEditor_(true);return;}
+    if(t.dataset.groupname!==undefined){refreshTagCheat();return;}
+    if(t.dataset.sectionedit!==undefined){var row=(TBL.SECTION_TAGS||[])[Number(t.dataset.sectionedit)];if(row){row[Number(t.dataset.col)]=t.value;updateBar();renderDashboardPreview_();if(t.tagName==='SELECT'){var sw=t.parentNode.querySelector('.tone-preview');if(sw)sw.style.background=/^(exec|admin|super|cadet|training|patrol|aux)$/.test(t.value)?'var(--section-'+t.value+')':'var(--txt-3)';}}return;}
+  });
+  $('content').addEventListener('click',function(e){
+    var b=e.target.closest('[data-dashrefresh],[data-rankfilter],[data-secjump],[data-groupmove],[data-groupdelete],[data-groupundo],[data-groupremove],[data-groupcustomadd],[data-sectionadd],[data-sectiondelete],[data-badgepreview],[data-badgeclose]');if(!b)return;
+    if(b.hasAttribute('data-dashrefresh')){loadDashboardPreview_();return;}
+    if(b.hasAttribute('data-rankfilter')){RANK_UNASSIGNED=!RANK_UNASSIGNED;b.setAttribute('aria-pressed',String(RANK_UNASSIGNED));renderRankLabels();return;}
+    if(b.hasAttribute('data-secjump')){CUR=b.dataset.secjump;renderNav();renderSection();sectionEntered();return;}
+    var groups=TBL.DASHBOARD_GROUPS||[];
+    if(b.hasAttribute('data-groupmove')){var i=Number(b.dataset.groupmove),to=i+Number(b.dataset.direction);if(to>=0&&to<groups.length){var row=groups.splice(i,1)[0];groups.splice(to,0,row);GROUP_UNDO=null;refreshStudio_();}return;}
+    if(b.hasAttribute('data-groupdelete')){var ix=Number(b.dataset.groupdelete);if(groups[ix]){GROUP_UNDO={index:ix,row:groups.splice(ix,1)[0]};refreshStudio_();}return;}
+    if(b.hasAttribute('data-groupundo')){if(GROUP_UNDO){groups.splice(Math.min(GROUP_UNDO.index,groups.length),0,GROUP_UNDO.row);GROUP_UNDO=null;refreshStudio_();}return;}
+    if(b.hasAttribute('data-groupremove')){var gr=groups[Number(b.dataset.groupremove)];if(gr){gr[1]=listOf(gr[1]).filter(function(c){return rankLabelKey_(c)!==rankLabelKey_(b.dataset.category);}).join(', ');refreshStudio_();}return;}
+    if(b.hasAttribute('data-groupcustomadd')){var idx=Number(b.dataset.groupcustomadd),inp=document.querySelector('[data-groupcustom="'+idx+'"]'),value=inp&&inp.value.trim();if(!value)return;if(value.indexOf(',')!==-1){toast('Add one rank or section label at a time.','err');return;}var list=listOf(groups[idx][1]);if(!list.some(function(c){return rankLabelKey_(c)===rankLabelKey_(value);}))list.push(value);groups[idx][1]=list.join(', ');refreshStudio_();return;}
+    if(b.hasAttribute('data-sectionadd')){(TBL.SECTION_TAGS=TBL.SECTION_TAGS||[]).push(['','','patrol']);refreshStudio_();return;}
+    if(b.hasAttribute('data-sectiondelete')){TBL.SECTION_TAGS.splice(Number(b.dataset.sectiondelete),1);refreshStudio_();return;}
+    if(b.hasAttribute('data-badgeclose')){var dialog=$('badgeDialog');if(dialog){dialog.close();dialog.remove();}return;}
+    if(b.hasAttribute('data-badgepreview')){var rank=(RANKLIST||[]).filter(function(r){return r.rank===b.dataset.badgepreview;})[0];if(!rank)return;var old=$('badgeDialog');if(old)old.remove();var d=document.createElement('dialog');d.id='badgeDialog';d.className='badge-dialog';d.innerHTML='<b>'+esc(rank.rank)+'</b>'+(rank.icon?'<img src="'+esc(rank.icon)+'" alt="Badge for '+esc(rank.rank)+'">':'<p class="studio-help">No badge uploaded. Members use rank initials.</p>')+'<button type="button" class="rkbtn" data-badgeclose="1">Close</button>';document.body.appendChild(d);d.addEventListener('click',function(ev){if(ev.target.closest('[data-badgeclose]')){d.close();d.remove();}});d.addEventListener('close',function(){d.remove();b.focus();});d.showModal();}
+  });
+  $('content').addEventListener('keydown',function(e){
+    if(e.key==='Enter'&&e.target.dataset.groupcustom!==undefined){e.preventDefault();var btn=document.querySelector('[data-groupcustomadd="'+e.target.dataset.groupcustom+'"]');if(btn)btn.click();}
+    if(e.key==='Enter'&&e.target.id==='rlNew'){e.preventDefault();var add=document.querySelector('[data-rladd]');if(add)add.click();}
+  });
   $('content').addEventListener('change',function(e){
     var t=e.target;
     if(t.type==='checkbox' && t.dataset.bk){ var tv=t.closest('.tgl').querySelector('.tv'); if(tv) tv.textContent=t.checked?'On':'Off'; onKv(t.dataset.bk, t.checked?'TRUE':'FALSE'); return; }
     var st=t.closest('[data-sti]');
     if(st){
       var i=Number(st.dataset.sti);
-      if(t.type==='checkbox' && t.dataset.sann){ TBL.STATUSES[i][4]=t.checked?'TRUE':'FALSE'; updateBar(); return; }
       if(t.type==='color' && t.dataset.scol){ TBL.STATUSES[i][3]=t.value; var card=st.closest('.stcard'); if(card){ card.style.setProperty('--sd',t.value); var sw2=t.closest('.cswatch'); if(sw2) sw2.style.background=t.value; } updateBar(); return; }
     }
   });
@@ -2074,14 +2225,15 @@
       try{ document.execCommand('copy'); toast(tcp.dataset.tagcopy+' copied — paste it into a cell.','ok'); }catch(err){ toast('Copy failed — type it by hand.','err'); }
       document.body.removeChild(tta); return; }
     var rld=e.target.closest('[data-rldel]');
-    if(rld){ TBL.DASHBOARD_GROUPS.splice(Number(rld.dataset.rldel),1); renderRankLabels(); updateBar(); return; }
+    if(rld){ var ri=Number(rld.dataset.rldel);GROUP_UNDO={index:ri,row:TBL.DASHBOARD_GROUPS.splice(ri,1)[0]};refreshStudio_(); return; }
     var rlt=e.target.closest('[data-rltog]');
     if(rlt){ rlToggle(Number(rlt.dataset.gi), rlt.dataset.rank); return; }
     var rla=e.target.closest('[data-rladd]');
     if(rla){ var rlin=$('rlNew'), rlv=((rlin&&rlin.value)||'').trim(); if(!rlv) return;
       TBL.DASHBOARD_GROUPS=TBL.DASHBOARD_GROUPS||[];
-      if(!TBL.DASHBOARD_GROUPS.some(function(r){return String(r[0]).trim().toUpperCase()===rlv.toUpperCase();})) TBL.DASHBOARD_GROUPS.push([rlv,'']);
-      renderRankLabels(); updateBar(); return; }
+      var key=rlv.replace(/[^A-Za-z0-9]/g,'').toLowerCase();
+      if(!key||TBL.DASHBOARD_GROUPS.some(function(r){return String(r[0]).replace(/[^A-Za-z0-9]/g,'').toLowerCase()===key;})){toast('Use a distinct group name containing letters or numbers.','err');return;}
+      TBL.DASHBOARD_GROUPS.push([rlv,'']);GROUP_UNDO=null;refreshStudio_(); return; }
     var tc=e.target.closest('.tchip');
     if(tc){ var box=tc.closest('[data-tchips]'); var bk2=box.dataset.tchips; var cur=listOf(KV[bk2].value); var val=tc.dataset.tv;
       var has=cur.some(function(x){return x.toUpperCase()===val.toUpperCase();});
@@ -2097,7 +2249,7 @@
     if(kb){ var si2=Number(kb.dataset.stk); TBL.STATUSES[si2][1]=kb.dataset.k; if(kb.dataset.k!=='TIER') TBL.STATUSES[si2][2]=''; renderSection(); refreshDerived(); updateBar(); return; }
     var sd=e.target.closest('[data-stdel]');
     if(sd){ TBL.STATUSES.splice(Number(sd.dataset.stdel),1); renderSection(); refreshDerived(); updateBar(); return; }
-    if(e.target.closest('[data-stadd]')){ TBL.STATUSES.push(['New Status','LEAVE','','','FALSE']); renderSection(); refreshDerived(); updateBar(); return; }
+    if(e.target.closest('[data-stadd]')){ TBL.STATUSES.push(['New Status','LEAVE','','']); renderSection(); refreshDerived(); updateBar(); return; }
     var od=e.target.closest('[data-ovdel]');
     if(od){ TBL.STATUS_OVERRIDES.splice(Number(od.dataset.ovdel),1); renderSection(); updateBar(); return; }
     if(e.target.closest('[data-ovadd]')){ var tn=tierNames(); TBL.STATUS_OVERRIDES.push(['RANK','',(tn[0]||'Active')+':5, '+(tn.slice(-1)[0]||'Inactive')+':0']); renderSection(); updateBar(); return; }
@@ -2115,6 +2267,7 @@
   });
 
   // Navigation/title are available before config arrives; allow the shell to paint before the RPC.
+  setInterval(function(){if(CUR==='dashboard'&&DATA&&!SAVE_PENDING&&!BOOT_PENDING&&document.visibilityState!=='hidden')loadDashboardPreview_();},30000);
   renderNav(); renderSection();
   requestAnimationFrame(function(){ requestAnimationFrame(function(){
     if(SETTINGS_BOOT) fromData(SETTINGS_BOOT); else boot();

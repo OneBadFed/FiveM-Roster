@@ -24,6 +24,8 @@ const old=name=>({name,getHandlerFunction:()=>name});
 triggers=[old('customJob'),old('onFormSubmit'),old('onFormSubmit'),old('processDailyLOAs'),old('publishSweep')];
 ctx.installConfiguredTriggers_();
 assert.equal(triggers.filter(t=>t.name==='onFormSubmit').length,1);
+assert.equal(triggers.filter(t=>t.name==='memberTransferEdited').length,1);
+assert.equal(triggers.find(t=>t.name==='memberTransferSweep').schedule.everyMinutes[0],1,'internal transfer retries do not depend on a public link');
 assert.equal(triggers.find(t=>t.name==='processDailyLOAs').schedule.atHour[0],21);
 assert(triggers.some(t=>t.name==='customJob'));
 assert(!triggers.some(t=>t.name==='publishSweep'),'unlinked public publishing has no minute trigger');

@@ -151,6 +151,8 @@ function publishAssertSettled_(roster) {
   const props=PropertiesService.getDocumentProperties().getProperties(),keys=Object.keys(props);
   const id=roster&&roster.getSheetId();
   const pause=message=>{const error=new Error('Public publishing paused: '+message);error.publishRecovery=true;throw error;};
+  if(props['RE_DEFER_JOB:statuses']||props['RE_DEFER_JOB:dashboard'])pause('activity or dashboard statistics are awaiting refresh. The queued refresh and publish will retry automatically.');
+  if(keys.some(k=>k.indexOf('RE_EDIT_MOVE:')===0))pause('a confirmed member transfer is queued. It will retry automatically; keep its pasted ID in place.');
   if(roster&&props['RE_MEMBER_MOVE:'+id])pause('an interrupted member transfer needs recovery. Use Roster → Recover Interrupted Transfer.');
   if(roster&&keys.some(k=>k.indexOf('RE_ASSIGN:'+id+':')===0))pause('an interrupted member assignment needs recovery. Use Roster → Recover Interrupted Transfer.');
   if(keys.some(k=>k.indexOf('RE_SIGNUP_APPROVAL:')===0))pause('an interrupted signup approval needs recovery. Use Roster → Recover Interrupted Transfer.');

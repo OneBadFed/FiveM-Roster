@@ -4,6 +4,7 @@ The code audit covered statistics and stat tags, cached discovery and refresh, l
 
 ## Corrected behavior
 
+- October 8 follow-up: Welcome employee breakdown and recognized KPI boxes now update from live roster statistics rather than only the demo loader. Counter writes preserve existing design and user formulas/notes; unchanged counts do not requeue publication. Settings/member changes queue refreshes, refresh failures retry, and publication waits for pending statistics. The dedicated rank/dashboard audit and regression coverage are in [DASHBOARD_AUDIT.md](DASHBOARD_AUDIT.md).
 - The Welcome Page has its own full-sheet publishing path. It no longer uses header matching, public formula preservation, arbitrary protected ranges, or the self-computing-tab bypass. The sole exception is F6:W7, whose public content, formatting and merges are preserved.
 - A native sheet snapshot carries the complete grid and sheet design, including the blank canvas. Every source row height and column width is reapplied explicitly. Rich text and hyperlinks are restored after formula results are frozen to their internal values.
 - Google native sheet copying carries sheet objects and sheet settings rather than attempting to reconstruct them from cell backgrounds alone. Actual charts, images, drawings, conditional formatting and validations must still be checked with the department's template in Google Sheets.

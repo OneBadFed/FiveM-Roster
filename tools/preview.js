@@ -266,6 +266,11 @@ function runtimeStub(configPayload, boot) {
         { rank: 'Cadet', members: 1, icon: '', color: '' },
       ],
     },
+    cpDashboardPreview: {
+      stats:{total:23,active:15,leaves:2,openSlots:12,totalHours:186.5,groups:{Supervisors:5,Troopers:16,Auxiliary:2}},
+      counters:[{tag:'members',label:'Members',value:23},{tag:'active',label:'Active',value:15},{tag:'semi',label:'Intermediate activity',value:4},{tag:'inactive',label:'Inactive',value:2},{tag:'onleave',label:'On leave',value:2},{tag:'openslots',label:'Open slots',value:12},{tag:'hours',label:'Total hours',value:186.5},{tag:'group:supervisors',label:'Supervisors',value:5},{tag:'group:troopers',label:'Troopers',value:16},{tag:'group:auxiliary',label:'Auxiliary',value:2}],
+      readAt:Date.now(),enabled:true,refreshPending:false,publicLinked:true,publicPending:false,sections:['Executive','Patrol','Training']
+    },
     cpPing: { ok: true, version: 'preview', engine: 'preview', schema: 2 },
     cpSetWebhook: { channel: 'AUDIT', channels: { AUDIT: true, LOA: true, PATROL: false, SIGNUP: false, ERRORS: false } },
     cpTestWebhook: true,

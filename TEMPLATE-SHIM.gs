@@ -40,7 +40,7 @@ const RE_ENDPOINTS = Object.freeze([
   'cpFixTriggers', 'cpTakeSnapshot', 'cpRestoreSnapshot', 'cpSetSnapshotAuto',
   'cpSetWebhook', 'cpSetWebhookChannels', 'cpTestWebhook', 'cpTestWebhookChannels',
   'cpGetConfig', 'cpApplyConfig', 'cpOpenSettings',
-  'cpRankIcons', 'cpSetRankIcon', 'cpDeleteRankIcon',
+  'cpRankIcons', 'cpDashboardPreview', 'cpSetRankIcon', 'cpDeleteRankIcon',
   'cpSignupList', 'cpSignupApprove', 'cpSignupFlag', 'cpSignupUpdate',
   'cpSignupPostSeat', 'cpPromoList', 'cpPromoRemove', 'cpPromoRestore',
 ]);
@@ -59,11 +59,13 @@ function onEdit(e) { RE.onEdit(e); }
 
 /* ---- Installable-trigger handlers (trigger handler names resolve here) ----
  * This list must cover EVERY name the engine passes to ScriptApp.newTrigger():
- * onFormSubmit · processDailyLOAs · weeklyResetScheduled · scanIntegrity ·
+ * onFormSubmit · processDailyLOAs · memberTransferEdited · memberTransferSweep · weeklyResetScheduled · scanIntegrity ·
  * buildCoverage · auditEdit · weeklySnapshotScheduled · publishOnChange ·
  * publishSweep · publishCatchup. publishPublicRoster supports legacy triggers. */
 function onFormSubmit(e) { RE.onFormSubmit(e); }
 function processDailyLOAs() { RE.processDailyLOAs(); }
+function memberTransferEdited(e) { return RE.memberTransferEdited(e); }
+function memberTransferSweep() { return RE.memberTransferSweep(); }
 function weeklyResetScheduled() { RE.weeklyResetScheduled(); }
 function scanIntegrity() { RE.scanIntegrity(); }
 function buildCoverage() { RE.buildCoverage(); }

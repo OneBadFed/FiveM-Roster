@@ -34,7 +34,7 @@ for(const menu of optional.menus)for(const n of callbacks(menu))assert.equal(typ
 // The bound library shim must cover every literal trigger target and preserve catch-up ownership events.
 const shim=fs.readFileSync('TEMPLATE-SHIM.gs','utf8'),names=[...new Set(files.flatMap(file=>[...fs.readFileSync(file,'utf8').matchAll(/ScriptApp\.newTrigger\('([^']+)'\)/g)].map(m=>m[1])))];
 const forwarded=[];const shimCtx={RE:new Proxy({}, {get:(_,name)=>(...args)=>{forwarded.push({name,args});return name}})};vm.createContext(shimCtx);vm.runInContext(shim,shimCtx);
-for(const name of names){assert.equal(typeof shimCtx[name],'function','missing shim trigger '+name);const e={triggerUid:'current'};shimCtx[name](e);assert.equal(forwarded.at(-1).name,name);if(['onFormSubmit','auditEdit','publishOnChange','publishCatchup'].includes(name))assert.strictEqual(forwarded.at(-1).args[0],e);}
+for(const name of names){assert.equal(typeof shimCtx[name],'function','missing shim trigger '+name);const e={triggerUid:'current'};shimCtx[name](e);assert.equal(forwarded.at(-1).name,name);if(['onFormSubmit','memberTransferEdited','auditEdit','publishOnChange','publishCatchup'].includes(name))assert.strictEqual(forwarded.at(-1).args[0],e);}
 assert.equal(shimCtx.publishPublicRoster(),'publishPublicRoster');
 const counts=runtime();for(const bad of ['',null,'0','101','-1','3cats','1.5','2e1','Infinity','+2'])assert.strictEqual(counts.ctx.memberRowCount_(bad),null);
 for(const n of [1,2,99,100])assert.equal(counts.ctx.memberRowCount_(' '+n+' '),n);

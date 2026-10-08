@@ -488,9 +488,11 @@ function installConfiguredTriggers_() {
     const hour = cfg_().kv.SCHEDULE.NIGHTLY_HOUR; // preflight before deleting any existing triggers
     const failures = [];
     const ss = SpreadsheetApp.getActive();
-    replaceManagedTriggers_(['onFormSubmit','processDailyLOAs'],add=>{
+    replaceManagedTriggers_(['onFormSubmit','processDailyLOAs','memberTransferEdited','memberTransferSweep'],add=>{
       add(ScriptApp.newTrigger('onFormSubmit').forSpreadsheet(ss).onFormSubmit().create());
       add(ScriptApp.newTrigger('processDailyLOAs').timeBased().atHour(hour).everyDays(1).create());
+      add(ScriptApp.newTrigger('memberTransferEdited').forSpreadsheet(ss).onEdit().create());
+      add(ScriptApp.newTrigger('memberTransferSweep').timeBased().everyMinutes(1).create());
     });
     // Public roster: near-live. An INSTALLABLE onEdit runs authorized (unlike the simple one) so it can write to the
     // other file; onChange additionally catches row insert/DELETE, which onEdit never fires for. The 1-minute sweep
@@ -507,10 +509,10 @@ function installConfiguredTriggers_() {
     let extrasLine = '';
     try { if (typeof installExtrasTriggers_ === 'function') { const rd = installExtrasTriggers_(); extrasLine = `\n• Integrity scan (7am), coverage rebuild (6am)\n• Hours reset — ${rd}`; } } catch (e) { log_('installTriggers.extras', e); failures.push('extras triggers'); }
     try { if(typeof cpEnsureAuditTrigger==='function' && !cpEnsureAuditTrigger(true))throw new Error('Audit trigger verification is busy; retry installation.'); }catch(e){log_('installTriggers.audit',e);failures.push('audit trigger');}
-    if (failures.length) throw new AppError('E-504', {operation:'Trigger installation', completed:2, reason:'Core triggers installed, but '+failures.join(' and ')+' could not be fully installed. Review project triggers before retrying.'});
+    if (failures.length) throw new AppError('E-504', {operation:'Trigger installation', completed:4, reason:'Core triggers installed, but '+failures.join(' and ')+' could not be fully installed. Review project triggers before retrying.'});
     logInfo_('installTriggers', `installed core triggers (daily hour ${hour})${extrasLine ? ' + extras' : ''}.`);
     if(typeof cpInvalidateHealth_==='function')cpInvalidateHealth_();
-    return `✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})${pubLine}${extrasLine}`;
+    return `✅ Triggers installed:\n• Form submit\n• Daily schedule check (${hour === 0 ? 'midnight' : hour + ':00'})\n• Member transfer catch-up + 1-minute retry (works without a public roster)${pubLine}${extrasLine}`;
 }
 
 /**
@@ -599,8 +601,8 @@ function setupWizardCore_() {
 
     // 5c. Populate the live summary dashboard (finds the KPI boxes by label and writes current values).
     try {
-      const dn = refreshDashboard_(true); // wizard = explicit full discovery scan (finds KPI boxes/#tags on any tab)
-      steps.push(dn ? `✅ Dashboard refreshed (${dn} value${dn === 1 ? '' : 's'}).` : '⏳ Dashboard: no #stat tags found — type #members, #active or #hours into a cell and the engine keeps it live.');
+      const dn = refreshDashboard_(true); // explicit discovery of Welcome boxes, tags and leaderboards
+      steps.push(dn ? `✅ Dashboard refreshed (${dn} value${dn === 1 ? '' : 's'}).` : '⏳ Dashboard: no enabled statistic boxes or #tags found — enable Dashboard in Settings and use Welcome statistic boxes or #members, #active and #hours tags.');
     } catch (e) { steps.push(`⚠️ Dashboard: ${e.message}`); }
 
     // 6. Webhook (manual one-time step).
@@ -887,12 +889,14 @@ function installDataValidation_() {
  */
 function dashboardStats_(roster) {
   const RC = rosterCols_(roster);
-  const scanStart = ROSTER_HEADER_ROW + 1; // include a divider that sits in the gap row above rosterStartRow
+  const scanStart = (RC.headerRow || ROSTER_HEADER_ROW) + 1; // use the resolved modular header; include the gap divider
   const n = Math.max(0, roster.getLastRow() - scanStart + 1);
-  const groupOf = {};     // section-category label -> bucket name
-  const rankGroupOf = {}; // normalized rank -> bucket name (a Categories entry that matches no [SECTION_TAGS] label)
-  const tagByNorm = {}; (CONFIG.sectionCategories || []).forEach((t) => { tagByNorm[norm_(t.label)] = t.label; });
-  Object.keys(CONFIG.dashboard.groups).forEach((g) => CONFIG.dashboard.groups[g].forEach((cat) => {
+  const groupOf = Object.create(null);     // section-category label -> bucket name
+  const rankGroupOf = Object.create(null);
+  const tagByNorm = Object.create(null); (CONFIG.sectionCategories || []).forEach((t) => { tagByNorm[norm_(t.label)] = t.label; });
+  // Preserve table priority even for numeric group names (Object.keys sorts integer keys).
+  const groupOrder=CONFIG.dashboard.order||Object.keys(CONFIG.dashboard.groups);
+  groupOrder.forEach((g) => CONFIG.dashboard.groups[g].forEach((cat) => {
     const canon = tagByNorm[norm_(cat)];
     if (canon) { if (!(canon in groupOf)) groupOf[canon] = g; if (!(cat in groupOf)) groupOf[cat] = g; } // first matching group wins for sections too
     // EVERY entry ALSO registers as a rank match (first group listing it wins) — an entry that collides with a
@@ -901,11 +905,11 @@ function dashboardStats_(roster) {
     // collision the Academy's rank matcher already fixed. Labels that aren't ranks simply never match a member.
     if (!(norm_(cat) in rankGroupOf)) rankGroupOf[norm_(cat)] = g;
   }));
-  const groups = {}; Object.keys(CONFIG.dashboard.groups).forEach((g) => { groups[g] = 0; });
+  const groups = Object.create(null); groupOrder.forEach((g) => { groups[g] = 0; });
   // Config-driven buckets: one per configured TIER, and a normalized leave-type set. No hardcoded status names.
-  const tierByNorm = {}; const tierCounts = {};
+  const tierByNorm = Object.create(null); const tierCounts = Object.create(null);
   CONFIG.tiers.forEach((t) => { tierByNorm[norm_(t.name)] = t.name; tierCounts[t.name] = 0; });
-  const leaveSet = {}; CONFIG.leaveTypes.forEach((t) => { leaveSet[norm_(t)] = true; });
+  const leaveSet = Object.create(null); CONFIG.leaveTypes.forEach((t) => { leaveSet[norm_(t)] = true; });
   const out = { totalHours: 0, leaves: 0, total: 0, active: 0, semi: 0, inactive: 0, openSlots: 0, tierCounts, groups, top: [] };
   const tops = [];
   if (n > 0) {
@@ -918,7 +922,8 @@ function dashboardStats_(roster) {
       if (isMemberSlot_(rank) && !name) out.openSlots++;
       if (!isValidMemberValues_(rank, name)) continue;
       out.total++;
-      const parsedHours = parseHours_(block[i][RC.hours - 1]);
+      const rawHours=block[i][RC.hours-1];
+      const parsedHours = /^\s*-/.test(String(rawHours))?0:parseHours_(rawHours);
       const hrs = Number.isFinite(parsedHours) ? Math.max(0, parsedHours) : 0;
       out.totalHours += hrs;
       if (hrs > 0) tops.push({ n: name, h: hrs }); // leaderboard candidates — zero-hour members never "lead"
@@ -946,8 +951,12 @@ function dashboardStats_(roster) {
  * result. Supports base keys + aliases, and one key per CONFIG.dashboard.groups bucket (by its lowercased name).
  * @return {number|null} the value, or null if the key is unknown.
  */
+function statTagKey_(key) { return String(key).toLowerCase().replace(/[^a-z0-9]/g,''); }
 function statTagValue_(s, key) {
-  const k = String(key).toLowerCase().replace(/[^a-z]/g, '');
+  if(/^box:/i.test(String(key)))return statTagValue_(s,String(key).slice(4)); // Welcome adoption metadata
+  const explicitGroup=/^group:/i.test(String(key));
+  const k = statTagKey_(explicitGroup?String(key).slice(6):key);
+  if(explicitGroup){const name=Object.keys(s.groups).find(g=>statTagKey_(g)===k);return name===undefined?0:s.groups[name];}
   const base = {
     members: s.total, total: s.total, count: s.total, headcount: s.total,
     active: s.active, semi: s.semi, semiactive: s.semi, inactive: s.inactive,
@@ -959,15 +968,15 @@ function statTagValue_(s, key) {
   // Configured tier names (so a renamed tier like #moderate resolves to its live count).
   const tcs = s.tierCounts || {};
   const tks = Object.keys(tcs);
-  for (let i = 0; i < tks.length; i++) { if (tks[i].toLowerCase().replace(/[^a-z]/g, '') === k) return tcs[tks[i]]; }
+  for (let i = 0; i < tks.length; i++) { if (statTagKey_(tks[i]) === k) return tcs[tks[i]]; }
   const gks = Object.keys(s.groups);
-  for (let i = 0; i < gks.length; i++) { if (gks[i].toLowerCase().replace(/[^a-z]/g, '') === k) return s.groups[gks[i]]; } // strip like tiers do — "Command Staff" answers #commandstaff
+  for (let i = 0; i < gks.length; i++) { if (statTagKey_(gks[i]) === k) return s.groups[gks[i]]; }
   return null;
 }
 
 /** True for tabs the dashboard renderer should NOT scan/write — the data feeds + the system/hidden tabs. */
 function dashboardSkip_(name) {
-  if (name === CONFIG.sheets.tracker || name === CONFIG.sheets.form) return true;
+  if ([CONFIG.sheets.tracker,CONFIG.sheets.form,CONFIG.sheets.patrolLog,CONFIG.sheets.patrol,CONFIG.sheets.signups,CONFIG.sheets.signupForm].filter(Boolean).indexOf(name)!==-1) return true;
   if (name.indexOf('_') === 0 || name.indexOf('🧪') === 0) return true; // hidden/config + sandbox-tab conventions
   return [CONFIG.sheets.audit, CONFIG.sheets.coverage, CONFIG.sheets.integrity, CONFIG.sheets.hoursHistory, CONFIG.sheets.snapshots, CONFIG.columns.configSheet, CONFIG_SHEET_NAME, SYS_LOG_SHEET].indexOf(name) !== -1;
 }
@@ -977,8 +986,7 @@ function dashboardSkip_(name) {
  * formula to break), position-independent — a cell that is just "#<stat>" (e.g. #members, #active, #troopers,
  * #hours) becomes the live number; the key is remembered in the cell's NOTE so it keeps refreshing wherever the
  * cell moves. Clearing the cell's value stops it being managed. Unknown #tags are left untouched. Tags plus the
- * PATROL LEADERBOARD table are the only render mechanisms: the engine never writes a dashboard cell the user
- * didn't explicitly tag or title.
+ * PATROL LEADERBOARD and recognized Welcome statistic boxes are title-based opt-ins; other text is untouched.
  * @return {number} cells written on this sheet.
  */
 function renderDashboardOnSheet_(sheet, s) {
@@ -986,34 +994,86 @@ function renderDashboardOnSheet_(sheet, s) {
   const lastCol = sheet.getLastColumn();
   if (lastRow < 1 || lastCol < 1) return 0;
   const grid = sheet.getRange(1, 1, lastRow, lastCol).getDisplayValues();
-  let written = 0;
+  let written = 0,changed=false;
 
   // Free-form "#stat" tags anywhere on this sheet — kept live via the cell's note.
   const notes = sheet.getRange(1, 1, lastRow, lastCol).getNotes();
-  const TAG = /^#\s*([A-Za-z]+)$/;
+  const TAG = /^#\s*((?:group:)?[A-Za-z0-9]+)$/i;
   const MARK = 'roster-stat:';
-  const seenKeys = {}; // F-043: catch a stat key managed by two cells (e.g. a copy/paste) — both would ghost-update
-  const noteDup = (key, r, c) => { const k = String(key).toLowerCase(); if (seenKeys[k]) { logWarn_('renderDashboardOnSheet_', `stat #${k} is managed by more than one cell on "${sheet.getName()}" (e.g. R${r + 1}C${c + 1}) — a copied tag cell ghost-updates; keep one.`); } else seenKeys[k] = true; };
   for (let r = 0; r < lastRow; r++) {
     for (let c = 0; c < lastCol; c++) {
       const val = String(grid[r][c]).trim();
       const m = val.match(TAG);
       if (m) { // a freshly-typed (or re-typed) tag — convert to the live value + remember the key in the note
         const v = statTagValue_(s, m[1]);
-        if (v !== null) { sheet.getRange(r + 1, c + 1).setValue(v).setNote(MARK + m[1].toLowerCase()); noteDup(m[1], r, c); written++; }
+        if (v !== null) {
+          const cell=sheet.getRange(r+1,c+1);
+          if(String(cell.getDisplayValue()).trim()!==val||cell.getFormula())continue;
+          cell.setValue(v).setNote(MARK+m[1].toLowerCase());written++;changed=true;
+        }
       } else if (String(notes[r][c] || '').indexOf(MARK) === 0) { // snapshot says managed — re-verify the LIVE note before touching it (F-033)
         const cell = sheet.getRange(r + 1, c + 1);
         const liveNote = String(cell.getNote() || '');
         if (liveNote.indexOf(MARK) !== 0) continue; // a concurrent edit replaced the managed note — leave the user's note alone
+        if(liveNote.indexOf(MARK+'box:')===0)continue; // titled boxes refresh only while their current labels/layout still opt in
+        if(String(cell.getDisplayValue()).trim()!==val)continue; // snapshot cannot overwrite a newer pasted tag/value
+        if(cell.getFormula()){cell.clearNote();continue;} // a user formula takes ownership back
         if (val === '') { cell.clearNote(); } // user deleted the value — stop managing this cell
-        else { const key = liveNote.slice(MARK.length).trim(); const v = statTagValue_(s, key); if (v !== null) { cell.setValue(v); noteDup(key, r, c); written++; } }
+        else { const key = liveNote.slice(MARK.length).trim(); const v = statTagValue_(s, key); if (v !== null) { if(val!==String(v)){cell.setValue(v);changed=true;}written++; } else {cell.setValue('#'+key).clearNote();changed=true;} }
       }
     }
   }
 
+  // Adopt only recognizable boxes on the configured Welcome tab, not arbitrary labels on data sheets.
+  if(tabKey_(sheet.getName())===tabKey_(CONFIG.sheets.welcome||'Welcome Page'))written+=renderWelcomeStatsBoxes_(sheet,grid,s,()=>{changed=true;});
+
   // PATROL LEADERBOARD — rendered from the same stats pass whenever this sheet carries the table.
-  written += renderLeaderboardOnSheet_(sheet, grid, s);
+  written += renderLeaderboardOnSheet_(sheet, grid, s,()=>{changed=true;});
+  if(changed&&typeof publishMarkDirty_==='function')publishMarkDirty_([sheet.getName()]);
   return written;
+}
+
+/** Welcome's existing KPI boxes: values/notes only; labels, merges, styles and formulas stay owned by the template. */
+function renderWelcomeStatsBoxes_(sheet,grid,s,onChange) {
+  const width=sheet.getLastColumn(),height=sheet.getMaxRows(),mark='roster-stat:box:';
+  const headers={totalhours:'hours',totalpatrolhours:'hours',activemembers:'active',activeemployees:'active',totalactivemembers:'active',semiactivemembers:'semi',inactivemembers:'inactive',currentloasroas:'onleave',currentloas:'onleave',currentroas:'onleave',membersonleave:'onleave',openslots:'openslots',availablepositions:'openslots',totalmembers:'members'};
+  let managed=0;
+  const bounds=(row,col)=>{
+    const merges=sheet.getRange(row,col).getMergedRanges();
+    return merges.length?{row:merges[0].getRow(),col:merges[0].getColumn(),bottom:merges[0].getLastRow(),right:merges[0].getLastColumn()}:{row,col,bottom:row,right:col};
+  };
+  const put=(row,col,key,left,right)=>{
+    if(row>height||col>width)return;
+    const b=bounds(row,col);if(b.row!==row||b.col<left||b.right>right)return; // never write into a label/header merge
+    const cell=sheet.getRange(row,b.col),note=String(cell.getNote()||'');
+    if(cell.getFormula()||(note&&note.indexOf(mark)!==0))return; // preserve user formulas, notes and explicit #tags
+    const old=cell.getValue();
+    if(old!==''&&!(typeof old==='number'&&Number.isFinite(old))&&!/^#(?:group:)?[A-Za-z0-9]+$/i.test(String(old).trim()))return;
+    const value=statTagValue_(s,key);if(value===null)return;
+    if(old!==value){cell.setValue(value);if(onChange)onChange();}
+    if(note!==mark+key)cell.setNote(mark+key);
+    managed++;
+  };
+  for(let r=0;r<grid.length;r++)for(let c=0;c<grid[r].length;c++){
+    const label=statTagKey_(grid[r][c]),employeeBox=label==='totalemployees'||label==='totalmembers';
+    if(!employeeBox&&!Object.prototype.hasOwnProperty.call(headers,label))continue;
+    const b=bounds(r+1,c+1);if(b.row!==r+1||b.col!==c+1)continue;
+    if(statTagKey_(sheet.getRange(r+1,c+1).getDisplayValue())!==label)continue;
+    const right=Math.min(width,b.right>b.col?b.right:b.col+1),first=b.bottom+1;
+    // TOTAL MEMBERS can be a single KPI or a renamed employee breakdown.
+    const next=String(((grid[first-1]||[])[b.col-1])||'').trim();
+    if(employeeBox&&next&&!/^#/.test(next)&&!Number.isFinite(Number(next))){
+      for(let row=first;row<=Math.min(height,first+19);row++){
+        const text=String(((grid[row-1]||[])[b.col-1])||'').trim();if(!text)break;
+        if(String(sheet.getRange(row,b.col).getDisplayValue()).trim()!==text)break;
+        const body=bounds(row,b.col);if(body.right>=right)break;
+        const key=statTagKey_(text);if(!key)break;
+        put(row,right,key==='total'||key==='totalmembers'||key==='totalemployees'?'members':'group:'+key,body.right+1,right);
+        row=body.bottom; // merged multi-row category labels are one counter
+      }
+    }else put(first,b.col,employeeBox?'members':headers[label],b.col,right);
+  }
+  return managed;
 }
 
 const LEADER_TITLE_ = 'PATROL LEADERBOARD';
@@ -1023,10 +1083,10 @@ const LEADER_MAX_ = 5;
  * Render the hours leaderboard into THIS sheet's PATROL LEADERBOARD table, if it carries one: the title cell is
  * matched anywhere (case-insensitive) with a NAME + HOURS header row within 3 rows below it (any columns — the
  * header text anchors each column, so merged bands are fine). The RANK column's 1–5 labels are user styling and
- * never touched; NAME/HOURS rewrite all LEADER_MAX_ rows so departed leaders clear. Names are '@'-formatted
- * BEFORE the write (a member named "=X" must never execute); hours stay numbers. @return {number} cells written.
+ * never touched; NAME/HOURS rewrite all LEADER_MAX_ rows so departed leaders clear. Rich text writes keep names
+ * literal even when a name begins with '='; hours stay numbers. @return {number} cells written.
  */
-function renderLeaderboardOnSheet_(sheet, grid, s) {
+function renderLeaderboardOnSheet_(sheet, grid, s, onChange) {
   const top = s.top || [];
   const lastRow = grid.length, lastCol = lastRow ? grid[0].length : 0;
   let tr = 0;
@@ -1050,8 +1110,10 @@ function renderLeaderboardOnSheet_(sheet, grid, s) {
   if (n < 1) return 0;
   const names = [], hours = [];
   for (let i = 0; i < n; i++) { const p = top[i]; names.push([p ? p.n : '']); hours.push([p ? p.h : '']); }
-  sheet.getRange(hr + 1, nameCol, n, 1).setNumberFormat('@').setValues(names);
-  sheet.getRange(hr + 1, hoursCol, n, 1).setValues(hours);
+  const nameRange=sheet.getRange(hr+1,nameCol,n,1),hourRange=sheet.getRange(hr+1,hoursCol,n,1);
+  const priorNames=nameRange.getDisplayValues(),priorHours=hourRange.getValues();
+  if(names.some((r,i)=>r[0]!==priorNames[i][0])){nameRange.setRichTextValues(names.map(row=>[SpreadsheetApp.newRichTextValue().setText(String(row[0])).build()]));if(onChange)onChange();}
+  if(hours.some((r,i)=>r[0]!==priorHours[i][0])){hourRange.setValues(hours);if(onChange)onChange();}
   return n * 2;
 }
 
@@ -1076,13 +1138,14 @@ function promoIsPromotion_(srcRow, dstRow, fromRank, toRank) {
 }
 
 /** Record a promotion (newest first, capped at PROMO_MAX_) and re-render the feed. Never throws into the move. */
-function promoRecord_(srcRow, dstRow, name, fromRank, toRank) {
+function promoRecord_(srcRow, dstRow, name, fromRank, toRank, eventKey) {
   try {
     if (!promoIsPromotion_(srcRow, dstRow, fromRank, toRank)) return;
     const P = PropertiesService.getDocumentProperties();
     let list; try { list = JSON.parse(P.getProperty(PROMO_STORE_PROP_) || '[]'); } catch (e) { list = []; }
     if (!Array.isArray(list)) list = [];
-    list.unshift({ t: Date.now(), n: String(name || '').trim(), r: String(toRank).trim() });
+    if(eventKey&&list.some(item=>item.key===eventKey))return; // failed queue acknowledgement must not duplicate promotions
+    list.unshift({ t: Date.now(), n: String(name || '').trim(), r: String(toRank).trim(),...(eventKey?{key:eventKey}:{}) });
     P.setProperty(PROMO_STORE_PROP_, JSON.stringify(list.slice(0, PROMO_MAX_)));
     renderPromotions_();
   } catch (e) { logWarn_('promoRecord_', String((e && e.message) || e)); }
@@ -1189,7 +1252,7 @@ function refreshDashboard_(fullRescan) {
   if (!roster) return 0;
   const s = dashboardStats_(roster);
   const known = fullRescan ? null : dashTabsGet_();
-  let written = 0;
+  let written = 0;const failures=[];
   if (known) {
     // Fast path: only the remembered tabs — and NEVER auto-prune. A render that throws (protected tab under a
     // non-owner's onEdit, transient Sheets error) or transiently writes 0 must not permanently drop a live tab;
@@ -1200,15 +1263,17 @@ function refreshDashboard_(fullRescan) {
     known.forEach((name) => {
       const sh = ss.getSheetByName(name);
       if (!sh || dashboardSkip_(name)) return; // deleted/renamed tabs are simply skipped (rescan cleans the list)
-      try { written += renderDashboardOnSheet_(sh, s); } catch (e) { log_('refreshDashboard.sheet', e); }
+      try { written += renderDashboardOnSheet_(sh, s); } catch (e) { failures.push(name);log_('refreshDashboard.sheet', e); }
     });
+    if(failures.length)throw new Error('Dashboard refresh incomplete on: '+failures.join(', ')+'. Queued refresh will retry.');
     return written;
   }
   const live = []; // full scan (first run / menu refresh / wizard) — rebuild the remembered set from what actually renders
   ss.getSheets().forEach((sh) => {
     if (dashboardSkip_(sh.getName())) return;
-    try { const w = renderDashboardOnSheet_(sh, s); written += w; if (w > 0) live.push(sh.getName()); } catch (e) { log_('refreshDashboard.sheet', e); }
+    try { const w = renderDashboardOnSheet_(sh, s); written += w; if (w > 0) live.push(sh.getName()); } catch (e) { failures.push(sh.getName());log_('refreshDashboard.sheet', e); }
   });
+  if(failures.length)throw new Error('Dashboard refresh incomplete on: '+failures.join(', ')+'. Queued refresh will retry.');
   dashTabsSet_(live);
   return written;
 }
@@ -1330,7 +1395,7 @@ function refreshDashboard() {
  * -------------------------------------------------------------------- */
 const DEFER_PROP_ = 'DEFERRED_WORK';
 
-const DEFER_JOBS_ = ['academy','groups','dashboard','activity','signupOrder'];
+const DEFER_JOBS_ = ['statuses','academy','groups','dashboard','activity','signupOrder'];
 const DEFER_JOB_PREFIX_ = 'RE_DEFER_JOB:';
 const DEFER_HINT_PROP_ = 'RE_DEFER_PENDING';
 function deferredState_(fn) {
@@ -1355,8 +1420,13 @@ function tryDerivedRefresh_(fn) {
   if(!held&&!lock.tryLock(1))return;
   try{return fn();}finally{if(!held)lock.releaseLock();}
 }
-function runDeferredWork_() {return tryDerivedRefresh_(runDeferredWorkCore_);}
+function runDeferredWork_() {
+  try{return tryDerivedRefresh_(runDeferredWorkCore_);}
+  finally{if(!LockService.getScriptLock().hasLock())flushMemberTransferNotifications_();}
+}
 function runDeferredWorkCore_() {
+  processMemberEditMoves_(); // confirmed transfers outrank whole-tab maintenance
+  if(pendingMemberEditMoves_().length)return; // conflicting/unfinished member writes block derived copies
   let snapshot;
   try{snapshot=deferredState_(p=>{
     const legacy=String(p.getProperty(DEFER_PROP_)||'');
@@ -1366,8 +1436,10 @@ function runDeferredWorkCore_() {
     if(legacy){p.setProperty(DEFER_HINT_PROP_,'1');p.deleteProperty(DEFER_PROP_);}return all;
   });}catch(e){log_('deferred.snapshot',e);return;}
   if(!snapshot)return;
-  const jobs={academy:()=>{if(typeof buildAcademySheets_!=='function')throw new Error('Academy builder is unavailable.');return buildAcademySheets_();},groups:()=>{if(typeof buildGroupSheets_!=='function')throw new Error('Group builder is unavailable.');return buildGroupSheets_();},dashboard:()=>refreshDashboard_(),activity:()=>{if(typeof buildActivityPanel_!=='function')throw new Error('Activity builder is unavailable.');return buildActivityPanel_();},signupOrder:()=>{if(typeof sortSignupQueues_!=='function')throw new Error('Signup sorter is unavailable.');return sortSignupQueues_();}};
+  const jobs={statuses:()=>{const roster=SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.roster);if(!roster)throw new Error('Roster tab not found for activity refresh.');const result=recomputeStatuses_(roster,false);if(typeof publishMarkDirty_==='function')publishMarkDirty_();return result;},academy:()=>{if(typeof buildAcademySheets_!=='function')throw new Error('Academy builder is unavailable.');return buildAcademySheets_();},groups:()=>{if(typeof buildGroupSheets_!=='function')throw new Error('Group builder is unavailable.');return buildGroupSheets_();},dashboard:()=>refreshDashboard_(),activity:()=>{if(typeof buildActivityPanel_!=='function')throw new Error('Activity builder is unavailable.');return buildActivityPanel_();},signupOrder:()=>{if(typeof sortSignupQueues_!=='function')throw new Error('Signup sorter is unavailable.');return sortSignupQueues_();}};
   DEFER_JOBS_.forEach(key=>{
+    if(pendingMemberEditMoves_().length)return; // a transfer queued during a build gets the next writer turn
+    if(key!=='statuses'&&PropertiesService.getDocumentProperties().getProperty(DEFER_JOB_PREFIX_+'statuses'))return; // never build stats from old tiers after a failed/concurrent settings refresh
     const prop=DEFER_JOB_PREFIX_+key,raw=snapshot[prop];if(!raw)return;
     const state=deferredJobState_(raw);if(Number(state.next)>Date.now())return;
     let failed=false;
@@ -1394,6 +1466,7 @@ const DERIVED_GAP_MS_ = 4000; // isolated edits rebuild instantly; edits closer 
  */
 function syncDerivedNow_(groupHint) {return tryDerivedRefresh_(()=>syncDerivedNowCore_(groupHint));}
 function syncDerivedNowCore_(groupHint) {
+  if(pendingMemberEditMoves_().length)return;
   try {
     const p = PropertiesService.getDocumentProperties();
     const now = Date.now();
@@ -1401,7 +1474,9 @@ function syncDerivedNowCore_(groupHint) {
     p.setProperty(DERIVED_LAST_PROP_, String(now));
   } catch (e) { return; }
   try { if (typeof buildGroupSheets_ === 'function') buildGroupSheets_(groupHint || null); } catch (e) { log_('syncDerivedNow_.groups', e); } // TARGETED when a hint is given, else full
+  if(pendingMemberEditMoves_().length)return;
   try { if (typeof buildAcademySheets_ === 'function') buildAcademySheets_(); } catch (e) { log_('syncDerivedNow_.academy', e); } // one tab — always whole
+  if(pendingMemberEditMoves_().length)return;
   try { if (typeof refreshDashboard_ === 'function') refreshDashboard_(); } catch (e) { log_('syncDerivedNow_.dashboard', e); } // self-optimizing (RE_DASH_TABS)
 }
 
@@ -1414,14 +1489,14 @@ function onEdit(e) {
     // F-029: an edit to the ⚙️ Config tab refreshes the config memo so a fix — including recovering from a broken or
     // E-104 config — takes effect on the next read, not only after a fresh execution. Runs BEFORE any CONFIG access
     // (which itself throws when the config is broken). A renamed config tab still recovers across executions as before.
-    if (name === CONFIG_SHEET_NAME) { cfgInvalidate_(); return; }
+    if (name === CONFIG_SHEET_NAME) { cfgInvalidate_(); ['statuses','academy','groups','dashboard'].forEach(deferWork_); return; }
 
     const row = e.range.getRow();
     const col = e.range.getColumn();
 
     if (name === CONFIG.sheets.roster) {
       const RC = rosterCols_(sheet);
-      if (col === RC.discord && e.value) checkForMemberMove(sheet, e.range, e.value);
+      if (col === RC.discord && e.value) checkForMemberMove(sheet, e.range, e.value, null, null, e.oldValue);
       if (col === RC.hours && row >= CONFIG.rosterStartRow && isValidMemberRow(sheet, row)) {
         updateStatusFromHours(sheet, row);
       }
@@ -1433,7 +1508,7 @@ function onEdit(e) {
       // never runs inside the member-transfer flow (which is on the same script lock).
       const cLast = (e.range && e.range.getLastColumn) ? e.range.getLastColumn() : col;
       if (row >= CONFIG.rosterStartRow) {
-        deferWork_('academy'); // whole-tab rebuilds: queued so the sweep is always a backstop
+      deferWork_('academy'); // whole-tab rebuilds: queued so the sweep is always a backstop
         deferWork_('groups');
         const spansDiscord = RC.discord && col <= RC.discord && cLast >= RC.discord;
         if (!spansDiscord) {
@@ -1571,7 +1646,11 @@ function onEdit(e) {
     if (name === CONFIG.sheets.roster || name === CONFIG.sheets.tracker || (CONFIG.sheets.patrolLog && name === CONFIG.sheets.patrolLog)) {
       deferWork_('dashboard'); // queued for the same reason
     } else if (!dashboardSkip_(name)) {
-      let touchesTag = /^#\s*[A-Za-z]/.test(String(e.value || ''));
+      let touchesTag = /^#\s*(?:group:)?[A-Za-z0-9]/i.test(String(e.value || ''));
+      if(!touchesTag&&e.range.getNumRows&&e.range.getNumColumns&&(e.range.getNumRows()>1||e.range.getNumColumns()>1)){
+        touchesTag=e.range.getDisplayValues().some(r=>r.some(v=>/^#\s*(?:group:)?[A-Za-z0-9]/i.test(String(v))));
+      }
+      if(tabKey_(name)===tabKey_(CONFIG.sheets.welcome||'Welcome Page'))touchesTag=true;
       if (!touchesTag) { try { touchesTag = String(e.range.getNote() || '').indexOf('roster-stat:') === 0; } catch (ig) {} }
       // v1.0 PERF discovery: an edit on a tab the remembered set doesn't know yet also renders that one sheet, so a
       // new banner (typed KPI label) or a PASTED #tag block is adopted the moment it's created — same as the old
@@ -4454,6 +4533,7 @@ function memberMoveJournal_(sheet) {
 }
 /** Destructive hour resets/restores must not invalidate an unfinished financial or transfer recovery record. */
 function assertNoPendingRosterRecovery_(roster, operation) {
+  assertMemberEditMoveRows_(roster);
   if (memberMoveJournal_(roster)) throw new AppError('E-504',{operation,completed:0,reason:'An interrupted member transfer needs recovery before this operation can change the roster.'});
   if (typeof memberAssignmentRows_==='function' && memberAssignmentRows_(roster).length) throw new AppError('E-504',{operation,completed:0,reason:'An interrupted member assignment needs recovery before this operation can change the roster.'});
   if(typeof pendingSignupApprovals_==='function' && pendingSignupApprovals_().length)throw new AppError('E-504',{operation,completed:0,reason:'An interrupted signup approval needs recovery before this operation can change the roster.'});
@@ -4560,7 +4640,9 @@ function moveMemberColumns_(sheet, sourceRow, targetRow) {
 /** Menu recovery: complete the recorded move, never restore over conflicting manual edits. */
 function recoverMemberMove() {
   runAction_('Recover Interrupted Transfer', () => {
+    let queuedCount=0;
     const result = withPatrolCreditLock_(() => {
+      queuedCount=processMemberEditMoves_();
       const ss = SpreadsheetApp.getActive(), sheets = ss.getSheets();
       const recovered = [];
       sheets.forEach(sheet => {
@@ -4574,26 +4656,141 @@ function recoverMemberMove() {
       if(typeof recoverSignupApprovals_==='function')recovered.push.apply(recovered,recoverSignupApprovals_());
       return recovered;
     });
+    flushMemberTransferNotifications_();
     if (result.length) {
       deferWork_('groups'); deferWork_('academy'); deferWork_('dashboard');
       try { publishMarkDirty_(); } catch (e) { log_('recoverMemberMove.publish',e); }
       result.forEach(j => { if (typeof auditEvent_ === 'function') { try { auditEvent_(j.assignment?'add':'move',j.fromRank,j.toRank,'',j.name+' (recovered)'); } catch (e) { log_('recoverMemberMove.audit',e); } } });
     }
-    SpreadsheetApp.getUi().alert(result.length ? 'Recovered '+result.length+' interrupted member change(s), including linked signup approvals. Refresh the panel and inspect the affected rows.' : 'No interrupted transfers, assignments or signup approvals are pending.');
-    return result.length;
+    const total=result.length+queuedCount,pending=pendingMemberEditMoves_().length;
+    SpreadsheetApp.getUi().alert((total ? 'Recovered '+total+' interrupted member change(s), including confirmed queued transfers. Refresh the panel and inspect the affected rows.' : 'No member changes were recovered.')+(pending?' '+pending+' confirmed transfer(s) still need review; see the memberTransfer diagnostics in System Log.':''));
+    return total;
   });
 }
 
-/**
- * Transfers a member to a new row when their Discord ID is entered there.
- * @param {function(string):boolean} [confirmFn] - injectable confirm (tests pass a stub).
- * @param {function(string):void} [notifyFn] - injectable notifier for the result/cancel alerts (tests pass a no-op).
- */
-function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) {
+/** Confirmed sheet-edit intents are independent properties so busy writers cannot drop a paste. */
+const MEMBER_EDIT_MOVE_PREFIX_='RE_EDIT_MOVE:';
+function pendingMemberEditMoves_() {
+  const all=PropertiesService.getDocumentProperties().getProperties();
+  return Object.keys(all).filter(key=>key.indexOf(MEMBER_EDIT_MOVE_PREFIX_)===0).sort().map(key=>({key,raw:all[key]}));
+}
+/** Authorized edit trigger only schedules work; it never confirms or moves a person. */
+function memberTransferEdited(e) {
+  if(!e||!e.range)return;
+  const sh=e.range.getSheet();if(sh.getName()!==CONFIG.sheets.roster)return;
+  const rc=rosterCols_(sh),first=e.range.getColumn(),last=e.range.getLastColumn();
+  if(rc.discord&&first<=rc.discord&&last>=rc.discord&&typeof scheduleCatchup_==='function')scheduleCatchup_();
+}
+function memberTransferSweep() { return runDeferredWork_(); }
+/** Snapshot the approved identity, classification and destination BEFORE the dialog. */
+function prepareMemberEditMove_(sheet,source,target,id) {
+  const rc=rosterCols_(sheet),width=sheet.getLastColumn();
+  const s=sheet.getRange(source,1,1,width).getDisplayValues()[0];
+  const t=sheet.getRange(target,1,1,width).getDisplayValues()[0];
+  if(String(s[rc.discord-1]).trim()!==id||String(t[rc.discord-1]).trim()!==id)throw new Error('The pasted ID or source member changed. No transfer was queued.');
+  return {version:1,book:sheet.getParent().getId(),sheet:sheet.getSheetId(),source,target,id,width,
+    name:String(s[rc.name-1]).trim(),fromRank:String(s[rc.rank-1]).trim(),toRank:String(t[rc.rank-1]).trim(),
+    columns:{rank:rc.rank,name:rc.name,discord:rc.discord,headerRow:rc.headerRow},
+    headers:sheet.getRange(rc.headerRow,1,1,width).getDisplayValues()[0],
+    slots:slotColumnSet_(sheet),targetCells:memberMoveSnapshot_(sheet.getRange(target,1,1,width)),phase:'queued'};
+}
+function queueMemberEditMove_(request) {
+  const raw=JSON.stringify(request);
+  if(encodeURIComponent(raw).replace(/%[A-Fa-f0-9]{2}|./g,'x').length>8000)throw new Error('Transfer request is too large to store safely. No member fields were moved; use the Control Panel Move action.');
+  const key=MEMBER_EDIT_MOVE_PREFIX_+Date.now()+':'+Math.random().toString(36).slice(2);
+  PropertiesService.getDocumentProperties().setProperty(key,raw);
+  return {key,request};
+}
+/** Reservations protect panel writes/resets without holding a lock during human consent. */
+function assertMemberEditMoveRows_(sheet,rows,ownKey) {
+  pendingMemberEditMoves_().forEach(({key,raw})=>{
+    if(ownKey&&key>=ownKey)return; // oldest overlapping request gets the writer turn
+    let r;try{r=JSON.parse(raw);}catch(e){throw new Error('A confirmed transfer record is unreadable. Use Recover Interrupted Transfer before editing members.');}
+    if(!r||r.version!==1||!Number.isInteger(r.source)||!Number.isInteger(r.target))throw new Error('A confirmed transfer record is invalid. Inspect System Log before editing members.');
+    if(r.book===sheet.getParent().getId()&&r.sheet===sheet.getSheetId()&&(!rows||rows.includes(r.source)||rows.includes(r.target)))throw new Error('A confirmed transfer is queued for this row. Leave its pasted ID in place to finish, or clear the pending destination ID to cancel before editing it.');
+  });
+}
+/** Caller owns the script lock. Validate the consented destination before any copy. */
+function applyMemberEditMove_(sheet,key,r) {
+  const p=PropertiesService.getDocumentProperties();
+  if(!r||r.version!==1||r.book!==sheet.getParent().getId()||r.sheet!==sheet.getSheetId()||!['queued','started','moved'].includes(r.phase)||!Number.isInteger(r.source)||!Number.isInteger(r.target)||r.source===r.target||!r.columns||typeof r.id!=='string'||!r.id||typeof r.name!=='string'||!Array.isArray(r.targetCells)||r.targetCells.length!==r.width)throw new Error('Invalid confirmed transfer request. Inspect '+key+'.');
+  // The durable terminal checkpoint means copying/clearing already finished.
+  // Later ordinary member/header edits must not turn follow-up work into a new move.
+  if(r.phase==='moved'&&!memberMoveJournal_(sheet))return true;
+  const rc=rosterCols_(sheet),width=sheet.getLastColumn();
+  // Clearing the original pasted ID cancels only an UNSTARTED request, even after
+  // unrelated header edits. A partially copied journal must always be recovered.
+  if(r.phase==='queued'&&r.target>=CONFIG.rosterStartRow&&r.target<=sheet.getMaxRows()&&rc.discord===r.columns.discord&&String(sheet.getRange(r.target,rc.discord).getDisplayValue()).trim()!==r.id){p.deleteProperty(key);return false;}
+  if(width!==r.width||r.source<CONFIG.rosterStartRow||r.target<CONFIG.rosterStartRow||r.source>sheet.getMaxRows()||r.target>sheet.getMaxRows()||JSON.stringify(r.columns)!==JSON.stringify({rank:rc.rank,name:rc.name,discord:rc.discord,headerRow:rc.headerRow})||JSON.stringify(r.headers)!==JSON.stringify(sheet.getRange(rc.headerRow,1,1,width).getDisplayValues()[0])||JSON.stringify(r.slots)!==JSON.stringify(slotColumnSet_(sheet)))throw new Error('The roster layout/classification changed after confirmation. Clear the pending destination ID and retry the transfer.');
+  const ids=sheet.getRange(CONFIG.rosterStartRow,rc.discord,sheet.getLastRow()-CONFIG.rosterStartRow+1,1).getDisplayValues();
+  const at=row=>String((ids[row-CONFIG.rosterStartRow]||[])[0]||'').trim();
+  const journal=memberMoveJournal_(sheet);
+  if(r.phase==='queued'&&at(r.target)!==r.id){p.deleteProperty(key);return false;} // operator cancelled/replaced the paste; never clear their newer edit
+  if(journal&&(journal.source!==r.source||journal.target!==r.target))throw new Error('Another interrupted transfer needs recovery first.');
+  const name=row=>String(sheet.getRange(row,rc.name).getDisplayValue()).trim();
+  const rank=row=>String(sheet.getRange(row,rc.rank).getDisplayValue()).trim();
+  const done=r.phase!=='queued'&&!journal&&!at(r.source)&&at(r.target)===r.id&&name(r.target)===r.name&&rank(r.target)===r.toRank;
+  if(!done){
+    if(ids.some((v,i)=>CONFIG.rosterStartRow+i!==r.source&&CONFIG.rosterStartRow+i!==r.target&&String(v[0]).trim()===r.id))throw new Error('Unique ID is duplicated outside the confirmed source/destination. Resolve it before retrying.');
+    if(!journal){
+      assertMemberEditMoveRows_(sheet,[r.source,r.target],key);
+      if(typeof memberAssignmentJournal_==='function'&&(memberAssignmentJournal_(sheet,r.source)||memberAssignmentJournal_(sheet,r.target)))throw new Error('An interrupted member assignment needs recovery before this transfer.');
+      if(typeof pendingSignupApprovals_==='function'&&pendingSignupApprovals_().some(({journal:j})=>j.book===r.book&&j.rosterSheet===r.sheet&&[r.source,r.target].includes(j.slotRow)))throw new Error('An interrupted signup approval needs recovery before this transfer.');
+      if(at(r.source)!==r.id||at(r.target)!==r.id||name(r.source)!==r.name||rank(r.source)!==r.fromRank||rank(r.target)!==r.toRank||!isValidMemberValues_(r.fromRank,r.name)||!isMemberSlot_(r.toRank))throw new Error('The source or destination changed after confirmation. No conflicting row was overwritten. Clear the pending destination ID and retry.');
+      const live=memberMoveSnapshot_(sheet.getRange(r.target,1,1,width));
+      if(!Array.isArray(r.targetCells)||live.length!==r.targetCells.length||live.some((v,i)=>!memberMoveCellMatches_(v,r.targetCells[i])))throw new Error('Destination fields changed after confirmation. Clear the pending destination ID and retry; no conflicting fields were overwritten.');
+    }
+    r.phase='started';p.setProperty(key,JSON.stringify(r)); // durable before the existing staged journal writes
+    moveMemberColumns_(sheet,r.source,r.target);
+  }
+  r.phase='moved';p.setProperty(key,JSON.stringify(r));
+  return true;
+}
+/** Finish cheap follow-up state under the writer lock; rebuilds run on a later tick. */
+function finishMemberEditMove_(key,r) {
+  if(!['academy','groups','dashboard'].every(job=>deferWork_(job)))return false;
+  publishMarkDirty_();
+  try{promoRecord_(r.source,r.target,r.name,r.fromRank,r.toRank,key);}catch(e){log_('memberTransfer.promotion',e);}
+  PropertiesService.getDocumentProperties().deleteProperty(key);
+  try{if(typeof auditEvent_==='function')auditEvent_('move',r.fromRank,r.toRank,'',r.name);}catch(e){log_('memberTransfer.audit',e);}
+  _memberTransferNotifications_.push(r);
+  if(!pendingMemberEditMoves_().length)try{PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_BACKOFF_PROP_);}catch(e){/* priority hint expires on its own */}
+  return true;
+}
+const _memberTransferNotifications_=[];
+/** Network notifications must never extend the roster writer lock. */
+function flushMemberTransferNotifications_() {
+  if(LockService.getScriptLock().hasLock())return;
+  while(_memberTransferNotifications_.length){
+    const r=_memberTransferNotifications_.shift();
+    try{notifyCh_('AUDIT',CONFIG.notify.transfer,{
+      description:clamp_('# '+fill_(CONFIG.notify.transferTitle,{name:r.name,from:r.fromRank,to:r.toRank})+'\nThis member has been transferred. Their roster row has been updated.',4000),
+      color:hexToInt_(CONFIG.notify.transferColor,5793266),
+      fields:[{name:'`👮` Name',value:clamp_(dash_(r.name),1000),inline:true},{name:'`↗️` From',value:clamp_(dash_(withIcon_(r.fromRank)),1000),inline:true},{name:'`🛡️` To',value:clamp_(dash_(withIcon_(r.toRank)),1000),inline:true}]
+    },mention_(r.id));}catch(e){log_('memberTransfer.notification',e);}
+  }
+}
+function processMemberEditMoves_() {
+  const pending=pendingMemberEditMoves_();if(!pending.length)return 0;
+  const ss=SpreadsheetApp.getActive(),byId=new Map(ss.getSheets().map(s=>[s.getSheetId(),s]));let completed=0;
+  const started=Date.now();
+  for(const {key,raw} of pending){
+    if(Date.now()-started>20000||completed>=3)break; // conflicts cannot starve later independent transfers
+    try{
+      const r=JSON.parse(raw),sheet=byId.get(r.sheet);
+      if(!sheet||r.book!==ss.getId())throw new Error('Confirmed transfer belongs to a removed sheet or another workbook.');
+      if(applyMemberEditMove_(sheet,key,r)&&finishMemberEditMove_(key,r))completed++;
+    }catch(e){if(typeof diagnosticNotice_==='function')diagnosticNotice_('WARN','E-504','memberTransfer',String(e.message||e)+' Request '+key,3600);else log_('memberTransfer',e);}
+  }
+  return completed;
+}
+/** Confirm without a lock; move briefly or durably queue, never rebuild tabs inside simple onEdit. */
+function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn, previousId) {
   const targetRow = targetRange.getRow();
   const lastRow = sheet.getLastRow();
   if (lastRow < CONFIG.rosterStartRow) return;
   const RC = rosterCols_(sheet);
+  if(targetRow<CONFIG.rosterStartRow||!RC.discord||!RC.name||!RC.rank||targetRange.getNumRows()!==1||targetRange.getNumColumns()!==1)return;
 
   const target = String(discordId).trim();
   if (target === '') return;
@@ -4612,83 +4809,51 @@ function checkForMemberMove(sheet, targetRange, discordId, confirmFn, notifyFn) 
   }
   if (sourceRow === -1) return;
 
-  const memberName = sheet.getRange(sourceRow, RC.name).getValue();
-  const sourceRank = sheet.getRange(sourceRow, RC.rank).getValue() || 'Unknown';
-  const targetRank = sheet.getRange(targetRow, RC.rank).getValue() || 'Unknown';
+  const restorePaste=()=>{if(String(targetRange.getDisplayValue()).trim()===target){if(previousId!=null)targetRange.setValue(String(previousId));else targetRange.clearContent();}};
+
+  assertMemberEditMoveRows_(sheet,[sourceRow,targetRow]);
+  const request=prepareMemberEditMove_(sheet,sourceRow,targetRow,target);
+  const memberName = request.name;
+  const sourceRank = request.fromRank;
+  const targetRank = request.toRank;
   const targetName = String(sheet.getRange(targetRow, RC.name).getDisplayValue()).trim(); // who (if anyone) already sits at the destination
   const ui = SpreadsheetApp.getUi();
   const confirmMove = confirmFn || ((msg) => ui.alert('🔄 Member Transfer', msg, ui.ButtonSet.YES_NO) === ui.Button.YES);
   const notify = notifyFn || ((msg) => ui.alert(msg)); // tests pass a no-op so the suite never blocks on a dialog
-
+  if(!isValidMemberValues_(sourceRank,memberName)||!isMemberSlot_(targetRank)){restorePaste();notify('⚠️ Choose a member rank slot. No member fields were moved.');return;}
   // F-037: the destination already holds a DIFFERENT member — surface the overwrite instead of doing it silently.
   const occupiedWarning = (targetName && targetName !== String(memberName).trim())
     ? `\n\n⚠️ Row ${targetRow} already holds ${targetName} — continuing OVERWRITES ${targetName}'s row.`
     : '';
 
   if (!confirmMove(`Move ${memberName} from ${sourceRank} to ${targetRank}?${occupiedWarning}`)) {
-    targetRange.clearContent();
+    restorePaste();
     notify('❌ Action cancelled.');
     return;
   }
 
   // F-008: serialize the mutation and re-verify the source didn't shift during the (open-ended) confirm dialog —
   // a concurrent row insert/delete could otherwise make sourceRow point at a different member.
-  const lock = LockService.getScriptLock();
-  if (!lock.tryLock(15000)) { targetRange.clearContent(); notify('⏳ Another roster change is in progress — the transfer was cancelled. Please try again.'); return; }
+  const queued=queueMemberEditMove_(request);
+  const lock = LockService.getScriptLock(),held=lock.hasLock();
+  if (!held&&!lock.tryLock(250)) { notify('⏳ Transfer confirmed and queued. It will retry automatically when the current roster operation finishes. Leave the pasted ID in place, or clear it to cancel.'); return; }
+  let moved=false,failure=null;
   try {
-    if (String(sheet.getRange(sourceRow, RC.discord).getDisplayValue()).trim() !== target) {
-      targetRange.clearContent();
-      notify('⚠️ The roster changed while the transfer dialog was open — nothing was moved. Please retry.');
-      return;
-    }
-
     // Classification-driven transfer: MEMBER columns follow the person, SLOT columns (Rank/Callsign) stay with
     // the position. Shared with the panel's Move action.
-    moveMemberColumns_(sheet, sourceRow, targetRow);
-
-    notify('✅ Transfer complete.');
+    // A catch-up worker may have claimed/completed the request while tryLock waited.
+    // Reload its checkpoint rather than replaying this execution's stale queued object.
+    const current=PropertiesService.getDocumentProperties().getProperty(queued.key);
+    if(current)moved=applyMemberEditMove_(sheet,queued.key,JSON.parse(current));
+    else moved=String(sheet.getRange(sourceRow,RC.discord).getDisplayValue()).trim()===''&&String(targetRange.getDisplayValue()).trim()===target;
+  } catch(e) {
+    failure=e;
   } finally {
-    lock.releaseLock();
+    if(!held)lock.releaseLock();
   }
-  // Cheap, important, and AuthMode.LIMITED-safe — do these RIGHT AFTER the move, BEFORE the heavy rebuilds below.
-  // checkForMemberMove runs on the SIMPLE onEdit trigger, whose ~30s budget also spans the (human) confirm dialog; a big
-  // Academy rebuild afterwards could blow it, so record the promotion and flag the public copy FIRST — then neither is
-  // lost even if the rebuild gets cut short.
-  promoRecord_(sourceRow, targetRow, memberName, sourceRank, targetRank); // RECENT PROMOTIONS feed (no-op unless it was a promotion)
-  // Flag the public copy stale so the ~8s catch-up + 1-minute sweep publish it. We must NOT publish from here: the SIMPLE
-  // trigger is AuthMode.LIMITED and can't open the separate public file — the previous direct publish failed at openById
-  // AND deleted the dirty flag on the way in, which made the sweep SKIP the move (the public roster never caught up).
-  // publishOnChange (installable) schedules the catch-up on the ID paste.
-  if (sheet.getName() === CONFIG.sheets.roster) {
-    try { if (typeof publishMarkDirty_ === 'function') publishMarkDirty_(); } catch (ig) {}
-  }
-  // A transfer changes the member's rank, which can move them in/out of the Academy / group-tab bands — re-sync those
-  // NOW so the assignment tabs reflect the move immediately. runDeferredWork_ (not the debounced syncDerivedNow_) so
-  // it ALWAYS runs — transfers are serialized by their confirm dialog, so this can't stampede, and the rebuild is
-  // lock-free (it runs AFTER releaseLock above), so it never contends for the transfer lock. deferWork_ also leaves a
-  // queue entry, so the 1-minute sweep is still a backstop if this rebuild is cut short by the simple-trigger budget.
-  if (sheet.getName() === CONFIG.sheets.roster) {
-    try { deferWork_('academy'); deferWork_('groups'); } catch (e2) { /* queue is best-effort */ }
-    try { if (typeof runDeferredWork_ === 'function') runDeferredWork_(); } catch (e2) { log_('checkForMemberMove.derived', e2); }
-  }
-  // The move + its derived rebuild are SETTLED → release the publisher's stand-down NOW, so the ~8s catch-up (already
-  // scheduled by publishOnChange on the ID paste) publishes the result in seconds instead of standing down the full
-  // 45s a fresh transfer stamped. Without this, an isolated move — and any ordinary edit made in the next 45s — didn't
-  // reach the public roster until the backoff expired and the 1-minute sweep ran (~45-60s). Cleared only after the
-  // rebuild so the public copy publishes a fully-settled state; if a big rebuild overran the LIMITED budget this line
-  // isn't reached and the 45s backoff + sweep still carry it (no regression). This trigger is AuthMode.LIMITED, so
-  // clearing the hint is all it can do — it can neither publish nor schedule a trigger itself.
-  try { PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_BACKOFF_PROP_); } catch (ig) { /* best-effort */ }
-  // Discord webhook LAST: UrlFetchApp is unavailable in AuthMode.LIMITED, so this may throw — nothing important is after it.
-  notifyCh_('AUDIT', CONFIG.notify.transfer, { // roster-change traffic → AUDIT channel; only reached on a successful move
-    description: clamp_(`# ${fill_(CONFIG.notify.transferTitle, { name: memberName, from: sourceRank, to: targetRank })}\nThis member has been transferred. Their roster row has been updated.`, 4000),
-    color: hexToInt_(CONFIG.notify.transferColor, 5793266),
-    fields: [
-      { name: '`👮` Name', value: clamp_(dash_(memberName), 1000), inline: true },
-      { name: '`↗️` From', value: clamp_(dash_(withIcon_(sourceRank)), 1000), inline: true },
-      { name: '`🛡️` To', value: clamp_(dash_(withIcon_(targetRank)), 1000), inline: true },
-    ],
-  }, mention_(target));
+  if(failure){notify('⚠️ Transfer paused. '+String(failure.message||failure)+' Use Recover interrupted member changes if copying already started.');throw failure;}
+  if(moved)notify('✅ Transfer complete. Group views and the public roster will update in the background.');
+  else notify('Transfer not applied — the destination ID changed after confirmation.');
 }
 
 /**

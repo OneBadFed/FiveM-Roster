@@ -1,6 +1,6 @@
 # Roster Engine — System Documentation
 
-> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 38 whitelisted endpoints
+> **Version:** Engine **v1.0.0** · Config schema **v2** · Control Panel **v1.0.0** · 39 whitelisted endpoints
 
 Panel loading: both dialogs embed their initial data with `<` escaped for safe script insertion, with an RPC fallback if bootstrap generation fails. Control Panel requests icons and `cpStartupInfo` after its first paint; the signup queue loads when opened. Profile requests share in-flight calls and cache results for 30 seconds, invalidated on roster refresh. Health results use a 30-second cache scoped to the user and spreadsheet; audit-trigger verification is throttled for five minutes, with setup forcing a fresh check. Settings batches its status updates once per animation frame and updates existing navigation nodes.
 
@@ -179,17 +179,29 @@ clear opted-in section columns; columns move in contiguous runs (one `copyTo` + 
 sheet-edit path runs inside the ~30-second LIMITED onEdit budget that also hosts the confirm dialog. Both paths
 share the core: pasting an existing ID into a new row (`checkForMemberMove`, confirm-gated) and the panel's
 `cpMoveMember` (identity-guarded). A sheet-edit transfer stamps the publisher stand-down (`PUBLISH_BACKOFF`)
-first thing — before the roster scan and the confirm dialog, giving an in-flight publish the longest head-start
-to yield — and **clears it once the move and its derived rebuild settle**, so the settled result reaches the
-public copy via the ~8s catch-up instead of waiting out the stamp + sweep. The derived rebuild runs lock-free
-after the transfer's lock releases (transfers are serialized by their confirm dialog, so it can't stampede).
-A move-up records a promotion (§3b).
+first thing — before the roster scan and the confirm dialog. Consent captures identity, ranks, layout,
+classification and destination fields before the dialog, without holding the writer lock. The confirmed intent
+is stored in an independent `RE_EDIT_MOVE:` document property before a **250ms maximum lock wait**. An
+available lock completes the staged row move immediately; a busy lock leaves the pasted ID and request intact
+for automatic retry. Clearing/replacing the destination ID cancels an unstarted intent without overwriting
+newer edits. A changed identity, rank, layout or destination field pauses rather than overwrites the move.
+The authorized worker completes follow-up state, records promotions with a retry key, queues derived views and
+marks publishing dirty. Transfers precede maintenance jobs; a new intent makes subsequent jobs yield. Public
+publishing and destructive/member-panel writers respect outstanding intents. Notifications run after releasing
+the writer lock. The simple edit trigger never rebuilds tabs or sends webhooks in the transfer path. The worker
+clears the publish stand-down after settling intents; derived work runs before catch-up publication. Conflicting
+intents need operator review; optional notifications remain best-effort rather than exactly-once delivery.
 
-**Dashboard & #tags.** `refreshDashboard_` computes stats once and writes plain values into label-matched KPI
-boxes and `#members`-style tags. A Document Property (`RE_DASH_TABS`) remembers which tabs render dashboard
-content so edit-driven refreshes touch only those; menu/nightly runs do full rescans. A `[DASHBOARD_GROUPS]`
-entry that is **both** a SECTION_TAGS label and a real rank registers as both (rank wins per member) — so a
-"Cadet" rank isn't swallowed by the tag-only branch and #training-style stats count correctly.
+**Dashboard & #tags.** `refreshDashboard_` computes stats once and updates recognized Welcome KPI/employee
+boxes, explicit tags and the patrol leaderboard. Counter values/owned notes change while the existing sheet
+design, formulas and user notes remain. A Document Property (`RE_DASH_TABS`) remembers tagged tabs; the configured
+Welcome tab is always included. Use `#members`, `#active`, `#hours` or `#group:division1` (digits survive
+normalization). Exact rank group matches precede section matches; within each, the first group wins. Active
+means the highest configured tier, and no configured tiers/leave statuses produces zero for those counters.
+Dashboard ENABLE off preserves displayed values. Settings saves and panel member mutations queue refreshes;
+pending/failed status calculations hold dependent views and public publishing until retry. Changed values dirty
+their public mirror; unchanged values cause no extra writes. See [DASHBOARD_AUDIT.md](DASHBOARD_AUDIT.md) for the
+recognized box layouts, ownership rules and verification limits.
 
 **PREVIOUS ACTIVITY (up to 3 columns).** These columns snapshot each member's status **as the period closed**:
 📸 Capture & Reset writes them *before* zeroing hours and recomputing tiers (so they show what everyone earned
@@ -388,7 +400,7 @@ immediately, with the deferred queue as backstop.
 design system, deep-linkable (`openControlPanel('signups')` lands on a tab directly).
 
 **Security architecture (D5):** the client calls exactly one server function — `dispatch(name, args)` — which
-validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **38 endpoints**; the shim's
+validates `name` against the frozen `DISPATCH_ENDPOINTS_` map (unknown → `E-506`). **39 endpoints**; the shim's
 `RE_ENDPOINTS` list mirrors it one-for-one (adding an endpoint = one line in each — and a DevQA regression test
 now round-trips the whitelist, so a forgotten registration fails the suite instead of erroring in production). Writes are **identity-keyed**: the
 client sends each row's Unique ID so a shifted row can't hit the wrong member (`cpResolveMemberRow_` for
@@ -599,7 +611,8 @@ handling, approval hooks, derived-tab rebuilds, dashboard refresh). Installable 
 `onFormSubmit` (leave + patrol + signup syncs — routed by the submitted form's response tab via `e.range`, so a
 patrol submission runs only the patrol sync; no identifiable range → all three, correctness over speed;
 afterwards it clears the publish stand-down and schedules the ~8s catch-up), `processDailyLOAs` (nightly),
-`auditEdit`, `publishOnChange`
+`memberTransferEdited` (ID-edit catch-up scheduling), `memberTransferSweep` (1-minute transfer/maintenance
+retry even without a public link), `auditEdit`, `publishOnChange`
 (onEdit **and** onChange), `publishSweep` (1-minute), integrity/coverage/reset schedules, optional weekly
 snapshot. In library mode the shim forwards all of these.
 
@@ -693,3 +706,9 @@ Public mirror update reliability: formatting-only changes schedule the catch-up 
 First-Run Setup never creates Google Forms or changes their destinations. It retains existing response tabs (including unlinked template tabs), themes configured response sheets, and reports how to link your own forms. Link each form to the internal spreadsheet from Google Forms, then choose its response tab under Settings ? Sheets & layout ? Google Form links. The former leave/signup form creation functions have been removed entirely. Existing forms are not deleted.
 
 Fast public updates: authorized form-submit handlers publish the affected LOA/Patrol table immediately after sync and styling complete. Panel table writes publish their execution-local settled-table queue after releasing the writer lock. Both flush pending Sheets writes first and retain the global dirty flag for other pending changes. Deferred edit/format catch-up now requests a 3-second trigger delay (Google may execute it later); the 1-minute retry sweep remains. Full native row styling is still copied on every framed-table publish to preserve per-record formatting after sorting.
+
+### Settings: Ranks & badges and Dashboard
+
+Use Ranks & badges to search ranks, filter unassigned ranks, assign existing headcount groups and upload badges. Badge writes persist immediately; settings Save/Discard affects group assignments, not uploaded icons. Dashboard manages group creation, names, priority, rank/section selections and deletion with Undo. Exact rank matches outrank section matches; the first configured group wins within either type. Numeric group names preserve this priority too.
+
+Welcome statistics use saved configuration and the same calculation as the sheet. cpDashboardPreview is a read-only whitelisted endpoint returning aggregate counters, read time and actual pending refresh/public-update flags. The visible preview refreshes every 30 seconds; it never force-publishes or mutates the roster. Save drafts before comparing their resulting counts. The collapsed counter chooser copies tags into sheet cells. Roster section appearance uses named tone presets matching the Control Panel, with existing custom values preserved.
