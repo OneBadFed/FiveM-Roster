@@ -6,13 +6,14 @@ const elements={},events={},requests=[];
 const element=()=>({innerHTML:'',dataset:{},setAttribute(){},contains(){return false;},querySelectorAll(){return [];}});
 const c={Date,console,Math,DATA:{ranks:['Officer','Cadet']},KV:{},TBL:{DASHBOARD_GROUPS:[['Supervisors','Officer'],['Patrol','Cadet']],SECTION_TAGS:[['Training','CADET','training']],RANKS:[],STATUSES:[]},TBLBASE:{},TABLE_DIRTY:null,
   $:id=>elements[id]||null,esc:v=>String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;'),
-  ICONS:{table:'',dashboard:''},enhanceControls_(){},updateBar(){},toast(msg){c.lastToast=msg;},renderNav(){},renderSection(){},sectionEntered(){},
-  api:(success,failure,name)=>requests.push({success,failure,name}),document:{visibilityState:'visible',querySelectorAll:()=>[],querySelector:selector=>elements[selector]||null}};
+  ICONS:{table:'',dashboard:'',chev:''},DD:{},DDSEQ:0,DDOPEN:null,enhanceControls_(){},updateBar(){},toast(msg){c.lastToast=msg;},renderNav(){},renderSection(){},sectionEntered(){},
+  api:(success,failure,name,...args)=>requests.push({success,failure,name,args}),document:{visibilityState:'visible',querySelectorAll:()=>[],querySelector:selector=>elements[selector]||null}};
 vm.createContext(c);
 for(const id of ['content','ranklabelsHost','headcountEditor','dashPreview','tagCheat','sectionEditor','groupWarnings'])elements[id]=element();
 elements.content.addEventListener=(name,handler)=>(events[name]||(events[name]=[])).push(handler);
 load(c,html,'function kvChanged(bk)','function statusFlow()');load(c,html,'function statusFlow()','var SECTION_BY_KEY');
 load(c,html,'function tagCheatText()','/* Automation narrates');
+load(c,html,'function dd(attrs,','function openDD(btn)');load(c,html,'function routeDD(attrs,','/* ── controls ── */');
 load(c,html,'var RANKLIST=null','function rankIconsShell()');load(c,html,'function rkInitials(r)','function renderRankIcons(');
 c.RANKLIST=[{rank:'Officer',members:3,icon:''},{rank:'Cadet',members:1,icon:''},{rank:'<Captain>',members:0,icon:''}];
 c.TBLBASE.DASHBOARD_GROUPS=JSON.stringify(c.TBL.DASHBOARD_GROUPS);
@@ -54,4 +55,48 @@ const editor=elements.headcountEditor,typing={dataset:{groupcustom:'0'},value:'t
 const beforeTyping=editor.innerHTML;c.refreshGroupEditor_();assert.equal(editor.innerHTML,beforeTyping,'lazy rank reads do not replace an active editor');
 let focused=false,selection;const replacement={dataset:{groupcustom:'0'},value:'',focus(){focused=true;},setSelectionRange(a,b){selection=[a,b];}};
 editor.querySelectorAll=selector=>selector==='[data-groupchoice],[data-groupname],[data-groupcustom]'?[replacement]:[];c.refreshGroupEditor_(true);assert(focused);assert.equal(replacement.value,'typing draft');assert.deepEqual(selection,[3,8],'explicit editor refresh preserves the custom entry and caret');
-console.log('Guided Ranks/Dashboard: filters, priority, selection, rename/counter collisions, escaping, deletion/undo, custom categories, section presets, saved preview, queues, stale requests, retry, privacy and read-only endpoint passed.');
+// Appearance uses the same dark popup, labels and route as every other settings dropdown.
+c.DD={};c.DDSEQ=0;
+const sectionMarkup=c.sectionEditor_(),appearance=c.DD.dd1;
+assert(sectionMarkup.includes('class="ddbtn"'));assert(!sectionMarkup.includes('<select'));assert(!sectionMarkup.includes('<option'));
+assert(sectionMarkup.includes('aria-label="Section 1 appearance"'));assert(sectionMarkup.includes('data-sectiontone="0"'));assert(sectionMarkup.includes('Training</span>'));
+assert.deepEqual(Array.from(appearance.options,o=>o.v),['exec','admin','super','cadet','training','patrol','aux']);
+const swatch={style:{}},toneButton={parentNode:{querySelector:selector=>selector==='.tone-preview'?swatch:null}};
+const sectionIdentity=c.TBL.SECTION_TAGS[0].slice(0,2);c.TBLBASE.SECTION_TAGS=JSON.stringify(c.TBL.SECTION_TAGS);
+c.routeDD(appearance.attrs,'admin',toneButton);
+assert.equal(c.TBL.SECTION_TAGS[0][2],'admin');assert.equal(swatch.style.background,'var(--section-admin)');assert(c.tblChanged('SECTION_TAGS'));
+assert.deepEqual(c.TBL.SECTION_TAGS[0].slice(0,2),sectionIdentity,'appearance changes preserve labels and keywords');
+assert.doesNotThrow(()=>c.routeDD({sectiontone:'99'},'patrol',toneButton),'a removed row cannot be overwritten');
+c.TBL.SECTION_TAGS[0][2]='custom <tone>';assert(c.sectionEditor_().includes('custom &lt;tone> (current)'));
+assert.equal(c.TBL.SECTION_TAGS[0][2],'custom <tone>','viewing an unfamiliar tone preserves it until a preset is selected');
+c.routeDD({sectiontone:'0'},'patrol',toneButton);assert.equal(swatch.style.background,'var(--section-patrol)');
+// Exercise the actual popup keyboard and click handlers with browser geometry/focus fixtures.
+load(c,html,'function openDD(btn)','function routeDD(attrs,');
+c.window={innerWidth:1000,innerHeight:700};c.document.body={appendChild(){},contains:()=>true};
+let popup,options;const label={textContent:'Patrol',classList:{toggle(){}}};
+const popupButton={...toneButton,dataset:{ddkey:'dd1'},classList:{add(){},remove(){}},getAttribute:()=> 'Section 1 appearance',setAttribute(){},getBoundingClientRect:()=>({left:700,top:200,bottom:224,width:135}),querySelector:()=>label,focus(){c.document.activeElement=this;}};
+appearance.value='patrol';
+c.document.createElement=()=>{
+  const handlers={};popup={style:{},offsetHeight:180,offsetWidth:190,setAttribute(){},remove(){this.removed=true;},addEventListener:(name,fn)=>handlers[name]=fn};
+  options=appearance.options.map(o=>({dataset:{v:o.v},focus(){c.document.activeElement=this;},scrollIntoView(){},click(){handlers.click({target:{closest:()=>this}});}}));
+  popup.querySelector=selector=>selector==='.ddopt.sel'?options.find(o=>o.dataset.v===appearance.value):selector==='.ddopt'?options[0]:null;
+  popup.querySelectorAll=()=>options;popup.key=key=>handlers.keydown({key,preventDefault(){},stopPropagation(){}});return popup;
+};
+c.openDD(popupButton);assert.equal(c.document.activeElement.dataset.v,'patrol');
+assert(popup.innerHTML.includes('Administration'));assert(!popup.innerHTML.includes('<option'));
+popup.key('Home');popup.key('ArrowDown');popup.key('Enter');
+assert.equal(c.TBL.SECTION_TAGS[0][2],'admin');assert.equal(label.textContent,'Administration');assert(popup.removed);assert.equal(c.document.activeElement,popupButton);
+c.openDD(popupButton);popup.key('Escape');assert.equal(c.TBL.SECTION_TAGS[0][2],'admin');assert(popup.removed);assert.equal(c.document.activeElement,popupButton);
+c.openDD(popupButton);options.find(o=>o.dataset.v==='patrol').click();assert.equal(c.TBL.SECTION_TAGS[0][2],'patrol');assert.equal(label.textContent,'Patrol');
+// Rebuilding the editor closes its popup and retires only that editor's old dropdown IDs.
+let menuRemoved=false;
+c.DD.oldTone=appearance;c.DD.other={};
+elements.sectionEditor.contains=()=>true;elements.sectionEditor.querySelectorAll=()=>[{dataset:{ddkey:'oldTone'}}];
+c.DDOPEN={btn:{classList:{remove(){}},setAttribute(){}},menu:{remove(){menuRemoved=true;}}};
+c.refreshStudio_();assert(menuRemoved);assert.equal(c.DDOPEN,null);assert(!c.DD.oldTone);assert(c.DD.other);
+// The selected preset travels in the real Save payload, rather than saving a display label.
+c.SAVE_PENDING=false;c.BOOT_PENDING=false;c.BASE={};c.setSaving_=()=>{};c.setTimeout=()=>{};
+elements.savepill={classList:{add(){}}};elements.sptxt=element();elements.saveBtn={querySelector:()=>({outerHTML:''})};
+load(c,html,'function saveAll()','/* ── rank icons');c.saveAll();
+const save=requests[requests.length-1];assert.equal(save.name,'cpApplyConfig');assert.equal(save.args[0].tables.SECTION_TAGS[0][2],'patrol');
+console.log('Guided Ranks/Dashboard: filters, priority, selection, rename/counter collisions, escaping, deletion/undo, custom categories, shared appearance dropdown, tone swatches, custom tone preservation, popup cleanup, save payload, saved preview, queues, stale requests, retry, privacy and read-only endpoint passed.');

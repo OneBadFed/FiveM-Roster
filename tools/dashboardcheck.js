@@ -75,6 +75,28 @@ sh.set(8,2,'');ctx.renderDashboardOnSheet_(sh,stats);assert.equal(sh.notes[7][1]
 const protectedSheet=welcome();protectedSheet.formulas[2][6]='=CUSTOM()';protectedSheet.set(3,7,42);protectedSheet.notes[2][9]='operator note';protectedSheet.set(3,10,75);protectedSheet.set(3,13,'Leave information');
 ctx.renderDashboardOnSheet_(protectedSheet,stats);assert.equal(protectedSheet.values[2][6],42);assert.equal(protectedSheet.formulas[2][6],'=CUSTOM()');assert.equal(protectedSheet.values[2][9],75);assert.equal(protectedSheet.notes[2][9],'operator note');assert.equal(protectedSheet.values[2][12],'Leave information');
 const explicit=welcome();explicit.set(3,7,'#members');ctx.renderDashboardOnSheet_(explicit,stats);assert.equal(explicit.values[2][6],1,'explicit tag overrides automatic KPI choice');assert.equal(explicit.notes[2][6],'roster-stat:members');
+// Compact Welcome cards put a caption BELOW the count. TOTAL HOURS must not create AA16.
+function activityCard(){return new Sheet('Welcome Page',30,31).set(13,27,'ACTIVITY').merge(13,27,1,3).set(14,27,0).merge(14,27,1,3).set(15,27,'TOTAL HOURS').merge(15,27,1,3);}
+const compact=activityCard(),compactVisual=JSON.stringify({styles:compact.styles,merges:compact.merges});
+ctx.renderDashboardOnSheet_(compact,{...stats,totalHours:7.5});
+assert.equal(compact.values[13][26],7.5,'update the existing counter above the footer');assert.equal(compact.values[15][26],'','never place a second counter below the card');assert.equal(compact.notes[15][26],'');
+assert.equal(JSON.stringify({styles:compact.styles,merges:compact.merges}),compactVisual);
+const compactWrites=compact.writes;ctx.renderDashboardOnSheet_(compact,{...stats,totalHours:7.5});assert.equal(compact.writes,compactWrites,'compact cards settle without repeated writes');
+const stray=activityCard().set(16,27,0);stray.notes[15][26]='roster-stat:box:hours';dirty=[];ctx.renderDashboardOnSheet_(stray,stats);
+assert.equal(stray.values[15][26],'','repair the old misplaced zero');assert.equal(stray.notes[15][26],'','remove its automatic tracking note');assert.deepEqual(dirty,[['Welcome Page']],'cleanup queues the corrected public copy');
+ctx.renderDashboardOnSheet_(stray,{...stats,totalHours:8});assert.equal(stray.values[15][26],'','refresh cannot recreate the stray counter');
+for(const kind of ['formula','note','text','explicit']){
+ const guarded=activityCard().set(16,27,42);guarded.notes[15][26]='roster-stat:box:hours';
+ if(kind==='formula')guarded.formulas[15][26]='=CUSTOM()';
+ if(kind==='note')guarded.notes[15][26]='operator note';
+ if(kind==='text')guarded.set(16,27,'Operator text');
+ if(kind==='explicit')guarded.notes[15][26]='roster-stat:members';
+ ctx.renderDashboardOnSheet_(guarded,stats);assert.equal(guarded.values[15][26],kind==='text'?'Operator text':kind==='explicit'?stats.total:42,'cleanup preserves '+kind+' ownership');
+}
+const taggedCard=activityCard().set(14,27,'#members');ctx.renderDashboardOnSheet_(taggedCard,stats);assert.equal(taggedCard.values[13][26],stats.total);assert.equal(taggedCard.notes[13][26],'roster-stat:members','explicit tag above footer retains its choice');assert.equal(taggedCard.values[15][26],'');
+const formulaCard=activityCard().set(14,27,19);formulaCard.formulas[13][26]='=SUM(A1:A2)';ctx.renderDashboardOnSheet_(formulaCard,stats);assert.equal(formulaCard.values[13][26],19);assert.equal(formulaCard.values[15][26],'','a formula-owned card also blocks footer adoption');
+const textCard=activityCard().set(14,27,'Awaiting logs');textCard.notes[13][26]='operator note';ctx.renderDashboardOnSheet_(textCard,stats);assert.equal(textCard.values[13][26],'Awaiting logs');assert.equal(textCard.notes[13][26],'operator note');assert.equal(textCard.values[15][26],'','user text inside the card must not redirect the counter below it');
+const tallCard=new Sheet('Welcome Page').set(3,7,'ACTIVITY').merge(3,7,2,2).merge(5,7,3,2).set(8,7,'TOTAL HOURS').merge(8,7,2,2);ctx.renderDashboardOnSheet_(tallCard,{...stats,totalHours:12});assert.equal(tallCard.values[4][6],12,'blank and multi-row merged counters are adopted inside the card');assert.equal(tallCard.values[9][6],'');
 const other=welcome();other.name='Department notes';ctx.renderDashboardOnSheet_(other,stats);assert.equal(other.values[2][4],99,'automatic boxes limited to configured Welcome');
 const released=welcome();ctx.renderDashboardOnSheet_(released,stats);released.set(2,7,'Custom information');released.set(2,2,'Other breakdown');ctx.renderDashboardOnSheet_(released,{...stats,totalHours:12,total:6,groups:{'Division 1':5}});assert.equal(released.values[2][6],0,'renaming a box title releases its counter');assert.equal(released.values[2][4],0,'renaming employee title releases its group counters');
 const concurrent=new Sheet('Department notes');concurrent.set(1,1,'#members');const getRange=concurrent.getRange.bind(concurrent);let reads=0;

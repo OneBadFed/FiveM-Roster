@@ -1037,6 +1037,7 @@ function renderDashboardOnSheet_(sheet, s) {
 function renderWelcomeStatsBoxes_(sheet,grid,s,onChange) {
   const width=sheet.getLastColumn(),height=sheet.getMaxRows(),mark='roster-stat:box:';
   const headers={totalhours:'hours',totalpatrolhours:'hours',activemembers:'active',activeemployees:'active',totalactivemembers:'active',semiactivemembers:'semi',inactivemembers:'inactive',currentloasroas:'onleave',currentloas:'onleave',currentroas:'onleave',membersonleave:'onleave',openslots:'openslots',availablepositions:'openslots',totalmembers:'members'};
+  const cardTitles=Object.assign({activity:'hours',currentlyonleave:'onleave',totalemployees:'members'},headers);
   let managed=0;
   const bounds=(row,col)=>{
     const merges=sheet.getRange(row,col).getMergedRanges();
@@ -1060,6 +1061,30 @@ function renderWelcomeStatsBoxes_(sheet,grid,s,onChange) {
     const b=bounds(r+1,c+1);if(b.row!==r+1||b.col!==c+1)continue;
     if(statTagKey_(sheet.getRange(r+1,c+1).getDisplayValue())!==label)continue;
     const right=Math.min(width,b.right>b.col?b.right:b.col+1),first=b.bottom+1;
+    const key=employeeBox?'members':headers[label];
+    // Compact cards are title -> count -> caption (ACTIVITY / 0 / TOTAL HOURS).
+    // Confirm the matching title and merged boundaries before treating a label as a footer.
+    if(b.row>2){
+      const above=bounds(b.row-1,b.col);
+      if(above.row>1&&above.bottom===b.row-1&&above.col===b.col&&above.right<=right){
+        const title=bounds(above.row-1,b.col),titleKey=statTagKey_(sheet.getRange(title.row,title.col).getDisplayValue());
+        if(title.bottom===above.row-1&&title.col===b.col&&title.right<=right&&Object.prototype.hasOwnProperty.call(cardTitles,titleKey)&&cardTitles[titleKey]===key){
+          put(above.row,above.col,key,b.col,right);
+          // Repair only the old automatic counter immediately below this confirmed footer.
+          if(first<=height){
+            const below=bounds(first,b.col);
+            if(below.row===first&&below.col===b.col&&below.right<=right){
+              const stray=sheet.getRange(first,b.col),value=stray.getValue();
+              if(!stray.getFormula()&&stray.getNote()===mark+key&&(value===''||(typeof value==='number'&&Number.isFinite(value)))){
+                if(value!=='')stray.setValue('');
+                stray.clearNote();if(onChange)onChange();
+              }
+            }
+          }
+          continue;
+        }
+      }
+    }
     // TOTAL MEMBERS can be a single KPI or a renamed employee breakdown.
     const next=String(((grid[first-1]||[])[b.col-1])||'').trim();
     if(employeeBox&&next&&!/^#/.test(next)&&!Number.isFinite(Number(next))){

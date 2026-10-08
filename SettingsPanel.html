@@ -586,7 +586,6 @@
   .counter-row .rkbtn{text-align:left;height:28px;overflow:hidden;text-overflow:ellipsis;}
   .counter-category{margin-top:14px;font-size:12px;font-weight:600;color:var(--txt-2);}
   .section-line{display:grid;grid-template-columns:minmax(130px,1fr) minmax(160px,2fr) 135px 32px;gap:8px;align-items:start;margin-bottom:10px;}
-  .studio-select{height:28px;border:0;border-radius:var(--r-in);background:var(--ctl);color:var(--txt);font:12.5px var(--ui);padding:0 8px;box-shadow:var(--ctlring);color-scheme:dark;}
   .tone-preview{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:5px;}
   .badge-dialog{border:0;background:var(--bg);color:var(--txt);border-radius:var(--r-card);padding:22px;box-shadow:var(--sh-3);max-width:360px;text-align:center;}
   .badge-dialog::backdrop{background:rgba(0,0,0,.6);}
@@ -1034,14 +1033,14 @@
   }
 
   /* ── custom dropdown ── */
-  function dd(attrs, options, value, allowEmpty, emptyLabel){
+  function dd(attrs, options, value, allowEmpty, emptyLabel, ariaLabel){
     var id='dd'+(++DDSEQ);
     DD[id]={options:(options||[]).filter(function(o){return o!=null;}).map(function(o){ return (typeof o==='object')?{v:String(o.v),l:String(o.l==null?o.v:o.l)}:{v:String(o),l:String(o)}; }), value:String(value==null?'':value), allowEmpty:!!allowEmpty, emptyLabel:emptyLabel||'— none —', attrs:attrs||{}};
     var cur=DD[id].options.filter(function(o){return o.v===DD[id].value;})[0];
     var lab=cur?cur.l:(DD[id].value===''?(allowEmpty?DD[id].emptyLabel:'— choose —'):DD[id].value+' (current)');
     var isPh=(DD[id].value===''&&!cur);
     var extra=''; for(var k in attrs){ extra+=' data-'+k+'="'+esc(attrs[k])+'"'; }
-    return '<button type="button" class="ddbtn" aria-haspopup="dialog" aria-expanded="false" data-ddkey="'+id+'"'+extra+'><span class="ddlab'+(isPh?' ddph':'')+'">'+esc(lab)+'</span>'+ICONS.chev+'</button>';
+    return '<button type="button" class="ddbtn"'+(ariaLabel?' aria-label="'+esc(ariaLabel)+'"':'')+' aria-haspopup="dialog" aria-expanded="false" data-ddkey="'+id+'"'+extra+'><span class="ddlab'+(isPh?' ddph':'')+'">'+esc(lab)+'</span>'+ICONS.chev+'</button>';
   }
   function closeDD(restoreFocus){ if(DDOPEN){ var btn=DDOPEN.btn; DDOPEN.menu.remove(); btn.classList.remove('open'); btn.setAttribute('aria-expanded','false'); DDOPEN=null; if(restoreFocus===true && document.body.contains(btn)) btn.focus(); } }
   function openDD(btn){
@@ -1098,6 +1097,13 @@
   }
   function routeDD(attrs, v, btn){
     if(attrs.bk){ onKv(attrs.bk, v); return; }
+    if(attrs.sectiontone!==undefined){
+      var row=(TBL.SECTION_TAGS||[])[Number(attrs.sectiontone)]; if(!row) return;
+      row[2]=v;
+      var sw=btn.parentNode.querySelector('.tone-preview');
+      if(sw) sw.style.background=/^(exec|admin|super|cadet|training|patrol|aux)$/.test(v)?'var(--section-'+v+')':'var(--txt-3)';
+      updateBar(); renderDashboardPreview_(); return;
+    }
     if(attrs.ovc!==undefined){
       var ov=btn.closest('[data-ovi]'); if(!ov) return;
       var i=Number(ov.dataset.ovi);
@@ -1913,10 +1919,25 @@
   function sectionEditor_(){
     var tones=[['exec','Executive', 'var(--section-exec)'],['admin','Administration','var(--section-admin)'],['super','Supervisors','var(--section-super)'],['cadet','Cadets','var(--section-cadet)'],['training','Training','var(--section-training)'],['patrol','Patrol','var(--section-patrol)'],['aux','Auxiliary','var(--section-aux)']];
     var h='<p class="studio-help">Match words in roster divider headings to a section label and appearance. Use these labels in headcount groups. Changes require Save.</p>';
-    (TBL.SECTION_TAGS||[]).forEach(function(r,i){var tone=tones.filter(function(t){return t[0]===r[2];})[0];h+='<div class="section-line"><label><span class="studio-meta">Section label</span><input class="in" data-sectionedit="'+i+'" data-col="0" value="'+esc(r[0])+'" aria-label="Section '+(i+1)+' label"></label><label><span class="studio-meta">Match words (comma separated)</span><input class="in" data-sectionedit="'+i+'" data-col="1" value="'+esc(r[1])+'" aria-label="Section '+(i+1)+' match words"></label><label><span class="studio-meta"><span class="tone-preview" style="background:'+(tone?tone[2]:'var(--txt-3)')+'"></span>Appearance</span><select class="studio-select" data-sectionedit="'+i+'" data-col="2" aria-label="Section '+(i+1)+' appearance">'+(!tone?'<option value="'+esc(r[2])+'" selected>'+esc(r[2]||'Choose appearance')+'</option>':'')+tones.map(function(t){return '<option value="'+t[0]+'"'+(t[0]===r[2]?' selected':'')+'>'+t[1]+'</option>';}).join('')+'</select></label><button type="button" class="rkbtn rkdel" data-sectiondelete="'+i+'" aria-label="Delete section '+esc(r[0])+'" style="margin-top:18px">✕</button></div>';});
+    (TBL.SECTION_TAGS||[]).forEach(function(r,i){
+      var tone=tones.filter(function(t){return t[0]===r[2];})[0];
+      h+='<div class="section-line"><label><span class="studio-meta">Section label</span><input class="in" data-sectionedit="'+i+'" data-col="0" value="'+esc(r[0])+'" aria-label="Section '+(i+1)+' label"></label>'
+        +'<label><span class="studio-meta">Match words (comma separated)</span><input class="in" data-sectionedit="'+i+'" data-col="1" value="'+esc(r[1])+'" aria-label="Section '+(i+1)+' match words"></label>'
+        +'<div><span class="studio-meta"><span class="tone-preview" style="background:'+(tone?tone[2]:'var(--txt-3)')+'"></span>Appearance</span>'
+        +dd({sectiontone:String(i)},tones.map(function(t){return {v:t[0],l:t[1]};}),r[2],false,null,'Section '+(i+1)+' appearance')+'</div>'
+        +'<button type="button" class="rkbtn rkdel" data-sectiondelete="'+i+'" aria-label="Delete section '+esc(r[0])+'" style="margin-top:18px">✕</button></div>';
+    });
     return h+'<button type="button" class="rkbtn" data-sectionadd="1">Add section style</button>';
   }
-  function refreshStudio_(){refreshGroupEditor_(true);var s=$('sectionEditor');if(s)s.innerHTML=sectionEditor_();renderRankLabels();updateBar();}
+  function refreshStudio_(){
+    refreshGroupEditor_(true);
+    var s=$('sectionEditor');if(s){
+      if(DDOPEN&&s.contains(DDOPEN.btn)) closeDD();
+      s.querySelectorAll('[data-ddkey]').forEach(function(btn){delete DD[btn.dataset.ddkey];});
+      s.innerHTML=sectionEditor_(); enhanceControls_(s);
+    }
+    renderRankLabels();updateBar();
+  }
   function rankLabelsShell(){
     return '<div class="studio-toolbar"><input class="in" id="rankSearch" value="'+esc(RANK_QUERY)+'" placeholder="Search ranks…" aria-label="Search ranks"><button type="button" class="rkbtn" data-rankfilter="1" aria-pressed="'+RANK_UNASSIGNED+'">Unassigned only</button><button type="button" class="rkbtn" data-secjump="dashboard">Manage headcount groups</button></div><p class="studio-help">Badge changes save immediately. Group assignments wait for Save; Discard only undoes settings edits.</p><details class="dcsec"><summary>Badge image tips</summary><div class="dcsec-b studio-help">Choose a square PNG with transparency. Images are resized automatically. Click a badge to preview it.</div></details>'
       +'<div id="ranklabelsHost"><div class="rkloading">Loading ranks…</div></div>';
@@ -2135,13 +2156,13 @@
     var t=e.target;
     if(t.id==='rankSearch'){RANK_QUERY=t.value;renderRankLabels();return;}
     if(t.dataset.groupname!==undefined){var row=(TBL.DASHBOARD_GROUPS||[])[Number(t.dataset.groupname)];if(row){row[0]=t.value;updateBar();renderDashboardPreview_();var w=$('groupWarnings');if(w)w.innerHTML=groupWarnings_().map(function(msg){return '<p class="group-warning">'+esc(msg)+'</p>';}).join('');}return;}
-    if(t.dataset.sectionedit!==undefined&&t.tagName!=='SELECT'){var sr=(TBL.SECTION_TAGS||[])[Number(t.dataset.sectionedit)];if(sr){sr[Number(t.dataset.col)]=t.value;updateBar();renderDashboardPreview_();}return;}
+    if(t.dataset.sectionedit!==undefined){var sr=(TBL.SECTION_TAGS||[])[Number(t.dataset.sectionedit)];if(sr){sr[Number(t.dataset.col)]=t.value;updateBar();renderDashboardPreview_();}return;}
   });
   $('content').addEventListener('change',function(e){
     var t=e.target;
     if(t.dataset.groupchoice!==undefined){rlToggle(Number(t.dataset.groupchoice),t.value);refreshGroupEditor_(true);return;}
     if(t.dataset.groupname!==undefined){refreshTagCheat();return;}
-    if(t.dataset.sectionedit!==undefined){var row=(TBL.SECTION_TAGS||[])[Number(t.dataset.sectionedit)];if(row){row[Number(t.dataset.col)]=t.value;updateBar();renderDashboardPreview_();if(t.tagName==='SELECT'){var sw=t.parentNode.querySelector('.tone-preview');if(sw)sw.style.background=/^(exec|admin|super|cadet|training|patrol|aux)$/.test(t.value)?'var(--section-'+t.value+')':'var(--txt-3)';}}return;}
+    if(t.dataset.sectionedit!==undefined){var row=(TBL.SECTION_TAGS||[])[Number(t.dataset.sectionedit)];if(row){row[Number(t.dataset.col)]=t.value;updateBar();renderDashboardPreview_();}return;}
   });
   $('content').addEventListener('click',function(e){
     var b=e.target.closest('[data-dashrefresh],[data-rankfilter],[data-secjump],[data-groupmove],[data-groupdelete],[data-groupundo],[data-groupremove],[data-groupcustomadd],[data-sectionadd],[data-sectiondelete],[data-badgepreview],[data-badgeclose]');if(!b)return;
