@@ -3,6 +3,8 @@
  * change queues it again. Short document locks make taking work atomic. */
 const PUBLISH_SCOPE_PROP_='PUBLIC_PENDING_SCOPE_V1';
 const PUBLISH_INFLIGHT_PROP_='PUBLIC_INFLIGHT_SCOPE_V1';
+const PUBLISH_HINT_PREFIX_='RE_PUBLIC_HINT_V1:';
+const PUBLISH_FINISHED_PREFIX_='RE_PUBLIC_FINISHED_V1:';
 function publishScopeNames_(names) {
   return Array.from(new Set((Array.isArray(names)?names:[names]).filter(n=>typeof n==='string'&&n.trim()).map(n=>n.trim())));
 }
@@ -14,8 +16,34 @@ function publishSelected_(name, selection) {
 }
 function publishScopeLock_(fn) {
   const lock=LockService.getDocumentLock(),held=lock&&lock.hasLock&&lock.hasLock();
-  if(!lock||(!held&&!lock.tryLock(1000)))throw new Error('Public update queue is busy; update remains queued.');
-  try{return fn(PropertiesService.getDocumentProperties());}finally{if(!held)lock.releaseLock();}
+  if(!lock||(!held&&!lock.tryLock(1000))){const e=new Error('Public update queue is busy.');e.publishQueueBusy=true;throw e;}
+  try{const p=PropertiesService.getDocumentProperties();publishQueueDrainHints_(p);return fn(p);}finally{if(!held)lock.releaseLock();}
+}
+/** A busy document lock must not erase scoped work or race the current queue owner.
+ * Each event writes its own durable record; only a lock owner merges/deletes records.
+ * A write arriving after the owner's snapshot stays pending for the next sweep. */
+function publishQueueHint_(names) {
+  const tabs=names?publishScopeNames_(names):[];
+  const key=PUBLISH_HINT_PREFIX_+Date.now()+':'+Math.random().toString(36).slice(2);
+  const raw=JSON.stringify(tabs);
+  PropertiesService.getDocumentProperties().setProperty(key,raw.length<1800?raw:'[]');
+}
+function publishQueueDrainHints_(p) {
+  const all=p.getProperties(),keys=Object.keys(all).filter(k=>k.indexOf(PUBLISH_HINT_PREFIX_)===0);
+  if(!keys.length)return;
+  const s=publishScopeRead_(p);
+  keys.forEach(k=>{
+    let tabs;try{const value=JSON.parse(all[k]);tabs=Array.isArray(value)?publishScopeNames_(value):[];}catch(e){tabs=[];}
+    if(!tabs.length){s.all=true;s.except=[];delete s.tabs;}
+    else if(s.all)s.except=s.except.filter(n=>!publishSelected_(n,tabs));
+    else s.tabs=publishScopeNames_(s.tabs.concat(tabs));
+  });
+  publishScopeStore_(p,s); // commit merged work BEFORE removing the durable records
+  keys.forEach(k=>p.deleteProperty(k));
+}
+function publishHasPending_(p) {
+  p=p||PropertiesService.getDocumentProperties();
+  return p.getProperty('PUBLIC_DIRTY')==='1'||Object.keys(p.getProperties()).some(k=>k.indexOf(PUBLISH_HINT_PREFIX_)===0);
 }
 function publishScopeRead_(p) {
   if(p.getProperty('PUBLIC_DIRTY')!=='1')return {all:false,tabs:[]};
@@ -35,13 +63,13 @@ function publishScopeStore_(p,s) {
   p.setProperty('PUBLIC_DIRTY','1');
 }
 function publishQueueChange_(names) {
-  publishScopeLock_(p=>{
+  try{publishScopeLock_(p=>{
     const s=publishScopeRead_(p),tabs=names?publishScopeNames_(names):[];
     if(!tabs.length){publishScopeStore_(p,{all:true,except:[]});return;}
     if(s.all)s.except=s.except.filter(n=>!publishSelected_(n,tabs));
     else s.tabs=publishScopeNames_(s.tabs.concat(tabs));
     publishScopeStore_(p,s);
-  });
+  });}catch(e){if(!e||!e.publishQueueBusy)throw e;publishQueueHint_(names);}
 }
 function publishQueueTake_(selection) {
   return publishScopeLock_(p=>{
@@ -84,11 +112,19 @@ function publishQueueBegin_(selection,manual) {
   });
 }
 function publishQueueFinish_() {
-  publishScopeLock_(p=>{
-    const raw=p.getProperty(PUBLISH_INFLIGHT_PROP_);if(!raw)return;
-    const record=JSON.parse(raw);
-    if(record&&record.token===_publishPassToken_)p.deleteProperty(PUBLISH_INFLIGHT_PROP_);
-  });
+  const token=_publishPassToken_;if(!token)return;
+  // This checkpoint is complete only AFTER unfinished tabs have been requeued.
+  // Persist completion before contending for the queue lock: cleanup contention
+  // must not turn an already completed mirror into another full publish.
+  const p=PropertiesService.getDocumentProperties(),key=PUBLISH_FINISHED_PREFIX_+token;
+  p.setProperty(key,'1');
+  try{return publishScopeLock_(props=>{
+    const raw=props.getProperty(PUBLISH_INFLIGHT_PROP_);
+    const record=raw?JSON.parse(raw):null;
+    if(record&&record.token===token)props.deleteProperty(PUBLISH_INFLIGHT_PROP_);
+    props.deleteProperty(key);
+    return true;
+  });}catch(e){if(!e||!e.publishQueueBusy)throw e;return false;}
 }
 /** Only called after the old pass lease expires (or was released), under its claim
  * lock. Merge leftover work with new edits before allowing another publisher. */
@@ -96,6 +132,12 @@ function publishQueueRecover_() {
   publishScopeLock_(p=>{
     const raw=p.getProperty(PUBLISH_INFLIGHT_PROP_);if(!raw)return;
     let record;try{record=JSON.parse(raw);}catch(e){/* malformed means full work */}
+    const finished=record&&record.token&&PUBLISH_FINISHED_PREFIX_+record.token;
+    if(finished&&p.getProperty(finished)==='1'){
+      p.deleteProperty(PUBLISH_INFLIGHT_PROP_);
+      p.deleteProperty(finished);
+      return;
+    }
     const selection=record&&record.selection;
     const valid=Array.isArray(selection)?publishScopeNames_(selection).length>0:selection&&Array.isArray(selection.except);
     publishQueueRetry_(valid?selection:undefined);
@@ -122,17 +164,47 @@ function publishAssertSettled_(roster) {
  * malformed, sparse, or rejected, callers retain the complete Apps Script fallback.
  * No guessed default heights/widths and no authorization token in diagnostics. */
 let _publishDimensionsApiOff_=false;
-function publishDimensionsFast_(src,dest,rows,cols,offset) {
-  if(_publishDimensionsApiOff_||!rows||typeof UrlFetchApp==='undefined'||typeof ScriptApp==='undefined'||typeof ScriptApp.getOAuthToken!=='function')return false;
+/** Welcome replacement needs to restore incoming public formulas after rename.
+ * Read formula metadata for all public tabs in one request instead of one full
+ * data-range read per tab. A rejected service leaves the existing scan intact. */
+function publishWelcomeReferencesFast_(target,dest,name) {
+  if(_publishDimensionsApiOff_||typeof Sheets==='undefined'||!Sheets.Spreadsheets)return null;
   try{
-    const headers={Authorization:'Bearer '+ScriptApp.getOAuthToken()};
+    const sheets=target.getSheets(),byId=new Map(sheets.map(s=>[s.getSheetId(),s]));
+    const fields='sheets(properties(sheetId),data(startRow,startColumn,rowData(values(userEnteredValue(formulaValue)))))';
+    const metadata=Sheets.Spreadsheets.get(target.getId(),{fields});
+    if(!metadata||!Array.isArray(metadata.sheets)||metadata.sheets.length!==sheets.length)return null;
+    const refs=[],seen=new Set(),quoted="'"+name.replace(/'/g,"''")+"'!";
+    for(const tab of metadata.sheets){
+      const id=tab.properties&&tab.properties.sheetId,sheet=byId.get(id);
+      if(!sheet||seen.has(id))return null;
+      seen.add(id);
+      if(id===dest.getSheetId())continue;
+      (tab.data||[]).forEach(grid=>(grid.rowData||[]).forEach((row,r)=>(row.values||[]).forEach((cell,c)=>{
+        const formula=cell.userEnteredValue&&cell.userEnteredValue.formulaValue;
+        if(formula&&(formula.indexOf(quoted)!==-1||formula.indexOf(name+'!')!==-1))refs.push({sheet,row:(grid.startRow||0)+r+1,col:(grid.startColumn||0)+c+1,formula});
+      })));
+    }
+    return refs;
+  }catch(e){return null;}
+}
+function publishDimensionsFast_(src,dest,rows,cols,offset) {
+  const advanced=typeof Sheets!=='undefined'&&Sheets.Spreadsheets;
+  if(_publishDimensionsApiOff_||!rows||(!advanced&&(typeof UrlFetchApp==='undefined'||typeof ScriptApp==='undefined'||typeof ScriptApp.getOAuthToken!=='function')))return false;
+  try{
+    const headers=advanced?null:{Authorization:'Bearer '+ScriptApp.getOAuthToken()};
     SpreadsheetApp.flush(); // make pending source/grid changes visible to the REST read
     const sourceStart=offset&&offset.srcStart||1,destStart=offset&&offset.destStart||1;
     const a1="'"+src.getName().replace(/'/g,"''")+"'!A"+sourceStart+":"+groupColLetter_(Math.max(1,cols))+(sourceStart+rows-1);
     const fields='sheets(properties(sheetId),data(startRow,startColumn,rowMetadata(pixelSize),columnMetadata(pixelSize)))';
-    const response=UrlFetchApp.fetch('https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(src.getParent().getId())+'?ranges='+encodeURIComponent(a1)+'&fields='+encodeURIComponent(fields),{headers,muteHttpExceptions:true});
-    if(response.getResponseCode()!==200)throw new Error('Dimension metadata HTTP '+response.getResponseCode());
-    const sheet=(JSON.parse(response.getContentText()).sheets||[]).find(s=>s.properties&&s.properties.sheetId===src.getSheetId());
+    let metadata;
+    if(advanced)metadata=Sheets.Spreadsheets.get(src.getParent().getId(),{ranges:[a1],fields});
+    else{
+      const response=UrlFetchApp.fetch('https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(src.getParent().getId())+'?ranges='+encodeURIComponent(a1)+'&fields='+encodeURIComponent(fields),{headers,muteHttpExceptions:true});
+      if(response.getResponseCode()!==200)throw new Error('Dimension metadata HTTP '+response.getResponseCode());
+      metadata=JSON.parse(response.getContentText());
+    }
+    const sheet=(metadata.sheets||[]).find(s=>s.properties&&s.properties.sheetId===src.getSheetId());
     const grid=sheet&&(sheet.data||[]).find(g=>(g.startRow||0)===sourceStart-1&&!g.startColumn);
     const heights=grid&&grid.rowMetadata,widths=grid&&grid.columnMetadata;
     if(!heights||heights.length<rows||(cols&&(!widths||widths.length<cols)))throw new Error('Incomplete dimension metadata');
@@ -143,9 +215,16 @@ function publishDimensionsFast_(src,dest,rows,cols,offset) {
       requests.push({updateDimensionProperties:{range:{sheetId:id,dimension,startIndex:start+at,endIndex:start+end},properties:{pixelSize:values[at].pixelSize},fields:'pixelSize'}});at=end;}};
     runs(heights,rows,'ROWS',destStart-1);if(cols)runs(widths,cols,'COLUMNS');
     for(let at=0;at<requests.length;at+=500){
+      if(advanced){Sheets.Spreadsheets.batchUpdate({requests:requests.slice(at,at+500)},dest.getParent().getId());continue;}
       const result=UrlFetchApp.fetch('https://sheets.googleapis.com/v4/spreadsheets/'+encodeURIComponent(dest.getParent().getId())+':batchUpdate',{method:'post',headers,contentType:'application/json',payload:JSON.stringify({requests:requests.slice(at,at+500)}),muteHttpExceptions:true});
       if(result.getResponseCode()!==200)throw new Error('Dimension update HTTP '+result.getResponseCode());
     }
     return true;
-  }catch(e){_publishDimensionsApiOff_=true;logWarn_('publishDimensionsFast_','Using complete Apps Script dimension fallback: '+diagnosticText_(e&&e.message||e,200));return false;}
+  }catch(e){
+    _publishDimensionsApiOff_=true;
+    const message='Using complete Apps Script dimension fallback: '+diagnosticText_(e&&e.message||e,200)+'. Check that the Google Sheets API is enabled in the script\'s Cloud project.';
+    if(typeof diagnosticNotice_==='function')diagnosticNotice_('WARN','','publishDimensionsFast_',message,3600);
+    else logWarn_('publishDimensionsFast_',message);
+    return false;
+  }
 }

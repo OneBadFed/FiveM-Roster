@@ -88,8 +88,12 @@ const actualProps=ctx.PropertiesService.getDocumentProperties;ctx.PropertiesServ
 assert.throws(()=>ctx.publishPassClaim_(),/property storage offline/);assert.equal(held,false);ctx.PropertiesService.getDocumentProperties=actualProps;
 ctx.buildMenus_=()=>{throw Error('menu unavailable')};assert.doesNotThrow(()=>ctx.onOpen());
 const importFailure=Error('leave import failed');ctx.getSheetOrWarn_=()=>({});ctx.syncFormToTracker_=()=>{throw importFailure};releaseError=Error('release also failed');
+ctx.CONFIG.sheets.form='LeaveForm';ctx.CONFIG.sheets.tracker='Tracker';
 assert.throws(()=>ctx.syncFormToTracker(),e=>e===importFailure);releaseError=null;ctx.getSheetOrWarn_=()=>null;
 assert.throws(()=>ctx.syncFormToTracker(),/sheet is missing/);
+ctx.CONFIG.sheets.form='';const actualLock=ctx.LockService.getScriptLock;
+ctx.LockService.getScriptLock=()=>{throw Error('disabled intake must not acquire a lock')};ctx.getSheetOrWarn_=()=>{throw Error('disabled intake must not look up a sheet')};
+assert.equal(ctx.syncFormToTracker(),0);ctx.LockService.getScriptLock=actualLock;
 // Client transport throws, callback errors and duplicate completion do not strand the operation or replay it.
 for(const file of ['ControlPanel.html','SettingsPanel.html']){
  const html=fs.readFileSync(file,'utf8'),a=html.indexOf('  function api(success,'),b=html.indexOf('\n  function ',a+10);let handlers={},errors=[],completed=0;

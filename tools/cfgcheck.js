@@ -63,6 +63,11 @@ const mBoth = X.materialize_(vBoth.config, true);
 ok('when BOTH rows exist the NEW name wins', mBoth.legacy.sheets.form === 'New Name', String(mBoth.legacy.sheets.form));
 const vNew = X.validateConfig_({ SHEETS: { kind: 'kv', kv: { LEAVE_FORM_RESPONSES: 'Direct New' } } });
 ok('new-name row alone works', X.materialize_(vNew.config, true).legacy.sheets.form === 'Direct New');
+const leaveOff=X.validateConfig_({SHEETS:{kind:'kv',kv:{LEAVE_FORM_RESPONSES:''}}});
+ok('explicit blank leave-form setting is valid', errsOf(leaveOff.problems).length===0);
+const leaveOffLegacy=X.materialize_(leaveOff.config,true).legacy;
+ok('blank leave-form setting stays off without default substitution',leaveOffLegacy.sheets.form==='');
+ok('disabled leave intake retains tracker and schedule configuration',leaveOffLegacy.sheets.tracker===m0.legacy.sheets.tracker&&leaveOffLegacy.expiredStatus===m0.legacy.expiredStatus);
 
 // ---- 2b · CROSS-BLOCK aka: the activity keys moved to [ACTIVITY]. A sheet written before the move still holds
 // them under [SCHEDULE] / [ROSTER_LAYOUT] / [SHEETS]; those values must MIGRATE, not reset to defaults. ----

@@ -670,6 +670,7 @@ function derivedWriteRows_(sheet,row,col,rows) {
 }
 function derivedReport_(where,result) {
   if(typeof logWarn_==='function') (result.skipped||[]).forEach(item=>logWarn_(where,item.name+': '+item.why));
+  if(typeof diagnosticNotice_==='function') (result.inactive||[]).forEach(item=>diagnosticNotice_('INFO','',where,item.name+': '+item.why,21600));
   return result;
 }
 function withDerivedLock_(fn) {
@@ -730,6 +731,7 @@ function buildGroupSheetsCore_(hint) { // optional hint rebuilds only affected t
   const groupNoun = /(shift|division|troop|district|squad|platoon|precinct|watch|beat|sector|zone)/i; // NB: "academy" is handled by buildAcademySheets_ (editable), not here
   const built = [];
   const skipped = [];
+  const inactive = [];
   ss.getSheets().forEach((sh) => {
     if (sh.getSheetId() === roster.getSheetId()) return;
     const nm = sh.getName();
@@ -742,6 +744,10 @@ function buildGroupSheetsCore_(hint) { // optional hint rebuilds only affected t
     // Named column first; if that header no longer exists (e.g. SHIFT renamed to ASSIGNMENT), fall back to the
     // value scan — the tab keeps working across a rename instead of silently emptying.
     const gCol = (grp.column ? colFor(grp.column) : 0) || (/^(shift|assignment|division|district|watch)$/i.test(grp.column||'') ? RC.shift : 0) || findGroupColumn_(roster, start, grp.values[0]);
+    if(!gCol&&Array.isArray(CONFIG.shiftKeywords)&&!CONFIG.shiftKeywords.length&&/^(shift|assignment|division|district|watch)$/i.test(grp.column||'')){
+      inactive.push({name:nm,why:'Assignment grouping is off ([ROSTER_LAYOUT].SHIFT_HEADER is blank). Existing rows retained; configure the department\'s actual heading or update its #group marker to enable this view.'});
+      return;
+    }
     // FAST PATH (targeted rebuild): with a single-cell edit hint, skip a tab the edited member is neither in NOW nor
     // WAS in — only the old + new value of the edited cell can change their group membership, so every other tab is
     // untouched by this edit. Skipped before the tab's own reads, so a single move rebuilds ~1-2 tabs, not all of them.
@@ -759,7 +765,12 @@ function buildGroupSheetsCore_(hint) { // optional hint rebuilds only affected t
     let rankTabCol = 0;
     for (let i = 0; i < hdr.headers.length; i++) { const h = hdr.headers[i]; if (h.indexOf('RANK') !== -1 && h.indexOf('GROUP') === -1) { rankTabCol = i + 1; break; } }
     if (!rankTabCol) rankTabCol = 1;
-    if (!gCol) { skipped.push({ name: nm, why: 'couldn\'t match "' + (marker ? marker.raw : nm) + '" to a roster column — try the marker "' + suggestMarker_(nm) + '"' }); return; }
+    if (!gCol) {
+      const why=grp.column
+        ? 'No roster column matches "'+grp.column+'" for '+(marker ? '#group: '+marker.raw : nm)+'. Set the marker column to the actual roster heading'+(/^(shift|assignment|division|district|watch)$/i.test(grp.column) ? ' or add that heading to [ROSTER_LAYOUT].SHIFT_HEADER' : '')+'. Keep the department\'s actual values ('+grp.values.join(', ')+'); changing them does not fix a missing column. Existing rows left unchanged.'
+        : 'No roster column contains "'+grp.values.join(', ')+'". Use an explicit marker such as "'+suggestMarker_(nm)+'" with the actual roster heading and values. Existing rows left unchanged.';
+      skipped.push({ name:nm, why }); return;
+    }
     const dataRow = hdr.row + headerToData; // skip the same divider gap the roster leaves below its header (member rows start there)
     // EDITABLE UPSERT (replaces the old read-only FILTER): mirror the roster's columns onto the tab BY HEADER, keep
     // one row per matching member (matched by UNIQUE ID / NAME so the operator's edits stay put), and PRESERVE every
@@ -861,7 +872,7 @@ function buildGroupSheetsCore_(hint) { // optional hint rebuilds only affected t
     }
     built.push(nm);
   });
-  return { built: built.length, sheets: built, skipped: skipped };
+  return { built: built.length, sheets: built, skipped: skipped, inactive: inactive };
 }
 
 /** Menu action: fill / refresh every group tab. */
@@ -877,6 +888,7 @@ function buildGroupSheets() {
     if (res.skipped && res.skipped.length) {
       msg += (msg ? '\n' : '') + 'Skipped:\n' + res.skipped.map((s) => '• ' + s.name + ' — ' + s.why).join('\n') + '\n';
     }
+    if(res.inactive&&res.inactive.length)msg+=(msg?'\n':'')+'Inactive:\n'+res.inactive.map(s=>'• '+s.name+' — '+s.why).join('\n')+'\n';
     if (!msg) {
       msg = 'No group tabs found.\n\nName a tab after the group — e.g. “Day Shift”, “Troop A”, “Academy” — lay out the columns like the roster, then run this again.\n\n' +
         'Prefer to be explicit? Put a marker in the tab instead:\n  #group: Shift = Day\n  #group: Rank in Police Cadet, Probationary Officer';

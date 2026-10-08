@@ -77,10 +77,10 @@ function cpHealthCheck_() {
 
   const roster = ss.getSheetByName(CONFIG.sheets.roster);
   const tracker = ss.getSheetByName(CONFIG.sheets.tracker);
-  const form = ss.getSheetByName(CONFIG.sheets.form);
+  const form = CONFIG.sheets.form ? ss.getSheetByName(CONFIG.sheets.form) : null;
   add(`Roster tab "${CONFIG.sheets.roster}"`, roster, roster ? '' : 'Not found — check the exact tab name.');
   add(`Tracker tab "${CONFIG.sheets.tracker}"`, tracker, tracker ? '' : 'Not found — check the exact tab name.');
-  add(`Form tab "${CONFIG.sheets.form}"`, form, form ? '' : 'Not found — check the exact tab name.');
+  add(CONFIG.sheets.form ? `Form tab "${CONFIG.sheets.form}"` : 'Leave-form intake off', !CONFIG.sheets.form || form, CONFIG.sheets.form ? (form ? '' : 'Not found — check the exact tab name.') : 'Manual tracker entries and leave scheduling remain available.');
 
   let memberCount = 0;
   const RC = roster ? rosterCols_(roster) : null;
@@ -171,7 +171,7 @@ function cpSchemaCheck_() {
   // The leave-form tab resolves BY HEADER (leaveFormCols_), with the classic fixed columns only as a fallback —
   // so pinning TIME/DISCORD/STATUS/START/END to columns 1/3/6/7/8 reported a perfectly working reordered form as
   // broken. Ask the resolver the question the sync actually asks: did the headers resolve, or did it fall back?
-  const form = ss.getSheetByName(CONFIG.sheets.form);
+  const form = CONFIG.sheets.form ? ss.getSheetByName(CONFIG.sheets.form) : null;
   if (form && typeof leaveFormCols_ === 'function') {
     try {
       if (!leaveFormCols_(form).byHeader) {

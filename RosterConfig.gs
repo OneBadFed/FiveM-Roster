@@ -296,6 +296,20 @@ function slog_(sev, code, fn, message, ctx) {
   }
 }
 
+/** Repeatable operational notices stay visible without rewriting/filtering the
+ * SYS Log on every trigger. Cache loss only repeats a notice; errors use slog_
+ * directly and are never suppressed here. Full fingerprints guard hash collisions. */
+function diagnosticNotice_(sev,code,fn,message,seconds) {
+  const fingerprint=JSON.stringify([sev,code,fn,message]);
+  let hash=2166136261;
+  for(let i=0;i<fingerprint.length;i++)hash=Math.imul(hash^fingerprint.charCodeAt(i),16777619);
+  const key='RE_NOTICE_V1:'+ (hash>>>0).toString(36);
+  let cache;
+  try{cache=CacheService.getDocumentCache();if(cache&&cache.get(key)===fingerprint)return;}catch(e){/* diagnostics still work without cache */}
+  slog_(sev,code,fn,message);
+  try{if(cache)cache.put(key,fingerprint,Math.max(1,Math.min(21600,seconds||3600)));}catch(e){/* best effort */}
+}
+
 /* ======================================================================
  * THEME — every engine-painted surface reads [THEME]. Defaults equal the
  * verified live palette (brief Part A3 / Part D). theme_() must NEVER
@@ -331,7 +345,7 @@ const BLOCK_SPECS_ = Object.freeze({
   SHEETS: { type: 'kv', keys: {
     ROSTER: { t: 'string', d: 'Member Information', req: true, help: 'The roster tab name.' },
     TRACKER: { t: 'string', d: 'LOA/ROA Tracker', req: true, help: 'The leave-tracker tab name.' },
-    LEAVE_FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: true, aka: 'FORM_RESPONSES', help: 'The LEAVE (LOA/ROA) Google Form\'s responses tab. Each submission is validated and added to the TRACKER as Pending.' },
+    LEAVE_FORM_RESPONSES: { t: 'string', d: 'LOA/ROA Form Response', req: false, aka: 'FORM_RESPONSES', help: 'The LEAVE (LOA/ROA) Google Form\'s responses tab. Each submission is validated and added to the TRACKER as Pending. BLANK = leave-form intake OFF; the manual LOA Tracker and leave scheduling still work.' },
     // v1.0 — the system/log tab names are now editable too (every role must resolve to a DISTINCT tab).
     // NOTE: "SYS Log" (engine diagnostics) is intentionally NOT here — slog_/theme_ must resolve it without cfg_() (re-entrancy).
     AUDIT: { t: 'string', d: 'Edit Log', req: false, help: 'The who/what/when audit-log tab. Blank = "Edit Log".' },
@@ -788,7 +802,7 @@ function validateConfig_(raw) {
     statuses.push({ name: row.Status, kind, min, color: row.Color || '' });
   });
   const tiers = statuses.filter((s) => s.kind === 'TIER').sort((a, b) => b.min - a.min);
-  if (!tiers.length) problems.push({ sev: 'WARN', code: 'E-110', key: '[STATUSES]', value: 'no TIER rows', type: 'ladder', expected: 'configure tiers to enable activity status calculation; existing statuses stay unchanged', reason: 'no TIER statuses defined' });
+  if (!tiers.length) problems.push({ sev: 'INFO', code: 'E-110', key: '[STATUSES]', value: 'no TIER rows', type: 'ladder', expected: 'configure tiers to enable activity status calculation; existing statuses stay unchanged', reason: 'activity status calculation is disabled until tiers are configured' });
   else checkLadder_(tiers.map((t) => ({ name: t.name, min: t.min })), '[STATUSES]', problems);
 
   // [STATUS_OVERRIDES]
@@ -1019,8 +1033,8 @@ function cfg_() {
     maybeErrorWebhook_(ae, 'cfg_'); // once per 5 min (throttled) — a broken config tab is exactly what the errors channel is for
     throw ae;
   }
-  problems.forEach((p) => slog_(p.sev === 'WARN' ? 'WARN' : 'INFO', p.code, 'cfg_', `${p.key} = "${p.value}" — expected ${p.expected}`));
   CFG_ = materialize_(config, hasTab);
+  problems.forEach((p) => diagnosticNotice_(p.sev === 'WARN' ? 'WARN' : 'INFO', p.code, 'cfg_', `${p.key} = "${p.value}" — expected ${p.expected}`,21600));
   return CFG_;
 }
 

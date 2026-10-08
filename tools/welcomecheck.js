@@ -38,6 +38,9 @@ const failedOld=mirrored;src.failFreeze=true;assert.throws(()=>ctx.publishWelcom
 const move=publicBook.moveActiveSheet;publicBook.moveActiveSheet=()=>{throw new Error('swap failed');};
 assert.throws(()=>ctx.publishWelcomePage_(src,failedOld),/swap failed/);assert(publicBook.sheets.includes(failedOld));assert.equal(failedOld.name,'Welcome Page');assert.equal(publicBook.sheets.length,2);assert.equal(other.formulas[0][0],"='Welcome Page'!C1");publicBook.moveActiveSheet=move;
 assert(source.includes('if (!isWelcome &&'),'Welcome cannot be skipped as self-computing');
+const otherDataRange=other.getDataRange;other.getDataRange=()=>{throw Error('fast reference capture must skip per-tab scans');};
+ctx.publishWelcomeReferencesFast_=(book)=>book===publicBook?[{sheet:other,row:1,col:1,formula:"='Welcome Page'!C1"}]:[];
+assert.equal(ctx.publishWelcomePage_(src,failedOld),4);assert.equal(other.formulas[0][0],"='Welcome Page'!C1");other.getDataRange=otherDataRange;
 const titleInternal=new Book(),titlePublic=new Book(),titleSource=new Sheet(titleInternal,'Welcome Page',30,30),titleDest=new Sheet(titlePublic,'Welcome Page',30,30);
 titleSource.titleBlock={text:'Internal title',style:'internal'};titleDest.titleBlock={text:'Public title',style:'public',merges:['F6:W7']};
 titleSource.values=Array.from({length:7},()=>Array(30).fill(''));titleSource.formulas=titleSource.values.map(row=>row.map(()=>''));titleSource.values[4][26]='Applications open';

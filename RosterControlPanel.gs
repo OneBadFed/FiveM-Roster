@@ -1341,6 +1341,7 @@ function cpRunActionCore_(name) {
       }
     }
     case 'syncForms': {
+      if (!CONFIG.sheets.form) return 'Leave-form intake is off. Select your response tab in Settings → Sheets to enable it.';
       const res = syncFormToTracker();
       if(res===false)raise_('E-503');
       return res > 0 ? `Synced ${res} new leave form${res === 1 ? '' : 's'} to the tracker.`
@@ -1403,8 +1404,9 @@ function cpRunActionCore_(name) {
     }
     case 'publishRoster': {
       if(typeof ensurePublicPublishingTriggers_==='function')ensurePublicPublishingTriggers_(false);
-      const res = publishPublicRoster();
+      const res = publishPublicRoster({interactive:true});
       if (res === false) raise_('E-503');
+      if(res&&res.queued)return res.reason;
       if (!res || !res.linked) return 'No public roster is linked yet — set one up before publishing.';
       if(res.failed||res.aborted||(res.skipped&&res.skipped.length))throw new AppError('E-504',{operation:'Public publish',completed:res.tabs.length,reason:(res.detail||['Some tabs could not be mirrored.']).join('; ')});
       return `Published ${res.rows} row(s) across ${res.tabs.length} tab(s).`;
@@ -2488,45 +2490,48 @@ function writeValuesSafe_(dest, top, left, values, keep) {
 
   // A merge's ONLY writable cell is its top-left, and a write may not PARTIALLY overlap a merge — so every merged cell
   // is unwritable for run purposes and each anchor is set individually afterwards.
-  const blocked = [], anchors = [], rowDirty = [];
-  for (let r = 0; r < rows; r++) { blocked.push(new Array(cols).fill(false)); rowDirty.push(false); }
+  const blocked = [], anchors = [];
+  for (let r = 0; r < rows; r++) blocked.push(new Array(cols).fill(false));
   merges.forEach((m) => {
     const r0 = m.getRow() - top, c0 = m.getColumn() - left, nr = m.getNumRows(), nc = m.getNumColumns();
     for (let r = Math.max(0, r0); r < Math.min(rows, r0 + nr); r++) {
-      rowDirty[r] = true;
       for (let c = Math.max(0, c0); c < Math.min(cols, c0 + nc); c++) blocked[r][c] = true;
     }
     if (r0 >= 0 && r0 < rows && c0 >= 0 && c0 < cols) anchors.push({ r: r0, c: c0 });
   });
-  for (let r = 0; r < rows; r++) { for (let c = 0; c < cols; c++) if (kept(r, c)) { rowDirty[r] = true; break; } }
-
   let failed = 0;
-  const writeBlock = (r0, r1) => { // one call for a span of completely clean rows - keeps big sheets fast
-    try { dest.getRange(top + r0, left, r1 - r0 + 1, cols).setValues(values.slice(r0, r1 + 1)); }
-    catch (e) { if(!/merge|spill|array result/i.test(String((e&&e.message)||e)))throw e;for (let r = r0; r <= r1; r++) writeRuns(r); }
-  };
-  const writeRuns = (r) => {
-    let c = 0;
-    while (c < cols) {
-      if (blocked[r][c] || kept(r, c)) { c++; continue; }
-      let e = c; while (e + 1 < cols && !blocked[r][e + 1] && !kept(r, e + 1)) e++;
-      const block = [values[r].slice(c, e + 1)];
-      try { dest.getRange(top + r, left + c, 1, block[0].length).setValues(block); }
-      catch (err) {
-        if(!/merge|spill|array result/i.test(String((err&&err.message)||err)))throw err;
-        for (let j = 0; j < block[0].length; j++) {
-          try { dest.getRange(top + r, left + c + j).setValue(block[0][j]); } catch (e2) { failed++; }
+  const writeRectangle = run => {
+    const block=values.slice(run.row,run.row+run.rows).map(row=>row.slice(run.start,run.end));
+    try{dest.getRange(top+run.row,left+run.start,run.rows,run.end-run.start).setValues(block);}
+    catch(e){
+      if(!/merge|spill|array result/i.test(String((e&&e.message)||e)))throw e;
+      for(let r=0;r<block.length;r++){
+        try{dest.getRange(top+run.row+r,left+run.start,1,run.end-run.start).setValues([block[r]]);}
+        catch(err){
+          if(!/merge|spill|array result/i.test(String((err&&err.message)||err)))throw err;
+          for(let c=0;c<block[r].length;c++){
+            try{dest.getRange(top+run.row+r,left+run.start+c).setValue(block[r][c]);}catch(cellError){failed++;}
+          }
         }
       }
-      c = e + 1;
     }
   };
-
-  let r = 0;
-  while (r < rows) {
-    if (!rowDirty[r]) { let e = r; while (e + 1 < rows && !rowDirty[e + 1]) e++; writeBlock(r, e); r = e + 1; continue; }
-    writeRuns(r); r++;
+  // Combine equal writable spans across rows, even beside a kept column or a
+  // vertical merged group label. Previously each such row cost a separate RPC.
+  const active=new Map();
+  for(let r=0;r<rows;r++){
+    const current=new Map();let c=0;
+    while(c<cols){
+      if(blocked[r][c]||kept(r,c)){c++;continue;}
+      const start=c;while(c<cols&&!blocked[r][c]&&!kept(r,c))c++;
+      const key=start+':'+c,previous=active.get(key);
+      if(previous){previous.rows++;current.set(key,previous);}
+      else current.set(key,{row:r,start,end:c,rows:1});
+    }
+    active.forEach((run,key)=>{if(!current.has(key))writeRectangle(run);});
+    active.clear();current.forEach((run,key)=>active.set(key,run));
   }
+  active.forEach(writeRectangle);
   anchors.forEach((a) => {
     if (kept(a.r, a.c)) return;
     try { dest.getRange(top + a.r, left + a.c).setValue(values[a.r][a.c]); } catch (e) { failed++; }
@@ -2916,9 +2921,10 @@ function publishFramedTable_(src, dest) {
 function publishWelcomePage_(src, dest) {
   const owner = src.getParent(), target = dest.getParent(), name = dest.getName();
   const index = dest.getIndex(), rows = src.getMaxRows(), cols = src.getMaxColumns();
-  const refs = [];
+  const fastRefs=typeof publishWelcomeReferencesFast_==='function'?publishWelcomeReferencesFast_(target,dest,name):null;
+  const refs = fastRefs || [];
   const quoted = "'" + name.replace(/'/g, "''") + "'!";
-  target.getSheets().forEach((sheet) => {
+  if(!fastRefs)target.getSheets().forEach((sheet) => {
     if (sheet.getSheetId() === dest.getSheetId()) return;
     const formulas = sheet.getDataRange().getFormulas();
     formulas.forEach((row, r) => row.forEach((formula, c) => {
@@ -3077,17 +3083,31 @@ function publishMirrorTab_(src, dest, deep) {
   const need = destStart + n - 1;
   publishFitRows_(src, dest, need, false); // room BEFORE the write; the shrink runs once the trailing rows are cleared
   if (n) {
-    pairs.forEach((p) => {
-      // valuesOnly=true: this is the header-matched path (public layout differs), so publish computed VALUES — a copied
-      // formula's relative refs would point at the wrong public column (e.g. TIME IN RANK reading a checkbox column).
-      // mirrorWins=true: and the value WINS over any formula already sitting in this mirrored public column — that's
-      // residue from the old formula-copying publishes (the "46227 days" ghosts on empty rows), healed on this write.
-      const failed = writeValuesSafe_(dest, destStart, p.dc, publishReadCells_(src.getRange(srcStart, p.sc, n, 1), true),
-        publishKeepMask_(dest, destStart, p.dc, n, 1, null, true));
-      if (failed) throw new Error(dest.getName() + ': ' + failed + ' cell(s) could not be written; publish remains queued.');
-      try { dest.getRange(destStart, p.dc, n, 1).setNumberFormats(src.getRange(srcStart, p.sc, n, 1).getNumberFormats()); }
-      catch (e) { log_('publishMirrorTab_.formats', e); }
-    });
+    if(pairs.length){
+      // One source read / destination mask for the whole header mapping. Never put
+      // private source columns in the outgoing grid; unmatched public cells stay kept.
+      const sourceRange=src.getRange(srcStart,1,n,sHdr.length);
+      const sourceValues=publishReadCells_(sourceRange,true);
+      const width=dHdr.length,owned=new Set(pairs.map(p=>p.dc-1));
+      const values=Array.from({length:n},()=>new Array(width).fill(''));
+      const keep=publishKeepMask_(dest,destStart,1,n,width,null,true);
+      for(let r=0;r<n;r++){
+        pairs.forEach(p=>{values[r][p.dc-1]=sourceValues[r][p.sc-1];});
+        for(let c=0;c<width;c++)if(!owned.has(c))keep[r][c]=true;
+      }
+      const failed=writeValuesSafe_(dest,destStart,1,values,keep);
+      if(failed)throw new Error(dest.getName()+': '+failed+' cell(s) could not be written; publish remains queued.');
+      try{
+        const formats=sourceRange.getNumberFormats(),byCol=new Map(pairs.map(p=>[p.dc,p.sc]));
+        const columns=pairs.map(p=>p.dc).sort((a,b)=>a-b);
+        for(let i=0;i<columns.length;){
+          let end=i+1;while(end<columns.length&&columns[end]===columns[end-1]+1)end++;
+          const span=columns.slice(i,end);
+          dest.getRange(destStart,span[0],n,span.length).setNumberFormats(formats.map(row=>span.map(c=>row[byCol.get(c)-1])));
+          i=end;
+        }
+      }catch(e){log_('publishMirrorTab_.formats',e);}
+    }
     scrub.forEach((c) => dest.getRange(destStart, c, n, 1).clearContent());
   }
   const dLast = dest.getLastRow(); // drop rows left over from a previous, longer publish
@@ -3154,7 +3174,8 @@ function publishPublicRoster_(onlyTab, opts) {
     }
     if (yieldOn) { // an interactive actor stamped the backoff mid-pass → get out of their way NOW
       try {
-        if (Date.now() < Number(PropertiesService.getDocumentProperties().getProperty(PUBLISH_BACKOFF_PROP_) || 0)) {
+        const p=PropertiesService.getDocumentProperties();
+        if (Date.now() < Number(p.getProperty(PUBLISH_BACKOFF_PROP_) || 0)||publishManualPending_(p)) {
           aborted = true; out.aborted = true; out.skipped.push(name);
           out.detail.push(`${name}: yielded to an interactive operation (the sweep finishes the rest)`);
           return;
@@ -3216,33 +3237,78 @@ const PUBLISH_CATCHUP_ID_PROP_ = 'PUBLIC_CATCHUP_ID';
 const PUBLISH_BACKOFF_PROP_ = 'PUBLISH_BACKOFF_UNTIL'; // interactive-first: a pending panel write / transfer stamps now+45s here and NEW publish passes stand down until it expires
 const PUBLISH_BACKOFF_MS_ = 45000;
 const PUBLISH_PASS_PROP_ = 'PUBLISH_PASS_UNTIL'; // pass mutex: per-tab locking replaced the whole-pass script lock, so this keeps two passes from interleaving (owner-tagged 10-minute lease — a dead pass cannot wedge publishing)
+const PUBLISH_RELEASE_PREFIX_ = 'PUBLISH_RELEASED:';
+const PUBLISH_MANUAL_PROP_ = 'PUBLISH_MANUAL_UNTIL';
+const PUBLISH_MANUAL_WAIT_MS_ = 20000;
 let _publishPassToken_ = null;
+let _publishBusyReason_ = '';
+
+function publishManualPending_(p) {
+  return Date.now()<Number(String(p.getProperty(PUBLISH_MANUAL_PROP_)||'0').split('|')[0]);
+}
 
 /** Claim the one-publish-at-a-time slot. @return {boolean} false when another pass is already running. */
 function publishPassClaim_() {
-  const lock = LockService.getDocumentLock();
-  if (!lock || !lock.tryLock(1000)) return false;
+  _publishBusyReason_='The public update queue lock is busy.';
+  const lock = LockService.getDocumentLock(),held=lock&&lock.hasLock&&lock.hasLock();
+  if (!lock || (!held&&!lock.tryLock(1000))) return false;
   try {
     const p = PropertiesService.getDocumentProperties();
     const stored = String(p.getProperty(PUBLISH_PASS_PROP_) || '0');
-    if (Date.now() < Number(stored.split('|')[0])) return false;
+    // Release markers are written only AFTER the owner's work stops. They can be
+    // stored even while a logger holds the queue lock; never clear a live owner.
+    const released=p.getProperty(PUBLISH_RELEASE_PREFIX_+stored)==='1';
+    if (!released&&Date.now() < Number(stored.split('|')[0])) {
+      _publishBusyReason_='Another public publisher still holds its reservation.';
+      return false;
+    }
     if(typeof publishQueueRecover_==='function')publishQueueRecover_();
     _publishPassToken_ = String(Date.now() + 600000) + '|' + Math.random().toString(36).slice(2);
     p.setProperty(PUBLISH_PASS_PROP_, _publishPassToken_);
+    if(released)try{p.deleteProperty(PUBLISH_RELEASE_PREFIX_+stored);}catch(e){reportError_('publishPassClaim_.cleanup',e,false);}
+    _publishBusyReason_='';
     return true;
   } catch (e) { _publishPassToken_ = null; reportError_('publishPassClaim_',e,false); throw e; }
-  finally { try { lock.releaseLock(); } catch (e) { reportError_('publishPassClaim_.release',e,false); } }
+  finally { if(!held)try { lock.releaseLock(); } catch (e) { reportError_('publishPassClaim_.release',e,false); } }
 }
 function publishPassRelease_() {
   const token = _publishPassToken_; _publishPassToken_ = null;
   if (!token) return;
-  const lock = LockService.getDocumentLock();
-  if (!lock || !lock.tryLock(1000)) return;
+  let p;try{p=PropertiesService.getDocumentProperties();}catch(e){reportError_('publishPassRelease_.properties',e,false);return;}
+  const key=PUBLISH_RELEASE_PREFIX_+token;
+  try{p.setProperty(key,'1');}catch(e){reportError_('publishPassRelease_.checkpoint',e,false);}
+  const lock = LockService.getDocumentLock(),held=lock&&lock.hasLock&&lock.hasLock();
+  if (!lock || (!held&&!lock.tryLock(1000))) return; // next claim sees the completed owner's marker
   try {
-    const p = PropertiesService.getDocumentProperties();
     if (p.getProperty(PUBLISH_PASS_PROP_) === token) p.deleteProperty(PUBLISH_PASS_PROP_);
+    p.deleteProperty(key);
   } catch (e) { reportError_('publishPassRelease_',e,false); /* lease expires if cleanup fails */ }
-  finally { try { lock.releaseLock(); } catch (e) { reportError_('publishPassRelease_.release',e,false); } }
+  finally { if(!held)try { lock.releaseLock(); } catch (e) { reportError_('publishPassRelease_.release',e,false); } }
+}
+
+/** Let a background pass yield between tabs, without holding a writer/queue lock
+ * while waiting. If it cannot finish promptly, retain a durable full request.
+ * A user never has to repeatedly click Publish now to keep that request alive. */
+function publishManualClaim_() {
+  if(publishPassClaim_())return true;
+  const p=PropertiesService.getDocumentProperties(),until=Date.now()+PUBLISH_MANUAL_WAIT_MS_;
+  const priority=String(until+1000)+'|'+Math.random().toString(36).slice(2);
+  _pubDirtyMemo_=false;
+  if(typeof publishQueueChange_==='function')publishQueueChange_();
+  else p.setProperty(PUBLISH_DIRTY_PROP_,'1');
+  p.setProperty(PUBLISH_MANUAL_PROP_,priority);
+  try{
+    for(let attempt=0;attempt<40&&Date.now()<until;attempt++){
+      if(publishPassClaim_())return true;
+      const remaining=until-Date.now();
+      if(remaining>0)Utilities.sleep(Math.min(500,remaining));
+    }
+    scheduleCatchup_();
+    return false;
+  }finally{
+    try{if(p.getProperty(PUBLISH_MANUAL_PROP_)===priority)p.deleteProperty(PUBLISH_MANUAL_PROP_);}
+    catch(e){reportError_('publishManualClaim_.cleanup',e,false);} // expiring marker must never prevent owner cleanup
+  }
 }
 
 /** Flag the public copy as stale WITHOUT publishing. Script writes (panel actions, the schedulers, patrol crediting)
@@ -3260,7 +3326,10 @@ function publishMarkDirty_(names) {
     else PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_, '1');
     if(!names)_pubDirtyMemo_=true;
   }catch(e){
-    try{const p=PropertiesService.getDocumentProperties();p.deleteProperty('PUBLIC_PENDING_SCOPE_V1');p.setProperty(PUBLISH_DIRTY_PROP_,'1');}catch(ignored){/* original storage/lock failure is logged below */}
+    try{
+      if(typeof publishQueueHint_==='function')publishQueueHint_(names);
+      else PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_,'1');
+    }catch(ignored){/* original storage failure is logged below */}
     log_('publishMarkDirty_',e);
   }
 }
@@ -3284,7 +3353,7 @@ function publishAfterWrite_(names) {
       else settled.forEach(name=>publishPublicRosterQuiet_(name,false));
     }
     _publishSettledTabs_ = {};
-    if (props.getProperty(PUBLISH_DIRTY_PROP_) === '1') scheduleCatchup_();
+    if (typeof publishHasPending_==='function'?publishHasPending_(props):props.getProperty(PUBLISH_DIRTY_PROP_) === '1') scheduleCatchup_();
   } catch (e) {
     _pubDirtyMemo_ = false; publishMarkDirty_();
     log_('publishAfterWrite_', e); // a mirror failure must never fail the completed internal write
@@ -3298,7 +3367,7 @@ function publishPublicRosterQuiet_(onlyTab, mayClear) {
   // INTERACTIVE-FIRST: a panel write or member transfer waiting on the shared lock has stamped a backoff — don't
   // START a new publish pass against it. The dirty flag stays set, so the sweep carries the publish the moment the
   // interactive burst is over.
-  try { if (Date.now() < Number(props.getProperty(PUBLISH_BACKOFF_PROP_) || 0)) return; } catch (e) { /* best-effort */ }
+  try { if (Date.now() < Number(props.getProperty(PUBLISH_BACKOFF_PROP_) || 0)||publishManualPending_(props)) return; } catch (e) { /* best-effort */ }
   if (!publishPassClaim_()) return; // another pass is already running — it (or the sweep) carries this change
   let selection=onlyTab;
   try {
@@ -3375,7 +3444,7 @@ function publishOnChange(e) {
     publishPublicRosterQuiet_(only || undefined, !wasDirty); // nothing else was pending → this partial pass covers it all and may clear the flag
     // A backoff, busy pass or failed mirror can decline an immediate edit. Always
     // schedule its pending tail instead of silently relying only on the minute sweep.
-    if(props.getProperty(PUBLISH_DIRTY_PROP_)==='1')scheduleCatchup_();
+    if(typeof publishHasPending_==='function'?publishHasPending_(props):props.getProperty(PUBLISH_DIRTY_PROP_)==='1')scheduleCatchup_();
   } catch (err) { log_('publishOnChange', err); }
 }
 
@@ -3385,7 +3454,7 @@ function publishSweep() {
     // Also the general maintenance tick: flush queued whole-tab rebuilds (Academy / groups / dashboard) so a burst of
     // edits costs ONE rebuild rather than one per keystroke.
     try { if (typeof runDeferredWork_ === 'function') runDeferredWork_(); } catch (e) { log_('publishSweep.deferred', e); }
-    if (PropertiesService.getDocumentProperties().getProperty(PUBLISH_DIRTY_PROP_) !== '1') return;
+    if (typeof publishHasPending_==='function'?!publishHasPending_():PropertiesService.getDocumentProperties().getProperty(PUBLISH_DIRTY_PROP_) !== '1') return;
     if (!String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_) || '').trim()) return; // linkage check without openById — the publish itself opens the file
     publishPublicRosterQuiet_();
   } catch (e) { log_('publishSweep', e); }
@@ -3439,8 +3508,13 @@ function publishCatchup(e) {
 
 /** Time-driven + menu entry point for the publish. Chunked like the background pass (per-tab locks, so it never
  *  starves interactive actions) but NEVER yields — the operator asked for a full publish, so it runs every tab. */
-function publishPublicRoster() {
-  if (!publishPassClaim_()) return false; // a background pass is mid-flight — rare and brief now; try again in a moment
+function publishPublicRoster(opts) {
+  const interactive=!!(opts&&opts.interactive);
+  if(interactive&&!String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_)||'').trim())return {linked:false,tabs:[],rows:0};
+  if (!(interactive?publishManualClaim_():publishPassClaim_())) {
+    if(!interactive)return false;
+    return {linked:true,queued:true,tabs:[],rows:0,reason:_publishBusyReason_+' Your full publish request is queued for automatic retry after the current operation finishes.'};
+  }
   try {
     const props = PropertiesService.getDocumentProperties();
     const linked = !!String(props.getProperty(PUBLIC_FILE_PROP_) || '').trim();
@@ -3474,8 +3548,8 @@ function publishPublicRosterNow() {
     // Repairs departments linked after their original startup, which installed no
     // public triggers. A valid set is left intact; installation failures are visible.
     if(typeof ensurePublicPublishingTriggers_==='function')ensurePublicPublishingTriggers_(false);
-    const res = publishPublicRoster();
-    if (res === false) { ui.alert('Publish skipped — another roster operation is running.'); return; }
+    const res = publishPublicRoster({interactive:true});
+    if (res.queued) { ui.alert('🌐 Publish queued',res.reason,ui.ButtonSet.OK); return; }
     if (!res.linked) { ui.alert('🌐 Public Roster', 'No public roster is linked yet.\n\nRun 👥 Roster ▸ 🌐 Set Up Public Roster first.', ui.ButtonSet.OK); return; }
     ui.alert(res.failed || res.aborted ? '🌐 Publish incomplete — queued for retry' : '🌐 Published',
       res.rows + ' row(s) across ' + res.tabs.length + ' tab(s).\n\n' +
@@ -3509,8 +3583,9 @@ function setupPublicRoster() {
     _pubDirtyMemo_=false;
     if(typeof publishMarkDirty_==='function')publishMarkDirty_(); // retain a full retry if an older-file pass is still busy
     if(typeof ensurePublicPublishingTriggers_==='function')ensurePublicPublishingTriggers_(false);
-    const sum = publishPublicRoster();
+    const sum = publishPublicRoster({interactive:true});
     const publishNote=sum===false?'First publish is busy; the automatic sweep will retry.'
+      :sum.queued?sum.reason
       :sum.failed||sum.aborted?'First publish is incomplete; inspect SYS Log. Updates are queued for retry.'
       :'First publish completed: '+sum.rows+' row(s) across '+sum.tabs.length+' tab(s).';
     logInfo_('setupPublicRoster', `public roster linked: ${file.getId()}`);

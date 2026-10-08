@@ -85,3 +85,22 @@ result=ctx.buildGroupSheets_();assert.equal(result.built,1);assert.equal(result.
 ctx.rosterBandRanges_=()=>({cadets:{ranges:[{top:3,bottom:3}]},officers:{ranges:[{top:6,bottom:6}]}});ctx.tabBandRanges_=()=>[{label:'cadets',top:3,height:1},{label:'officers',top:4,height:1}];
 result=ctx.buildGroupSheets_();assert.equal(result.built,1);assert.equal(cleanGroup.rows[2][2],'Avery');assert.equal(cleanGroup.rows[3][2],'Bailey','layout exclusions preserve physical source row offsets for rank bands');
 console.log('Real member predicate excludes source dividers/footer labels, retains physical band offsets, diagnoses genuine missing/duplicate IDs by cell, and preserves exact destination IDs');
+
+// Parse real department-owned markers and resolve renamed/reordered columns.
+realFunction('groupMarker_');ctx.rosterBandRanges_=()=>({});ctx.tabBandRanges_=()=>[];ctx.isAcademyTab_=()=>false;
+for(const [heading,order] of [['Duty rotation',[0,1,2,3,4,5]],['Section',[0,1,2,3,5,4]],['Team / Watch',[0,1,3,2,4,5]]]){
+ const labels=['GROUP','RANK','NAME','UNIQUE ID',heading,'HOURS'];
+ const raw=[['','Officer','Jordan','42','Swings',0],['','Officer','Casey','43','Nights',5]];
+ const modularRoster=new Sheet('Roster',[order.map(i=>labels[i]),Array(6).fill(''),...raw.map(row=>order.map(i=>row[i]))]);
+ const modularGroup=new Sheet('Swing Shift',[['GROUP','RANK','NAME','UNIQUE ID',heading,'HOURS','NOTES'],['#group: '+heading+' = Swings','','','','','',''],['','Officer','Jordan','42','Swings',2,'department note'],Array(7).fill('')]);
+ ctx.rosterCols_=()=>({headerRow:1,rank:order.indexOf(1)+1,name:order.indexOf(2)+1,discord:order.indexOf(3)+1,shift:0});
+ ctx.CONFIG.shiftKeywords=[];ctx.SpreadsheetApp.getActive=()=>({getSheetByName:()=>modularRoster,getSheets:()=>[modularRoster,modularGroup]});
+ result=ctx.buildGroupSheets_();assert.equal(result.built,1,heading);assert.equal(result.skipped.length,0);assert.equal(result.inactive.length,0);
+ assert.equal(modularGroup.rows[2][2],'Jordan');assert.equal(modularGroup.rows[2][5],'0');assert.equal(modularGroup.rows[2][6],'department note');assert.equal(modularGroup.rows[3][2],'');
+}
+const freshRoster=new Sheet('Roster',[['GROUP','RANK','NAME','UNIQUE ID','HOURS'],Array(5).fill(''),Array(5).fill('')]);
+const freshGroup=new Sheet('Day Shift',[['GROUP','RANK','NAME','UNIQUE ID','HOURS'],['#group: Shift = Days','','','',''],['','Officer','Prior member','42',0],Array(5).fill('')]);
+ctx.rosterCols_=()=>({headerRow:1,rank:2,name:3,discord:4,shift:0});ctx.SpreadsheetApp.getActive=()=>({getSheetByName:()=>freshRoster,getSheets:()=>[freshRoster,freshGroup]});
+ctx.CONFIG.shiftKeywords=[];result=ctx.buildGroupSheets_();assert.equal(result.built,0);assert.equal(result.skipped.length,0);assert.equal(result.inactive.length,1);assert.equal(freshGroup.clears,0);assert.equal(freshGroup.rows[2][2],'Prior member');
+ctx.CONFIG.shiftKeywords=['DUTY ROTATION'];result=ctx.buildGroupSheets_();assert.equal(result.inactive.length,0);assert.equal(result.skipped.length,1);assert.match(result.skipped[0].why,/No roster column matches "Shift"/);assert(result.skipped[0].why.includes('Days'));assert.equal(freshGroup.clears,0);
+console.log('Modular groups: real markers, arbitrary/reordered headings, exact plural values, preserved custom fields, disabled assignment views and actionable missing-heading diagnostics passed.');

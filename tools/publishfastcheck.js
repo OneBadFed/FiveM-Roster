@@ -35,7 +35,23 @@ c.publishQueueChange_();c.publishQueueTake_('👋 Welcome Page');c.publishQueueC
 c.publishQueueRetry_(undefined,['LOA']);assert(!c.publishSelected_('LOA',c.publishQueueTake_()),'successful tabs are excluded from a failed full pass retry');
 c.publishQueueRetry_(['LOA','Patrol'],['LOA']);assert.deepEqual(copy(c.publishQueueTake_()),['Patrol']);
 c.publishQueueChange_(['😀'.repeat(2100)]);assert.deepEqual(copy(c.publishQueueTake_()),{except:[]},'oversized UTF-8 property data falls back to full work');
-h.busy(true);assert.throws(()=>c.publishQueueChange_('LOA'),/queue is busy/);h.busy(false);assert(!h.held());
+h.busy(true);assert.doesNotThrow(()=>c.publishQueueChange_('LOA'));assert(c.publishHasPending_(),'busy queue retains durable scoped work');assert(!h.data.has('PUBLIC_DIRTY'),'busy event never races the active dirty flag');h.busy(false);assert(!h.held());
+assert.deepEqual(copy(c.publishQueueTake_()),['LOA']);assert(!c.publishHasPending_());
+// Distinct hints survive a concurrent drain, malformed records fail open, and
+// commit failures cannot delete the only durable copy of the event.
+h.busy(true);c.publishQueueChange_('LOA');c.publishQueueChange_('Patrol');h.busy(false);
+const firstHint=Array.from(h.data.keys()).find(k=>k.startsWith('RE_PUBLIC_HINT_V1:'));
+const originalSet=h.props.setProperty;h.props.setProperty=(key,value)=>{if(key==='PUBLIC_PENDING_SCOPE_V1')throw Error('storage unavailable');return originalSet(key,value);};
+assert.throws(()=>c.publishQueueTake_(),/storage unavailable/);assert(h.data.has(firstHint));h.props.setProperty=originalSet;
+const originalGetAll=h.props.getProperties;let injected=false;
+h.props.getProperties=()=>{const snapshot=originalGetAll();if(!injected){injected=true;h.data.set('RE_PUBLIC_HINT_V1:late','["Welcome Page"]');}return snapshot;};
+assert.deepEqual(copy(c.publishQueueTake_()).sort(),['LOA','Patrol']);assert(h.data.has('RE_PUBLIC_HINT_V1:late'),'late event cannot be deleted by old snapshot');
+h.props.getProperties=originalGetAll;assert.deepEqual(copy(c.publishQueueTake_()),['Welcome Page']);
+h.data.set('RE_PUBLIC_HINT_V1:bad','bad json');assert.deepEqual(copy(c.publishQueueTake_()),{except:[]});
+const contentionLogs=h.log.length;h.busy(true);c.publishMarkDirty_(['LOA']);h.busy(false);
+assert.equal(h.log.length,contentionLogs,'ordinary queue contention is not logged as an error');assert(!h.data.has('PUBLIC_DIRTY'));
+c.publishSweep();assert.deepEqual(copy(h.calls.pop()),['LOA'],'idle sweep discovers a scoped busy event without PUBLIC_DIRTY');assert(!c.publishHasPending_());
+console.log('Queue contention: scoped durable hints, idle discovery, late writes, storage failures and malformed recovery passed.');
 // Actual wrapper integration: one settled-table pass, scoped retries and late edits survive.
 c.publishQueueChange_();c.publishAfterWrite_(['LOA','Patrol','LOA']);assert.deepEqual(copy(h.calls.pop()),['LOA','Patrol']);
 c.publishPublicRosterQuiet_();assert.deepEqual(copy(h.calls.pop()),{except:['LOA','Patrol']});assert(!h.data.has('PUBLIC_DIRTY'));
@@ -71,6 +87,49 @@ stopped.ctx.publishQueueChange_('LOA');stopped.ctx.publishPublicRosterQuiet_();a
 stopped.data.set('PUBLIC_INFLIGHT_SCOPE_V1','{"token":"new-owner","selection":["LOA"]}');stopped.ctx.publishQueueFinish_();assert(stopped.data.has('PUBLIC_INFLIGHT_SCOPE_V1'),'old owner cannot delete a newer checkpoint');
 console.log('Hard-stop recovery: expired leases, durable work, concurrent edits, malformed records and owner-safe cleanup passed.');
 
+// A completed pass whose final queue lock is busy must not leave a live ten-minute
+// reservation. Its durable release marker permits the next claim immediately.
+const release=harness();release.ctx.publishQueueChange_('LOA');assert(release.ctx.publishPassClaim_());release.ctx.publishQueueBegin_();release.ctx.publishQueueFinish_();
+const completedToken=release.data.get('PUBLISH_PASS_UNTIL');release.busy(true);release.ctx.publishPassRelease_();
+assert.equal(release.data.get('PUBLISH_RELEASED:'+completedToken),'1');assert.equal(release.data.get('PUBLISH_PASS_UNTIL'),completedToken);
+release.busy(false);assert(release.ctx.publishPassClaim_(),'finished owner can be reclaimed without waiting ten minutes');
+const newToken=release.data.get('PUBLISH_PASS_UNTIL');assert.notEqual(newToken,completedToken);
+vm.runInContext('_publishPassToken_='+JSON.stringify(completedToken),release.ctx);release.ctx.publishPassRelease_();
+assert.equal(release.data.get('PUBLISH_PASS_UNTIL'),newToken,'late release never clears a new owner');
+vm.runInContext('_publishPassToken_='+JSON.stringify(newToken),release.ctx);release.ctx.publishPassRelease_();assert(!release.data.has('PUBLISH_PASS_UNTIL'));
+const parent=harness();parent.ctx.LockService.getDocumentLock().tryLock();assert(parent.ctx.publishPassClaim_());assert(parent.held());parent.ctx.publishPassRelease_();assert(parent.held(),'nested pass helpers preserve caller document lock');parent.ctx.LockService.getDocumentLock().releaseLock();
+console.log('Pass release: busy cleanup, immediate completed-owner recovery, late old releases and nested lock ownership passed.');
+
+// Finish cleanup competes with audit/log writers, even after every tab succeeded.
+const finish=harness();finish.ctx.publishQueueChange_('LOA');assert(finish.ctx.publishPassClaim_());finish.ctx.publishQueueBegin_();
+const finishToken=finish.data.get('PUBLISH_PASS_UNTIL');finish.ctx.publishQueueChange_('Patrol');finish.busy(true);
+assert.equal(finish.ctx.publishQueueFinish_(),false);assert.equal(finish.data.get('RE_PUBLIC_FINISHED_V1:'+finishToken),'1');
+finish.ctx.publishPassRelease_();finish.busy(false);assert(finish.ctx.publishPassClaim_());
+assert.deepEqual(copy(finish.ctx.publishQueueTake_()),['Patrol'],'completed LOA is not recopied; concurrent Patrol edit survives');
+assert(!finish.data.has('PUBLIC_INFLIGHT_SCOPE_V1'));assert(!finish.data.has('RE_PUBLIC_FINISHED_V1:'+finishToken));finish.ctx.publishPassRelease_();
+const interrupted=harness();interrupted.ctx.publishQueueChange_('LOA');assert(interrupted.ctx.publishPassClaim_());interrupted.ctx.publishQueueBegin_();interrupted.ctx.publishPassRelease_();
+assert(interrupted.ctx.publishPassClaim_());assert.deepEqual(copy(interrupted.ctx.publishQueueTake_()),['LOA'],'release alone never acknowledges unfinished work');interrupted.ctx.publishPassRelease_();
+const late=harness();const oldToken='1000|old',currentToken='2000|new';
+late.data.set('PUBLIC_INFLIGHT_SCOPE_V1',JSON.stringify({token:currentToken,selection:['Patrol']}));
+vm.runInContext('_publishPassToken_='+JSON.stringify(oldToken),late.ctx);late.ctx.publishQueueFinish_();
+assert(late.data.has('PUBLIC_INFLIGHT_SCOPE_V1'),'late completed owner cannot acknowledge newer work');assert(!late.data.has('RE_PUBLIC_FINISHED_V1:'+oldToken));
+console.log('Finish checkpoint: busy cleanup, no duplicate successful tabs, concurrent edits, incomplete-work recovery and late owner safety passed.');
+
+function manualHarness(releaseAfter){
+ const m=harness();let now=1000000,sleeps=0,scheduled=0;
+ const owner='1600000|active-background';m.data.set('PUBLISH_PASS_UNTIL',owner);
+ m.ctx.Utilities={sleep:ms=>{assert(!m.held(),'manual wait holds no document lock');sleeps++;now+=ms;m.time(now);if(releaseAfter&&sleeps>=releaseAfter)m.data.set('PUBLISH_RELEASED:'+owner,'1');}};
+ m.ctx.scheduleCatchup_=()=>scheduled++;
+ return {m,owner,sleeps:()=>sleeps,scheduled:()=>scheduled};
+}
+const handoff=manualHarness(3),handoffResult=handoff.m.ctx.publishPublicRoster({interactive:true});assert(handoffResult.linked&&!handoffResult.queued);assert.equal(handoff.m.calls.length,1);assert.equal(handoff.sleeps(),3);assert(!handoff.m.data.has('PUBLISH_MANUAL_UNTIL'));assert(!handoff.m.data.has('PUBLISH_PASS_UNTIL'));
+const waiting=manualHarness(),queuedResult=waiting.m.ctx.publishPublicRoster({interactive:true});assert(queuedResult.queued);assert(queuedResult.reason.includes('public publisher'));assert(queuedResult.reason.includes('queued'));assert.equal(waiting.m.calls.length,0);assert.equal(waiting.m.data.get('PUBLISH_PASS_UNTIL'),waiting.owner,'manual request never steals a running owner');assert.equal(waiting.scheduled(),1);assert(waiting.sleeps()<=40);assert(!waiting.m.data.has('PUBLISH_MANUAL_UNTIL'));assert.deepEqual(copy(waiting.m.ctx.publishQueueTake_()),{except:[]});
+const noLink=harness();noLink.data.delete('PUBLIC_FILE');assert.equal(noLink.ctx.publishPublicRoster({interactive:true}).linked,false);assert(!noLink.data.has('PUBLIC_DIRTY'));
+const cleanup=manualHarness(1),deleteProperty=cleanup.m.props.deleteProperty;
+cleanup.m.props.deleteProperty=k=>{if(k==='PUBLISH_MANUAL_UNTIL')throw Error('priority cleanup failed');return deleteProperty(k);};
+assert(cleanup.m.ctx.publishPublicRoster({interactive:true}).linked);assert(!cleanup.m.data.has('PUBLISH_PASS_UNTIL'),'priority cleanup failure cannot strand claimed pass');
+console.log('Manual publishing: background handoff, bounded unlocked wait, durable full retry, no lease stealing, missing link and cleanup failure passed.');
+
 // One fresh recovery read per tab, all interrupted writer kinds fail closed.
 const r=harness(),roster={getSheetId:()=>7};r.ctx.publishAssertSettled_(roster);assert.equal(r.reads(),1);
 for(const [key,value] of [['RE_MEMBER_MOVE:7','malformed'],['RE_ASSIGN:7:42',''],['RE_SIGNUP_APPROVAL:8:123','malformed'],['RE_ACTIVITY_RESET_PENDING','malformed'],['RE_ACTIVITY_RESET_PENDING','{"phase":"history"}']]){
@@ -96,6 +155,8 @@ outcome=o.ctx.publishPublicRoster_();assert.deepEqual(mirrors,['Roster']);assert
 o.data.delete('RE_MEMBER_MOVE:7');mirrors=[];o.ctx.publishMirrorTab_=(src,dest)=>{mirrors.push(dest.getName());o.time(1270001);return 70;};
 outcome=o.ctx.publishPublicRoster_();assert.deepEqual(mirrors,['Roster']);assert(outcome.aborted);assert(outcome.detail.some(d=>d.includes('time budget')));assert(!o.held());
 console.log('Orchestration: real tab selection, cached inventories, emoji Welcome mapping, privacy blocking and mid-pass recovery passed.');
+o.time(2000000);o.data.set('PUBLISH_MANUAL_UNTIL','2020000|manual-request');mirrors=[];
+outcome=o.ctx.publishPublicRoster_(undefined,{yieldToBackoff:true});assert(outcome.aborted);assert.equal(mirrors.length,0,'background yields between tabs to waiting manual request');o.data.delete('PUBLISH_MANUAL_UNTIL');
 
 // Optional API path: exact complete metadata and no cell contents / guessed sizes.
 function dimensions({rows=1000,cols=40,metaCode=200,postCode=200,sparse=false,vary=false,wrongId=false}={}){

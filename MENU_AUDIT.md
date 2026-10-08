@@ -66,7 +66,7 @@ Consolidation recommendation implemented: keep panels and the everyday refresh v
 
 ## Verification and limits
 
-`node tools/qa.js` passes **23 suites/checks**, including the new `tools/menucheck.js`. Menu tests prove all 23 Roster and 6 QA callbacks exist, preserve every former action, use correct bound/library prefixes, omit unavailable modules, and avoid data/network access during construction. Trigger tests enumerate every literal `ScriptApp.newTrigger` target and verify the shim forwarders. New workflow tests use service doubles; they do not run menu commands on a production workbook.
+`node tools/qa.js` passes **24 suites/checks**, including the new `tools/menucheck.js`. Menu tests prove all 23 Roster and 6 QA callbacks exist, preserve every former action, use correct bound/library prefixes, omit unavailable modules, and avoid data/network access during construction. Trigger tests enumerate every literal `ScriptApp.newTrigger` target and verify the shim forwarders. New workflow tests use service doubles; they do not run menu commands on a production workbook.
 
 The existing in-sheet QA previously passed according to the user. This audit did not click every updated menu command in an authenticated Google Sheets session. Google authorization, another user's triggers, real concurrent executions, live dropdown colours and the visual result of merged-band insertion require live acceptance. A successful local test is not proof of those platform behaviors.
 

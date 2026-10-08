@@ -585,7 +585,7 @@ function setupWizardCore_() {
       let idColumns=0;
       const tr = ss.getSheetByName(CONFIG.sheets.tracker);
       if (tr) { const tc = trackerCols_(tr).discord; if (tc) {tr.getRange(1, tc, tr.getMaxRows(), 1).setNumberFormat('@');idColumns++;} }
-      const fm = ss.getSheetByName(CONFIG.sheets.form);
+      const fm = CONFIG.sheets.form ? ss.getSheetByName(CONFIG.sheets.form) : null;
       if (fm) { const fc=leaveFormCols_(fm); if(fc.byHeader && fc.discord) {fm.getRange(2,fc.discord,Math.max(1,fm.getMaxRows()-1),1).setNumberFormat('@');idColumns++;}else steps.push('⚠️ Leave form headers need mapping; no fixed answer column was reformatted.'); }
       steps.push(`ID text format verified on ${idColumns} resolved column(s).`);
     } catch (e) { steps.push(`⚠️ ID columns: ${e.message}`); }
@@ -1603,7 +1603,7 @@ function onFormSubmit(e) {
   const isSignup = sameTab_(submittedTab, CONFIG.sheets.signupForm);
   const routed = isLeave || isPatrol || isSignup; // identified → do only that form's work; else run all three (below)
 
-  const leaveForm = (!routed || isLeave) ? SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.form) : null;
+  const leaveForm = CONFIG.sheets.form && (!routed || isLeave) ? SpreadsheetApp.getActive().getSheetByName(CONFIG.sheets.form) : null;
   const beforeLeave = leaveForm ? leaveForm.getLastRow() : -1; // capture BEFORE the settle window
   Utilities.sleep(2000); // let Sheets finish writing the submitted row
   if (!routed || isLeave) {
@@ -2778,6 +2778,10 @@ function sortTracker_(prepend, trackerSheet) {
 /** Menu action: sync leave forms now. */
 function manualSyncLOA() {
   runAction_('Sync Leave Forms', () => {
+    if (!CONFIG.sheets.form) {
+      SpreadsheetApp.getUi().alert('Leave-form intake is off. Select your response tab in Settings → Sheets to enable it.');
+      return;
+    }
     const res = syncFormToTracker();
     // Always re-group — even with nothing new to add, the menu action must leave the tracker in the canonical order
     // (status groups, oldest submission first inside each), e.g. right after an ordering-rule change.
@@ -3772,6 +3776,7 @@ function refreshPatrolLogCore_() {
  * @return {boolean} false if the lock could not be acquired.
  */
 function syncFormToTracker() {
+  if (!CONFIG.sheets.form) return 0; // optional intake is off; no lock or blank-name sheet lookup
   const lock = LockService.getScriptLock();
   if (!lock.tryLock(30000)) {
     console.log('syncFormToTracker: could not obtain lock, skipping.');
