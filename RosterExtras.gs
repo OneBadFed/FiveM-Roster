@@ -580,14 +580,15 @@ function inferGroup_(name) {
 function groupNorm_(x) { return String(x).toLowerCase().replace(/\s+/g, ' ').trim(); }
 function groupValueMatches_(value,wanted) { const v=groupNorm_(value), w=groupNorm_(wanted); return !!w && (v===w || v.indexOf(w+' ')===0); }
 /** Ambiguous identities must never overwrite another member's custom fields. */
-function groupIdentityProblem_(rows,keyCol,nameCol) {
+function groupIdentityProblem_(rows,keyCol,nameCol,location) {
   const seen=Object.create(null);
+  const at=i=>location?' on "'+location.sheet+'" row '+(location.start+i)+' ('+groupColLetter_(location.key||keyCol)+(location.start+i)+')':'';
   for (let i=0;i<rows.length;i++) {
     if (!String(rows[i][nameCol-1]||'').trim()) continue;
     const key=String(rows[i][keyCol-1]||'').trim();
-    if (!key) return 'a named member has no matching identity';
-    if (seen[key]) return 'duplicate matching identity: '+key;
-    seen[key]=true;
+    if (!key) return 'a named member has no matching identity'+at(i);
+    if (seen[key]!==undefined) return 'duplicate matching identity: '+key+at(i)+(location?'; first found'+at(seen[key]):'');
+    seen[key]=i;
   }
   return '';
 }
@@ -719,7 +720,9 @@ function buildGroupSheetsCore_(hint) { // optional hint rebuilds only affected t
   const firstColRange = rName + '!' + L(firstCol) + start + ':' + L(firstCol); // for ROW() row-range tests
   const rosterRanges = rosterBandRanges_(roster, rosterBandCol); // group label → roster row range
   const nRg = Math.max(0, roster.getLastRow() - start + 1);
-  const rd = nRg ? roster.getRange(start, 1, nRg, lastCol).getDisplayValues() : []; // roster member rows — the upsert reads + mirrors these
+  // Keep physical row offsets for rank-band placement, but exclude layout rows exactly
+  // as the roster/member panel does. A footer or divider is not a member missing an ID.
+  const rd = nRg ? roster.getRange(start, 1, nRg, lastCol).getDisplayValues().map(row=>isValidMemberValues_(row[RC.rank-1],row[RC.name-1])?row:new Array(lastCol).fill('')) : [];
   // Don't touch the roster or the engine's own system tabs.
   const sysNames = {};
   Object.keys(CONFIG.sheets || {}).forEach((k) => { if (CONFIG.sheets[k]) sysNames[String(CONFIG.sheets[k]).toUpperCase()] = true; });
@@ -794,7 +797,8 @@ function buildGroupSheetsCore_(hint) { // optional hint rebuilds only affected t
     const existVals = bodyN ? sh.getRange(dataRow, rankTabCol, bodyN, fillW).getValues() : [];
     const existFormulas = bodyN ? sh.getRange(dataRow, rankTabCol, bodyN, fillW).getFormulasR1C1() : [];
     const existKeys = bodyN ? sh.getRange(dataRow, keyTabCol, bodyN, 1).getDisplayValues() : [];
-    const identityProblem = groupIdentityProblem_(rd,useId?RC.discord:RC.name,RC.name) || groupIdentityProblem_(existVals,keyTabCol-rankTabCol+1,tabNameCol-rankTabCol+1);
+    existVals.forEach((row,i)=>{row[keyTabCol-rankTabCol]=String(existKeys[i][0]||'').trim();});
+    const identityProblem = groupIdentityProblem_(rd,useId?RC.discord:RC.name,RC.name,{sheet:roster.getName(),start,key:useId?RC.discord:RC.name}) || groupIdentityProblem_(existVals,keyTabCol-rankTabCol+1,tabNameCol-rankTabCol+1,{sheet:nm,start:dataRow,key:keyTabCol});
     if (identityProblem) { skipped.push({name:nm,why:identityProblem+' — existing rows left unchanged'}); return; }
     existFormulas.forEach((row,r)=>row.forEach((formula,c)=>{ if(formula&&!colMap[rankTabCol+c]) existVals[r][c]={derivedFormula:formula}; }));
     const existByKey = Object.create(null);
@@ -1014,7 +1018,7 @@ function buildAcademySheetsCore_() {
   const headerToData = Math.max(1, start - RC.headerRow);
   const lastRowR = roster.getLastRow();
   const nR = Math.max(0, lastRowR - start + 1);
-  const rd = nR ? roster.getRange(start, 1, nR, roster.getLastColumn()).getDisplayValues() : [];
+  const rd = nR ? roster.getRange(start, 1, nR, roster.getLastColumn()).getDisplayValues().map(row=>isValidMemberValues_(row[RC.rank-1],row[RC.name-1])?row:new Array(row.length).fill('')) : [];
   const rHdrUp = roster.getRange(RC.headerRow, 1, 1, roster.getLastColumn()).getDisplayValues()[0].map((h) => String(h).toUpperCase().trim());
   const colForRoster = (label) => { // academy header label → roster column: exact match wins (NAME beats OOC NAME), then contains
     const key = String(label).toUpperCase().trim();
@@ -1093,7 +1097,10 @@ function buildAcademySheetsCore_() {
     // Validate and preserve the same exact displayed identity used by the lookup below;
     // numeric getValues() can round long Discord IDs before duplicate detection.
     existVals.forEach((row,i)=>{ row[keyCol-1]=String(existKeys[i][0]||'').trim(); });
-    const identityProblem = groupIdentityProblem_(rd,useId?RC.discord:RC.name,RC.name) || groupIdentityProblem_(existVals.filter((row)=>String(row[AC.name-1]||'').trim()!==ACADEMY_GRAD_DIVIDER),keyCol,AC.name);
+    // Skip the generated divider without removing a row: diagnostics must retain
+    // the original row numbers, and genuine trainees without an ID stay protected.
+    const identityRows=existVals.map(row=>String(row[AC.name-1]||'').trim()===ACADEMY_GRAD_DIVIDER?new Array(width).fill(''):row);
+    const identityProblem = groupIdentityProblem_(rd,useId?RC.discord:RC.name,RC.name,{sheet:roster.getName(),start,key:useId?RC.discord:RC.name}) || groupIdentityProblem_(identityRows,keyCol,AC.name,{sheet:sh.getName(),start:dataRow,key:keyCol});
     if(identityProblem){skipped.push({name:sh.getName(),why:identityProblem+' — existing rows left unchanged'});return;}
     existFormulas.forEach((row,r)=>row.forEach((formula,c)=>{if(formula&&!colMap[c])existVals[r][c]={derivedFormula:formula};}));
     const existByKey = Object.create(null);

@@ -1317,7 +1317,15 @@ function deferredJobState_(raw) {
   try{const state=JSON.parse(raw);if(state&&typeof state.token==='string')return state;}catch(e){/* preserve malformed pending work for recovery */}
   return {token:String(raw),attempts:0,next:0};
 }
-function runDeferredWork_() {
+/** A sweep/catch-up/instant refresh shares one writer lock. A busy writer is
+ * ordinary contention: leave queued work intact, without adding retry failures. */
+function tryDerivedRefresh_(fn) {
+  const lock=LockService.getScriptLock(),held=lock.hasLock();
+  if(!held&&!lock.tryLock(1))return;
+  try{return fn();}finally{if(!held)lock.releaseLock();}
+}
+function runDeferredWork_() {return tryDerivedRefresh_(runDeferredWorkCore_);}
+function runDeferredWorkCore_() {
   let snapshot;
   try{snapshot=deferredState_(p=>{
     const legacy=String(p.getProperty(DEFER_PROP_)||'');
@@ -1332,7 +1340,7 @@ function runDeferredWork_() {
     const prop=DEFER_JOB_PREFIX_+key,raw=snapshot[prop];if(!raw)return;
     const state=deferredJobState_(raw);if(Number(state.next)>Date.now())return;
     let failed=false;
-    try{const result=jobs[key]();if(result&&result.skipped&&result.skipped.length)throw new Error(result.skipped.length+' tab(s) could not be refreshed; see builder diagnostics.');}
+    try{const result=jobs[key]();if(result&&result.skipped&&result.skipped.length)throw new Error(result.skipped.length+' tab(s) could not be refreshed: '+result.skipped.map(item=>item.name+': '+item.why).join(' | '));}
     catch(e){failed=true;log_('deferred.'+key,e);}
     try{deferredState_(p=>{
       const current=p.getProperty(prop);if(!current||deferredJobState_(current).token!==state.token)return;
@@ -1353,7 +1361,8 @@ const DERIVED_GAP_MS_ = 4000; // isolated edits rebuild instantly; edits closer 
  * tabs instead of all of them. The deferWork_ queue stays SET, so the sweep's full runDeferredWork_ remains the
  * guaranteed backstop: a throttle, a timeout, a bulk edit (no hint), or any targeting miss self-heals within a minute.
  */
-function syncDerivedNow_(groupHint) {
+function syncDerivedNow_(groupHint) {return tryDerivedRefresh_(()=>syncDerivedNowCore_(groupHint));}
+function syncDerivedNowCore_(groupHint) {
   try {
     const p = PropertiesService.getDocumentProperties();
     const now = Date.now();

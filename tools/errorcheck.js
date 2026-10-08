@@ -37,6 +37,15 @@ ctx.buildGroupSheets_=()=>{ctx.deferWork_('groups');return {skipped:[]}};ctx.bui
 ctx.deferWork_('groups');const old=props['RE_DEFER_JOB:groups'];ctx.runDeferredWork_();assert(props['RE_DEFER_JOB:groups']&&props['RE_DEFER_JOB:groups']!==old);
 ctx.buildGroupSheets_=()=>({skipped:[]});ctx.runDeferredWork_();assert(!props['RE_DEFER_JOB:groups']);ctx.deferWork_('academy');ctx.runDeferredWork_();let state=JSON.parse(props['RE_DEFER_JOB:academy']);assert.equal(state.attempts,1);assert(state.next>Date.now());ctx.runDeferredWork_();assert.equal(JSON.parse(props['RE_DEFER_JOB:academy']).attempts,1);
 props.DEFERRED_WORK='|groups|';ctx.runDeferredWork_();assert(!props.DEFERRED_WORK);assert(!props['RE_DEFER_JOB:groups'],'legacy queue migrated and completed');
+// Competing writers leave a pending generation and its retry counter untouched.
+ctx.deferWork_('groups');const busyJob=props['RE_DEFER_JOB:groups'],busyLogs=logs.length;
+const actualTryLock=lock.tryLock;lock.tryLock=()=>false;
+ctx.runDeferredWork_();ctx.syncDerivedNow_();assert.equal(props['RE_DEFER_JOB:groups'],busyJob);assert.equal(logs.length,busyLogs);assert(!props.DERIVED_LAST_SYNC);
+lock.tryLock=actualTryLock;
+// Successful nested builders reuse the worker's lock and release it only once.
+const workerReleases=released;ctx.buildGroupSheets_=()=>{assert(held);return {skipped:[]}};ctx.runDeferredWork_();assert.equal(released,workerReleases+1);assert(!props['RE_DEFER_JOB:groups']);
+// The top-level failure contains the actionable sheet/cell reason itself.
+ctx.deferWork_('groups');ctx.buildGroupSheets_=()=>({skipped:[{name:'Day Shift',why:'missing ID at D9'}]});ctx.runDeferredWork_();assert(logs.some(line=>/Day Shift: missing ID at D9/.test(line)));assert.equal(JSON.parse(props['RE_DEFER_JOB:groups']).attempts,1);
 // Bad payloads never escape the never-throw webhook boundary. Respect a long Retry-After without retrying early.
 let calls=0,sleeps=[];ctx.UrlFetchApp={fetch:()=>{calls++;return {getResponseCode:()=>429,getHeaders:()=>({'Retry-After':'10'}),getContentText:()=> '{}'}}};ctx.Utilities.sleep=ms=>sleeps.push(ms);
 let payload={};payload.self=payload;assert.equal(ctx.postToWebhook_(secret,payload).ok,false);assert.equal(calls,0);let result=ctx.postToWebhook_(secret,{});assert.equal(result.code,429);assert.equal(calls,1);assert.equal(sleeps.length,0);

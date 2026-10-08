@@ -70,6 +70,8 @@ You can also just **work directly on the sheet** — the engine watches for it:
 - Paste an existing member's ID onto another row → a **transfer** (with a confirmation prompt).
 - Set a signup row's STATUS to `Approved` → a slot picker pops up right there.
 
+Academy and shift/division refreshes use the same member-row rules as the main roster: divider, header and footer rows are excluded. Genuine missing/duplicate member IDs stop the affected refresh before it clears existing records; SYS Log identifies the sheet and ID cell to correct. Competing refreshes keep their work queued for the next sweep instead of reporting lock contention as a failed build.
+
 ---
 
 ## 📥 How people get onto the roster
