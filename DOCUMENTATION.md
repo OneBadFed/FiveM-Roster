@@ -30,7 +30,7 @@ ever flows back. There is no separate "admin file" — `adminFile_()` resolves t
 | `RosterControlPanel.gs` | Control Panel server: the D5 `dispatch()` whitelist gateway and every `cp*` endpoint; signup sync + approval; the public-roster publish pipeline; webhooks; rank-icon storage |
 | `RosterTrust.gs` | Snapshots/restore, the always-on Edit Log audit (with editor-name resolution), health & schema checks |
 | `RosterExtras.gs` | Integrity scan, leave coverage board, the Activity Panel board (§5a), hours history + cadence-aware reset + period archive, group / Police Academy tab builders, full-lifecycle demo seeder |
-| `RosterDevQA.gs` | The QA suite — 23 sections, sandbox-only, run in three parts (or all / per-section) from the 🧪 menu |
+| `RosterDevQA.gs` / `RosterQA.gs` | Demo/reset utilities and the fresh core/platform QA suite; a blank sandbox in a separate workbook becomes the results worksheet |
 | `ControlPanel.html` | Control Panel UI (single HtmlService dialog, Studio design system, deep-linkable tabs) |
 | `SettingsPanel.html` | Settings Studio UI (full-screen config editor incl. the per-channel Discord embed builder) |
 | `TEMPLATE-SHIM.gs` | **Library mode only** — endpoint whitelist mirror + trigger forwarders. Held out of `clasp push` by `.claspignore`; never paste alongside the engine |
@@ -576,7 +576,7 @@ Members read a separate spreadsheet that mirrors selected tabs from this workboo
 8. The engine fills user sheets — it never restructures or reformats their layout. (Sole carve-out: auto-rows
    manages the data-region row COUNT on the three tracker-style tabs — §3 — inserting inside the styled band
    and trimming trailing blanks; `[LIMITS].BLANK_TAIL_ROWS = 0` turns it off.)
-9. DevQA touches 🧪-prefixed sandbox tabs only.
+9. QA tests use a run-owned sandbox in a separate workbook; that same worksheet becomes the results page. Demo/reset tools are separate and must be invoked explicitly.
 
 ---
 
@@ -592,7 +592,7 @@ Refresh Police Academy · 📊 Build / Refresh Activity Panel │ 🌐 Set Up Pu
 (Discord / Community) · 🧩 Sync Column
 Config · 🚀 First-Run Setup · 🔌 Install Triggers.
 
-**🧪 Dev / QA:** QA — all new scenarios / core logic / Sheets platform · 🎬 Load Demo Roster · 🗑️ Reset for a new department · 🧹 Delete old Sandbox / Results Tabs. QA results and synthetic platform fixtures are stored in a separate workbook; see [QA_TESTING.md](QA_TESTING.md). The old test sections and random generators remain removed.
+**🧪 Dev / QA:** QA — all new scenarios / core logic / Sheets platform · 🎬 Load Demo Roster · 🗑️ Reset for a new department · 🧹 Delete old Sandbox / Results Tabs. Tests reset and reuse a blank sandbox worksheet in a separate workbook, then repurpose that same worksheet as QA Results and remove helper worksheets; see [QA_TESTING.md](QA_TESTING.md). The old test sections and random generators remain removed.
 
 Every action reports what it actually did (counts, names, changes).
 
@@ -632,25 +632,22 @@ snapshot. In library mode the shim forwards all of these.
 
 ## 14 · The QA System
 
-`RosterDevQA.gs`: **23 sections** (unit/pure, status engine, leave lifecycle, form sync, maintenance, Discord
-guards, ID precision, adversarial, panel & audit, extras, trust, config engine, dispatch & migrations,
-white-label, identity-keyed writes, config robustness, dashboard render, settings apply, config extensions,
-new-layout columns, Patrol Log, Roster Signups, public publish). Everything runs against 🧪-prefixed **sandbox
-tabs** (reused via `clear()` for speed) — never live data.
+`RosterQA.gs` contains freshly authored deterministic core scenarios and Google Sheets platform fixtures.
+The menu supports all scenarios, core logic, or platform checks. Each run creates a separate QA workbook
+and a blank sandbox worksheet. Platform tests reset and reuse it, including merged headers, formatting,
+validation, conditional rules and multi-width frame growth. Native-copy tests may use a temporary helper
+worksheet. After testing, helper worksheets are removed and the original sandbox is cleared and renamed
+QA Results; its sheet ID is retained. Failures and unstarted cases remain FAIL / NOT RUN.
 
-**Run it in three parts** (▶️ Part 1 / 2 / 3) — the full 23-section run can exceed Apps Script's ~6-minute
-execution cap; the split points live in one array (`DEV_PART_ENDS_`). Each part repeats the live-config
-preflight; results render to the "🧪 Test Results" tab (last run wins, header labeled with the part).
+The runner checks workbook identity before writing, acquires the shared script lock, suppresses Discord
+for testing and restores its previous suppression setting. Only the newly created QA workbook is cleaned.
+The tests do not call production member writers, form/trigger creation, reset or public publishing actions.
+The execution budget stops starting cases after three minutes; a hard platform termination can leave an
+unfinished sandbox. Report/cleanup failures are failures, not successful test outcomes.
 
-**A test run never touches production surfaces:** the part/section runners set the `DEV_WEBHOOKS_OFF_`
-execution flag, checked at the three choke points — `sendWebhookPayload_` (every channel embed), `auditEvent_`
-(Edit Log + audit mirror), and `maybeErrorWebhook_` — so sandbox activity posts no Discord embeds and writes no
-live Edit Log rows. The flag resets per execution; live behavior outside a test run is untouched (patrol
-transition embeds are additionally sandbox-tab-gated).
-
-Sandbox limits to remember: plain grids — no merges, no formatting, no timezone quirks. Passing tests prove
-logic, not layout behavior; the live smoke test (one signup, one leave, one patrol log, one transfer, one
-publish) is part of every release.
+Local `node tools/qa.js` also runs injected faults and inherited integration regressions before deployment.
+Passing mocks is not proof of real Google permissions or browser behavior. Live smoke checks on a separate
+test copy remain required. See [QA_TESTING.md](QA_TESTING.md) for coverage and outstanding acceptance tests.
 
 **Local static validation** (no Apps Script needed): Node `new Function(src)` syntax check + zero-control-byte
 scan per file; HTML script blocks are extracted, GAS scriptlets stubbed, and `node --check`ed the same way.
@@ -668,7 +665,7 @@ ending switches reach a real consumer. Run it after any config-layer change.
 ## 15 · Maintenance
 
 **Release recipe:** bump `ENGINE_VERSION` (+ `CP_VERSION`) → syntax-check every file → commit → `clasp push -f`
-→ run all three QA parts → live smoke test. After schema-affecting changes: run 🚀 First-Run Setup once
+→ run QA — all new scenarios → live smoke test. After schema-affecting changes: run 🚀 First-Run Setup once
 (idempotent).
 
 **Sync rules:** `clasp push -f` syncs every engine file (`.claspignore` keeps `TEMPLATE-SHIM.gs` out — it ships

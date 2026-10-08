@@ -42,6 +42,10 @@ within seconds of any change here.
    into that file (the public file's tab list is the allow-list). From then on it stays current by itself;
    🌐 Publish Public Roster forces a pass any time. Rows that land past the styled area of a public tab are
    dressed to match the rows above them, so a growing roster keeps its banding and status chips.
+   Completed tables publish together; catch-ups retry only remaining work while retaining concurrent edits.
+   Dimension copying uses a bulk Sheets API path when available, with a complete fallback. Full publishes and
+   background passes taking ten seconds or more include total/per-tab timings in SYS Log. See
+   [PUBLISH_AUDIT.md](PUBLISH_AUDIT.md) for performance changes and live verification steps.
 
 ---
 
@@ -158,7 +162,7 @@ restructure, or reformat your sheets.
 - Don't edit the hidden first column on the Patrol Log.
 - 🎬 Load Demo Roster is for fresh copies only — it overwrites.
 - To prepare a demo copy for another department, use **🧪 Dev / QA ▸ 🗑️ Reset for a new department…** and type **RESET DEPARTMENT**. This permanently clears members (including custom MEMBER columns), LOAs, patrol logs, signups, linked response-sheet rows, history, snapshots, webhooks, rank icons and saved department configuration. SLOT values such as ranks/callsigns, dividers, borders, formatting, custom tab names and structural column mappings remain. Other settings return to defaults with scheduled activity reset off. The public roster is disconnected before cleanup; no other spreadsheet or Google Form is changed. Engine triggers belonging to the current user are removed; any other trigger owners must remove theirs separately. Run it on a copy, inspect any manually maintained content, then link the new department's own response tabs, configure its connections and run First-Run Setup. The reset is not transactional: if it reports a failure, keep the copy private and retry after resolving the error.
-- The old in-sheet test suite was removed and replaced by freshly authored QA scenarios. **Dev / QA → QA — all new scenarios** runs core logic and Sheets platform checks in a separate workbook containing synthetic data only; **core logic** and **Sheets platform** can run separately. The results link appears in the completion dialog. No live roster writers, forms, triggers or public publishing actions are executed by this in-sheet suite. Repository verification uses `node tools/qa.js` and includes additional fault matrices and existing regressions. See [QA_TESTING.md](QA_TESTING.md) for coverage and limits. Demo loading, department reset and old sandbox cleanup remain separate tools.
+- The old in-sheet test suite was removed and replaced by freshly authored QA scenarios. **Dev / QA → QA — all new scenarios** runs core logic and Sheets platform checks in a separate workbook containing synthetic data only; **core logic** and **Sheets platform** can run separately. Sheets tests reuse a blank sandbox worksheet. Once testing completes, helper worksheets are removed and that same sandbox becomes **QA Results**; its link appears in the completion dialog. No live roster writers, forms, triggers or public publishing actions are executed by this in-sheet suite. Repository verification uses `node tools/qa.js` and includes additional fault matrices and existing regressions. See [QA_TESTING.md](QA_TESTING.md) for coverage and limits. Demo loading, department reset and old sandbox cleanup remain separate tools.
 
 ---
 

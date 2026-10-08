@@ -70,10 +70,11 @@ function qaCases_() {
 }
 
 /** Platform checks receive a dedicated workbook and cannot obtain the source workbook themselves. */
-function qaPlatformCases_(book) {
+function qaPlatformCases_(book, sandbox) {
   const cases=[],add=(id,area,run)=>cases.push(qaCase_(id,area,run));
+  const fixture=name=>sandbox?qaResetSandbox_(sandbox,name):book.insertSheet(name);
   add('platform.config.roundtrip','Sheets platform',()=>{
-    const sh=book.insertSheet('QA Config');
+    const sh=fixture('QA Config');
     sh.getRange(1,1,9,5).setValues([
       ['RE_CONFIG','','','',''],['[SYSTEM]','','','',''],['SYSTEM_NAME','QA system','help','',''],['','','','',''],
       ['[RANKS]','','','',''],['Value','Kind','','',''],['Cadet','TRAINING','','',''],['','','','',''],['','','','','']]);
@@ -85,12 +86,29 @@ function qaPlatformCases_(book) {
     qaEqual_(parseBlocks_(sh).SYSTEM.kv.SYSTEM_NAME,'New QA');
   });
   add('platform.graduate.banner','Sheets platform',()=>{
-    const sh=book.insertSheet('QA Academy');
+    const sh=fixture('QA Academy');
     sh.getRange(1,1,7,3).setValues([['NAME','GRADUATED',''],['Alex','Graduated',''],['— GRADUATED —','',''],['GRADUATE LOG','',''],['','',''],['','',''],['','','']]);
     sh.getRange(4,1,2,3).merge();qaEqual_(academyGradSection_(sh,2,3),{headerRow:4,dataStart:6});
   });
+  add('platform.publish.native.merged','Sheets platform',()=>{
+    const src=fixture('QA Native Source'),dest=book.insertSheet('QA Native Snapshot');
+    try {
+    [src,dest].forEach(sh=>sh.getRange(1,1,2,3).merge().setBackground('#223344'));
+    src.getRange(1,1).setValue('Merged banner');src.getRange(1,4).setNumberFormat('@').setValue("'=literal");
+    src.getRange(2,4).setFormula('=10+5');src.getRange(3,4).setNumberFormat('@').setValue('1234567890123456789');
+    SpreadsheetApp.flush();
+    publishFreezeSnapshot_(src,dest,3,4);
+    qaEqual_(dest.getRange(1,1).getDisplayValue(),'Merged banner');
+    qaEqual_(dest.getRange(1,4).getDisplayValue(),src.getRange(1,4).getDisplayValue());
+    qaEqual_(dest.getRange(2,4).getDisplayValue(),'15');
+    qaEqual_(dest.getRange(2,4).getFormulas()[0][0],'');
+    qaEqual_(dest.getRange(3,4).getDisplayValue(),'1234567890123456789');
+    qaEqual_(dest.getRange(1,1,2,3).getMergedRanges().length,1);
+    qaEqual_(dest.getRange(1,1).getBackgrounds()[0][0],'#223344');
+    } finally { book.deleteSheet(dest); }
+  });
   [12,27,40].forEach(width=>add('platform.frame.growth.'+width,'Sheets platform',()=>{
-    const sh=book.insertSheet('QA Frame '+width);
+    const sh=fixture('QA Frame '+width);
     if(sh.getMaxColumns()<width)sh.insertColumnsAfter(sh.getMaxColumns(),width-sh.getMaxColumns());
     sh.getRange(8,1,3,width).setBackground('#777777').setFontFamily('Arial').setFontSize(12).setFontColor('#eeeeee').setWrap(true);
     sh.getRange(8,1,3,1).setBackground('#111111');sh.getRange(8,width,3,1).setBackground('#111111');
@@ -108,6 +126,27 @@ function qaPlatformCases_(book) {
     sh.getRange(8,2).setNumberFormat('@').setValue('1234567890123456789');qaEqual_(sh.getRange(8,2).getDisplayValue(),'1234567890123456789');
   }));
   return cases;
+}
+
+/** The caller supplies only the run-owned sandbox. Start each fixture on a truly blank grid. */
+function qaResetSandbox_(sheet, name) {
+  const filter=sheet.getFilter();if(filter)filter.remove();
+  sheet.getRange(1,1,sheet.getMaxRows(),sheet.getMaxColumns()).breakApart();
+  sheet.clear();sheet.setConditionalFormatRules([]);
+  sheet.getBandings().forEach(b=>b.remove());
+  sheet.getCharts().forEach(chart=>sheet.removeChart(chart));
+  sheet.getImages().forEach(image=>image.remove());
+  sheet.setFrozenRows(0);sheet.setFrozenColumns(0);
+  const rows=100,cols=40;
+  if(sheet.getMaxRows()<rows)sheet.insertRowsAfter(sheet.getMaxRows(),rows-sheet.getMaxRows());
+  if(sheet.getMaxRows()>rows)sheet.deleteRows(rows+1,sheet.getMaxRows()-rows);
+  if(sheet.getMaxColumns()<cols)sheet.insertColumnsAfter(sheet.getMaxColumns(),cols-sheet.getMaxColumns());
+  if(sheet.getMaxColumns()>cols)sheet.deleteColumns(cols+1,sheet.getMaxColumns()-cols);
+  sheet.showRows(1,rows);sheet.showColumns(1,cols);
+  sheet.getRange(1,1,rows,cols).clearDataValidations().clearNote();
+  sheet.setRowHeights(1,rows,21);sheet.setColumnWidths(1,cols,100);
+  sheet.setName(name||'QA Sandbox');
+  return sheet;
 }
 
 /** Each case has an independent result. Missing dependencies and exceptions are failures, never passes. */
@@ -128,32 +167,42 @@ function qaRunPlatform() { return qaRun_('platform'); }
 function qaRun_(mode) {
   const ui=SpreadsheetApp.getUi(),source=SpreadsheetApp.getActive(),lock=LockService.getScriptLock();
   if(!lock.tryLock(1000)){ui.alert('QA cannot start while a roster action is running. Try again after it finishes.');return;}
-  const previousSuppression=DEV_WEBHOOKS_OFF_;let book=null,results=[],failure='';
+  const previousSuppression=DEV_WEBHOOKS_OFF_;let book=null,sandbox=null,results=[],failure='',reportReady=false;
   try {
     DEV_WEBHOOKS_OFF_=true;
     // No active-roster writers, no form creation, no triggers, no production reset/publish endpoints.
-    book=SpreadsheetApp.create('Roster QA '+new Date().toISOString());
-    qaAssert_(book.getId()!==source.getId(),'QA workbook must differ from source');
+    const candidate=SpreadsheetApp.create('Roster QA '+new Date().toISOString());
+    qaAssert_(candidate.getId()!==source.getId(),'QA workbook must differ from source');
+    book=candidate;sandbox=book.getSheets()[0];
+    qaResetSandbox_(sandbox,'QA Sandbox');
     const started=Date.now(),deadline=started+180000;
-    const cases=(mode==='platform'?[]:qaCases_()).concat(mode==='core'?[]:qaPlatformCases_(book));
+    const cases=(mode==='platform'?[]:qaCases_()).concat(mode==='core'?[]:qaPlatformCases_(book,sandbox));
     results=qaExecuteCases_(cases,()=>Date.now(),deadline);
   } catch(e){failure=diagnosticText_(e&&e.message||e,1500);results.push(['runner.failure','Runner','FAIL',0,failure]);}
   finally {
     DEV_WEBHOOKS_OFF_=previousSuppression;
     // Reporting failure must still restore suppression and release the lock.
     try {
-      if(book){
-        const report=book.getSheets()[0];report.setName('QA Results');
+      if(sandbox){
+        // Only this newly created workbook is owned by the run. Keep the very same
+        // sandbox sheet ID, remove helper fixtures, and replace its contents with results.
+        book.getSheets().forEach(sheet=>{
+          if(sheet.getSheetId()===sandbox.getSheetId())return;
+          try{book.deleteSheet(sheet);}catch(e){results.push(['runner.cleanup.'+sheet.getSheetId(),'Runner','FAIL',0,diagnosticText_(e&&e.message||e,500)]);}
+        });
+        const report=qaResetSandbox_(sandbox,'QA Results');
         const rows=[['Case','Area','Result','Milliseconds','Detail']].concat(results);
+        if(report.getMaxRows()<rows.length)report.insertRowsAfter(report.getMaxRows(),rows.length-report.getMaxRows());
         report.getRange(1,1,rows.length,5).setNumberFormat('@').setValues(rows.map(row=>row.map(value=>typeof value==='string'&&value.charAt(0)==='='?"'"+value:value)));
         styleStartupSupportSheet_(report,['Case','Area','Result','Milliseconds','Detail']);
+        reportReady=true;
       }
     } catch(e){failure+=' Report failure: '+diagnosticText_(e&&e.message||e,500);results.push(['runner.report','Runner','FAIL',0,failure]);}
     finally {lock.releaseLock();}
   }
   const count=status=>results.filter(row=>row[2]===status).length;
   ui.alert('QA: '+count('PASS')+' passed; '+count('FAIL')+' failed; '+count('NOT RUN')+' not run.\n'
-    +(book?'Results and fixtures in a separate workbook:\n'+book.getUrl():'No test workbook could be created.')
+    +(book?(reportReady?'Sandbox converted to results in a separate workbook:\n':'QA workbook created, but results could not be completed:\n')+book.getUrl():'No test workbook could be created.')
     +(failure?'\n'+failure:'')+'\nLive roster data was not used as test input.');
-  return {passed:count('PASS'),failed:count('FAIL'),notRun:count('NOT RUN'),url:book?book.getUrl():null};
+  return {passed:count('PASS'),failed:count('FAIL'),notRun:count('NOT RUN'),reportReady,url:book?book.getUrl():null};
 }

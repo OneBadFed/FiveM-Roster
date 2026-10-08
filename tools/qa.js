@@ -2,7 +2,7 @@
 // Existing suites are complementary; RosterQA.gs contains newly authored scenarios.
 const fs=require('fs'),path=require('path'),cp=require('child_process');
 process.chdir(path.resolve(__dirname,'..'));
-const suites=['qacheck','qawhatif','qaplatform','cfgcheck','tablecheck','publishcheck','welcomecheck','perfcheck','panelopencheck','selectioncheck','resetcheck','hardeningcheck','settingscheck','groupcheck','errorcheck','recoverycheck','privacycheck','startupcheck'];
+const suites=['qacheck','qawhatif','qaplatform','cfgcheck','tablecheck','publishcheck','publishfastcheck','welcomecheck','perfcheck','panelopencheck','selectioncheck','resetcheck','hardeningcheck','settingscheck','groupcheck','errorcheck','recoverycheck','privacycheck','startupcheck'];
 const started=Date.now(),results=[];
 for(const name of suites){
  const before=Date.now(),r=cp.spawnSync(process.execPath,['tools/'+name+'.js'],{encoding:'utf8',timeout:60000});

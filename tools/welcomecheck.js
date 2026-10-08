@@ -18,22 +18,21 @@ class Sheet {
   setRowHeightsForced(r,n,v){for(let i=0;i<n;i++)this.heights[r+i-1]=v;}
   getColumnWidth(c){return this.widths[c-1];} setColumnWidth(c,v){this.widths[c-1]=v;}
   getDataRange(){return {getFormulas:()=>this.formulas};}
-  getRange(r,c,n=1,w=1){const sheet=this;return {sheet,getValues:()=>structuredClone(this.values),getRichTextValues:()=>[],getFormulas:()=>[],getNumRows:()=>n,getNumColumns:()=>w,breakApart(){return this;},clear(){sheet.titleBlock=null;},copyTo(range){range.sheet.titleBlock=structuredClone(sheet.titleBlock);},setFormula:f=>{this.formulas[r-1][c-1]=f;}};}
+  getRange(r,c,n=1,w=1){const sheet=this;return {sheet,getValues:()=>structuredClone(this.values),getRichTextValues:()=>[],getMergedRanges:()=>[],getFormulas:()=>[],getNumRows:()=>n,getNumColumns:()=>w,breakApart(){return this;},clear(){sheet.titleBlock=null;},copyTo(range,type){if(type==='VALUES'){if(sheet.failFreeze)throw Error('native snapshot paste failed');range.sheet.values=structuredClone(sheet.values);range.sheet.formulas=sheet.formulas.map(row=>row.map(()=>''));}else range.sheet.titleBlock=structuredClone(sheet.titleBlock);},setValues(){throw Error('object/merged cells cannot be serialized in this fixture');},setFormula:f=>{this.formulas[r-1][c-1]=f;}};}
   isSheetHidden(){return false;} showSheet(){} hideSheet(){}
   clearContents(){this.values=[];this.formulas=[];}
   copyTo(book){const copy=new Sheet(book,'Copy of '+this.name,this.rows,this.cols);for(const key of ['values','formulas','heights','widths','visual'])copy[key]=structuredClone(this[key]);return copy;}
 }
-const ctx={Date,SpreadsheetApp:{flush(){}},writeValuesSafe_:(sheet,r,c,values)=>{sheet.values=structuredClone(values);return 0;}};
-vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('function publishWelcomePage_('),source.indexOf('function publishMirrorTab_(')),ctx);
+const ctx={Date,SpreadsheetApp:{flush(){},CopyPasteType:{PASTE_VALUES:'VALUES'}},writeValuesSafe_:()=>{throw Error('Welcome must not serialize native cells');}};
+vm.createContext(ctx);vm.runInContext(source.slice(source.indexOf('function publishFreezeSnapshot_('),source.indexOf('/** Prepare a redacted')),ctx);vm.runInContext(source.slice(source.indexOf('function publishWelcomePage_('),source.indexOf('function publishMirrorTab_(')),ctx);
 const internal=new Book(),publicBook=new Book(),src=new Sheet(internal,'👋 Welcome Page'),old=new Sheet(publicBook,'Welcome Page',2,2),other=new Sheet(publicBook,'Other');
-other.formulas=[["='Welcome Page'!C1"]];src.values[1][0]='=literal text';
+other.formulas=[["='Welcome Page'!C1"]];src.values[1][0]='=literal text';src.values[0][1]={valueType:'IMAGE',logo:'department badge'};
 assert.equal(ctx.publishWelcomePage_(src,old),4);
 const mirrored=publicBook.sheets[0];assert.equal(mirrored.name,'Welcome Page');assert.equal(mirrored.rows,4);assert.equal(mirrored.cols,3);
 assert.deepEqual(mirrored.visual,src.visual);assert.deepEqual(mirrored.heights,src.heights);assert.deepEqual(mirrored.widths,src.widths);
-assert.equal(mirrored.values[0][0],'Internal title','public title override no longer survives');assert.equal(mirrored.values[1][1],5,'cross-sheet formula uses internal computed value');assert.equal(mirrored.values[1][0],"'=literal text");
+assert.equal(mirrored.values[0][0],'Internal title','public title override no longer survives');assert.equal(mirrored.values[1][1],5,'cross-sheet formula uses internal computed value');assert.equal(mirrored.values[1][0],'=literal text');assert.deepEqual(mirrored.values[0][1],src.values[0][1],'native in-cell logo survives');assert(mirrored.formulas.every(row=>row.every(f=>!f)),'cross-sheet formulas are frozen');
 assert.equal(other.formulas[0][0],"='Welcome Page'!C1");assert.equal(internal.sheets.length,1,'temporary internal sheet cleaned');assert.equal(publicBook.sheets.length,2);
-const failedOld=mirrored;ctx.writeValuesSafe_=()=>1;assert.throws(()=>ctx.publishWelcomePage_(src,failedOld),/unwritable/);assert(publicBook.sheets.includes(failedOld));assert.equal(internal.sheets.length,1);
-ctx.writeValuesSafe_=(sheet,r,c,values)=>{sheet.values=structuredClone(values);return 0;};
+const failedOld=mirrored;src.failFreeze=true;assert.throws(()=>ctx.publishWelcomePage_(src,failedOld),/native snapshot paste failed/);assert(publicBook.sheets.includes(failedOld));assert.equal(internal.sheets.length,1);src.failFreeze=false;
 const move=publicBook.moveActiveSheet;publicBook.moveActiveSheet=()=>{throw new Error('swap failed');};
 assert.throws(()=>ctx.publishWelcomePage_(src,failedOld),/swap failed/);assert(publicBook.sheets.includes(failedOld));assert.equal(failedOld.name,'Welcome Page');assert.equal(publicBook.sheets.length,2);assert.equal(other.formulas[0][0],"='Welcome Page'!C1");publicBook.moveActiveSheet=move;
 assert(source.includes('if (!isWelcome &&'),'Welcome cannot be skipped as self-computing');

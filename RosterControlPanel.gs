@@ -2773,6 +2773,7 @@ function publishDressRows_(dest, dh, lastData, width) {
 function publishMirrorHeights_(src, dest, srcStart, destStart, n, deep) {
   try {
     if (!(n > 0) || srcStart < 1 || destStart < 1) return;
+    if(deep&&typeof publishDimensionsFast_==='function'&&publishDimensionsFast_(src,dest,n,0,{srcStart,destStart}))return;
     const from = deep ? 0 : Math.max(0, n - 5); // shallow: just the tail, where published rows are added
     for (let i = from; i < n; i++) {
       const sr = srcStart + i, dr = destStart + i;
@@ -2783,7 +2784,50 @@ function publishMirrorHeights_(src, dest, srcStart, destStart, n, deep) {
   } catch (e) { logWarn_('publishMirrorHeights_', 'row heights skipped for ' + dest.getName() + ': ' + ((e && e.message) ? e.message : e)); }
 }
 
-/** Copy only a content-free style carrier across workbooks; private data never enters the public carrier. */
+/** Freeze a native sheet copy using Sheets' own value paste, rather than rebuilding
+ * merged anchors / CellImage values through setValue. Keeps text literals literal.
+ * Both ranges are in the internal workbook; redaction happens before any public copy.
+ */
+function publishFreezeSnapshot_(src, snapshot, rows, cols) {
+  if (!rows || !cols) return;
+  const source = src.getRange(1,1,rows,cols);
+  const richText = source.getRichTextValues();
+  source.copyTo(snapshot.getRange(1,1,rows,cols), SpreadsheetApp.CopyPasteType.PASTE_VALUES, false);
+  // A value paste can discard mixed typography / links. Static rich text is safe to
+  // restore, including the displayed text of HYPERLINK formulas. RichTextValue
+  // writes text rather than executing a leading '=' as a formula.
+  publishRestoreRichText_(source,snapshot,richText);
+}
+
+/** Batch text rectangles. Never include numeric/image cells or partially overlap
+ * a merge; each merged anchor is restored once. */
+function publishRestoreRichText_(source,snapshot,texts) {
+  const blocked=new Set(),anchors=[];
+  source.getMergedRanges().forEach(m=>{
+    const r=m.getRow()-1,c=m.getColumn()-1;
+    for(let i=r;i<r+m.getNumRows();i++)for(let j=c;j<c+m.getNumColumns();j++)blocked.add(i+':'+j);
+    anchors.push([r,c]);
+  });
+  const has=text=>text&&text.getText()!=='';
+  const active=new Map();
+  const flush=run=>snapshot.getRange(run.row+1,run.start+1,run.rows,run.end-run.start).setRichTextValues(texts.slice(run.row,run.row+run.rows).map(row=>row.slice(run.start,run.end)));
+  texts.forEach((row,r)=>{
+    const current=new Map();let c=0;
+    while(c<row.length){
+      if(!has(row[c])||blocked.has(r+':'+c)){c++;continue;}
+      const start=c;while(c<row.length&&has(row[c])&&!blocked.has(r+':'+c))c++;
+      const key=start+':'+c,previous=active.get(key);
+      if(previous){previous.rows++;current.set(key,previous);}
+      else current.set(key,{row:r,start,end:c,rows:1});
+    }
+    active.forEach((run,key)=>{if(!current.has(key))flush(run);});
+    active.clear();current.forEach((run,key)=>active.set(key,run));
+  });
+  active.forEach(flush);
+  anchors.forEach(([r,c])=>{if(texts[r]&&has(texts[r][c]))snapshot.getRange(r+1,c+1).setRichTextValue(texts[r][c]);});
+}
+
+/** Prepare a redacted native snapshot internally; private data never enters the public carrier. */
 function publishFramedTable_(src, dest) {
   const start = src.getName() === CONFIG.sheets.tracker ? CONFIG.trackerStartRow : CONFIG.patrolStartRow;
   const table = framedTable_(src, start), rows = Math.min(table.cap, src.getMaxRows()), width = table.width;
@@ -2791,8 +2835,18 @@ function publishFramedTable_(src, dest) {
   let local = null, carrier = null;
   try {
     local = src.copyTo(owner);
-    local.setName('_table_style_' + Date.now());
-    local.clearContents();
+    local.setName('_table_snapshot_' + Date.now());
+    publishFreezeSnapshot_(src,local,rows,width);
+    const header = publishHeaderRow_(src);
+    if (header) src.getRange(header,1,1,width).getDisplayValues()[0].forEach((h,c) => {
+      if (publishSensitiveHeader_(h) && rows > header) local.getRange(header+1,c+1,rows-header,1).clearContent();
+    });
+    // Hidden key/credit markers are engine-only bookkeeping in the left border.
+    local.getRange(start,1,rows-start+1,1).clearContent();
+    // Remove all unused cells before copying across workbooks, including private
+    // content outside the detected frame. The public carrier contains only this table.
+    if (local.getMaxRows() > rows) local.deleteRows(rows+1,local.getMaxRows()-rows);
+    if (local.getMaxColumns() > width) local.deleteColumns(width+1,local.getMaxColumns()-width);
     local.getRange(1, 1, local.getMaxRows(), local.getMaxColumns()).clearNote();
     local.getDeveloperMetadata().forEach((m) => m.remove());
     SpreadsheetApp.flush();
@@ -2803,8 +2857,8 @@ function publishFramedTable_(src, dest) {
     if (dest.getMaxRows() > rows) dest.deleteRows(rows + 1, dest.getMaxRows() - rows);
     const source = carrier.getRange(1, 1, rows, width), range = dest.getRange(1, 1, rows, width);
     range.breakApart();
-    source.copyTo(range, SpreadsheetApp.CopyPasteType.PASTE_FORMAT, false);
-    source.copyTo(range, SpreadsheetApp.CopyPasteType.PASTE_DATA_VALIDATION, false);
+    range.clearContent();
+    source.copyTo(range, SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
     const rules = [];
     src.getConditionalFormatRules().forEach((rule) => {
       const ranges = rule.getRanges().filter((g) => g.getRow() <= rows && g.getColumn() <= width).map((g) =>
@@ -2812,17 +2866,7 @@ function publishFramedTable_(src, dest) {
       if (ranges.length) rules.push(rule.copy().setRanges(ranges).build());
     });
     dest.setConditionalFormatRules(rules);
-    source.getMergedRanges().forEach((g) => dest.getRange(g.getA1Notation()).merge());
     publishCopyDimensions_(src,dest,rows,width);
-    const values = publishReadCells_(src.getRange(1, 1, rows, width), true);
-    const header = publishHeaderRow_(src);
-    if (header) src.getRange(header, 1, 1, width).getDisplayValues()[0].forEach((h, c) => {
-      if (publishSensitiveHeader_(h)) for (let r = header; r < rows; r++) values[r][c] = '';
-    });
-    // Hidden key/credit markers are engine-only bookkeeping in the left border.
-    for (let r = start - 1; r < rows; r++) values[r][0] = '';
-    const failed = writeValuesSafe_(dest, 1, 1, values, null);
-    if (failed) throw new Error('Could not mirror ' + failed + ' table cell(s).');
     return rows;
   } finally {
     if (carrier) target.deleteSheet(carrier);
@@ -2857,14 +2901,7 @@ function publishWelcomePage_(src, dest) {
     local.setName('_welcome_snapshot_' + Date.now());
     const usedRows = src.getLastRow(), usedCols = src.getLastColumn();
     const sourceRange = usedRows && usedCols ? src.getRange(1,1,usedRows,usedCols) : null;
-    const values = sourceRange ? sourceRange.getValues() : [];
-    const richText = sourceRange ? sourceRange.getRichTextValues() : [];
-    // A literal leading '=' must remain text when the values are written back.
-    values.forEach((row) => row.forEach((value,c) => { if (typeof value === 'string' && value.charAt(0) === '=') row[c] = "'" + value; }));
-    local.clearContents();
-    if (values.length && writeValuesSafe_(local,1,1,values,null)) throw new Error('Welcome Page snapshot contains unwritable cells.');
-    // setValues alone loses hyperlinks and mixed typography inside a cell.
-    richText.forEach((row,r) => row.forEach((text,c) => { if (text && text.getText() !== '') local.getRange(r+1,c+1).setRichTextValue(text); }));
+    if (sourceRange) publishFreezeSnapshot_(src,local,usedRows,usedCols);
     SpreadsheetApp.flush();
     replacement = local.copyTo(target);
     if (replacement.getMaxRows() !== rows || replacement.getMaxColumns() !== cols) throw new Error('Welcome Page grid dimensions did not copy.');
@@ -2906,6 +2943,7 @@ function publishWelcomePage_(src, dest) {
 
 /** Batch adjacent equal dimensions: one write per run rather than one per row/column. */
 function publishCopyDimensions_(src,dest,rows,cols) {
+  if(typeof publishDimensionsFast_==='function'&&publishDimensionsFast_(src,dest,rows,cols))return;
   const copyRuns = (count,read,write) => {
     if (!count) return;
     let start=1, value=read(1);
@@ -3035,6 +3073,8 @@ function publishMirrorTab_(src, dest, deep) {
  * therefore the allow-list — copy a tab across to publish it, delete it to stop. Blocked tabs are never mirrored.
  */
 function publishPublicRoster_(onlyTab, opts) {
+  const started=Date.now();
+  const selected=name=>typeof publishSelected_==='function'?publishSelected_(name,onlyTab):!onlyTab||norm_(name)===norm_(onlyTab)||(tabKey_(name)===tabKey_(CONFIG.sheets.welcome||'Welcome Page')&&tabKey_(name)===tabKey_(onlyTab));
   cfg_(); // never publish using fallback privacy rules when configuration is invalid
   const file = publicFile_();
   if (!file) return { linked: false, tabs: [], rows: 0, skipped: [] };
@@ -3054,20 +3094,25 @@ function publishPublicRoster_(onlyTab, opts) {
   const yieldOn = !!(opts && opts.yieldToBackoff);
   const lock = LockService.getScriptLock();
   let aborted = false;
+  const sourceSheets=ss.getSheets(),publicSheets=file.getSheets();
+  const sourceByName=new Map(sourceSheets.map(sheet=>[sheet.getName(),sheet]));
   [CONFIG.sheets.tracker, CONFIG.sheets.patrolLog, CONFIG.sheets.welcome || 'Welcome Page'].filter(Boolean).forEach((configuredName) => {
     const welcome = tabKey_(configuredName) === tabKey_(CONFIG.sheets.welcome || 'Welcome Page');
-    const source = welcome ? ss.getSheets().filter((sheet) => tabKey_(sheet.getName()) === tabKey_(configuredName))[0] : ss.getSheetByName(configuredName);
+    const source = welcome ? sourceSheets.filter((sheet) => tabKey_(sheet.getName()) === tabKey_(configuredName))[0] : sourceByName.get(configuredName);
     const name = source ? source.getName() : configuredName;
-    if ((!onlyTab || norm_(onlyTab) === norm_(name)) && !publishTabBlocked_(name)
-      && source && !(welcome ? file.getSheets().some((sheet) => tabKey_(sheet.getName()) === tabKey_(name)) : file.getSheetByName(name))) file.insertSheet(name);
+    if (selected(name) && !publishTabBlocked_(name)
+      && source && !publicSheets.some(sheet=>welcome?tabKey_(sheet.getName())===tabKey_(name):sheet.getName()===name))publicSheets.push(file.insertSheet(name));
   });
-  file.getSheets().forEach((dest) => {
+  publicSheets.forEach((dest) => {
     const name = dest.getName();
     if (aborted) { out.skipped.push(name); return; }
-    if (onlyTab && norm_(name) !== norm_(onlyTab) && !(tabKey_(name) === tabKey_(CONFIG.sheets.welcome || 'Welcome Page') && tabKey_(name) === tabKey_(onlyTab))) return;
+    if (!selected(name)) return;
+    // Leave time for retry bookkeeping before Google's execution limit. A single
+    // slow native call cannot be preempted; the durable checkpoint covers that case.
+    if(Date.now()-started>=270000){aborted=true;out.aborted=true;out.skipped.push(name);out.detail.push(`${name}: time budget reached — unfinished tabs remain queued`);return;}
     if (publishTabBlocked_(name)) { out.skipped.push(name); out.detail.push(`${name}: BLOCKED (never published)`); return; }
     const isWelcome = tabKey_(name) === tabKey_(CONFIG.sheets.welcome || 'Welcome Page');
-    const src = ss.getSheetByName(name) || (isWelcome ? ss.getSheets().filter((sheet) => tabKey_(sheet.getName()) === tabKey_(name))[0] : null);
+    const src = sourceByName.get(name) || (isWelcome ? sourceSheets.filter((sheet) => tabKey_(sheet.getName()) === tabKey_(name))[0] : null);
     if (!src) { out.skipped.push(name); out.detail.push(`${name}: no tab of that name here`); return; }
     if (!isWelcome && [CONFIG.sheets.tracker, CONFIG.sheets.patrolLog].indexOf(name) === -1 && publishSelfComputing_(dest)) { // Welcome always mirrors its internal source
       out.skipped.push(name);
@@ -3090,32 +3135,38 @@ function publishPublicRoster_(onlyTab, opts) {
       return;
     }
     try {
+      const tabStarted=Date.now();
       const sg = src.getMaxColumns(), dg = dest.getMaxColumns();
       const mode = (sg === dg) ? 'FULL' : 'match';
       try {
-        if (typeof memberMoveJournal_ === 'function') {
-          const roster = ss.getSheetByName(CONFIG.sheets.roster);
-          if (roster && memberMoveJournal_(roster)) throw new Error('Public publishing paused: an interrupted member transfer needs recovery. Use Roster → Recover Interrupted Transfer.');
-          if (roster && typeof memberAssignmentRows_==='function' && memberAssignmentRows_(roster).length) throw new Error('Public publishing paused: an interrupted member assignment needs recovery. Use Roster → Recover Interrupted Transfer.');
-          if (typeof pendingSignupApprovals_==='function' && pendingSignupApprovals_().length) throw new Error('Public publishing paused: an interrupted signup approval needs recovery. Use Roster → Recover Interrupted Transfer.');
-        }
-        const resetCheckpoint = PropertiesService.getDocumentProperties().getProperty('RE_ACTIVITY_RESET_PENDING');
-        if (resetCheckpoint) {
-          const pending = JSON.parse(resetCheckpoint);
-          if (!pending || pending.phase !== 'committed') throw new Error('Public publishing paused: an interrupted activity reset needs review. Inspect its history snapshot and RE_ACTIVITY_RESET_PENDING checkpoint.');
+        if(typeof publishAssertSettled_==='function')publishAssertSettled_(sourceByName.get(CONFIG.sheets.roster));
+        else {
+          if (typeof memberMoveJournal_ === 'function') {
+            const roster = ss.getSheetByName(CONFIG.sheets.roster);
+            if (roster && memberMoveJournal_(roster)) throw new Error('Public publishing paused: an interrupted member transfer needs recovery. Use Roster → Recover Interrupted Transfer.');
+            if (roster && typeof memberAssignmentRows_==='function' && memberAssignmentRows_(roster).length) throw new Error('Public publishing paused: an interrupted member assignment needs recovery. Use Roster → Recover Interrupted Transfer.');
+            if (typeof pendingSignupApprovals_==='function' && pendingSignupApprovals_().length) throw new Error('Public publishing paused: an interrupted signup approval needs recovery. Use Roster → Recover Interrupted Transfer.');
+          }
+          const resetCheckpoint = PropertiesService.getDocumentProperties().getProperty('RE_ACTIVITY_RESET_PENDING');
+          if (resetCheckpoint) {
+            const pending = JSON.parse(resetCheckpoint);
+            if (!pending || pending.phase !== 'committed') throw new Error('Public publishing paused: an interrupted activity reset needs review. Inspect its history snapshot and RE_ACTIVITY_RESET_PENDING checkpoint.');
+          }
         }
         _dressNote_ = '';
         const n = publishMirrorTab_(src, dest, !yieldOn); // explicit publish → re-sync every row height; background → tail only
         out.tabs.push(name); out.rows += n;
-        out.detail.push(`${name}: ${mode} · ${n} row(s) · grid ${sg}/${dg} · src rows ${src.getLastRow()}${_dressNote_ ? ' · ' + _dressNote_ : ''}`);
+        out.detail.push(`${name}: ${mode} · ${n} row(s) · ${Date.now()-tabStarted} ms · grid ${sg}/${dg} · src rows ${src.getLastRow()}${_dressNote_ ? ' · ' + _dressNote_ : ''}`);
       } catch (e) {
         out.failed = true;
+        if(e&&e.publishRecovery){aborted=true;out.aborted=true;}
         log_('publishMirrorTab_.' + name, e);
         out.skipped.push(name);
         out.detail.push(`${name}: ERROR ${e && e.message ? e.message : e} | grid ${sg}/${dg} | src ${src.getLastRow()}x${src.getLastColumn()} | dest grid ${dest.getMaxRows()}x${dest.getMaxColumns()}`);
       }
     } finally { lock.releaseLock(); }
   });
+  out.durationMs=Date.now()-started;
   return out;
 }
 
@@ -3126,7 +3177,9 @@ const PUBLISH_MIN_GAP_MS_ = 3000; // burst guard only - small enough that a norm
 const PUBLISH_DIRTY_PROP_ = 'PUBLIC_DIRTY';
 const PUBLISH_LAST_PROP_ = 'PUBLIC_LAST_PUBLISH';
 const PUBLISH_CATCHUP_PROP_ = 'PUBLIC_CATCHUP_AT';
-const PUBLISH_CATCHUP_MS_ = 3000; // trailing publish ~3s after a burst's last deferred edit — so the tail shows in seconds, not on the 1-minute sweep
+const PUBLISH_CATCHUP_MS_ = 3000; // minimum delay; Google may deliver the clock trigger later
+const PUBLISH_CATCHUP_LEASE_MS_ = 120000; // dedupe a delayed trigger instead of continually replacing it after 3s
+const PUBLISH_CATCHUP_ID_PROP_ = 'PUBLIC_CATCHUP_ID';
 const PUBLISH_BACKOFF_PROP_ = 'PUBLISH_BACKOFF_UNTIL'; // interactive-first: a pending panel write / transfer stamps now+45s here and NEW publish passes stand down until it expires
 const PUBLISH_BACKOFF_MS_ = 45000;
 const PUBLISH_PASS_PROP_ = 'PUBLISH_PASS_UNTIL'; // pass mutex: per-tab locking replaced the whole-pass script lock, so this keeps two passes from interleaving (owner-tagged 10-minute lease — a dead pass cannot wedge publishing)
@@ -3140,6 +3193,7 @@ function publishPassClaim_() {
     const p = PropertiesService.getDocumentProperties();
     const stored = String(p.getProperty(PUBLISH_PASS_PROP_) || '0');
     if (Date.now() < Number(stored.split('|')[0])) return false;
+    if(typeof publishQueueRecover_==='function')publishQueueRecover_();
     _publishPassToken_ = String(Date.now() + 600000) + '|' + Math.random().toString(36).slice(2);
     p.setProperty(PUBLISH_PASS_PROP_, _publishPassToken_);
     return true;
@@ -3159,16 +3213,23 @@ function publishPassRelease_() {
 }
 
 /** Flag the public copy as stale WITHOUT publishing. Script writes (panel actions, the schedulers, patrol crediting)
- *  never fire onEdit, so they mark it here and the 1-minute sweep carries them. Cheap: one property write.
+ *  never fire onEdit, so they mark it here and the catch-up/sweep carries them.
  *
- *  The flag is a boolean, so writing it twice in one execution is pure waste — and the callers are LOOPS
+ *  An unscoped mark already covers every tab, so writing it twice in one execution is pure waste — callers are LOOPS
  *  (refreshPatrolLog_ processes every row, each row reconciling credit), which turned one of the slowest calls in
  *  Apps Script into a per-row cost. Memoised per execution; globals reset on every run, so the next execution marks
  *  again. The memo is cleared wherever the property is, so a mark landing after a mid-execution publish still counts. */
 let _pubDirtyMemo_ = false;
-function publishMarkDirty_() {
-  if (_pubDirtyMemo_) return;
-  try { PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_, '1'); _pubDirtyMemo_ = true; } catch (e) { /* best-effort */ }
+function publishMarkDirty_(names) {
+  if (_pubDirtyMemo_&&!names) return;
+  try {
+    if(typeof publishQueueChange_==='function')publishQueueChange_(names);
+    else PropertiesService.getDocumentProperties().setProperty(PUBLISH_DIRTY_PROP_, '1');
+    if(!names)_pubDirtyMemo_=true;
+  }catch(e){
+    try{const p=PropertiesService.getDocumentProperties();p.deleteProperty('PUBLIC_PENDING_SCOPE_V1');p.setProperty(PUBLISH_DIRTY_PROP_,'1');}catch(ignored){/* original storage/lock failure is logged below */}
+    log_('publishMarkDirty_',e);
+  }
 }
 
 // Execution-local queue: sorting may run under a writer lock, so publish only after its caller releases it.
@@ -3184,9 +3245,11 @@ function publishAfterWrite_(names) {
     if (!String(props.getProperty(PUBLIC_FILE_PROP_) || '').trim()) return;
     // Sync Sheets' pending writes before reading the sorted rows for the public copy.
     SpreadsheetApp.flush();
-    tabs.filter((name, i, all) => name && all.indexOf(name) === i).forEach((name) => {
-      publishPublicRosterQuiet_(name, false); // retain any other queued roster/dashboard changes
-    });
+    const settled=tabs.filter((name,i,all)=>name&&all.indexOf(name)===i);
+    if(settled.length){
+      if(typeof publishSelected_==='function')publishPublicRosterQuiet_(settled,false);
+      else settled.forEach(name=>publishPublicRosterQuiet_(name,false));
+    }
     _publishSettledTabs_ = {};
     if (props.getProperty(PUBLISH_DIRTY_PROP_) === '1') scheduleCatchup_();
   } catch (e) {
@@ -3204,19 +3267,27 @@ function publishPublicRosterQuiet_(onlyTab, mayClear) {
   // interactive burst is over.
   try { if (Date.now() < Number(props.getProperty(PUBLISH_BACKOFF_PROP_) || 0)) return; } catch (e) { /* best-effort */ }
   if (!publishPassClaim_()) return; // another pass is already running — it (or the sweep) carries this change
+  let selection=onlyTab;
   try {
-    // The GLOBAL flag: a FULL pass always clears it. A PARTIAL (single-tab) pass may clear it ONLY when its
-    // caller saw the flag clean before marking its own edit (mayClear) — then this pass covers everything
-    // pending. If script-write changes were already queued (patrol credit, panel actions), the flag stays so
-    // the sweep's full pass carries them — but an ordinary edit no longer leaves a full publish behind it
-    // (that made the sweep republish EVERY tab every minute and hog the lock against the menu publish).
-    if (!onlyTab || mayClear) {
+    // Take only this pass's work under a short queue lock. Later writes queue
+    // independently; settled tabs are excluded from the remaining catch-up.
+    // Older installations without the scope helper retain the boolean fallback.
+    if(typeof publishQueueBegin_==='function'){
+      selection=publishQueueBegin_(onlyTab,false);_pubDirtyMemo_=false;
+    }else if (!onlyTab || mayClear) {
       props.deleteProperty(PUBLISH_DIRTY_PROP_); // BEFORE publishing, so a concurrent edit re-marks itself
       _pubDirtyMemo_ = false;
     }
-    const res = publishPublicRoster_(onlyTab, { yieldToBackoff: true });
-    if (res && (res.aborted || res.failed)) { props.setProperty(PUBLISH_DIRTY_PROP_, '1'); _pubDirtyMemo_ = true; } // yielded mid-pass → the sweep finishes the leftover tabs
+    const res = publishPublicRoster_(selection, { yieldToBackoff: true });
+    if (res && (res.aborted || res.failed)) {
+      if(typeof publishQueueRetry_==='function')publishQueueRetry_(selection,res.tabs);
+      else props.setProperty(PUBLISH_DIRTY_PROP_, '1');
+      _pubDirtyMemo_=false;
+    }
+    if(typeof publishQueueFinish_==='function')publishQueueFinish_();
     props.setProperty(PUBLISH_LAST_PROP_, String(Date.now()));
+    if(res&&res.durationMs>=10000)logInfo_('publishPublicRosterQuiet_',`Slow publish: ${res.durationMs} ms. ${(res.detail||[]).join(' | ')}`);
+    return res;
   } catch (e) {
     _pubDirtyMemo_ = false; publishMarkDirty_();
     log_('publishPublicRosterQuiet_', e);
@@ -3228,15 +3299,21 @@ function publishPublicRosterQuiet_(onlyTab, mayClear) {
 function publishOnChange(e) {
   try {
     if (!String(PropertiesService.getDocumentProperties().getProperty(PUBLIC_FILE_PROP_) || '').trim()) return; // not linked → nothing to do (a property read, NOT openById — this fires on every keystroke, twice)
-    // ANY edit anywhere counts (every public tab is mirrored), but only the EDITED tab is republished — re-mirroring
-    // all four tabs on every keystroke is the "rebuild everything" trap and would blow the onEdit budget. Structural
-    // changes (onChange, no range) and script writes fall back to the full pass via the sweep.
+    // Known tab edits can be scoped. Core roster edits also queue dependent views;
+    // structural changes without a range keep a conservative full pass.
     let only = '';
     try { only = (e && e.range) ? e.range.getSheet().getName() : ''; } catch (ig) { only = ''; }
     const props = PropertiesService.getDocumentProperties();
+    // Installed onEdit already handles the value edit. Its paired onChange EDIT
+    // must not enqueue another full-workbook rebuild for the very same keystroke.
+    if(e&&!e.range&&String(e.changeType||'').toUpperCase()==='EDIT')return;
     const wasDirty = props.getProperty(PUBLISH_DIRTY_PROP_) === '1'; // script writes already pending? then a partial pass must NOT clear the flag
-    props.setProperty(PUBLISH_DIRTY_PROP_, '1');
-    _pubDirtyMemo_ = true;
+    // Core roster/table edits can update dependent views; unknown/structural work
+    // stays full. Ordinary public tabs can be queued precisely.
+    const full=!only||[CONFIG.sheets.roster,CONFIG.sheets.tracker,CONFIG.sheets.patrolLog].indexOf(only)!==-1||norm_(only)===norm_(CONFIG_SHEET_NAME);
+    if(only&&!full&&publishTabBlocked_(only))return;
+    if(typeof publishQueueChange_==='function')publishMarkDirty_(full?undefined:[only]);
+    else{props.setProperty(PUBLISH_DIRTY_PROP_,'1');_pubDirtyMemo_=true;}
     // No range = an onChange firing (a paste/edit, a row/column insert-delete, or a format change). A full synchronous
     // publish here grabs the script lock and would race — and cancel — an in-flight member transfer that is about to
     // rewrite rows under that same lock (the transfer's ID paste ALSO reaches here as an onChange). VALUE/format changes
@@ -3279,31 +3356,48 @@ function publishSweep() {
 }
 
 /**
- * Ensure ONE one-off "catch-up" publish is scheduled ~PUBLISH_CATCHUP_MS_ out. When a burst of edits keeps deferring on
- * the 3s burst-guard, the FINAL state would otherwise wait for the 1-minute sweep; this trailing trigger publishes it in
- * seconds instead. Deduped via a document property so a flurry schedules at most one pending trigger (ScriptApp is
- * touched ~once per window, never per keystroke), and publishCatchup deletes the trigger when it fires. Best-effort: if
+ * Request ONE one-off catch-up after a minimum PUBLISH_CATCHUP_MS_ delay. Actual Google delivery can be later;
+ * a longer pending lease keeps edits from repeatedly replacing a delayed trigger.
+ * Deduped under a short document lock, with ownership-safe cleanup when it fires. Best-effort: if
  * trigger creation is unavailable or quota-limited, the 1-minute sweep is still the backstop. Requires the installable
  * (authorized) context — publishOnChange runs installed, so ScriptApp is available here.
  */
 function scheduleCatchup_() {
+  let lock=null,owned=false;
   try {
     const p = PropertiesService.getDocumentProperties();
     const now = Date.now();
     if (Number(p.getProperty(PUBLISH_CATCHUP_PROP_) || 0) > now) return; // one is already pending → don't touch ScriptApp again
+    lock=LockService.getDocumentLock();
+    const held=lock&&lock.hasLock&&lock.hasLock();
+    if(!lock||(!held&&!lock.tryLock(1000)))return; // sweep remains the backstop
+    owned=!held;
+    if(Number(p.getProperty(PUBLISH_CATCHUP_PROP_)||0)>Date.now())return; // another event won the short claim
     ScriptApp.getProjectTriggers().forEach((t) => { if (t.getHandlerFunction() === 'publishCatchup') ScriptApp.deleteTrigger(t); }); // clear spent/orphaned ones → stay at ≤1, far under the trigger quota
-    ScriptApp.newTrigger('publishCatchup').timeBased().after(PUBLISH_CATCHUP_MS_).create();
-    p.setProperty(PUBLISH_CATCHUP_PROP_, String(now + PUBLISH_CATCHUP_MS_));
+    const trigger=ScriptApp.newTrigger('publishCatchup').timeBased().after(PUBLISH_CATCHUP_MS_).create();
+    if(trigger&&trigger.getUniqueId)p.setProperty(PUBLISH_CATCHUP_ID_PROP_,String(trigger.getUniqueId()));
+    p.setProperty(PUBLISH_CATCHUP_PROP_, String(Date.now() + PUBLISH_CATCHUP_LEASE_MS_));
   } catch (e) { /* best-effort: the 1-minute sweep still carries it */ }
+  finally{if(owned)try{lock.releaseLock();}catch(e){/* lease still dedupes */}}
 }
 
 /** One-off trailing publish (scheduled by scheduleCatchup_): clear its own marker + self-delete the trigger, then run
  *  the sweep (flush deferred rebuilds + publish if dirty). */
-function publishCatchup() {
+function publishCatchup(e) {
+  let lock=null,owned=false;
   try {
-    PropertiesService.getDocumentProperties().deleteProperty(PUBLISH_CATCHUP_PROP_);
-    ScriptApp.getProjectTriggers().forEach((t) => { if (t.getHandlerFunction() === 'publishCatchup') ScriptApp.deleteTrigger(t); });
+    lock=LockService.getDocumentLock();
+    const held=lock&&lock.hasLock&&lock.hasLock();
+    if(lock&&(held||lock.tryLock(1000))){
+      owned=!held;
+      const p=PropertiesService.getDocumentProperties(),current=p.getProperty(PUBLISH_CATCHUP_ID_PROP_);
+      // An old delayed event must never clear a newer event's marker or trigger.
+      const owner=e&&e.triggerUid?String(e.triggerUid):current;
+      if(!current||owner===current){p.deleteProperty(PUBLISH_CATCHUP_PROP_);p.deleteProperty(PUBLISH_CATCHUP_ID_PROP_);}
+      ScriptApp.getProjectTriggers().forEach(t=>{if(t.getHandlerFunction()==='publishCatchup'&&(!owner||String(t.getUniqueId())===owner))ScriptApp.deleteTrigger(t);});
+    }
   } catch (e) { /* ignore — a stale trigger is cleared by the next scheduleCatchup_ */ }
+  finally{if(owned)try{lock.releaseLock();}catch(e){/* expires */}}
   try { publishSweep(); } catch (e) { log_('publishCatchup', e); }
 }
 
@@ -3314,12 +3408,21 @@ function publishPublicRoster() {
   try {
     const props = PropertiesService.getDocumentProperties();
     const linked = !!String(props.getProperty(PUBLIC_FILE_PROP_) || '').trim();
-    if (linked) { props.deleteProperty(PUBLISH_DIRTY_PROP_); _pubDirtyMemo_ = false; } // this IS the full pass — clear first so an edit mid-publish re-marks
+    if (linked) {
+      if(typeof publishQueueBegin_==='function')publishQueueBegin_(undefined,true);
+      else props.deleteProperty(PUBLISH_DIRTY_PROP_);
+      _pubDirtyMemo_ = false;
+    } // explicit full pass; concurrent changes queue independently
     const res = publishPublicRoster_();
-    if (res.failed || res.aborted) { _pubDirtyMemo_ = false; publishMarkDirty_(); }
+    if (res.failed || res.aborted) {
+      _pubDirtyMemo_ = false;
+      if(typeof publishQueueRetry_==='function')publishQueueRetry_(undefined,res.tabs);
+      else publishMarkDirty_();
+    }
+    if(typeof publishQueueFinish_==='function')publishQueueFinish_();
     if (res.linked) {
       props.setProperty(PUBLISH_LAST_PROP_, String(Date.now())); // the sweep + burst guard see this pass, no redundant follow-up
-      logInfo_('publishPublicRoster', `published ${res.rows} row(s) across ${res.tabs.length} tab(s).`);
+      logInfo_('publishPublicRoster', `published ${res.rows} row(s) across ${res.tabs.length} tab(s) in ${res.durationMs||0} ms. ${(res.detail||[]).join(' | ')}`);
     }
     return res;
   } catch (e) {
