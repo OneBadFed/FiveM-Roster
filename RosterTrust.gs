@@ -205,18 +205,25 @@ function cpTakeSnapshot() {
       sh = ss.insertSheet(TRUST.snapshotSheet);
       sh.hideSheet();
       sh.getRange(1, 1, 1, 9).setValues([['SnapshotId', 'When', 'Row', 'Name', 'Discord', 'Status', 'Hours', 'Rank', 'Extra']]).setFontWeight('bold');
+      styleStartupSupportSheet_(sh,['SnapshotId','When','Row','Name','Discord','Status','Hours','Rank','Extra']);
     }
     const id = String(new Date().getTime());
     const when = fmtTs_(new Date()); // v1.0: configurable timestamp format
     const rows = cpSnapshotRows_(roster, id, when);
     if (!rows.length) throw new Error('No members to snapshot.');
+    return supportSheetLock_(()=>{
     const start = sh.getLastRow() + 1;
     const w = rows[0].length; // 9 cols incl. the Extra(JSON) blob of any non-core MEMBER columns
+    ensureSupportRoom_(sh,start+rows.length-1,w);
     sh.getRange(start, 1, rows.length, w).setNumberFormat('@'); // keep IDs/values exact text
     sh.getRange(start, 1, rows.length, w).setValues(rows);
+    SpreadsheetApp.flush();
+    sortSupportRows_(sh,1,w);
     cpPruneSnapshots_(sh);
+    ensureSupportFilter_(sh,Math.max(w,sh.getLastColumn()));
     auditEvent_('snapshot', '', rows.length + ' members', '', '');
     return { id, when, count: rows.length };
+    });
   });
 }
 
@@ -229,7 +236,8 @@ function cpPruneSnapshots_(sh) {
   ids.forEach((r) => { const id = String(r[0]).trim(); if (id && order.indexOf(id) === -1) order.push(id); });
   if (order.length <= TRUST.keepSnapshots) return;
   const remove = {};
-  order.slice(0, order.length - TRUST.keepSnapshots).forEach((id) => { remove[id] = true; });
+  order.sort((a,b)=>Number(b)-Number(a));
+  order.slice(TRUST.keepSnapshots).forEach((id) => { remove[id] = true; });
   // Decide from the ids already batch-read above (per-cell re-reads cost one call per history row), and delete
   // CONTIGUOUS RUNS bottom-up — a snapshot's rows are appended as one block, so pruning one is a single deleteRows
   // call instead of one deleteRow per member.
@@ -256,7 +264,7 @@ function cpListSnapshots() {
     if (!map[id]) { map[id] = { id, when: String(r[1]).trim(), count: 0 }; order.push(id); }
     map[id].count++;
   });
-  return order.map((id) => map[id]).reverse();
+  return order.sort((a,b)=>Number(b)-Number(a)).map((id) => map[id]);
 }
 
 /** Restores a snapshot's member data back into the roster by row. @return {{restored}} */
@@ -437,7 +445,7 @@ function cpAuditTail(n) {
   const out = [];
   if (!sh || sh.getLastRow() < 2) return out;
   const take = Math.min(n || 25, sh.getLastRow() - 1);
-  const start = sh.getLastRow() - take + 1;
+  const start = 2;
   const v = sh.getRange(start, 1, take, 8).getDisplayValues(); // Time, Editor, Sheet, Cell, Old, New, Type, Member
 
   // Read once for enrichment: roster names by row + column header labels (row 5).
@@ -462,7 +470,7 @@ function cpAuditTail(n) {
   FRIENDLY[RC.discord] = 'Discord ID'; FRIENDLY[RC.join] = 'Join date'; FRIENDLY[RC.promo] = 'Last promotion';
   FRIENDLY[RC.activity] = 'Status'; FRIENDLY[RC.hours] = 'Hours';
 
-  for (let i = v.length - 1; i >= 0; i--) {
+  for (let i = 0; i < v.length; i++) {
     const sheet = String(v[i][2]).trim();
     const cell = String(v[i][3]).trim();
     let member = '';
@@ -557,13 +565,18 @@ function auditEdit(e) {
       log = ss.insertSheet(TRUST.auditSheet);
       log.appendRow(['Time', 'Editor', 'Sheet', 'Cell', 'Old', 'New', 'Type', 'Member']);
       log.setFrozenRows(1);
+      styleStartupSupportSheet_(log,['Time','Editor','Sheet','Cell','Old','New','Type','Member']);
     }
     const multi = e.range.getNumRows() * e.range.getNumColumns() > 1;
     const oldV = multi ? '(multi-cell)' : (e.oldValue === undefined ? '' : e.oldValue);
     const newV = multi ? '(multi-cell — see range)' : (e.value === undefined ? '' : e.value);
     const who = auditWho_(email); // member NAME when the email is on their roster row, else the email
-    log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV, '', '']);
-    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // prune oldest, keep header (v1.0: config cap)
+    supportSheetLock_(()=>{
+      ensureSupportRoom_(log,log.getLastRow()+1,8);
+      log.appendRow([new Date(), who, sheetName, e.range.getA1Notation(), oldV, newV, '', ''].map(v=>typeof v==='string'&&v.startsWith('=')?"'"+v:v));
+      sortSupportRows_(log,1,8);trimSupportRows_(log,logRowCap_()-1);
+      ensureSupportFilter_(log,Math.max(8,log.getLastColumn()));
+    });
     auditNotify_(who, sheetName, e.range.getA1Notation(), oldV, newV, 'edit', ''); // AUDIT channel mirror (webhook presence = opt-in)
     try { stampPendingUpdatedBy_(who); } catch (e2) { log_('auditEdit.updatedBy', e2); } // authoritative UPDATED BY stamp (reliable email in this installable trigger)
   } catch (err) {
@@ -619,12 +632,17 @@ function auditEvent_(type, oldText, newText, cellA1, member) {
       log = ss.insertSheet(TRUST.auditSheet);
       log.appendRow(['Time', 'Editor', 'Sheet', 'Cell', 'Old', 'New', 'Type', 'Member']);
       log.setFrozenRows(1);
+      styleStartupSupportSheet_(log,['Time','Editor','Sheet','Cell','Old','New','Type','Member']);
     }
     let email = '';
     try { email = Session.getActiveUser().getEmail() || ''; } catch (x) { /* not available */ }
     const who = auditWho_(email); // member NAME when the email is on their roster row, else the email
-    log.appendRow([new Date(), who, CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || '', member || '']);
-    const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // v1.0: config cap
+    supportSheetLock_(()=>{
+      ensureSupportRoom_(log,log.getLastRow()+1,8);
+      log.appendRow([new Date(), who, CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || '', member || ''].map(v=>typeof v==='string'&&v.startsWith('=')?"'"+v:v));
+      sortSupportRows_(log,1,8);trimSupportRows_(log,logRowCap_()-1);
+      ensureSupportFilter_(log,Math.max(8,log.getLastColumn()));
+    });
     auditNotify_(who, CONFIG.sheets.roster, cellA1 || '', oldText || '', newText || '', type || 'action', member || ''); // AUDIT channel mirror
   } catch (err) {
     log_('auditEvent_', err);

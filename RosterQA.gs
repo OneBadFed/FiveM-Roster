@@ -139,6 +139,24 @@ function qaPlatformCases_(book, sandbox, owned) {
     const rules=sh.getConditionalFormatRules();qaAssert_(rules.some(r=>r.getRanges().some(g=>g.getRow()<=11&&g.getRow()+g.getNumRows()>11)),'New conditional formatting missing');
     sh.getRange(8,2).setNumberFormat('@').setValue('1234567890123456789');qaEqual_(sh.getRange(8,2).getDisplayValue(),'1234567890123456789');
   }));
+  add('platform.support.filters.order','Sheets platform',()=>{
+    const sh=fixture('QA Support');
+    sh.getRange(1,1,4,3).setValues([['Timestamp','Name','Detail'],[new Date('2026-01-01'),'Old','old detail'],[new Date('2026-03-01'),'New','new detail'],[new Date('2026-02-01'),'Middle','middle detail']]);
+    styleStartupSupportSheet_(sh,['Timestamp','Name','Detail']);
+    sortSupportRows_(sh,1,3);trimSupportRows_(sh,2);
+    qaEqual_(sh.getRange(2,2,2,2).getDisplayValues(),[['New','new detail'],['Middle','middle detail']]);
+    qaEqual_(sh.getRange(1,1).getDisplayValue(),'Timestamp');
+    ensureSupportFilter_(sh,3);
+    sh.getFilter().setColumnFilterCriteria(2,SpreadsheetApp.newFilterCriteria().setHiddenValues(['Middle']).build());
+    sh.insertRowsAfter(sh.getMaxRows(),1);ensureSupportFilter_(sh,3);
+    qaEqual_(sh.getFilter().getRange().getNumRows(),sh.getMaxRows());
+    qaEqual_(sh.getFilter().getColumnFilterCriteria(2).getHiddenValues(),['Middle']);
+    sh.getFilter().remove();sh.clear();
+    sh.getRange(1,1,4,3).setValues([['WeekOf','Name','Hours'],[new Date('2026-02-01'),'Date',2],['2026-03-01','Text',3],['2026-01-01','Old',1]]);
+    const width=sh.getMaxColumns();sortSupportRows_(sh,1,3,'week');
+    qaEqual_(sh.getRange(2,2,3,2).getDisplayValues(),[['Text','3'],['Date','2'],['Old','1']]);
+    qaEqual_(sh.getMaxColumns(),width);
+  });
   return cases;
 }
 

@@ -241,6 +241,8 @@ function ensureSysLog_(ss) {
     .setBackground(theme_('BANNER')).setFontColor(theme_('TEXT_STRONG')).setFontWeight('bold');
   sheet.setFrozenRows(1);
   sheet.getRange(1, 1, sheet.getMaxRows(), 8).setNumberFormat('@'); // text-safety rule (brief Part D)
+  if(typeof styleStartupSupportSheet_==='function')styleStartupSupportSheet_(sheet,['Timestamp','Ver','Sev','Code','Function','Message','Context','Exec']);
+  if(typeof ensureSupportFilter_==='function')ensureSupportFilter_(sheet,8);
   return sheet;
 }
 
@@ -279,9 +281,15 @@ function slog_(sev, code, fn, message, ctx) {
     }
     const ctxJson = ctx ? diagnosticContext_(ctx) : '';
     const textCell=v=>typeof v==='string'&&v.charAt(0)==='='?"'"+v:v;
-    _sysLogSheet.appendRow([new Date(), ENGINE_VERSION, sev, code || '', fn || '', message, ctxJson, EXEC_ID_].map(textCell));
-    const last = _sysLogSheet.getLastRow();
-    if (last > maxRows + 25) _sysLogSheet.deleteRows(2, last - maxRows - 1); // trim oldest, keep header
+    supportSheetLock_(()=>{
+      ensureSupportRoom_(_sysLogSheet,_sysLogSheet.getLastRow()+1,8);
+      _sysLogSheet.getRange(_sysLogSheet.getLastRow()+1,1,1,8).setNumberFormat('@');
+      _sysLogSheet.appendRow([new Date(), ENGINE_VERSION, sev, code || '', fn || '', message, ctxJson, EXEC_ID_].map(textCell));
+      sortSupportRows_(_sysLogSheet,1,8);
+      const last = _sysLogSheet.getLastRow();
+      if(last>maxRows+25)trimSupportRows_(_sysLogSheet,maxRows);
+      ensureSupportFilter_(_sysLogSheet,Math.max(8,_sysLogSheet.getLastColumn()));
+    });
   } catch (e) {
     _sysLogUnavailable_=true;
     try { diagnosticConsole_('error', `[slog_ fallback] ${sev} ${code} ${fn}: ${message} :: logger failed: ${e && e.message}`); } catch (e2) { /* nothing left to do */ }

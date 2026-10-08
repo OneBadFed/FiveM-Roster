@@ -87,10 +87,11 @@ ctx.EXTRAS={integritySheet:'Custom integrity',coverageSheet:'Custom coverage',hi
 ctx.theme_=()=> '#222222';
 load('RosterSystem.gs','ensureStartupSupportSheets_');
 load('RosterSystem.gs','styleStartupSupportSheet_');
+load('RosterSystem.gs','sortSupportRows_');load('RosterSystem.gs','ensureSupportFilter_');load('RosterSystem.gs','supportCoverageEnd_');
 const support=new Map(),events=[];
 const supportBook={getSheetByName:name=>support.get(name),insertSheet(name){
   const range=new Proxy({}, {get:(o,k)=>(...args)=>{events.push([name,k,args]);return range}});
-  const sh=new Proxy({getRange:()=>range,getLastColumn:()=>8,getMaxRows:()=>1000,getMaxColumns:()=>26}, {get:(o,k)=>k in o?o[k]:(...args)=>{events.push([name,k,args]);return sh}});
+  const sh=new Proxy({getRange:()=>range,getFilter:()=>null,getLastRow:()=>1,getLastColumn:()=>8,getMaxRows:()=>1000,getMaxColumns:()=>26}, {get:(o,k)=>k in o?o[k]:(...args)=>{events.push([name,k,args]);return sh}});
   support.set(name,sh);return sh;
 }};
 assert.equal(ctx.ensureStartupSupportSheets_(supportBook).length,6);

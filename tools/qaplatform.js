@@ -5,6 +5,8 @@ class Grid {
  getName(){return this.name}setName(v){this.name=v;return this}getSheetId(){return this.id}
  clear(){this.rows.forEach(row=>row.forEach(cell=>{const h=cell.height,v=cell.validation;Object.keys(cell).forEach(key=>delete cell[key]);Object.assign(cell,{value:'',bg:'#ffffff',height:h,validation:v})}));return this}
  getFilter(){return this.filter||null}getBandings(){return []}getCharts(){return []}getImages(){return []}
+ appendRow(row){const at=this.getLastRow()+1;if(at>this.getMaxRows())this.insertRowsAfter(this.getMaxRows(),1);this.getRange(at,1,1,row.length).setValues([row]);return this}
+ getParent(){return this.book}hideSheet(){return this}clearContents(){this.rows.forEach(row=>row.forEach(cell=>{cell.value='';cell.formula=''}));return this}
  setFrozenColumns(){}showRows(){}deleteColumns(c,n){this.rows.forEach(row=>row.splice(c-1,n));this.width-=n}
  getMaxRows(){return this.rows.length}getMaxColumns(){return this.width}
  getLastRow(){let end=0;this.rows.forEach((r,i)=>{if(r.some(c=>c.value!==''))end=i+1});return end}
@@ -43,7 +45,8 @@ class Cells {
  breakApart(){this.s.merges=[];return this}
  clearDataValidations(){return this.each(cell=>delete cell.validation)}clearNote(){return this.each(cell=>delete cell.note)}
  merge(){this.s.merges.push(this);return this}
- createFilter(){assert(!this.s.filter,'only one filter per sheet');const sh=this.s;this.s.filter={range:this,remove(){sh.filter=null}};return this.s.filter}
+ createFilter(){assert(!this.s.filter,'only one filter per sheet');const sh=this.s;this.s.filter={range:this,criteria:{},getRange(){return this.range},getColumnFilterCriteria(c){return this.criteria[c]||null},setColumnFilterCriteria(c,v){this.criteria[c]=v;return this},remove(){sh.filter=null}};return this.s.filter}
+ sort({column,ascending}){const cells=Array.from({length:this.n},(_,i)=>this.s.rows[this.r+i-1].slice(this.c-1,this.c-1+this.w));cells.sort((a,b)=>{const x=a[column-this.c].value,y=b[column-this.c].value;return (x<y?-1:x>y?1:0)*(ascending?1:-1)});cells.forEach((row,i)=>row.forEach((cell,j)=>this.s.rows[this.r+i-1][this.c+j-1]=cell));return this}
  copyTo(dest,type){
   if(type==='values'){const values=this.getValues();dest.each((cell,i,j)=>{const v=values[i][j];cell.value=typeof v==='string'&&v.startsWith('=')?'#NAME?':v;cell.formula=typeof v==='string'&&v.startsWith('=')?v:'';delete cell.rich});return;}
   if(type==='normal'){const cells=Array.from({length:this.n},(_,i)=>this.s.rows[this.r+i-1].slice(this.c-1,this.c-1+this.w).map(cell=>({...cell})));dest.each((cell,i,j)=>{Object.keys(cell).forEach(k=>delete cell[k]);Object.assign(cell,cells[i][j])});return;}
@@ -53,12 +56,13 @@ class Cells {
   if(type==='conditional')this.s.rules.push({getRanges:()=>[dest]});
  }
 }
-function newBook(id){let serial=0;return{id,sheets:[],getId(){return id},getUrl(){return 'https://example.invalid/'+id},getSheets(){return this.sheets.slice()},getSheetByName(name){return this.sheets.find(s=>s.getName()===name)||null},setActiveSheet(s){this.active=s},insertSheet(name){assert(!this.getSheetByName(name),'duplicate name');const sh=new Grid(name);sh.id=id+'-'+serial++;this.sheets.push(sh);return sh},deleteSheet(sh){assert(this.sheets.includes(sh));assert(this.sheets.length>1,'cannot delete last sheet');this.sheets.splice(this.sheets.indexOf(sh),1)}}}
+function newBook(id){let serial=0;return{id,sheets:[],getId(){return id},getUrl(){return 'https://example.invalid/'+id},getSheets(){return this.sheets.slice()},getSheetByName(name){return this.sheets.find(s=>s.getName()===name)||null},setActiveSheet(s){this.active=s},insertSheet(name){assert(!this.getSheetByName(name),'duplicate name');const sh=new Grid(name);sh.book=this;sh.id=id+'-'+serial++;this.sheets.push(sh);return sh},deleteSheet(sh){assert(this.sheets.includes(sh));assert(this.sheets.length>1,'cannot delete last sheet');this.sheets.splice(this.sheets.indexOf(sh),1)}}}
 const book=newBook('local-platform');
 const props={getProperty:()=>null,setProperty(){},deleteProperty(){},getProperties:()=>({})};
 const ctx={console,Date,Math,JSON,PropertiesService:{getDocumentProperties:()=>props,getScriptProperties:()=>props},CacheService:{getDocumentCache:()=>({remove(){},get:()=>null,put(){}})},Utilities:{getUuid:()=> 'qa-platform'},
  SpreadsheetApp:{flush(){},CopyPasteType:{PASTE_NORMAL:'normal',PASTE_VALUES:'values',PASTE_FORMAT:'format',PASTE_DATA_VALIDATION:'validation',PASTE_CONDITIONAL_FORMATTING:'conditional'},
  newDataValidation:()=>({requireCheckbox(){return this},build(){return {checkbox:true}}}),
+ newFilterCriteria:()=>({setHiddenValues(v){this.hidden=v;return this},build(){return{getHiddenValues:()=>this.hidden}}}),
  newConditionalFormatRule:()=>({whenNumberGreaterThan(){return this},setBackground(){return this},setRanges(r){this.ranges=r;return this},build(){return{getRanges:()=>this.ranges}}})}};
 vm.createContext(ctx);
 for(const file of ['RosterConfig.gs','RosterSystem.gs','RosterExtras.gs','RosterControlPanel.gs','RosterTrust.gs','RosterQA.gs'])vm.runInContext(fs.readFileSync(file,'utf8'),ctx,{filename:file});
@@ -104,12 +108,12 @@ ctx.SpreadsheetApp.create=()=>{throw Error('QA cannot create another workbook')}
 const realReport=ctx.qaWriteReport_;ctx.qaWriteReport_=(...args)=>{realReport(...args);if(reportFails)throw Error('injected formatting failure')};
 ctx.qaCases_=()=>[{id:'runner.synthetic',area:'Runner',run(){}}];const realPlatformCases=ctx.qaPlatformCases_;
 vm.runInContext('DEV_WEBHOOKS_OFF_=false',ctx);
-let summary=ctx.qaRun_('all');assert.equal(summary.passed,7);assert(summary.reportReady);assert.equal(released,1);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',ctx),false);
+let summary=ctx.qaRun_('all');assert.equal(summary.passed,8);assert(summary.reportReady);assert.equal(released,1);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',ctx),false);
 assert.equal(source.sheets.length,4,'only the three pre-existing tabs and one results tab remain');const report=lastSandbox;
 assert.equal(report.name,'🧪 QA Results');assert(summary.url.endsWith('#gid='+report.id),'same sandbox ID becomes the results link');assert.equal(source.active,report);
 assert.equal(report.rows[0][0].value,'Dev / QA — Test results');assert.equal(report.rows[7][0].value,'Case');assert.equal(report.rows[8][0].value,'runner.synthetic');assert.equal(report.rules.length,0);
 assert(report.rows.every(row=>row.every(cell=>!cell.validation&&!cell.formula)),'report has no stale fixtures');
-assert.equal(report.rows[4][0].value,7);assert.equal(report.rows[4][1].value,0);assert.equal(report.rows[4][3].value,7);
+assert.equal(report.rows[4][0].value,8);assert.equal(report.rows[4][1].value,0);assert.equal(report.rows[4][3].value,8);
 assert.equal(report.rows[0][0].bg,'#202c3b');assert.equal(report.rows[8][2].bg,'#203e30');assert.equal(report.rows[8][2].color,'#76dda3');
 assert.equal(report.rows[8][0].font,'Roboto Mono');assert.equal(report.frozenRows,8);assert(report.hiddenGridlines);assert.deepEqual(report.hiddenColumns,[6,35]);assert.equal(report.columnWidths[5],600);assert.equal(report.filter.range.r,8);
 assert(report.rows.at(-1).slice(0,5).every(c=>c.bg==='#191d23'),'bottom padding is dark, not white');
@@ -135,3 +139,45 @@ summary=ctx.qaRun_('core');assert.equal(summary.failed,1);assert.equal(orphan.ro
 allowed=false;const prior=creates;ctx.qaRun_('core');assert.equal(creates,prior,'busy roster prevents sandbox creation');
 assert.equal(JSON.stringify([original.rows,config.rows,unrelated.rows]),originalState);
 console.log('Fresh platform runner: in-roster sandbox ID reuse, owned-only cleanup, preserved live tabs/older reports, Config-style report, summary/filter, safe diagnostics, suppression restoration and quota/report/inventory/busy failures passed.');
+
+// Exercise the actual support writers and readers, not only the sort/filter helpers.
+const supportBook=newBook('support-writers');ctx.SpreadsheetApp.getActive=()=>supportBook;
+let documentHeld=false,documentBusy=false,documentReleases=0;
+ctx.LockService.getDocumentLock=()=>({hasLock:()=>documentHeld,tryLock(){if(documentBusy)return false;documentHeld=true;return true},releaseLock(){documentHeld=false;documentReleases++}});
+ctx.supportSheetLock_(()=>ctx.supportSheetLock_(()=>{}));assert.equal(documentReleases,1);assert(!documentHeld);
+documentHeld=true;ctx.supportSheetLock_(()=>{});assert(documentHeld);assert.equal(documentReleases,1);documentHeld=false;
+assert.throws(()=>ctx.supportSheetLock_(()=>{throw Error('write failed')}),/write failed/);assert(!documentHeld);
+documentBusy=true;let attempted=false;assert.throws(()=>ctx.supportSheetLock_(()=>{attempted=true}),/busy/);assert(!attempted);documentBusy=false;
+Object.defineProperty(ctx,'CONFIG',{configurable:true,value:{sheets:{roster:'Roster',audit:'Edit Log',hoursHistory:'_Hours History',coverage:'Leave Coverage',integrity:'Integrity Log',snapshots:'_Snapshots'},roster:{},rosterStartRow:2}});
+ctx.cfgSheetName_=(kind,fallback)=>ctx.CONFIG.sheets[kind]||fallback;
+ctx.cfg_=()=>({kv:{LIMITS:{SNAPSHOT_KEEP:2}}});ctx.logRowCap_=()=>4;
+ctx.Session={getActiveUser:()=>({getEmail:()=> 'qa@example.invalid'})};ctx.auditWho_=()=> 'QA Admin';ctx.auditNotify_=()=>{};
+ctx.logInfo_=()=>{};ctx.postSummary_=()=>{};ctx.runAction_=(label,fn)=>fn();ctx.cpWithLock_=fn=>fn();
+const audit=supportBook.insertSheet('Edit Log');audit.getRange(1,1,4,9).setValues([['Time','Editor','Sheet','Cell','Old','New','Type','Member','Department'],[new Date('2026-01-01'),'Old','Other','','','','','Old member','Old extra'],[new Date('2026-03-01'),'New','Other','','','','','New member','New extra'],[new Date('2026-02-01'),'Middle','Other','','','','','Middle member','Middle extra']]);
+ctx.auditEvent_('action','','Newest','','Newest member');
+assert.equal(audit.rows[1][7].value,'Newest member');assert.equal(audit.getLastRow(),4);assert.equal(audit.rows[2][8].value,'New extra','custom fields move with their records');assert.equal(audit.filter.range.w,9);
+assert.equal(ctx.cpAuditTail(1)[0].member,'Newest member','panel reads latest top record');
+ctx.auditEdit({range:{getSheet:()=>({getName:()=> 'Other'}),getColumn:()=>1,getRow:()=>2,getNumRows:()=>1,getNumColumns:()=>1,getA1Notation:()=> 'A2'},value:'=literal',oldValue:'before'});
+assert.equal(audit.getLastRow(),4);assert(audit.rows.slice(1,4).some(row=>row[5].value==="'=literal"),'audit text is escaped before writing');
+const sys=supportBook.insertSheet('SYS Log');sys.getRange(1,1,30,8).setValues([['Timestamp','Ver','Sev','Code','Function','Message','Context','Exec'],...Array.from({length:29},(_,i)=>[new Date(2020,0,i+1),'v','INFO','','fixture','Old '+i,'',''])]);
+vm.runInContext('CFG_={logging:{maxRows:25,level:"INFO"}}; _sysLogSheet=null; _sysLogUnavailable_=false; _sysLogSeen_.clear();',ctx);
+for(let i=0;i<23;i++)ctx.slog_('INFO','','support fixture','Fresh '+i);
+assert(sys.getLastRow()<=51);assert(String(sys.rows[1][5].value).startsWith('Fresh'),'SYS latest additions precede all legacy dates');assert(sys.filter);assert.equal(sys.rows[0][0].value,'Timestamp');
+const integrity=supportBook.insertSheet('Integrity Log');integrity.getRange(1,1,4,3).setValues([['Time','# Issues','Detail'],[new Date('2020-01-01'),0,'Old'],[new Date('2020-02-01'),1,'Middle'],[new Date('2020-03-01'),2,'Latest prior']]);
+ctx.runIntegritySummary_=()=>['Newest issue'];ctx.scanIntegrityCore_();assert.equal(integrity.rows[1][2].value,'Newest issue');assert.equal(integrity.getLastRow(),4);assert(integrity.filter);
+const history=supportBook.insertSheet('_Hours History'),longId='1234567890123456789';history.getRange(1,1,4,6).setValues([['WeekOf','DiscordID','Name','Rank','Hours','Status'],[new Date('2026-02-01'),longId,'Legacy date','Officer',2,'Active'],['2026-03-01',longId,'Old March','Officer',3,'Active'],['2026-01-01',longId,'Old January','Officer',1,'Active']]);
+ctx.getSheetOrWarn_=()=>({});ctx.readMembers_=()=>[{id:longId,name:'Newest March',rank:'Officer',hours:30,activity:'Active'}];ctx.fmtDate_=v=>v instanceof Date?v.toISOString().slice(0,10):String(v);ctx.captureHoursSnapshot_('2026-03-01');
+assert.equal(history.rows[1][2].value,'Newest March');assert.equal(history.getLastRow(),4);assert.equal(history.rows[1][1].value,longId);assert.equal(history.getMaxColumns(),26);assert(history.filter);
+ctx.captureHoursSnapshot_('2026-02-01');assert.equal(history.rows[1][2].value,'Newest March','backfilled earlier week stays below the newest period');assert(!history.rows.some(row=>row[2].value==='Legacy date'),'legacy Date week is replaced by matching ISO week');
+const snaps=supportBook.insertSheet('_Snapshots');snaps.getRange(1,1,7,9).setValues([['SnapshotId','When','Row','Name','Discord','Status','Hours','Rank','Extra'],...['1700000000000','1600000000000','1750000000000'].flatMap(sid=>[2,3].map(row=>[sid,'custom display',row,'Member '+row,longId,'Active',10,'Officer',JSON.stringify({Custom:row})]))]);
+ctx.cpPruneSnapshots_(snaps);assert.equal(snaps.getLastRow(),5);assert(!snaps.rows.some(row=>row[0].value==='1600000000000'),'snapshot prune uses IDs, independent of prior row order');
+assert.deepEqual(Array.from(ctx.cpListSnapshots(),s=>s.id),['1750000000000','1700000000000']);
+supportBook.insertSheet('Roster');ctx.cpSnapshotRows_=(roster,sid,when)=>[2,3].map(row=>[sid,when,row,'Current '+row,longId,'Active','10','Officer',JSON.stringify({Custom:row})]);ctx.fmtTs_=()=> 'unparseable department timestamp';
+const taken=ctx.cpTakeSnapshot();assert.equal(snaps.getLastRow(),5);assert.equal(String(snaps.rows[1][0].value),taken.id);assert(snaps.filter);assert.deepEqual(Array.from(ctx.cpListSnapshots(),s=>s.id),[taken.id,'1750000000000']);assert.equal(snaps.rows[1][8].value,'{"Custom":2}','restore payload survives sorting and complete-batch retention');
+let restoredRows;ctx.cpApplyRestore_=(roster,rows)=>{restoredRows=rows;return rows.length};ctx.publishMarkDirty_=()=>{};ctx.publishTableSettled_=()=>{};ctx.deferWork_=()=>{};
+assert.equal(ctx.cpRestoreSnapshot(taken.id).restored,2);assert(restoredRows.every(r=>r[0]===taken.id));
+const coverage=supportBook.insertSheet('Leave Coverage');ctx.activeLeaves_=()=>[{name:'Earlier request',type:'LOA',submitted:10,start:new Date('2026-10-20'),end:new Date('2026-10-22'),started:false},{name:'Latest request',type:'LOA',submitted:20,start:new Date('2026-10-10'),end:new Date('2026-10-15'),started:true}];
+ctx.buildCoverage();assert.equal(coverage.rows[1][0].value,'Latest request');assert.equal(coverage.filter.range.n,3,'coverage summary is outside filter');assert.equal(ctx.supportCoverageEnd_(coverage),3);
+coverage.filter.setColumnFilterCriteria(5,{status:'OUT NOW'});ctx.activeLeaves_=()=>[];ctx.buildCoverage();assert.equal(coverage.filter.range.n,2);assert.equal(coverage.rows[2][0].value,'0 member(s) currently out (0 active/upcoming).');assert.equal(coverage.filter.criteria[5].status,'OUT NOW');
+const grow=new Grid('Growth');grow.rows=grow.rows.slice(0,2);ctx.ensureSupportRoom_(grow,5,6);assert.equal(grow.getMaxRows(),5);assert.equal(grow.rows[4][0].bg,'#20242a');assert.equal(grow.rows[4][0].font,'Arial');
+console.log('Support sheets: real SYS/Edit/Integrity/Hours/Snapshot/Coverage writers, bottom retention, latest panel records, mixed dates, complete restore payloads, custom columns, filter criteria/footer/empty cases, growth style and nested/busy/failure locks passed.');

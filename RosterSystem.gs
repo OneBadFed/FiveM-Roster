@@ -605,7 +605,7 @@ function setupWizard() {
   });
 }
 
-/** Create missing support tabs and style existing tabs without changing their data. */
+/** Create missing support tabs, apply the shared theme, filters and newest-first order. */
 function ensureStartupSupportSheets_(ss) {
   const specs = [
     [SYS_LOG_SHEET, ['Timestamp','Ver','Sev','Code','Function','Message','Context','Exec'], true],
@@ -625,6 +625,9 @@ function ensureStartupSupportSheets_(ss) {
       created.push(name);
     }
     styleStartupSupportSheet_(sheet,headers);
+    if(name!==EXTRAS.coverageSheet)sortSupportRows_(sheet,1,headers.length,name===EXTRAS.historySheet?'week':'native');
+    const coverageEnd=name===EXTRAS.coverageSheet?supportCoverageEnd_(sheet):undefined;
+    ensureSupportFilter_(sheet,Math.max(headers.length,sheet.getLastColumn()),coverageEnd);
   });
   return created;
 }
@@ -646,6 +649,75 @@ function styleStartupSupportSheet_(sheet,headers) {
   sheet.showColumns(1,width);
   const maxColumns=sheet.getMaxColumns();
   if(maxColumns>width)sheet.hideColumns(width+1,maxColumns-width);
+}
+
+/** Independent of cfg_(): diagnostics must also work while configuration is broken.
+ * Reuse a caller's document lock; never release a lock owned by that caller. */
+function supportSheetLock_(fn) {
+  const lock=LockService.getDocumentLock()||LockService.getScriptLock(),held=lock.hasLock();
+  if(!held&&!lock.tryLock(3000))throw new Error('Support-sheet update is busy; retry shortly.');
+  try{return fn();}finally{if(!held)lock.releaseLock();}
+}
+
+/** Native sort keeps complete records together. Week keys may be ISO text or legacy
+ * Date cells; a temporary numeric column orders both without rewriting stored data. */
+function sortSupportRows_(sheet,column,width,kind) {
+  const count=sheet.getLastRow()-1;
+  if(count<2)return;
+  width=Math.max(width,sheet.getLastColumn());
+  if(kind!=='week'){sheet.getRange(2,1,count,width).sort({column,ascending:false});return;}
+  const keys=sheet.getRange(2,column,count,1).getValues().map((r,i)=>{
+    const value=r[0],time=value instanceof Date?value.getTime():Date.parse(String(value));
+    return {i,time:Number.isFinite(time)?time:0};
+  }).sort((a,b)=>b.time-a.time||a.i-b.i);
+  if(keys.every((k,i)=>k.i===i))return;
+  const ranks=new Array(count);keys.forEach((k,i)=>{ranks[k.i]=[i];});
+  sheet.insertColumnsAfter(width,1);
+  try{
+    sheet.getRange(2,width+1,count,1).setValues(ranks);
+    sheet.getRange(2,1,count,width+1).sort({column:width+1,ascending:true});
+  }finally{sheet.deleteColumns(width+1,1);}
+}
+
+/** Filters cover allocated log rows so new writes stay filterable. A rebuilt view
+ * supplies its last data row to exclude the summary. Preserve existing criteria. */
+function ensureSupportFilter_(sheet,width,lastDataRow) {
+  const height=lastDataRow===undefined?sheet.getMaxRows():Math.max(2,lastDataRow);
+  if(sheet.getMaxRows()<height)sheet.insertRowsAfter(sheet.getMaxRows(),height-sheet.getMaxRows());
+  const old=sheet.getFilter(),criteria=[];
+  if(old){
+    const range=old.getRange();
+    if(range.getRow()===1&&range.getColumn()===1&&range.getNumRows()===height&&range.getNumColumns()===width)return;
+    for(let c=range.getColumn();c<range.getColumn()+range.getNumColumns()&&c<=width;c++){
+      const criterion=old.getColumnFilterCriteria(c);if(criterion)criteria.push([c,criterion]);
+    }
+    old.remove();
+  }
+  const filter=sheet.getRange(1,1,height,width).createFilter();
+  criteria.forEach(([c,criterion])=>filter.setColumnFilterCriteria(c,criterion));
+}
+
+function supportCoverageEnd_(sheet) {
+  const last=sheet.getLastRow();if(last<2)return 1;
+  const rows=sheet.getRange(2,1,last-1,5).getValues();
+  let end=1;rows.forEach((r,i)=>{if(r[4])end=i+2;});return end;
+}
+
+/** Oldest rows are now at the bottom. Never prune the header or a partial new batch. */
+function trimSupportRows_(sheet,keep) {
+  const last=sheet.getLastRow(),first=Math.max(1,keep)+2;
+  if(last>=first)sheet.deleteRows(first,last-first+1);
+}
+
+/** Format only newly allocated rows; ordinary log writes reuse the styled grid. */
+function ensureSupportRoom_(sheet,lastRequired,width) {
+  const max=sheet.getMaxRows();if(lastRequired<=max)return;
+  width=Math.max(width,sheet.getLastColumn());
+  const count=lastRequired-max;
+  sheet.insertRowsAfter(max,count);
+  const body=sheet.getRange(max+1,1,count,width);
+  body.setBackground('#20242a').setFontColor('#e4e9f0').setFontFamily('Arial')
+    .setFontSize(11).setFontWeight('normal').setVerticalAlignment('middle').setWrap(true);
 }
 
 /**

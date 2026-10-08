@@ -4,7 +4,8 @@ const config=fs.readFileSync('RosterConfig.gs','utf8'),system=fs.readFileSync('R
 let props={},logs=[],flushed=0,released=0,published=0,held=false,flushError=null,releaseError=null,publishError=null;
 const property={getProperty:k=>props[k]??null,setProperty(k,v){props[k]=String(v);return this},deleteProperty(k){delete props[k];return this},getProperties:()=>({...props})};
 const lock={hasLock:()=>held,tryLock:()=>{held=true;return true},releaseLock(){released++;held=false;if(releaseError)throw releaseError}};
-const ctx={console:{error:v=>logs.push(v),warn:v=>logs.push(v),info:v=>logs.push(v),log:v=>logs.push(v)},PropertiesService:{getDocumentProperties:()=>property},LockService:{getScriptLock:()=>lock,getDocumentLock:()=>lock},SpreadsheetApp:{flush(){flushed++;if(flushError)throw flushError},getActive:()=>({getId:()=> 'sheet',getSheetByName:()=>null})},CacheService:{getScriptCache:()=>({get:()=>null,put(){}})},Utilities:{sleep(){}},Date,Math};
+const documentLock={hasLock:()=>true}; // this suite models diagnostic I/O inside a caller-owned document lock; supportcheck verifies independent ownership
+const ctx={console:{error:v=>logs.push(v),warn:v=>logs.push(v),info:v=>logs.push(v),log:v=>logs.push(v)},PropertiesService:{getDocumentProperties:()=>property},LockService:{getScriptLock:()=>lock,getDocumentLock:()=>documentLock},SpreadsheetApp:{flush(){flushed++;if(flushError)throw flushError},getActive:()=>({getId:()=> 'sheet',getSheetByName:()=>null})},CacheService:{getScriptCache:()=>({get:()=>null,put(){}})},Utilities:{sleep(){}},Date,Math};
 vm.createContext(ctx);vm.runInContext(config,ctx);vm.runInContext(system,ctx);vm.runInContext(panel,ctx);
 ctx.publishAfterWrite_=()=>{published++;if(publishError)throw publishError};ctx.perf_=(label,fn)=>fn();ctx.maybeErrorWebhook_=()=>{};
 // Invalid config is memoized before notifications read it again; malformed cache shapes use the sheet path.
@@ -18,7 +19,7 @@ vm.runInContext('CFG_=null; CFG_ERROR_=null; _sysLogUnavailable_=false; _sysLogS
 // Secret safety, hostile/circular contexts, text-cell formula protection, filtering and repeated-error I/O.
 const secret='https://discord.com/api/webhooks/123/PRIVATE_TOKEN';assert(!ctx.diagnosticText_(secret).includes('PRIVATE_TOKEN'));assert(!ctx.diagnosticText_('Bearer ABCSECRET').includes('ABCSECRET'));
 const circular={refresh_token:'PRIVATE_TOKEN'};circular.self=circular;assert(ctx.diagnosticContext_(circular).includes('[circular]'));assert(!ctx.diagnosticContext_(circular).includes('PRIVATE_TOKEN'));
-let rows=[],reads=0;const sheet={getParent:()=>({getId:()=> 'sheet'}),appendRow:r=>rows.push(r),getLastRow:()=>rows.length+1,deleteRows(){}};
+let rows=[],reads=0;const sheet={getParent:()=>({getId:()=> 'sheet'}),appendRow:r=>rows.push(r),getLastRow:()=>rows.length+1,getLastColumn:()=>8,getMaxRows:()=>1000,getFilter:()=>null,getRange:()=>({sort(){},createFilter(){},setNumberFormat(){}}),deleteRows(){}};
 ctx.SpreadsheetApp.getActive=()=>({getId:()=> 'sheet',getSheetByName:()=>{reads++;return sheet}});
 ctx.slog_('ERROR','E-601','test','=IMPORTDATA(secret)',circular);ctx.slog_('ERROR','E-601','test','=IMPORTDATA(secret)',circular);assert.equal(rows.length,1);assert.equal(reads,1);assert(rows[0][5].startsWith("'="));
 ctx.slog_('ERROR','E-601','redaction',secret);assert(!JSON.stringify(rows).includes('PRIVATE_TOKEN'));
@@ -73,6 +74,7 @@ assert.throws(()=>ctx.installTriggers(),/invalid setup config/);assert.equal(del
 Object.defineProperty(ctx,'CONFIG',{configurable:true,value:{sheets:{patrol:'Form',patrolLog:'Log',roster:'Roster'},patrol:{mode:'START_END'}}});
 ctx.SpreadsheetApp.getActive=()=>({getSheetByName:()=>({})});ctx.syncPatrolFormToLog_=()=>({added:3});ctx.refreshPatrolLog_=()=>{throw Error('sort failed')};
 assert.throws(()=>ctx.syncPatrolFormNow_(),/3 completed item|Submissions were transferred/);
+ctx.LockService.getDocumentLock=()=>lock;
 const actualProps=ctx.PropertiesService.getDocumentProperties;ctx.PropertiesService.getDocumentProperties=()=>{throw Error('property storage offline')};
 assert.throws(()=>ctx.publishPassClaim_(),/property storage offline/);assert.equal(held,false);ctx.PropertiesService.getDocumentProperties=actualProps;
 ctx.buildMenus_=()=>{throw Error('menu unavailable')};assert.doesNotThrow(()=>ctx.onOpen());

@@ -110,6 +110,7 @@ function activeLeaves_(tracker) {
   const TC = trackerCols_(tracker);
   const v = tracker.getRange(CONFIG.trackerStartRow, 2, n, TC.width - 1).getValues(); // cols B..(width)
   const ids = tracker.getRange(CONFIG.trackerStartRow, TC.discord, n, 1).getDisplayValues(); // IDs EXACT — getValues rounds a 17-19 digit ID
+  const keys = tracker.getRange(CONFIG.trackerStartRow, TC.key, n, 1).getDisplayValues();
   const today = todayInSheetTz_();
   for (let i = 0; i < n; i++) {
     if (v[i][TC.status - 2] !== CONFIG.approvedStatus) continue;
@@ -121,6 +122,7 @@ function activeLeaves_(tracker) {
       type: trackerLeaveType_(),
       id: String(ids[i][0]).trim(),
       start, end,
+      submitted: Number((String(keys[i][0]).match(/^KEY\|[^|]*\|(\d{10,})$/)||[])[1])||start.getTime(),
       started: today.getTime() >= start.getTime(),
     });
   }
@@ -162,6 +164,7 @@ function postSummary_(title, description, color) {
 
 /** Appends this week's hours for every member to the hidden history tab. */
 function captureHoursSnapshot_(weekLabel) {
+  return supportSheetLock_(()=>{
   const ss = SpreadsheetApp.getActive();
   const roster = getSheetOrWarn_(ss, CONFIG.sheets.roster);
   if (!roster) return 0;
@@ -170,6 +173,7 @@ function captureHoursSnapshot_(weekLabel) {
     sh = ss.insertSheet(EXTRAS.historySheet);
     sh.hideSheet();
     sh.getRange(1, 1, 1, 6).setValues([['WeekOf', 'DiscordID', 'Name', 'Rank', 'Hours', 'Status']]).setFontWeight('bold');
+    styleStartupSupportSheet_(sh,['WeekOf','DiscordID','Name','Rank','Hours','Status']);
   }
   const when = weekLabel || weekKey_();
   const members = readMembers_(roster);
@@ -179,29 +183,32 @@ function captureHoursSnapshot_(weekLabel) {
   const previousLast=sh.getLastRow();
   const rows = members.map((m) => [when, m.id, m.name, m.rank, parseHours_(m.hours), m.activity]);
   const startRow = previousLast + 1, requiredRows = startRow+rows.length-1;
-  if (requiredRows>sh.getMaxRows()) sh.insertRowsAfter(sh.getMaxRows(),requiredRows-sh.getMaxRows());
+  ensureSupportRoom_(sh,requiredRows,6);
   sh.getRange(startRow, 2, rows.length, 1).setNumberFormat('@');
   sh.getRange(startRow, 1, rows.length, 6).setValues(rows.map(r=>r.map(v=>typeof v==='string' && v.startsWith('=') ? "'"+v : v)));
   SpreadsheetApp.flush();
   if (previousLast >= 2) {
-    const weeks = sh.getRange(2, 1, previousLast - 1, 1).getDisplayValues();
-    const wk = String(when).trim();
+    const weeks = sh.getRange(2, 1, previousLast - 1, 1).getValues();
+    const weekOf=value=>value instanceof Date?fmtDate_(value):String(value).trim();
+    const wk = weekOf(when);
     let r = weeks.length - 1;
     while (r >= 0) {
-      if (String(weeks[r][0]).trim() !== wk) { r--; continue; }
+      if (weekOf(weeks[r][0]) !== wk) { r--; continue; }
       let top = r;
-      while (top - 1 >= 0 && String(weeks[top - 1][0]).trim() === wk) top--;
+      while (top - 1 >= 0 && weekOf(weeks[top - 1][0]) === wk) top--;
       sh.deleteRows(top + 2, r - top + 1);
       r = top - 1;
     }
   }
   // F-024: cap growth like the sibling Integrity/Edit logs — trim the oldest rows so the sheet can't grow unbounded.
   const CAP = logRowCap_(); // v1.0: configurable
-  const last = sh.getLastRow();
   const keep=Math.max(CAP,rows.length); // the complete current roster snapshot survives even when it exceeds the retention cap
-  if (last > keep + 1) sh.deleteRows(2, last - keep - 1);
+  sortSupportRows_(sh,1,6,'week');
+  trimSupportRows_(sh,keep);
+  ensureSupportFilter_(sh,Math.max(6,sh.getLastColumn()));
   logInfo_('captureHoursSnapshot_', `captured ${rows.length} member-hours for week ${when}.`);
   return rows.length;
+  });
 }
 
 /**
@@ -1248,14 +1255,20 @@ function buildCoverage() {
     const ss = SpreadsheetApp.getActive();
     const tracker = getSheetOrWarn_(ss, CONFIG.sheets.tracker);
     if (!tracker) return;
-    const leaves = activeLeaves_(tracker).sort((a, b) => a.start - b.start);
+    const leaves = activeLeaves_(tracker).sort((a, b) => b.submitted-a.submitted||b.start-a.start);
     const sh = ss.getSheetByName(EXTRAS.coverageSheet) || ss.insertSheet(EXTRAS.coverageSheet);
+    supportSheetLock_(()=>{
+    if(sh.getMaxRows()<leaves.length+3)sh.insertRowsAfter(sh.getMaxRows(),leaves.length+3-sh.getMaxRows());
     sh.clearContents();
     sh.getRange(1, 1, 1, 5).setValues([['Name', 'Type', 'Start', 'End', 'Status']]).setFontWeight('bold');
-    const rows = leaves.map((l) => [l.name, l.type, fmtDate_(l.start), fmtDate_(l.end), l.started ? 'OUT NOW' : 'upcoming']);
+    const rows = leaves.map((l) => [l.name, l.type, fmtDate_(l.start), fmtDate_(l.end), l.started ? 'OUT NOW' : 'upcoming'].map(v=>typeof v==='string'&&v.startsWith('=')?"'"+v:v));
     if (rows.length) sh.getRange(2, 1, rows.length, 5).setValues(rows);
     const outNow = leaves.filter((l) => l.started).length;
     sh.getRange(rows.length + 3, 1).setValue(`${outNow} member(s) currently out (${leaves.length} active/upcoming).`);
+    styleStartupSupportSheet_(sh,['Name','Type','Start','End','Status']);
+    ensureSupportFilter_(sh,5,rows.length+1);
+    });
+    const outNow = leaves.filter((l) => l.started).length;
     logInfo_('buildCoverage', `${leaves.length} active/upcoming leaves.`);
     try { // manual run only — the 6am trigger has no UI
       SpreadsheetApp.getUi().alert(`🗓️ Leave Coverage rebuilt — ${outNow} out now, ${leaves.length} active/upcoming.\n\nSee the "${EXTRAS.coverageSheet}" tab.`);
@@ -1486,9 +1499,16 @@ function scanIntegrityCore_() {
   const issues = runIntegritySummary_();
   const ss = SpreadsheetApp.getActive();
   const log = ss.getSheetByName(EXTRAS.integritySheet) || ss.insertSheet(EXTRAS.integritySheet);
-  if (log.getLastRow() === 0) log.appendRow(['Time', '# Issues', 'Detail']);
-  log.appendRow([new Date(), issues.length, issues.join(' | ')]);
-  const cap = logRowCap_(), last = log.getLastRow(); if (last > cap) log.deleteRows(2, last - cap); // bound growth (v1.0: config cap)
+  supportSheetLock_(()=>{
+    if (log.getLastRow() === 0) {
+      log.appendRow(['Time', '# Issues', 'Detail']);
+      styleStartupSupportSheet_(log,['Time','# Issues','Detail']);
+    }
+    ensureSupportRoom_(log,log.getLastRow()+1,3);
+    log.appendRow([new Date(), issues.length, issues.join(' | ')].map(v=>typeof v==='string'&&v.startsWith('=')?"'"+v:v));
+    sortSupportRows_(log,1,3);trimSupportRows_(log,logRowCap_()-1);
+    ensureSupportFilter_(log,Math.max(3,log.getLastColumn()));
+  });
   if (issues.length) postSummary_(`\`🔍\` Integrity Scan — ${issues.length} Issue(s)`, issues.slice(0, 12).map((s) => '`❌` ' + s).join('\n'), 15548997);
   logInfo_('scanIntegrity', `${issues.length} issue(s) found.`);
   return issues;
@@ -2017,6 +2037,8 @@ function seedDemoRoster() {
       hist.getRange(2, 1, hrows.length, 6).setValues(hrows);
       hist.getRange(2, 1, hrows.length, 1).setNumberFormat('d mmm yyyy');
     }
+    styleStartupSupportSheet_(hist,['WeekOf','DiscordID','Name','Rank','Hours','Status']);
+    sortSupportRows_(hist,1,6,'week');ensureSupportFilter_(hist,6);
     try { hist.hideSheet(); } catch (e) { /* already hidden */ }
 
     // ---- STATS SHEET: employee-count breakdown + leadership box, computed from the FILLED members ----

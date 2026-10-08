@@ -821,7 +821,7 @@ function cpGetProfile(discordId) {
           ? Utilities.formatDate(a, ssTz_(), 'yyyy-MM-dd')
           : String(a).trim();
         if (week === '') continue;
-        byWeek[week] = { hours: Number(vals[i][4]) || 0, status: String(vals[i][5] || '').trim() }; // a later row for the same week wins; F col = Status (v1.0 activity checks)
+        if(!byWeek[week])byWeek[week] = { hours: Number(vals[i][4]) || 0, status: String(vals[i][5] || '').trim() }; // newest-first history: the first record wins
       }
       Object.keys(byWeek).sort().slice(-12).forEach((w) => history.push({ week: w, hours: byWeek[w].hours, status: byWeek[w].status }));
     }
