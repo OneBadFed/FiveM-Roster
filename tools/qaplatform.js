@@ -24,10 +24,13 @@ class Cells {
  each(fn){for(let i=0;i<this.n;i++)for(let j=0;j<this.w;j++)fn(this.s.rows[this.r+i-1][this.c+j-1],i,j);return this}
  matrix(key,convert=v=>v){return Array.from({length:this.n},(_,i)=>Array.from({length:this.w},(_,j)=>convert(this.s.rows[this.r+i-1][this.c+j-1][key])))}
  getValues(){return this.matrix('value')}getDisplayValues(){return this.matrix('value',String)}getDisplayValue(){return this.getDisplayValues()[0][0]}
- getRichTextValues(){return Array.from({length:this.n},()=>Array(this.w).fill(null))}
+ getRichTextValues(){return this.matrix('rich',v=>v||null)}
  getFormulas(){return this.matrix('formula',v=>v||'')}
- setFormula(v){assert.equal(v,'=10+5','model only supports the fixture arithmetic formula');return this.each(cell=>{cell.value=15;cell.formula=v})}
- getBackgrounds(){return this.matrix('bg')}setValues(rows){return this.each((cell,i,j)=>cell.value=rows[i][j])}setValue(v){return this.setValues([[v]])}
+ setFormula(v){assert(['=10+5','="=literal result"'].includes(v),'model only supports fixture formulas');return this.each(cell=>{cell.value=v==='=10+5'?15:'=literal result';cell.formula=v})}
+ getBackgrounds(){return this.matrix('bg')}setValues(rows){return this.each((cell,i,j)=>cell.value=rows[i][j])}
+ setValue(v){return this.each(cell=>{cell.value=typeof v==='string'&&v.startsWith("'")?v.slice(1):v;cell.formula='';delete cell.rich})}
+ setRichTextValues(values){return this.each((cell,i,j)=>{const text=values[i][j].getText();cell.value=text.startsWith('=')?'#NAME?':text;cell.formula=text.startsWith('=')?text:'';cell.rich=values[i][j]})}
+ setRichTextValue(value){return this.setRichTextValues([[value]])}
  setBackground(v){return this.each(cell=>cell.bg=v)}setBackgrounds(rows){return this.each((cell,i,j)=>cell.bg=rows[i][j])}
  setFontColor(v){return this.each(cell=>cell.color=v)}setFontColors(rows){return this.each((cell,i,j)=>cell.color=rows[i][j])}
  setFontFamily(v){return this.each(cell=>cell.font=v)}getFontFamily(){return this.s.rows[this.r-1][this.c-1].font}
@@ -35,14 +38,15 @@ class Cells {
  setHorizontalAlignment(v){return this.each(cell=>cell.horizontal=v)}
  setNumberFormat(v){return this.each(cell=>cell.format=v)}getNumberFormat(){return this.s.rows[this.r-1][this.c-1].format}
  setDataValidation(v){return this.each(cell=>cell.validation=v)}getDataValidation(){return this.s.rows[this.r-1][this.c-1].validation}
- getRow(){return this.r}getNumRows(){return this.n}getMergedRanges(){return this.s.merges.filter(m=>m.r<this.r+this.n&&m.r+m.n>this.r)}
+ getRow(){return this.r}getNumRows(){return this.n}getMergedRanges(){return this.s.merges.filter(m=>m.r<this.r+this.n&&m.r+m.n>this.r&&m.c<this.c+this.w&&m.c+m.w>this.c)}
  getColumn(){return this.c}getNumColumns(){return this.w}
  breakApart(){this.s.merges=[];return this}
  clearDataValidations(){return this.each(cell=>delete cell.validation)}clearNote(){return this.each(cell=>delete cell.note)}
  merge(){this.s.merges.push(this);return this}
  createFilter(){assert(!this.s.filter,'only one filter per sheet');const sh=this.s;this.s.filter={range:this,remove(){sh.filter=null}};return this.s.filter}
  copyTo(dest,type){
-  if(type==='values'){const values=this.getValues();dest.each((cell,i,j)=>{cell.value=values[i][j];cell.formula=''});return;}
+  if(type==='values'){const values=this.getValues();dest.each((cell,i,j)=>{const v=values[i][j];cell.value=typeof v==='string'&&v.startsWith('=')?'#NAME?':v;cell.formula=typeof v==='string'&&v.startsWith('=')?v:'';delete cell.rich});return;}
+  if(type==='normal'){const cells=Array.from({length:this.n},(_,i)=>this.s.rows[this.r+i-1].slice(this.c-1,this.c-1+this.w).map(cell=>({...cell})));dest.each((cell,i,j)=>{Object.keys(cell).forEach(k=>delete cell[k]);Object.assign(cell,cells[i][j])});return;}
   const from=this.s.rows[this.r-1].slice(this.c-1,this.c-1+this.w).map(c=>({...c}));
   dest.each((cell,i,j)=>{if(type==='format')for(const key of ['bg','font','color','size','weight','wrap','align','format'])cell[key]=from[j][key];
     if(type==='validation')cell.validation=from[j].validation;});
@@ -53,11 +57,30 @@ function newBook(id){let serial=0;return{id,sheets:[],getId(){return id},getUrl(
 const book=newBook('local-platform');
 const props={getProperty:()=>null,setProperty(){},deleteProperty(){},getProperties:()=>({})};
 const ctx={console,Date,Math,JSON,PropertiesService:{getDocumentProperties:()=>props,getScriptProperties:()=>props},CacheService:{getDocumentCache:()=>({remove(){},get:()=>null,put(){}})},Utilities:{getUuid:()=> 'qa-platform'},
- SpreadsheetApp:{flush(){},CopyPasteType:{PASTE_VALUES:'values',PASTE_FORMAT:'format',PASTE_DATA_VALIDATION:'validation',PASTE_CONDITIONAL_FORMATTING:'conditional'},
+ SpreadsheetApp:{flush(){},CopyPasteType:{PASTE_NORMAL:'normal',PASTE_VALUES:'values',PASTE_FORMAT:'format',PASTE_DATA_VALIDATION:'validation',PASTE_CONDITIONAL_FORMATTING:'conditional'},
  newDataValidation:()=>({requireCheckbox(){return this},build(){return {checkbox:true}}}),
  newConditionalFormatRule:()=>({whenNumberGreaterThan(){return this},setBackground(){return this},setRanges(r){this.ranges=r;return this},build(){return{getRanges:()=>this.ranges}}})}};
 vm.createContext(ctx);
 for(const file of ['RosterConfig.gs','RosterSystem.gs','RosterExtras.gs','RosterControlPanel.gs','RosterTrust.gs','RosterQA.gs'])vm.runInContext(fs.readFileSync(file,'utf8'),ctx,{filename:file});
+// The old native/rich-text path must reproduce the user's live failure in this model.
+const nativeFreeze=ctx.publishFreezeSnapshot_,regressionBook=newBook('literal-regression'),regressionSheet=regressionBook.insertSheet('Sandbox');
+ctx.publishFreezeSnapshot_=(src,dest,n,w)=>{const range=src.getRange(1,1,n,w),texts=range.getRichTextValues();range.copyTo(dest.getRange(1,1,n,w),'values');ctx.publishRestoreRichText_(range,dest,texts)};
+const oldRun=ctx.qaExecuteCases_(ctx.qaPlatformCases_(regressionBook,regressionSheet).filter(c=>c.id==='platform.publish.native.merged'),()=>0,1000);
+assert.equal(oldRun[0][2],'FAIL');assert(oldRun[0][4].includes('#NAME?'),'model reproduces the reported conversion, rather than accepting a false pass');
+ctx.publishFreezeSnapshot_=nativeFreeze;
+// Native literal restoration retains original rich runs/links; a formula result is frozen.
+const literalDest=regressionBook.insertSheet('Literal target'),literalCell=regressionSheet.rows[0][3];
+literalCell.rich={getText:()=>'=literal',runs:[{start:0,bold:true,link:'https://example.test'}]};
+ctx.publishFreezeSnapshot_(regressionSheet,literalDest,3,5);
+assert.equal(literalDest.rows[0][3].value,'=literal');assert.equal(literalDest.rows[0][3].formula||'','');assert.strictEqual(literalDest.rows[0][3].rich,literalCell.rich,'native copy carries rich styling and links without parsing text');
+assert.equal(literalDest.rows[1][4].value,'=literal result');assert.equal(literalDest.rows[1][4].formula,'');
+// Adjacent literal cells batch together even when rich text is unavailable.
+const denseSource=new Grid('Dense text'),denseDest=new Grid('Dense target');denseSource.getRange(1,1,20,10).setValues(Array.from({length:20},()=>Array(10).fill('=literal')));
+const copy=Cells.prototype.copyTo;let normalPastes=0;
+Cells.prototype.copyTo=function(dest,type){if(type==='normal')normalPastes++;return copy.call(this,dest,type)};
+try{ctx.publishFreezeSnapshot_(denseSource,denseDest,20,10)}finally{Cells.prototype.copyTo=copy}
+assert.equal(normalPastes,20,'200 adjacent literals require 20 row pastes, not 200 cell writes');assert(denseDest.getRange(1,1,20,10).getValues().every(row=>row.every(v=>v==='=literal')));
+console.log('Literal snapshot: old failure reproduced; safe native text/merge/style/link copies, static formula results and row batching passed.');
 const result=ctx.qaExecuteCases_(ctx.qaPlatformCases_(book),()=>0,1000),fail=result.filter(r=>r[2]!=='PASS');
 for(const row of fail)console.error(row.join(' | '));assert.equal(fail.length,0);
 console.log('Fresh platform model: '+result.length+' config, merged banner and multi-width framed growth scenarios passed.');

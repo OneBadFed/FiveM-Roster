@@ -2794,11 +2794,40 @@ function publishFreezeSnapshot_(src, snapshot, rows, cols) {
   if (!rows || !cols) return;
   const source = src.getRange(1,1,rows,cols);
   const richText = source.getRichTextValues();
+  const literals=[];
+  source.getValues().forEach((row,r)=>row.forEach((value,c)=>{
+    if(typeof value==='string'&&/^\s*=/.test(value))literals.push({r,c,value});
+  }));
+  // Capture before writing: a value paste or rich-text write can reinterpret an
+  // '=' string as a formula. Never send these strings through the rich-text writer.
+  const formulas=literals.length?source.getFormulas():null;
+  literals.forEach(({r,c})=>{if(richText[r])richText[r][c]=null;});
   source.copyTo(snapshot.getRange(1,1,rows,cols), SpreadsheetApp.CopyPasteType.PASTE_VALUES, false);
   // A value paste can discard mixed typography / links. Static rich text is safe to
-  // restore, including the displayed text of HYPERLINK formulas. RichTextValue
-  // writes text rather than executing a leading '=' as a formula.
+  // restore, including the displayed text of ordinary HYPERLINK formulas.
   publishRestoreRichText_(source,snapshot,richText);
+  if(!literals.length)return;
+  const anchors=new Map(source.getMergedRanges().map(m=>[m.getRow()+':'+m.getColumn(),m]));
+  for(let i=0;i<literals.length;i++){
+    const {r,c,value}=literals[i];
+    if(formulas[r][c]){
+      // Freeze a formula whose computed result starts with '=' as escaped text.
+      // Cell formatting remains on the native snapshot; no live formula is copied.
+      snapshot.getRange(r+1,c+1).setValue("'"+value);
+    }else{
+      // Normal native paste preserves the original string type, rich runs and links.
+      // For a merged anchor, copy its complete merge rather than one partial cell.
+      const merge=anchors.get((r+1)+':'+(c+1));
+      const height=merge?merge.getNumRows():1;let width=merge?merge.getNumColumns():1;
+      // Adjacent unmerged literals share one native paste instead of one per cell.
+      while(!merge&&i+1<literals.length){
+        const next=literals[i+1];
+        if(next.r!==r||next.c!==c+width||formulas[r][next.c]||anchors.has((r+1)+':'+(next.c+1)))break;
+        width++;i++;
+      }
+      src.getRange(r+1,c+1,height,width).copyTo(snapshot.getRange(r+1,c+1,height,width),SpreadsheetApp.CopyPasteType.PASTE_NORMAL,false);
+    }
+  }
 }
 
 /** Batch text rectangles. Never include numeric/image cells or partially overlap
