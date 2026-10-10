@@ -58,6 +58,6 @@ const roster={getLastRow:()=>5,getLastColumn:()=>4,getRange:()=>({getDisplayValu
 const stats=statsContext.dashboardStats_(roster);assert.equal(stats.total,2);assert.equal(stats.groups.First,2);assert.equal(stats.groups.Second,0);assert.equal(stats.totalHours,6.5);assert.equal(stats.leaves,1);assert.equal(stats.openSlots,1);
 let employees=0,leadership=0;
 const demoContext={CONFIG:{sheets:{}},dashboardSkip_:()=>false,fillEmployeeBox_:()=>{employees++;return true;},fillExecBox_:()=>{leadership++;return true;},log_:()=>{}};
-vm.createContext(demoContext);vm.runInContext(extras.slice(extras.indexOf('function seedDemoStats_('),extras.indexOf('/** Scan the top',extras.indexOf('function seedDemoStats_('))),demoContext);
-demoContext.seedDemoStats_({getSheets:()=>[{getName:()=> 'Welcome Page'}]}, {}, {});assert.equal(employees,1);assert.equal(leadership,1);
-console.log('Welcome dashboard: section priority, finite hours, member/leave/open-slot counts and both demo boxes passed.');
+vm.createContext(demoContext);vm.runInContext(extras.slice(extras.indexOf('function seedDemoStats_('),extras.indexOf('/** Fill the leadership box',extras.indexOf('function seedDemoStats_('))),demoContext);
+demoContext.seedDemoStats_({getSheetByName:()=>({getName:()=> 'Welcome Page'})}, {}, {});assert.equal(employees,0);assert.equal(leadership,1);
+console.log('Welcome dashboard: section priority, finite hours, member/leave/open-slot counts and demo leadership-only ownership passed.');

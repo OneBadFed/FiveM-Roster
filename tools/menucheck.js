@@ -101,13 +101,13 @@ for(const outcome of [false,{linked:true,failed:true,tabs:[],rows:0},{linked:tru
 // Exercise actual demo builders and multi-row insertion against bounded, framed sheet doubles.
 function tab(name,rows=11,width=30){
  const sh={name,rows,width,grid:Array.from({length:rows},()=>Array(width).fill('')),events:[],band:null,
-  getName:()=>name,getLastRow:()=>sh.rows,getMaxRows:()=>sh.rows,getLastColumn:()=>width,getRowHeight:()=>27,getActiveCell:()=>({getRow:()=>8}),
+  getName:()=>name,getLastRow:()=>sh.rows,getMaxRows:()=>sh.rows,getMaxColumns:()=>width,getLastColumn:()=>width,getRowHeight:()=>27,getActiveCell:()=>({getRow:()=>8}),
   insertRowsAfter(row,count){sh.grid.splice(row,0,...Array.from({length:count},()=>Array(width).fill('')));sh.rows+=count;sh.events.push(['insertAfter',row,count]);},
   insertRowsBefore(row,count){sh.grid.splice(row-1,0,...Array.from({length:count},()=>Array(width).fill('')));sh.rows+=count;sh.events.push(['insertBefore',row,count]);},
   setRowHeights(...args){sh.events.push(['height',...args]);},hideSheet(){},
   getRange(row,col,n=1,w=1){assert(row>0&&col>0&&row+n-1<=sh.rows&&col+w-1<=width,'out of bounds '+name);let proxy;const range={
    getDisplayValues:()=>sh.grid.slice(row-1,row-1+n).map(r=>r.slice(col-1,col-1+w).map(String)),
-   getDisplayValue:()=>String(sh.grid[row-1][col-1]),getMergedRanges:()=>sh.band?[sh.band]:[],
+   getFormulas:()=>Array.from({length:n},()=>Array(w).fill('')),getDisplayValue:()=>String(sh.grid[row-1][col-1]),getMergedRanges:()=>sh.band?[sh.band]:[],
    setValue(value){for(let i=0;i<n;i++)sh.grid[row+i-1][col-1]=value;return proxy},
    setValues(values){assert.equal(values.length,n);values.forEach((r,i)=>{assert.equal(r.length,w);for(let j=0;j<w;j++)sh.grid[row+i-1][col+j-1]=r[j]});return proxy},
    clearContent(){for(let i=0;i<n;i++)for(let j=0;j<w;j++)sh.grid[row+i-1][col+j-1]='';sh.events.push(['clear',row,col,n,w]);return proxy},
@@ -121,8 +121,8 @@ const seeded=runtime(),c=seeded.ctx,roster=tab('Roster',8),tracker=tab('Tracker'
 roster.grid[7][1]='Cadet';roster.grid[7][3]='S-01';
 const book={getSheetByName:n=>({Roster:roster,Tracker:tracker,Patrol:patrol,Signups:signups,History:history}[n])};
 c.SpreadsheetApp.getActive=()=>book;
-Object.defineProperty(c,'CONFIG',{value:{sheets:{roster:'Roster',tracker:'Tracker',patrolLog:'Patrol',signups:'Signups',hoursHistory:'History'},rosterStartRow:8,trackerStartRow:8,patrolStartRow:8,patrol:{processedStatus:'Processed'}},configurable:true});
-c.getSheetOrWarn_=(ss,n)=>ss.getSheetByName(n);c.rosterCols_=()=>({rank:2,name:3,unit:4,discord:5,join:6,promo:7,hours:8,activity:9,shift:10});c.lastActivityCol_=()=>-1;
+Object.defineProperty(c,'CONFIG',{value:{sheets:{roster:'Roster',tracker:'Tracker',patrolLog:'Patrol',signups:'Signups',hoursHistory:'History'},rosterStartRow:8,trackerStartRow:8,patrolStartRow:8,patrol:{processedStatus:'Processed',maxHours:16}},configurable:true});
+c.getSheetOrWarn_=(ss,n)=>ss.getSheetByName(n);c.rosterCols_=()=>({rank:2,name:3,unit:4,discord:5,join:6,promo:7,hours:8,activity:9,shift:10});c.lastActivityCols_=()=>[];c.demoPreflight_=()=>{};c.columnRegistry_=()=>Array.from({length:10},(_,i)=>({col:i+1,klass:i===1||i===3?'SLOT':'MEMBER'}));
 const day=new Date(2026,9,8);c.demoIsOpen_=()=>false;c.demoPerson_=()=>({name:'QA Person',id:'111',join:day,promo:day,hours:20,act:'Active',checks:[],leave:{type:'LOA',from:-1,to:1},pastLeaves:Array.from({length:3},()=>({type:'LOA',from:-10,to:-5}))});
 c.demoSunday_=()=>day;c.demoDay_=()=>day;c.todayInSheetTz_=()=>day;
 c.framedTable_=sh=>({cap:sh.rows,width:sh.width});c.ensureRoomAboveCap_=(sh,row)=>{if(row>=sh.rows)sh.insertRowsBefore(sh.rows,row-sh.rows+1)};

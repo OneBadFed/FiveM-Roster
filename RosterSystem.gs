@@ -3443,7 +3443,7 @@ function patrolLogCols_(sheet) {
   const out = { mark: 1, rank: 0, unit: 0, ooc: 0, name: 0, discord: 0, shift: 0, startDate: 0, endDate: 0, startTime: 0, endTime: 0, total: 0, status: 0, notes: 0, labelRow: 0, width: 0 };
   try {
     out.labelRow = patrolLabelRow_(sheet) || (CONFIG.patrolStartRow - 2);
-    const lastCol = Math.max(sheet.getLastColumn(), 14);
+    const lastCol = Math.min(sheet.getMaxColumns(), Math.max(sheet.getLastColumn(), 14));
     const hdr = sheet.getRange(out.labelRow, 1, 1, lastCol).getDisplayValues()[0].map((h) => norm_(h));
     const all = (...toks) => { for (let c = 0; c < hdr.length; c++) { if (toks.every((t) => hdr[c].indexOf(norm_(t)) !== -1)) return c + 1; } return 0; };
     out.rank = all('RANK');

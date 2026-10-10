@@ -3,6 +3,7 @@
 const fs=require('fs'),path=require('path'),cp=require('child_process');
 process.chdir(path.resolve(__dirname,'..'));
 const suites=['qacheck','qawhatif','qafeatures','qaplatform','cfgcheck','tablecheck','publishcheck','publishfastcheck','publishlatencycheck','welcomecheck','dashboardcheck','rankdashboarduicheck','perfcheck','panelopencheck','selectioncheck','resetcheck','hardeningcheck','settingscheck','groupcheck','errorcheck','recoverycheck','transfercheck','privacycheck','startupcheck','menucheck'];
+suites.push('democheck');
 const started=Date.now(),results=[];
 for(const name of suites){
  const before=Date.now(),r=cp.spawnSync(process.execPath,['tools/'+name+'.js'],{encoding:'utf8',timeout:60000});

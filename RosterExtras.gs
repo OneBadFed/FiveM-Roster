@@ -1274,10 +1274,21 @@ function buildCoverage() {
     const ss = SpreadsheetApp.getActive();
     const tracker = getSheetOrWarn_(ss, CONFIG.sheets.tracker);
     if (!tracker) return;
+    const result=buildCoverageCore_(ss,tracker);
+    logInfo_('buildCoverage', `${result.total} active/upcoming leaves.`);
+    try { // manual run only — the 6am trigger has no UI
+      SpreadsheetApp.getUi().alert(`🗓️ Leave Coverage rebuilt — ${result.outNow} out now, ${result.total} active/upcoming.\n\nSee the "${EXTRAS.coverageSheet}" tab.`);
+    } catch (e) { /* no UI in a time-driven run */ }
+  });
+}
+
+/** Shared noninteractive coverage writer, including demo loading under its existing writer lock. */
+function buildCoverageCore_(ss,tracker) {
+  return supportSheetLock_(()=>{
     const leaves = activeLeaves_(tracker).sort((a, b) => b.submitted-a.submitted||b.start-a.start);
     const sh = ss.getSheetByName(EXTRAS.coverageSheet) || ss.insertSheet(EXTRAS.coverageSheet);
-    supportSheetLock_(()=>{
     if(sh.getMaxRows()<leaves.length+3)sh.insertRowsAfter(sh.getMaxRows(),leaves.length+3-sh.getMaxRows());
+    if(sh.getMaxColumns()<5)sh.insertColumnsAfter(sh.getMaxColumns(),5-sh.getMaxColumns());
     sh.clearContents();
     sh.getRange(1, 1, 1, 5).setValues([['Name', 'Type', 'Start', 'End', 'Status']]).setFontWeight('bold');
     const rows = leaves.map((l) => [l.name, l.type, fmtDate_(l.start), fmtDate_(l.end), l.started ? 'OUT NOW' : 'upcoming'].map(v=>typeof v==='string'&&v.startsWith('=')?"'"+v:v));
@@ -1286,12 +1297,7 @@ function buildCoverage() {
     sh.getRange(rows.length + 3, 1).setValue(`${outNow} member(s) currently out (${leaves.length} active/upcoming).`);
     styleStartupSupportSheet_(sh,['Name','Type','Start','End','Status']);
     ensureSupportFilter_(sh,5,rows.length+1);
-    });
-    const outNow = leaves.filter((l) => l.started).length;
-    logInfo_('buildCoverage', `${leaves.length} active/upcoming leaves.`);
-    try { // manual run only — the 6am trigger has no UI
-      SpreadsheetApp.getUi().alert(`🗓️ Leave Coverage rebuilt — ${outNow} out now, ${leaves.length} active/upcoming.\n\nSee the "${EXTRAS.coverageSheet}" tab.`);
-    } catch (e) { /* no UI in a time-driven run */ }
+    return {total:leaves.length,outNow};
   });
 }
 
@@ -1630,32 +1636,25 @@ function levDist_(a, b) {
 
 /* ======================================================================
  * DEMO / PREVIEW DATA — seedDemoRoster()
- * Fills the MEMBER-INFORMATION columns of the rows you already set up, so a
- * fresh copy looks like a community that is actually running it. The operator
- * lays out their own ranks, section dividers and callsigns; this only writes
- * NAME, DISCORD ID, JOIN / LAST-PROMOTION dates, HOURS, and CURRENT / LAST
- * ACTIVITY — resolved BY HEADER (rosterCols_) — plus a realistic status mix
- * (~60% Active / Semi / Inactive / LOA / ROA — no "Reserve"), matching leave
- * records on the tracker, and 4 weeks of activity-check history.
- *   • RANK (col B) and CALLSIGN (col D) are NEVER touched — the operator owns them.
- *   • Section-divider rows (merged bands between the member runs) are skipped:
- *     writes happen per contiguous run of member rows, so a merged cell is never hit.
- *   • Member rows are detected by a present callsign OR a real (non-divider) rank.
- *   • Some slots are left BLANK as open positions (denser toward the lower ranks;
- *     leadership always staffed) so the roster looks like a real, hiring department.
- *   • The stats/dashboard tab is populated too (seedDemoStats_): the TOTAL EMPLOYEES
- *     breakdown (Supervisors/Troopers/Auxiliary/Total, computed from the filled
- *     members) and the leadership box — both position-found and guarded.
- *   • The RECENT PROMOTIONS feed is seeded too (seedDemoPromotions_): a spread of members "promoted" to the
- *     rank they now hold over the last ~2 months, so the Welcome-page table demos full.
- *   • Guarded: confirms before overwriting rows that already hold a name.
- * Seeded hours sit inside each status's tier band (Active ≥ MinHours, etc.), so a
- * later "Update All Statuses" is a no-op; LOA/ROA are backed by an active tracker
- * leave so they survive recompute.
+ * Replaces member fields on existing slots, preserving ranks, callsigns,
+ * dividers, slot-owned shifts and layout. IDs, tiers, leave statuses and
+ * member-owned shifts follow configuration. Tracker/history/patrol/signup
+ * records refer to the same demo members. Four fortnightly history snapshots
+ * are generated; pre-credited patrol sessions remain stable on reconciliation.
+ * Configured counts and derived group/academy views use the normal builders.
+ * Leadership and promotion displays reflect the newly seeded roster.
+ * Requires typed confirmation, holds the writer lock, suppresses notifications
+ * through menu auditing/error handling and queues publishing even after failure.
  * ====================================================================== */
 
-/** Deterministic, precision-safe 18-digit demo Discord ID. */
-function demoId_(i) { return '77000000000000' + ('0000' + (100 + i)).slice(-4); }
+/** Deterministic numeric text ID within the department's configured length. */
+function demoId_(i) {
+  const min = Number(CONFIG.idMinDigits) || 17, max = Number(CONFIG.idMaxDigits) || 19;
+  const suffix = String(i + 1);
+  const digits = Math.min(max, Math.max(min, norm_(CONFIG.idType || 'DISCORD') === 'DISCORD' ? 18 : suffix.length + 1));
+  if (!Number.isSafeInteger(i) || i < 0 || suffix.length > (digits === 1 ? 1 : digits - 1)) throw new Error('The configured Unique ID length cannot fit this demo.');
+  return digits === 1 ? suffix : '7' + suffix.padStart(digits - 1, '0');
+}
 
 /** Midnight Date `d` days from today (sheet TZ). */
 function demoDay_(d) { const t = todayInSheetTz_(); t.setDate(t.getDate() + d); return t; }
@@ -1673,7 +1672,7 @@ function demoRand_(i, salt) {
 /** Round to the nearest quarter hour — demo hours read as log-derived (12.75), not synthetic (12). */
 function demoQuarter_(x) { return Math.round(x * 4) / 4; }
 
-/** A believable 4-week hours series that ENDS at the member's current hours. */
+/** A believable four-snapshot hours series that ENDS at the member's current hours. */
 function demoHours_(cur) {
   const c = Number(cur) || 0;
   if (c >= 10) return [Math.max(0, c - 6), Math.max(0, c - 4), Math.max(0, c - 1), c]; // building up
@@ -1705,49 +1704,68 @@ function demoDob_(i) {
  * Build a believable demo member for member-slot index `i` (0-based).
  * Deterministic (salted hash, no RNG — reseeding the same layout reproduces the same demo).
  * Hours land inside the intended status's tier band so recompute is a no-op;
- * LOA/ROA carry an active leave; a few active members carry a recently-expired leave for history variety.
+ * Active leaves use the tracker's implicit type; returning members carry ended leaves.
  */
-function demoPerson_(i, total) {
+function demoPerson_(i, total, rank) {
   // ≈ 60% top tier / 15% mid / 15% low / 5% + 5% leave, spread by a coprime stride — every name is read from CONFIG,
   // so a renamed OR LOA-only setup never seeds a status that doesn't exist (e.g. ROA). (No "Reserve" in the mix.)
-  const tiers = (CONFIG.tierNames && CONFIG.tierNames.length >= 3) ? CONFIG.tierNames : ['Active', 'Semi-Active', 'Inactive'];
-  const TOP = tiers[0], MID = tiers[1], LOW = tiers[tiers.length - 1];
-  const lts = (CONFIG.leaveTypes && CONFIG.leaveTypes.length) ? CONFIG.leaveTypes : ['LOA'];
-  const lv1 = lts[0], lv2 = lts[lts.length > 1 ? 1 : 0]; // 2nd leave slot reuses the only type on an LOA-only setup
+  const engine = statusEngine_(), ladder = statusLadderFor_(rank || '', engine);
+  const tiers = ladder.map(t => t.name);
+  if (!tiers.length) throw new Error('Configure at least one activity tier before loading demo data.');
+  const TOP = tiers[0], MID = tiers[Math.min(1, tiers.length - 1)], LOW = tiers[tiers.length - 1];
+  const lts = CONFIG.leaveTypes || [];
+  const lv1 = lts[0]; // the tracker has one implicit type, regardless of how many LEAVE statuses exist
   const rst = norm_(CONFIG.returnStatus || '');           // the "returning" leave (default ROA), if configured
-  const DIST = [TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, MID, MID, MID, LOW, LOW, LOW, lv1, lv2];
-  const act = DIST[(i * 7) % DIST.length];
-  let hours, last = act, leave = null, checks = null;
+  const lv2 = lv1 && rst && rst!==norm_(lv1) ? CONFIG.returnStatus : lv1;
+  const DIST = [TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, TOP, MID, MID, MID, LOW, LOW, LOW, lv1 || LOW, lv2 || TOP];
+  let act = DIST[(i * 7) % DIST.length];
+  let hours, last = act, leave = null;
   const pastLeaves = [];
   const r = demoRand_(i, 1), r2 = demoRand_(i, 2);
   if (act === TOP) hours = demoQuarter_(10 + r * r * 15 + (r2 > 0.93 ? 6 : 0)); // right-skewed; rare ~30h grinder (top tier)
   else if (act === MID) hours = demoQuarter_(5 + r * 4.7);                       // mid tier band
   else if (act === LOW) hours = demoQuarter_(r * r * 4.7);                       // low tier, clustered low
-  else if (rst && norm_(act) === rst) { hours = demoQuarter_(5 + r * 3.7); last = LOW; leave = { type: act, from: -(2 + i % 5), to: 6 + (i % 9), status: 'Approved' }; checks = [LOW, act, act, act]; } // returning leave (ROA-like)
-  else { hours = 0; last = TOP; leave = { type: act, from: -(2 + i % 6), to: 5 + (i % 10), status: 'Approved' }; checks = [TOP, TOP, act, act]; } // protected leave (LOA-like)
+  else if (rst && norm_(act) === rst) {
+    hours = demoQuarter_(Math.max(5, CONFIG.thresholds.semi) + r * 3.7); last = LOW;
+    pastLeaves.push({type:lv1,from:-(20+i%7),to:-(2+i%3)});
+  }
+  else { hours = 0; last = TOP; leave = { type: act, from: -(2 + i % 6), to: 5 + (i % 10), status: CONFIG.approvedStatus }; }
+  if (!leave && tiers.indexOf(act)!==-1) {
+    const ti = tiers.indexOf(act), floor = ladder[ti].min, ceiling = ti ? ladder[ti - 1].min : Infinity;
+    hours = Math.max(floor, Math.min(hours, Number.isFinite(ceiling) ? ceiling - Math.min(.25, (ceiling - floor) / 2) : hours));
+    hours = Math.round(hours * 100) / 100;
+    act = computeStatusCore_(rank || '', hours, engine); last = act;
+  }
   // Past (EXPIRED) leaves — a real LOA history. Members not currently ON leave accrue 0–3 finished leaves scattered
   // across the past ~7 months (deterministic). The most recent one tints their activity checks. This is what makes the
   // tracker's "history" section look lived-in instead of near-empty.
-  if (!leave) {
+  if (!leave && lts.length) {
     const cnt = [0, 0, 1, 1, 1, 2, 2, 3][Math.floor(demoRand_(i, 8) * 8)]; // ~25% none · mostly 1–2 · a few with 3
     let back = 26 + Math.floor(demoRand_(i, 9) * 34);                       // most recent ended 26–60 days ago
     for (let k = 0; k < cnt; k++) {
       const dur = 5 + Math.floor(demoRand_(i, 20 + k) * 19);                // a 5–23 day leave
-      pastLeaves.push({ type: (k % 2 ? lv2 : lv1), from: -(back + dur), to: -back });
+      pastLeaves.push({ type: lv1, from: -(back + dur), to: -back });
       back += dur + 18 + Math.floor(demoRand_(i, 30 + k) * 45);            // walk further back for the previous one
     }
-    if (pastLeaves.length) checks = [pastLeaves[0].type, TOP, act, act];
   }
   const tenure = 1600 - Math.round((i / Math.max(total, 1)) * 1200); // seniority: earlier rows = longer tenure
-  const shift = ''; // real shift is assigned per-rank (evenly across the 3 shifts) once all people are built — see seedDemoRoster
+  const shift = ''; // real shift is assigned per-rank (evenly across the configured shifts) once all people are built — see seedDemoRoster
   const may = demoQuarter_(demoRand_(i, 3) * demoRand_(i, 6) * 30); // prior-month totals — right-skewed 0–30h
   const jun = demoQuarter_(demoRand_(i, 4) * demoRand_(i, 7) * 30);
   const nm = demoName_(i);
+  // Snapshots describe the actual Sunday, including leaves that were active then.
+  const checks = demoHours_(hours).map((h,k) => {
+    const at=demoSunday_((3-k)*2).getTime();
+    const active=[leave].concat(pastLeaves).filter(Boolean).find(l=>at>=demoDay_(l.from).getTime()&&at<demoDay_(l.to).getTime());
+    if(active && !(rst&&norm_(active.type)===rst&&h<CONFIG.thresholds.semi))return active.type;
+    if(rst&&norm_(act)===rst&&pastLeaves.length&&at>=demoDay_(pastLeaves[0].to).getTime()&&h>=CONFIG.thresholds.semi)return act;
+    return computeStatusCore_(rank || '',h,engine);
+  });
   return {
     name: nm, id: demoId_(i), email: demoEmail_(nm), dob: demoDob_(i), shift: shift, may: may, jun: jun,
-    join: demoDay_(-tenure), promo: demoDay_(-(20 + (i % 10) * 16)),
+    join: demoDay_(-tenure), promo: demoDay_(-Math.min(tenure, 20 + (i % 10) * 16)),
     hours: hours, act: act, last: last, leave: leave, pastLeaves: pastLeaves,
-    checks: checks || [act, act, act, act],
+    checks: checks,
   };
 }
 
@@ -1760,20 +1778,6 @@ function demoIsOpen_(i, total) {
 
 /** A blank "open position" — the row keeps the operator's rank + callsign but carries no member data. */
 function demoBlank_() { return { open: true, name: '', id: '', email: '', dob: '', shift: '', may: '', jun: '', join: '', promo: '', hours: '', act: '', last: '', leave: null, pastLeaves: [], checks: null }; }
-
-/** Classify a member into a stats group by their section label (rank as fallback). Supervisors = command/staff tiers, Auxiliary = reserve, else Troopers. */
-function demoGroupOf_(section, rank) {
-  const S = String(section || '').toUpperCase();
-  if (S) {
-    if (/RESERVE|AUXILIAR/.test(S)) return 'auxiliary';
-    if (/COMMAND|ADMIN|SUPERVISOR/.test(S) || (/STAFF/.test(S) && !/TRAINING/.test(S))) return 'supervisors';
-    return 'troopers';
-  }
-  const R = String(rank || '').toUpperCase(); // no section header → fall back to the rank name
-  if (/RESERVE|AUXILIAR/.test(R)) return 'auxiliary';
-  if (/CHIEF|COMMANDER|CAPTAIN|LIEUTENANT|COLONEL|MAJOR|SERGEANT/.test(R)) return 'supervisors';
-  return 'troopers';
-}
 
 /** "James Bennett" → "James B." (first name + last initial — the OOC-name style). */
 function demoOocName_(name) {
@@ -1794,7 +1798,7 @@ function demoWriteLeave_(tracker, m, L, r, oiIn) {
   const key = makeLeaveKey_(m.id, `${startOfDay_(start).getTime()}-${startOfDay_(end).getTime()}-${norm_(L.type)}`);
   const oi = oiIn || rosterOocShift_(m.id); // OOC + shift + unit/callsign from the already-filled demo roster (passed in to skip a per-leave rescan)
   if (TC.discord) tracker.getRange(r, TC.discord).setNumberFormat('@'); // keep the 17-19 digit ID exact
-  const row = buildTrackerRow_(TC, TC.width, { key: key, rank: m.rank, unit: oi.unit, ooc: oi.ooc, name: m.name, discord: m.id, shift: oi.shift, start: start, end: end, status: L.status || 'Approved' });
+  const row = buildTrackerRow_(TC, TC.width, { key: key, rank: m.rank, unit: oi.unit, ooc: oi.ooc, name: m.name, discord: m.id, shift: oi.shift, start: start, end: end, status: L.status || CONFIG.approvedStatus });
   tracker.getRange(r, 1, 1, TC.width).setValues([row]);
   if (TC.start) tracker.getRange(r, TC.start).setNumberFormat('d mmm. yyyy');
   if (TC.end) tracker.getRange(r, TC.end).setNumberFormat('d mmm. yyyy');
@@ -1804,17 +1808,19 @@ function demoWriteLeave_(tracker, m, L, r, oiIn) {
 /** A time-of-day Date on a FIXED date base (2020-01-01), so a patrol TOTAL formula that subtracts start from end cancels the date part out. */
 function demoTimeOfDay_(h, m) { return new Date(2020, 0, 1, h, m || 0, 0); }
 
-/** A deterministic, non-routable demo phone number (555 exchange — RFC-fictional, never a real line). */
-function demoPhone_(i) { const a = 100 + Math.floor(demoRand_(i, 13) * 900); const b = 1000 + Math.floor(demoRand_(i, 14) * 9000); return '(555) ' + a + '-' + b; }
+/** A deterministic fictional phone number in the reserved 555-0100 through 555-0199 range. */
+function demoPhone_(i) { return '(202) 555-01'+String(i%100).padStart(2,'0'); }
 
-/** Split a member's total hours into 1–4 believable quarter-hour patrol sessions that sum EXACTLY back to it. */
+/** Split a total into exact hundredths, with every session inside the configured patrol limit. */
 function demoSplitHours_(hours) {
-  const q = Math.round(Number(hours) * 4); // total quarter-hours
-  if (q <= 0) return [];
-  const k = Math.min(4, Math.max(1, Math.round(q / 12))); // ~3 hrs per session
-  const base = Math.floor(q / k), rem = q - base * k, out = [];
-  for (let s = 0; s < k; s++) out.push((base + (s < rem ? 1 : 0)) / 4);
-  return out; // sum === hours (quarter-exact)
+  const cents = Math.round(Number(hours) * 100);
+  if (!Number.isFinite(cents) || cents <= 0) return [];
+  const cap = Math.floor(Math.min(12, CONFIG.patrol.maxHours) * 100);
+  if (!Number.isFinite(cap) || cap < 1) throw new Error('The patrol limit must allow at least 0.01 hours for demo sessions.');
+  const k = Math.max(1, Math.ceil(cents / cap), Math.min(4, Math.round(cents / 300)));
+  const base = Math.floor(cents / k), rem = cents - base * k, out = [];
+  for (let s = 0; s < k; s++) out.push((base + (s < rem ? 1 : 0)) / 100);
+  return out;
 }
 
 /**
@@ -1830,7 +1836,7 @@ function seedDemoPatrolLog_(ss, memberRows, people, calls, start) {
   if (!patrol) return 0;
   const PC = patrolLogCols_(patrol);
   if (!PC.discord || !PC.startDate || !PC.endDate || !PC.startTime || !PC.endTime || !PC.status) return 0;
-  const ds = CONFIG.patrolStartRow, W = Math.max(PC.width, 14);
+  const ds = CONFIG.patrolStartRow, W = PC.width;
   if (PC.labelRow && ds <= PC.labelRow) return 0; // misconfigured start row — never stomp the header
   const frame=framedTable_(patrol,ds),end=Math.min(frame.cap-1,patrol.getMaxRows());
   if(end>=ds)patrol.getRange(ds,1,end-ds+1,frame.width).clearContent();
@@ -1842,12 +1848,13 @@ function seedDemoPatrolLog_(ss, memberRows, people, calls, start) {
     const unit = String(calls[m.r - start][0] || '').trim(), ooc = demoOocName_(p.name);
     demoSplitHours_(p.hours).forEach((dur, k) => {
       const back = 1 + ((i * 3 + k * 7) % 27);                                       // 1–27 days ago (deterministic)
-      const startMin = (7 + ((i + k * 2) % 12)) * 60 + [0, 15, 30, 45][(i + k) % 4]; // 07:00–18:45 start
-      const endMin = startMin + Math.round(dur * 60);
+      // Daytime sessions finish on the same date, avoiding DST-night clock changes.
+      const startMin = (7 + ((i + k * 2) % 4)) * 60 + [0, 15, 30, 45][(i + k) % 4]; // 07:00–10:45 start
+      const startSec = startMin * 60, endSec = startSec + Math.round(dur * 3600);
       recs.push({
         mark: (Math.round(dur * 100) / 100) + '|' + p.id, rank: m.rank, unit: unit, ooc: ooc, name: p.name, id: p.id, shift: p.shift,
-        sd: demoDay_(-back), ed: demoDay_(-back + Math.floor(endMin / 1440)),
-        st: demoTimeOfDay_(Math.floor(startMin / 60), startMin % 60), et: demoTimeOfDay_(Math.floor((endMin % 1440) / 60), endMin % 60),
+        sd: demoDay_(-back - 1), ed: demoDay_(-back - 1 + Math.floor(endSec / 86400)),
+        st: new Date(2020, 0, 1, 0, 0, startSec), et: new Date(2020, 0, 1, 0, 0, endSec % 86400),
         status: CONFIG.patrol.processedStatus,
       });
     });
@@ -1912,8 +1919,8 @@ function seedDemoSignups_(ss, memberRows, people) {
   // Pending: a few fresh applicants whose IDs are NOT on the roster, so they can actually be approved in the demo.
   const now = todayInSheetTz_();
   for (let k = 0; k < 4; k++) {
-    const idx = 720 + k * 7, name = demoName_(idx);
-    const ts = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k, 8 + k, [5, 25, 40, 50][k % 4]);
+    const idx = memberRows.length + k, name = demoName_(idx);
+    const ts = new Date(now.getFullYear(), now.getMonth(), now.getDate() - k - 1, 8 + k, [5, 25, 40, 50][k % 4]);
     recs.push(mkRow({ ts: ts, name: name, ooc: demoOocName_(name), id: demoId_(idx), email: demoEmail_(name), dob: demoDob_(idx), phone: demoPhone_(idx), join: '', status: SIGNUP_STATUSES_[0], notes: '' }));
     out.pending++;
   }
@@ -1930,19 +1937,67 @@ function seedDemoSignups_(ss, memberRows, people) {
 
 /** Menu / command: fill the member-info columns of the rows the operator already set up (see the header note). */
 function seedDemoRoster() {
-  runAction_('Load Demo Roster',()=>{
+  let previous, suppressed=false;
+  try { runAction_('Load Demo Roster',()=>{
     const ui=SpreadsheetApp.getUi();
     const answer=ui.prompt('Load demo data into this copy',
-      'This OVERWRITES member identities, dates, shifts, hours, statuses, LOAs, patrol logs, signups, history and demo dashboard / promotion data. Ranks, callsigns and template layout stay. Use a demo COPY.\n\nType LOAD DEMO to continue.',ui.ButtonSet.OK_CANCEL);
+      'This OVERWRITES member fields, dates, member-owned shifts, hours, statuses, LOAs, patrol logs, signups, history and demo dashboard / promotion data. Ranks, callsigns, slot-owned shifts and template layout stay. Linked form responses are retained and later syncs can import them. A linked public roster will receive the demo through its publishing queue. Use a demo COPY with its own connections.\n\nType LOAD DEMO to continue.',ui.ButtonSet.OK_CANCEL);
     if(answer.getSelectedButton()!==ui.Button.OK||answer.getResponseText().trim()!=='LOAD DEMO')return;
     const message=withPatrolCreditLock_(()=>{
-      const previous=DEV_WEBHOOKS_OFF_;DEV_WEBHOOKS_OFF_=true;
+      previous=DEV_WEBHOOKS_OFF_;suppressed=true;DEV_WEBHOOKS_OFF_=true;
+      let failure;
       try{return seedDemoRosterCore_();}
-      finally{DEV_WEBHOOKS_OFF_=previous;}
+      catch(e){failure=e;throw new Error('Demo loading stopped: '+diagnosticText_(e&&e.message||e,400)+'. Some data may already have been written; inspect this copy before retrying.');}
+      // Queue even a partial write while still holding the writer lock.
+      finally{
+        try{if(typeof publishMarkDirty_==='function')publishMarkDirty_();}
+        catch(e){throw new Error('Demo publishing could not be queued: '+diagnosticText_(e&&e.message||e,300)+(failure?'\nDemo loading also stopped: '+diagnosticText_(failure&&failure.message||failure,300):'')+'. Demo data may already have been written; inspect this copy before retrying.');}
+      }
     });
-    if(typeof publishMarkDirty_==='function')publishMarkDirty_();
     ui.alert(message.indexOf('⚠')===-1?'Demo data loaded':'Demo loaded with issues',message,ui.ButtonSet.OK);
+  }); } finally { if(suppressed)DEV_WEBHOOKS_OFF_=previous; }
+}
+
+/** Fail on unsafe mappings before any demo content is changed. */
+function demoPreflight_(ss, roster, RC) {
+  const start = CONFIG.rosterStartRow, width = roster.getMaxColumns();
+  if (!RC.headerRow || start <= RC.headerRow || start > roster.getMaxRows()) throw new Error('Resolve roster headers and put the first member row below them before loading a demo.');
+  const required = ['rank','unit','name','discord','join','promo','hours','activity'], used = new Set();
+  required.forEach(key => {
+    const col=RC[key]; if(!Number.isInteger(col)||col<1||col>width||used.has(col))throw new Error('Demo roster column is missing or overlaps another role: '+key+'.');
+    used.add(col);
   });
+  // rosterCols_ has legacy fallbacks; a fallback is not permission to overwrite an unlabeled cell.
+  const headers=roster.getRange(RC.headerRow,1,1,roster.getLastColumn()).getDisplayValues()[0].map(norm_);
+  const matches={rank:h=>/RANK/.test(h)&&!/GROUP|TIME/.test(h),unit:h=>/^UNIT\b|CALLSIGN/.test(h),
+    name:h=>/NAME/.test(h)&&!/OOC/.test(h),discord:h=>/UNIQUE|DISCORD|COMMUNITY.*ID|MEMBER.*ID|CID/.test(h),
+    join:h=>/JOIN/.test(h),promo:h=>/PROMOT/.test(h),hours:h=>/HOURS/.test(h)&&!/MAY|JUN|PREVIOUS|LAST/.test(h),
+    activity:h=>/ACTIVITY|STATUS/.test(h)&&!/PREVIOUS|LAST/.test(h)};
+  required.forEach(k=>{if(!matches[k](headers[RC[k]-1]||''))throw new Error('Resolve the demo roster '+k+' header before loading.');});
+  const names = new Map();
+  Object.keys(CONFIG.sheets).forEach(role => {
+    const name=CONFIG.sheets[role];if(!name)return;
+    const key=tabKey_(name);if(names.has(key))throw new Error('Demo sheet mappings overlap: '+role+' and '+names.get(key)+'.');names.set(key,role);
+    if(key===tabKey_(CONFIG_SHEET_NAME)||key===tabKey_(SYS_LOG_SHEET))throw new Error('Demo data is mapped to an engine settings/log tab.');
+  });
+  assertNoPendingActivityReset_(roster);assertNoPendingRosterRecovery_(roster,'Load Demo Roster');
+  const check=(role,resolve,startRow,keys)=>{
+    const name=CONFIG.sheets[role];if(!name)return null;
+    const sh=ss.getSheetByName(name);if(!sh)throw new Error('Configured demo '+role+' tab was not found: '+name+'.');
+    const cols=resolve(sh),begin=typeof startRow==='function'?startRow(cols):startRow;
+    const label=cols.labelRow||cols.headerRow;
+    if(!label||begin<=label||begin>sh.getMaxRows())throw new Error('Resolve '+role+' headers/data start before loading a demo.');
+    const seen=new Set();
+    Object.keys(cols).filter(k=>!['width','labelRow','headerRow','dataStart'].includes(k)&&cols[k]).forEach(k=>{
+      const col=cols[k];if(!Number.isInteger(col)||col<1||col>sh.getMaxColumns()||seen.has(col))throw new Error('Missing or overlapping '+role+' column: '+k+'.');seen.add(col);
+    });
+    if(!Number.isInteger(cols.width)||cols.width<1||cols.width>sh.getMaxColumns()||keys.some(k=>!cols[k]))throw new Error('Resolve required '+role+' columns before loading a demo.');
+    return sh;
+  };
+  const tracker=check('tracker',trackerCols_,CONFIG.trackerStartRow,['key','discord','start','end','status']);
+  if((CONFIG.leaveTypes||[]).length&&!tracker)throw new Error('Configure a leave tracker before loading demo leaves.');
+  check('patrolLog',patrolLogCols_,CONFIG.patrolStartRow,['mark','discord','startDate','endDate','startTime','endTime','status']);
+  check('signups',signupCols_,c=>c.dataStart,['discord','name','status']);
 }
 
 /** Caller holds the writer lock; no modal UI or outward notifications while mutating the demo copy. */
@@ -1952,7 +2007,13 @@ function seedDemoRosterCore_() {
     const roster = getSheetOrWarn_(ss, CONFIG.sheets.roster);
     if (!roster) throw new Error('The configured roster tab was not found.');
     const RC = rosterCols_(roster);           // header-resolved — respects THIS sheet's layout (CALLSIGN, HOURS/ACTIVITY order)
-    const laCol = lastActivityCol_(roster);   // -1 when the sheet has no LAST ACTIVITY column
+    demoPreflight_(ss, roster, RC);
+    const laCols = lastActivityCols_(roster);
+    const registry = columnRegistry_(roster);
+    const writable = ['name','discord','join','promo','hours','activity','ooc','email','dob','mayHours','junHours','timeInRank'].map(k=>RC[k]).filter(Boolean).concat(laCols);
+    if(CONFIG.shiftAssignedBy!=='RANK'&&RC.shift)writable.push(RC.shift);
+    // TIME IN RANK is a row-local formula derived from PROMOTION, even when its default class is SLOT.
+    if(new Set(writable).size!==writable.length||writable.some(c=>c===RC.rank||c===RC.unit||c>roster.getMaxColumns()||!registry.some(x=>x.col===c&&(x.klass==='MEMBER'||c===RC.timeInRank))))throw new Error('Demo member columns overlap or are classified as SLOT. Review Columns before loading.');
     const start = CONFIG.rosterStartRow;
     const lastRow = roster.getLastRow();
     if (lastRow < start) throw new Error('This roster has no member rows. Add ranks and callsigns before loading a demo.');
@@ -1970,25 +2031,28 @@ function seedDemoRosterCore_() {
       const call = String(calls[i][0] || '').trim();
       const band = bands ? String(bands[i][0] || '').trim() : '';               // merged label only in the band's top row → forward-fill
       if (band) currentSection = band;                                          // RANK GROUP band label tags the rows beneath it
-      if (call || (rank && isMemberSlot_(rank))) memberRows.push({ r: start + i, rank: rank || 'Member', section: currentSection }); // member row
-      else if (rank && !isMemberSlot_(rank)) currentSection = rank;             // legacy: ALL-CAPS section-divider label in the rank column
+      if (rank && !isMemberSlot_(rank)) {currentSection=rank;continue;}
+      if (call || rank) memberRows.push({ r: start + i, rank: rank || 'Member', section: currentSection });
     }
     if (!memberRows.length) throw new Error('No member rows found. Fill ranks / callsigns before loading a demo.');
 
     // ---- Build a believable person for each member row (some slots stay blank = open positions) ----
     const total = memberRows.length;
-    const people = memberRows.map((m, i) => demoIsOpen_(i, total) ? demoBlank_() : demoPerson_(i, total));
+    demoId_(total + 3); // reserve non-colliding IDs for all four pending applicants before any writes
+    const people = memberRows.map((m, i) => demoIsOpen_(i, total) ? demoBlank_() : demoPerson_(i, total, m.rank));
     const filledCount = people.filter((p) => !p.open).length;
 
     // Spread each RANK's filled members as evenly as possible across the 3 shifts (round-robin within the rank), and
     // rotate each rank's starting shift so any remainder doesn't always pile onto the same shift.
     (function assignShiftsByRank() {
-      const SHIFTS = ['Days', 'Swings', 'Nights'];
-      const seen = {}; // rank → count assigned so far
-      const startAt = {}; // rank → starting offset (rotates per rank)
+      const SHIFTS = CONFIG.shiftValues || [];
+      const slotShifts = RC.shift && CONFIG.shiftAssignedBy==='RANK' ? roster.getRange(start,RC.shift,n,1).getDisplayValues() : null;
+      const seen = Object.create(null);
+      const startAt = Object.create(null);
       let ranksSeen = 0;
       people.forEach((p, i) => {
-        if (p.open) return;
+        if(slotShifts){p.shift=slotShifts[memberRows[i].r-start][0];return;}
+        if (p.open || !SHIFTS.length) return;
         const rank = String(memberRows[i].rank || '').trim().toUpperCase();
         if (!(rank in seen)) { startAt[rank] = ranksSeen % SHIFTS.length; seen[rank] = 0; ranksSeen++; }
         p.shift = SHIFTS[(startAt[rank] + seen[rank]) % SHIFTS.length];
@@ -2005,22 +2069,28 @@ function seedDemoRosterCore_() {
     });
 
     // ---- ROSTER: write ONLY the member-info columns (C, E, F, G, H, I, J) — never RANK (B) or CALLSIGN (D) ----
-    roster.getRange(start, RC.discord, n, 1).setNumberFormat('@'); // keep 17-19 digit IDs exact before writing (col E is never merged)
     runs.forEach((run) => {
       const len = run.endRow - run.startRow + 1;
       const s = people.slice(run.begin, run.end + 1);
+      registry.filter(c=>c.klass==='MEMBER'&&writable.indexOf(c.col)===-1&&!(c.col===RC.shift&&CONFIG.shiftAssignedBy==='RANK')).forEach(c=>{
+        // Preserve custom calculation formulas while removing old literal member data.
+        const formulas=roster.getRange(run.startRow,c.col,len,1).getFormulas();
+        formulas.forEach((f,k)=>{if(!f[0])roster.getRange(run.startRow+k,c.col).clearContent().clearNote();});
+      });
+      writable.forEach(col=>roster.getRange(run.startRow,col,len,1).clearNote());
+      roster.getRange(run.startRow,RC.discord,len,1).setNumberFormat('@');
       roster.getRange(run.startRow, RC.name, len, 1).setValues(s.map((p) => [p.name]));
       roster.getRange(run.startRow, RC.discord, len, 1).setValues(s.map((p) => [p.id]));
       roster.getRange(run.startRow, RC.join, len, 1).setValues(s.map((p) => [p.join])).setNumberFormat('d mmm yyyy');
       roster.getRange(run.startRow, RC.promo, len, 1).setValues(s.map((p) => [p.promo])).setNumberFormat('d mmm yyyy');
       roster.getRange(run.startRow, RC.hours, len, 1).setValues(s.map((p) => [p.hours]));
       roster.getRange(run.startRow, RC.activity, len, 1).setValues(s.map((p) => [p.act]));
-      if (laCol > 0) roster.getRange(run.startRow, laCol, len, 1).setValues(s.map((p) => [p.last]));
+      laCols.forEach((col,k)=>roster.getRange(run.startRow,col,len,1).setValues(s.map(p=>[p.open?'':(p.checks[3-k]||p.last)])));
       // Optional display columns — filled only when the sheet has them (RC.* is 0 when absent).
       if (RC.ooc) roster.getRange(run.startRow, RC.ooc, len, 1).setValues(s.map((p) => [p.name ? demoOocName_(p.name) : '']));
       if (RC.email) roster.getRange(run.startRow, RC.email, len, 1).setValues(s.map((p) => [p.email]));
       if (RC.dob) roster.getRange(run.startRow, RC.dob, len, 1).setValues(s.map((p) => [p.dob])).setNumberFormat('d mmm yyyy'); // else a raw Date renders as a serial
-      if (RC.shift) roster.getRange(run.startRow, RC.shift, len, 1).setValues(s.map((p) => [p.shift]));
+      if (RC.shift && CONFIG.shiftAssignedBy!=='RANK') roster.getRange(run.startRow, RC.shift, len, 1).setValues(s.map((p) => [p.shift]));
       if (RC.mayHours) roster.getRange(run.startRow, RC.mayHours, len, 1).setValues(s.map((p) => [p.may]));
       if (RC.junHours) roster.getRange(run.startRow, RC.junHours, len, 1).setValues(s.map((p) => [p.jun]));
       if (RC.timeInRank && RC.promo) { // live "days since last promotion" — recalculates daily
@@ -2056,6 +2126,7 @@ function seedDemoRosterCore_() {
     // ---- HOURS HISTORY (hidden engine tab: 4 fortnightly activity checks per member) ----
     const hist = ss.getSheetByName(CONFIG.sheets.hoursHistory) || ss.insertSheet(CONFIG.sheets.hoursHistory);
     hist.clear();
+    if(hist.getMaxColumns()<6)hist.insertColumnsAfter(hist.getMaxColumns(),6-hist.getMaxColumns());
     hist.getRange(1, 1, 1, 6).setValues([['WeekOf', 'DiscordID', 'Name', 'Rank', 'Hours', 'Status']]);
     const hrows = [];
     memberRows.forEach((m, i) => {
@@ -2075,9 +2146,6 @@ function seedDemoRosterCore_() {
     try { hist.hideSheet(); } catch (e) { /* already hidden */ }
 
     // ---- STATS SHEET: employee-count breakdown + leadership box, computed from the FILLED members ----
-    const groups = { supervisors: 0, troopers: 0, auxiliary: 0 };
-    memberRows.forEach((m, i) => { if (!people[i].open) groups[demoGroupOf_(m.section, m.rank)]++; });
-    groups.total = groups.supervisors + groups.troopers + groups.auxiliary;
     const leaders = [];
     for (let i = 0; i < memberRows.length && leaders.length < 4; i++) {
       if (people[i].open) continue;
@@ -2085,7 +2153,7 @@ function seedDemoRosterCore_() {
       leaders.push({ rank: m.rank, callsign: String(calls[m.r - start][0] || '').trim(), name: people[i].name });
     }
     let statsFilled = false;
-    try { statsFilled = seedDemoStats_(ss, groups, leaders); } catch (e) { warnings.push('stats: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.stats', e); }
+    try { statsFilled = seedDemoStats_(ss, leaders); } catch (e) { warnings.push('stats: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.stats', e); }
 
     // ---- RECENT PROMOTIONS feed: a believable rolling history so the Welcome-page table demos full ----
     let promoCount = 0;
@@ -2099,24 +2167,26 @@ function seedDemoRosterCore_() {
     let signupInfo = { processed: 0, pending: 0 };
     try { signupInfo = seedDemoSignups_(ss, memberRows, people); } catch (e) { warnings.push('signups: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.signups', e); }
 
-    try { refreshDashboard_(); } catch (e) { warnings.push('dashboard: '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.dashboard', e); }
+    [['coverage',()=>tracker?buildCoverageCore_(ss,tracker):null],['groups',()=>buildGroupSheets_()],['academy',()=>buildAcademySheets_()],['dashboard',()=>refreshDashboard_(true)]].forEach(([label,fn])=>{
+      try{const result=fn();if(result&&result.skipped&&result.skipped.length)throw new Error(result.skipped.map(s=>s.name+': '+s.why).join('; '));}
+      catch(e){warnings.push(label+': '+diagnosticText_(e&&e.message||e,300));log_('seedDemoRoster.'+label,e);}
+    });
     try { if (typeof cpInvalidateHealth_ === 'function') cpInvalidateHealth_(); } catch (e) { /* Trust.gs may be absent */ }
     logInfo_('seedDemoRoster', `demo filled ${filledCount}/${total} member rows (${total - filledCount} open); ${leaveCount} leave record(s); ${patrolCount} patrol log(s); signups ${signupInfo.processed} processed + ${signupInfo.pending} pending; ${promoCount} promotion(s); stats ${statsFilled ? 'populated' : 'not found'}.`);
     SpreadsheetApp.flush();
-    return `Filled ${filledCount} of ${total} member rows with names, Discord IDs, join/promotion dates, hours and activity status — the other ${total - filledCount} are left as open positions.\n\n` +
-      `• LOA/ROA Tracker — ${leaveCount} leave record(s): a few active, plus a deep history of expired leaves.\n` +
+    return `Filled ${filledCount} of ${total} member rows with names, Unique IDs, join/promotion dates, hours and activity status — the other ${total - filledCount} are left as open positions.\n\n` +
+      `• Leave Tracker — ${leaveCount} leave record(s).\n` +
       (patrolCount ? `• Patrol Log — ${patrolCount} session(s); each member's logged hours add up to the hours shown on the roster.\n` : '') +
       (signupInfo.processed || signupInfo.pending ? `• Roster Signups — ${signupInfo.processed} processed (every member came through a signup) + ${signupInfo.pending} fresh Pending applicant(s) to review.\n` : '') +
-      `• Added 4 weeks of activity-check history${statsFilled ? ', populated the stats sheet (employee counts + leadership)' : ''}${promoCount ? `, and seeded ${promoCount} recent promotions` : ''}.\n\n` +
-      `Your ranks, callsigns, section dividers, colours and dropdowns were left untouched. Open 🎛️ Control Panel ▸ Signups to review the pending applicants.`+(warnings.length?'\n\n⚠ These steps did not finish:\n'+warnings.join('\n'):'');
+      `• Added 4 fortnightly activity-check snapshots${statsFilled ? ', populated the leadership box' : ''}${promoCount ? `, and seeded ${promoCount} recent promotions` : ''}.\n\n` +
+      `Your ranks, callsigns, section dividers, colours and dropdowns were left untouched.`+(signupInfo.pending?' Open 🎛️ Control Panel ▸ Signups to review the pending applicants.':'')+(warnings.length?'\n\n⚠ These steps did not finish:\n'+warnings.join('\n'):'');
 
 }
 
 /**
  * Seed the RECENT PROMOTIONS feed (Document Properties) from the freshly-filled demo members: up to PROMO_MAX_
- * entries, each "promoting" a member to the rank they now hold, newest a couple of days ago and spreading back
- * ~2 months with 1–6 day gaps. Deterministic (demoRand_). Open slots, members on leave, and the very top command
- * are skipped — a Chief promoted last Tuesday reads wrong. @return {number} entries seeded (0 without the engine file).
+ * entries at their roster last-promotion dates. Deterministic (demoRand_).
+ * Open slots, members on leave and the very top command are skipped. @return {number} entries seeded (0 without the engine file).
  */
 function seedDemoPromotions_(memberRows, people) {
   if (typeof renderPromotions_ !== 'function') return 0; // RosterSystem.gs owns the feed — check what we actually call
@@ -2126,93 +2196,49 @@ function seedDemoPromotions_(memberRows, people) {
     if (p.open || p.leave || i < 2) return;
     cands.push({ n: p.name, r: m.rank, i: i });
   });
-  if (!cands.length) return 0;
+  if (!cands.length) {PropertiesService.getDocumentProperties().setProperty(PROMO_STORE_PROP_,'[]');renderPromotions_(true);return 0;}
   cands.sort((a, b) => demoRand_(a.i, 5) - demoRand_(b.i, 5)); // deterministic shuffle — promotions shouldn't run in roster order
   const picks = cands.slice(0, PROMO_MAX_);
-  let day = 1 + Math.round(demoRand_(0, 3) * 3); // newest entry 1–4 days ago
   const list = picks.map((c, k) => {
-    const entry = { t: demoDay_(-day).getTime(), n: c.n, r: c.r };
-    day += 1 + Math.round(demoRand_(k, 4) * 5); // 1–6 day gaps walking back in time
+    const entry = { t: people[c.i].promo.getTime(), n: c.n, r: c.r };
     return entry;
-  });
+  }).sort((a,b)=>b.t-a.t);
   PropertiesService.getDocumentProperties().setProperty(PROMO_STORE_PROP_, JSON.stringify(list));
   renderPromotions_(true); // full rescan — the demo may have just created/filled a promo table on a fresh workbook
   return list.length;
 }
 
 /**
- * Fill the stats/dashboard tab's visual boxes from the demo numbers: the TOTAL EMPLOYEES breakdown
- * (Supervisors / Troopers / Auxiliary / Total) and, when a leadership box is present, the top command.
- * Position-found and heavily guarded — a tab without these boxes is skipped, never errors. TOTAL HOURS /
- * CURRENT LOAS-ROAS stay owned by the engine's own dashboard renderer.
- * @return {boolean} whether any box was filled on any tab.
+ * Fill a recognized leadership box on the configured Welcome tab.
+ * The normal dashboard renderer owns counts, category labels and live tags.
+ * @return {boolean} whether the leadership box was filled.
  */
-function seedDemoStats_(ss, groups, leaders) {
-  let any = false;
-  ss.getSheets().forEach((sh) => {
-    const name = sh.getName();
-    if (dashboardSkip_(name) || name === CONFIG.sheets.roster || name === CONFIG.sheets.tracker) return; // only KPI/stat tabs
-    try { const employees = fillEmployeeBox_(sh, groups); const leadership = fillExecBox_(sh, leaders); if (employees || leadership) any = true; } catch (e) { log_('seedDemoStats_.sheet', e); }
-  });
-  return any;
+function seedDemoStats_(ss, leaders) {
+  const sh=ss.getSheetByName(CONFIG.sheets.welcome || 'Welcome Page');
+  if(!sh||dashboardSkip_(sh.getName())||sh.getName()===CONFIG.sheets.roster)return false;
+  // Counts are owned by the normal configured dashboard renderer; never invent category labels here.
+  return fillExecBox_(sh,leaders);
 }
 
-/** Scan the top `searchRows` rows for a cell whose text equals `want` (case-insensitive). @return {{row,col}|null} 1-based. */
-function findLabelCell_(sheet, want, searchRows) {
-  const lastRow = Math.min(sheet.getLastRow(), searchRows || 60);
-  const lastCol = sheet.getLastColumn();
-  if (lastRow < 1 || lastCol < 1) return null;
-  const grid = sheet.getRange(1, 1, lastRow, lastCol).getDisplayValues();
-  const W = String(want).trim().toUpperCase();
-  for (let r = 0; r < lastRow; r++) for (let c = 0; c < lastCol; c++) {
-    if (String(grid[r][c]).trim().toUpperCase() === W) return { row: r + 1, col: c + 1 };
-  }
-  return null;
-}
-
-/** Write SUPERVISORS/TROOPERS/AUXILIARY/TOTAL labels + counts into the 4 rows below a "TOTAL EMPLOYEES" header. @return {boolean} */
-function fillEmployeeBox_(sheet, groups) {
-  const hit = findLabelCell_(sheet, 'TOTAL EMPLOYEES', 40);
-  if (!hit) return false;
-  const merges = sheet.getRange(hit.row, hit.col).getMergedRanges();
-  let leftCol = hit.col, rightCol = hit.col;
-  if (merges.length) { leftCol = merges[0].getColumn(); rightCol = merges[0].getLastColumn(); }
-  if (rightCol <= leftCol) rightCol = leftCol + 1;                              // need a value column to the right of the label
-  const rows = [['SUPERVISORS', groups.supervisors], ['TROOPERS', groups.troopers], ['AUXILIARY', groups.auxiliary], ['TOTAL', groups.total]];
-  let wrote = 0;
-  rows.forEach((rw, k) => {
-    const r = hit.row + 1 + k;
-    if (r > sheet.getMaxRows()) return;
-    sheet.getRange(r, leftCol).setValue(rw[0]).clearNote();                     // label (top-left of any E:F-style merge on the row)
-    // Drop prior tag ownership for the demo seed. The next live dashboard refresh adopts these titled boxes
-    // using the configured headcount groups, including zero for labels without a matching group.
-    sheet.getRange(r, rightCol).setValue(rw[1]).clearNote();                    // count
-    wrote++;
-  });
-  return wrote > 0;
-}
-
-/** Fill the leadership box (rank | callsign | name per row) below its wide header — found as the widest 1-row merge above the first KPI. @return {boolean} */
+/** Fill the leadership box (rank | callsign | name per row) below its wide header — found by a recognized title and callsign/name sub-merges. @return {boolean} */
 function fillExecBox_(sheet, leaders) {
   if (!leaders || !leaders.length) return false;
-  const kpi = findLabelCell_(sheet, 'TOTAL HOURS', 30) || findLabelCell_(sheet, 'TOTAL EMPLOYEES', 30) || findLabelCell_(sheet, 'CURRENT LOAS/ROAS', 30);
-  const limit = kpi ? kpi.row - 1 : Math.min(sheet.getLastRow(), 12);
+  const limit = Math.min(sheet.getLastRow(), 40);
   if (limit < 4) return false;
-  let header = null; // widest single-row horizontal merge in rows 4..limit = the leadership box header
+  let header = null; // only a recognized single-row leadership header
   sheet.getRange(1, 1, Math.min(limit, sheet.getMaxRows()), sheet.getLastColumn()).getMergedRanges().forEach((mr) => {
-    if (mr.getNumRows() === 1 && mr.getNumColumns() >= 4 && mr.getRow() >= 4 && mr.getRow() <= limit &&
+    if (mr.getNumRows() === 1 && mr.getNumColumns() >= 4 && /^(EXECUTIVE COMMAND|COMMAND STAFF|LEADERSHIP)$/i.test(String(sheet.getRange(mr.getRow(),mr.getColumn()).getDisplayValue()).trim()) && mr.getRow() <= limit &&
         (!header || mr.getNumColumns() > header.width)) header = { row: mr.getRow(), left: mr.getColumn(), right: mr.getLastColumn(), width: mr.getNumColumns() };
   });
   if (!header) return false;
-  if (String(sheet.getRange(header.row, header.left).getDisplayValue()).trim() === '') sheet.getRange(header.row, header.left).setValue('EXECUTIVE COMMAND');
   let wrote = 0;
-  for (let k = 0; k < leaders.length; k++) {
+  for (let k = 0; k < 4; k++) {
     const r = header.row + 1 + k;
     if (r > sheet.getMaxRows()) break;
     const inner = sheet.getRange(r, header.left, 1, header.right - header.left + 1).getMergedRanges()
-      .filter((mr) => mr.getNumColumns() > 1).sort((a, b) => a.getColumn() - b.getColumn());
+      .filter((mr) => mr.getNumRows() === 1 && mr.getRow() === r && mr.getNumColumns() > 1 && mr.getColumn() > header.left && mr.getLastColumn() <= header.right).sort((a, b) => a.getColumn() - b.getColumn());
     if (inner.length < 2) break;                                               // a row without the callsign+name sub-merges = box ended
-    const L = leaders[k];
+    const L = leaders[k] || {rank:'',callsign:'',name:''};
     sheet.getRange(r, header.left).setValue(L.rank);                           // rank in the box's left column
     sheet.getRange(r, inner[0].getColumn()).setValue(L.callsign);             // callsign in the first inner merge
     sheet.getRange(r, inner[1].getColumn()).setValue(demoInitialName_(L.name)); // name in the second
