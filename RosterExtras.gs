@@ -1711,8 +1711,7 @@ function demoPerson_(i, total, rank) {
   // so a renamed OR LOA-only setup never seeds a status that doesn't exist (e.g. ROA). (No "Reserve" in the mix.)
   const engine = statusEngine_(), ladder = statusLadderFor_(rank || '', engine);
   const tiers = ladder.map(t => t.name);
-  if (!tiers.length) throw new Error('Configure at least one activity tier before loading demo data.');
-  const TOP = tiers[0], MID = tiers[Math.min(1, tiers.length - 1)], LOW = tiers[tiers.length - 1];
+  const TOP = tiers[0] || '', MID = tiers[Math.min(1, tiers.length - 1)] || '', LOW = tiers[tiers.length - 1] || '';
   const lts = CONFIG.leaveTypes || [];
   const lv1 = lts[0]; // the tracker has one implicit type, regardless of how many LEAVE statuses exist
   const rst = norm_(CONFIG.returnStatus || '');           // the "returning" leave (default ROA), if configured
@@ -1730,6 +1729,11 @@ function demoPerson_(i, total, rank) {
     pastLeaves.push({type:lv1,from:-(20+i%7),to:-(2+i%3)});
   }
   else { hours = 0; last = TOP; leave = { type: act, from: -(2 + i % 6), to: 5 + (i % 10), status: CONFIG.approvedStatus }; }
+  if (!tiers.length) {
+    // A tierless department is valid: demo hours still exist, but no ordinary status is invented.
+    if (!act) hours = demoQuarter_(r * r2 * 30);
+    last = act;
+  }
   if (!leave && tiers.indexOf(act)!==-1) {
     const ti = tiers.indexOf(act), floor = ladder[ti].min, ceiling = ti ? ladder[ti - 1].min : Infinity;
     hours = Math.max(floor, Math.min(hours, Number.isFinite(ceiling) ? ceiling - Math.min(.25, (ceiling - floor) / 2) : hours));
@@ -1759,7 +1763,7 @@ function demoPerson_(i, total, rank) {
     const active=[leave].concat(pastLeaves).filter(Boolean).find(l=>at>=demoDay_(l.from).getTime()&&at<demoDay_(l.to).getTime());
     if(active && !(rst&&norm_(active.type)===rst&&h<CONFIG.thresholds.semi))return active.type;
     if(rst&&norm_(act)===rst&&pastLeaves.length&&at>=demoDay_(pastLeaves[0].to).getTime()&&h>=CONFIG.thresholds.semi)return act;
-    return computeStatusCore_(rank || '',h,engine);
+    return ladder.length ? computeStatusCore_(rank || '',h,engine) : '';
   });
   return {
     name: nm, id: demoId_(i), email: demoEmail_(nm), dob: demoDob_(i), shift: shift, may: may, jun: jun,
@@ -1946,15 +1950,16 @@ function seedDemoRoster() {
     const message=withPatrolCreditLock_(()=>{
       previous=DEV_WEBHOOKS_OFF_;suppressed=true;DEV_WEBHOOKS_OFF_=true;
       let failure;
-      try{return seedDemoRosterCore_();}
-      catch(e){failure=e;throw new Error('Demo loading stopped: '+diagnosticText_(e&&e.message||e,400)+'. Some data may already have been written; inspect this copy before retrying.');}
+      const progress={writesStarted:false};
+      try{return seedDemoRosterCore_(progress);}
+      catch(e){failure=e;throw new Error((progress.writesStarted?'Demo loading stopped: ':'Demo loading stopped before changing demo data: ')+diagnosticText_(e&&e.message||e,400)+(progress.writesStarted?'\nSome data may already have been written; inspect this copy before retrying.':''));}
       // Queue even a partial write while still holding the writer lock.
       finally{
-        try{if(typeof publishMarkDirty_==='function')publishMarkDirty_();}
+        try{if(progress.writesStarted&&typeof publishMarkDirty_==='function')publishMarkDirty_();}
         catch(e){throw new Error('Demo publishing could not be queued: '+diagnosticText_(e&&e.message||e,300)+(failure?'\nDemo loading also stopped: '+diagnosticText_(failure&&failure.message||failure,300):'')+'. Demo data may already have been written; inspect this copy before retrying.');}
       }
     });
-    ui.alert(message.indexOf('⚠')===-1?'Demo data loaded':'Demo loaded with issues',message,ui.ButtonSet.OK);
+    ui.alert(message.indexOf('⚠')===-1?'Demo data loaded':'Demo loaded with notes',message,ui.ButtonSet.OK);
   }); } finally { if(suppressed)DEV_WEBHOOKS_OFF_=previous; }
 }
 
@@ -2001,7 +2006,7 @@ function demoPreflight_(ss, roster, RC) {
 }
 
 /** Caller holds the writer lock; no modal UI or outward notifications while mutating the demo copy. */
-function seedDemoRosterCore_() {
+function seedDemoRosterCore_(progress) {
     const warnings=[];
     const ss = SpreadsheetApp.getActive();
     const roster = getSheetOrWarn_(ss, CONFIG.sheets.roster);
@@ -2039,6 +2044,8 @@ function seedDemoRosterCore_() {
     // ---- Build a believable person for each member row (some slots stay blank = open positions) ----
     const total = memberRows.length;
     demoId_(total + 3); // reserve non-colliding IDs for all four pending applicants before any writes
+    const engine=statusEngine_();
+    if(memberRows.some(m=>!statusLadderFor_(m.rank,engine).length))warnings.push('Some ranks have no activity ladder configured. Demo hours are populated, but ordinary activity and history statuses for those ranks are left blank; configured leave statuses still apply. Configure tiers in Settings Studio → Statuses & tiers to enable calculation.');
     const people = memberRows.map((m, i) => demoIsOpen_(i, total) ? demoBlank_() : demoPerson_(i, total, m.rank));
     const filledCount = people.filter((p) => !p.open).length;
 
@@ -2069,6 +2076,7 @@ function seedDemoRosterCore_() {
     });
 
     // ---- ROSTER: write ONLY the member-info columns (C, E, F, G, H, I, J) — never RANK (B) or CALLSIGN (D) ----
+    if(progress)progress.writesStarted=true;
     runs.forEach((run) => {
       const len = run.endRow - run.startRow + 1;
       const s = people.slice(run.begin, run.end + 1);
@@ -2085,7 +2093,7 @@ function seedDemoRosterCore_() {
       roster.getRange(run.startRow, RC.promo, len, 1).setValues(s.map((p) => [p.promo])).setNumberFormat('d mmm yyyy');
       roster.getRange(run.startRow, RC.hours, len, 1).setValues(s.map((p) => [p.hours]));
       roster.getRange(run.startRow, RC.activity, len, 1).setValues(s.map((p) => [p.act]));
-      laCols.forEach((col,k)=>roster.getRange(run.startRow,col,len,1).setValues(s.map(p=>[p.open?'':(p.checks[3-k]||p.last)])));
+      laCols.forEach((col,k)=>roster.getRange(run.startRow,col,len,1).setValues(s.map(p=>[p.open?'':p.checks[3-k]])));
       // Optional display columns — filled only when the sheet has them (RC.* is 0 when absent).
       if (RC.ooc) roster.getRange(run.startRow, RC.ooc, len, 1).setValues(s.map((p) => [p.name ? demoOocName_(p.name) : '']));
       if (RC.email) roster.getRange(run.startRow, RC.email, len, 1).setValues(s.map((p) => [p.email]));
@@ -2133,7 +2141,7 @@ function seedDemoRosterCore_() {
       const p = people[i];
       if (p.open) return; // open positions carry no history
       const hs = demoHours_(p.hours);
-      for (let k = 0; k < 4; k++) hrows.push([demoSunday_((3 - k) * 2), p.id, p.name, m.rank, hs[k], p.checks[k] || p.act]); // *2 = fortnightly cadence
+      for (let k = 0; k < 4; k++) hrows.push([demoSunday_((3 - k) * 2), p.id, p.name, m.rank, hs[k], p.checks[k]]); // *2 = fortnightly cadence
     });
     if (hrows.length) {
       if(hist.getMaxRows()<hrows.length+1)hist.insertRowsAfter(hist.getMaxRows(),hrows.length+1-hist.getMaxRows());
@@ -2179,7 +2187,7 @@ function seedDemoRosterCore_() {
       (patrolCount ? `• Patrol Log — ${patrolCount} session(s); each member's logged hours add up to the hours shown on the roster.\n` : '') +
       (signupInfo.processed || signupInfo.pending ? `• Roster Signups — ${signupInfo.processed} processed (every member came through a signup) + ${signupInfo.pending} fresh Pending applicant(s) to review.\n` : '') +
       `• Added 4 fortnightly activity-check snapshots${statsFilled ? ', populated the leadership box' : ''}${promoCount ? `, and seeded ${promoCount} recent promotions` : ''}.\n\n` +
-      `Your ranks, callsigns, section dividers, colours and dropdowns were left untouched.`+(signupInfo.pending?' Open 🎛️ Control Panel ▸ Signups to review the pending applicants.':'')+(warnings.length?'\n\n⚠ These steps did not finish:\n'+warnings.join('\n'):'');
+      `Your ranks, callsigns, section dividers, colours and dropdowns were left untouched.`+(signupInfo.pending?' Open 🎛️ Control Panel ▸ Signups to review the pending applicants.':'')+(warnings.length?'\n\n⚠ Notes and incomplete steps:\n'+warnings.join('\n'):'');
 
 }
 

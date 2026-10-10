@@ -123,7 +123,8 @@ const book={getSheetByName:n=>({Roster:roster,Tracker:tracker,Patrol:patrol,Sign
 c.SpreadsheetApp.getActive=()=>book;
 Object.defineProperty(c,'CONFIG',{value:{sheets:{roster:'Roster',tracker:'Tracker',patrolLog:'Patrol',signups:'Signups',hoursHistory:'History'},rosterStartRow:8,trackerStartRow:8,patrolStartRow:8,patrol:{processedStatus:'Processed',maxHours:16}},configurable:true});
 c.getSheetOrWarn_=(ss,n)=>ss.getSheetByName(n);c.rosterCols_=()=>({rank:2,name:3,unit:4,discord:5,join:6,promo:7,hours:8,activity:9,shift:10});c.lastActivityCols_=()=>[];c.demoPreflight_=()=>{};c.columnRegistry_=()=>Array.from({length:10},(_,i)=>({col:i+1,klass:i===1||i===3?'SLOT':'MEMBER'}));
-const day=new Date(2026,9,8);c.demoIsOpen_=()=>false;c.demoPerson_=()=>({name:'QA Person',id:'111',join:day,promo:day,hours:20,act:'Active',checks:[],leave:{type:'LOA',from:-1,to:1},pastLeaves:Array.from({length:3},()=>({type:'LOA',from:-10,to:-5}))});
+c.statusEngine_=()=>({global:[{name:'Active',min:10},{name:'Inactive',min:0}],overrides:[],rules:[]});
+const day=new Date(2026,9,8);c.demoIsOpen_=()=>false;c.demoPerson_=()=>({name:'QA Person',id:'111',join:day,promo:day,hours:20,act:'Active',checks:Array(4).fill('Active'),leave:{type:'LOA',from:-1,to:1},pastLeaves:Array.from({length:3},()=>({type:'LOA',from:-10,to:-5}))});
 c.demoSunday_=()=>day;c.demoDay_=()=>day;c.todayInSheetTz_=()=>day;
 c.framedTable_=sh=>({cap:sh.rows,width:sh.width});c.ensureRoomAboveCap_=(sh,row)=>{if(row>=sh.rows)sh.insertRowsBefore(sh.rows,row-sh.rows+1)};
 c.demoWriteLeave_=(sh,m,L,row)=>sh.getRange(row,3).setValue(m.name);

@@ -49,7 +49,7 @@ function fixture(options={}){
   PropertiesService:{getDocumentProperties:()=>props,getScriptProperties:()=>props},LockService:{getScriptLock:()=>lock,getDocumentLock:()=>lock},CacheService:{getDocumentCache:()=>({get:()=>null,put(){},remove(){}})},
   UrlFetchApp:{fetch:deny},FormApp:{create:deny},ScriptApp:{newTrigger:deny},Utilities:{getUuid:()=> 'demo-test'}};
  vm.createContext(c);files.forEach(file=>vm.runInContext(fs.readFileSync(file,'utf8'),c,{filename:file}));
- const actual={rosterCols:c.rosterCols_,registry:c.columnRegistry_,trackerCols:c.trackerCols_,patrolCols:c.patrolLogCols_,signupCols:c.signupCols_,coverage:c.buildCoverageCore_};
+ const actual={rosterCols:c.rosterCols_,registry:c.columnRegistry_,trackerCols:c.trackerCols_,patrolCols:c.patrolLogCols_,signupCols:c.signupCols_,coverage:c.buildCoverageCore_,statusEngine:c.statusEngine_};
  Object.defineProperty(c,'CONFIG',{value:config,configurable:true});c.statusEngine_=()=>engine;
  c.todayInSheetTz_=()=>new Date(clock.getFullYear(),clock.getMonth(),clock.getDate());c.publishMarkDirty_=()=>{queued++;};
  c.log_=c.logInfo_=c.logWarn_=()=>{};c.diagnosticText_=s=>String(s);
@@ -160,11 +160,11 @@ check('large-roster pending applicants have disjoint IDs',()=>{
  const f=fixture({slots:850}),people=f.memberRows.map((m,i)=>f.c.demoPerson_(i,850,m.rank));
  f.c.seedDemoSignups_(f.book,f.memberRows,people);const ids=new Set(people.map(p=>p.id));const pending=f.signups.values.filter(r=>r[8]==='Pending');assert.equal(pending.length,4);pending.forEach(r=>assert(!ids.has(r[3])));
 });
-check('preflight rejects collisions, missing/header mappings, recovery, capacity and absent tiers before writes',()=>{
+check('preflight rejects collisions, missing/header mappings, recovery and capacity before writes',()=>{
  const invalid=[f=>f.config.sheets.patrolLog='Roster',f=>f.config.sheets.tracker='Missing',f=>f.config.sheets.hoursHistory='SYS Log',f=>f.config.rosterStartRow=1,f=>f.roster.values[0][5]='Old notes',
   f=>f.c.rosterCols_=()=>({...RC,hours:3}),f=>f.c.trackerCols_=()=>({...TC,end:8}),f=>f.c.signupCols_=()=>({...SC,headerRow:2}),f=>f.c.patrolLogCols_=()=>({...PC,width:14}),
   f=>f.c.lastActivityCols_=()=>[5],f=>f.c.columnRegistry_=()=>[],f=>f.c.assertNoPendingActivityReset_=()=>{throw Error('reset pending');},
-  f=>f.c.assertNoPendingRosterRecovery_=()=>{throw Error('move pending');},f=>{f.config.idMinDigits=1;f.config.idMaxDigits=1;},f=>f.engine.global=[]];
+  f=>f.c.assertNoPendingRosterRecovery_=()=>{throw Error('move pending');},f=>{f.config.idMinDigits=1;f.config.idMaxDigits=1;}];
  for(const corrupt of invalid){const f=fixture();corrupt(f);const before=f.before();assert.throws(()=>f.c.seedDemoRosterCore_());assert.equal(f.before(),before);}
  for(const mark of ['RE_CREDIT_V1:{}','RE_IMPORT_V1:{}','1|123|IMPORT_PENDING:x']){
   const f=fixture();f.patrol.values[1][0]=mark;f.c.assertNoPendingRosterRecovery_=f.recoveryGuard;
@@ -188,13 +188,38 @@ check('confirmation, lock failures, partial failures and menu auditing restore s
  for(const previous of [false,true])for(const fail of [false,true]){
   const f=fixture();vm.runInContext('DEV_WEBHOOKS_OFF_='+previous,f.c);let audited=false;
   f.c.runAction_=(_,fn)=>{try{fn();}finally{assert(vm.runInContext('DEV_WEBHOOKS_OFF_',f.c));audited=true;}};
-  f.c.seedDemoRosterCore_=()=>{assert(f.held);assert(vm.runInContext('DEV_WEBHOOKS_OFF_',f.c));if(fail)throw Error('write failed');return 'Seeded';};
+  f.c.seedDemoRosterCore_=progress=>{assert(f.held);assert(vm.runInContext('DEV_WEBHOOKS_OFF_',f.c));progress.writesStarted=true;if(fail)throw Error('write failed');return 'Seeded';};
   if(fail)assert.throws(()=>f.c.seedDemoRoster(),/Some data may already/);else f.c.seedDemoRoster();
   assert(audited&&!f.held);assert.equal(f.releases,1);assert.equal(f.queued,1);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',f.c),previous);
  }
  for(const answer of ['','LOAD','LOAD DEMO extra']){const f=fixture();f.c.runAction_=(_,fn)=>fn();f.ui.prompt=()=>({getSelectedButton:()=> 'OK',getResponseText:()=>answer});const before=f.before();f.c.seedDemoRoster();assert.equal(f.before(),before);assert.equal(f.queued,0);}
  const busy=fixture();busy.c.runAction_=(_,fn)=>fn();busy.busy=true;assert.throws(()=>busy.c.seedDemoRoster(),/E-503|running/);assert.equal(busy.queued,0);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',busy.c),false);
- for(const fail of [false,true]){const f=fixture();f.c.runAction_=(_,fn)=>fn();f.c.seedDemoRosterCore_=()=>{if(fail)throw Error('write failure');return 'Seeded';};f.c.publishMarkDirty_=()=>{throw Error('queue failure');};assert.throws(()=>f.c.seedDemoRoster(),fail?/queue failure.*write failure/s:/queue failure/);assert(!f.held);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',f.c),false);}
+ for(const fail of [false,true]){const f=fixture();f.c.runAction_=(_,fn)=>fn();f.c.seedDemoRosterCore_=progress=>{progress.writesStarted=true;if(fail)throw Error('write failure');return 'Seeded';};f.c.publishMarkDirty_=()=>{throw Error('queue failure');};assert.throws(()=>f.c.seedDemoRoster(),fail?/queue failure.*write failure/s:/queue failure/);assert(!f.held);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',f.c),false);}
+});
+check('tierless configurations load without invented statuses, including real config materialization',()=>{
+ for(const spec of [{config:{leaveTypes:[],returnStatus:''}},{},{engine:{overrides:[{scope:'RANK',match:'Sergeant',ladder:[{name:'Ready',min:10},{name:'Idle',min:0}]}]}}]){
+  const f=fixture({...spec,slots:80,engine:{global:[],...spec.engine}});
+  for(let i=0;i<160;i++){
+   const p=f.c.demoPerson_(i,160,'Officer');assert(['',...f.config.leaveTypes].includes(p.act));assert.equal(f.c.resolveStatus_('Officer',p.act,p.hours),null);
+   p.checks.forEach((status,k)=>{const at=f.c.demoSunday_((3-k)*2),active=[p.leave,...p.pastLeaves].filter(Boolean).find(l=>at>=f.c.demoDay_(l.from)&&at<f.c.demoDay_(l.to));assert(status===''||active&&status===active.type||status===f.config.returnStatus&&at>=f.c.demoDay_(p.pastLeaves[0].to));});
+  }
+  const message=f.c.seedDemoRosterCore_();assert(message.includes('no activity ladder'));assert(f.memberRows.some(m=>f.roster.values[m.r-1][7]>0));
+  assert(f.history.values.slice(1).some(row=>row[1]&&row[5]===''));
+  if(!f.config.leaveTypes.length)assert(f.memberRows.every(m=>f.roster.values[m.r-1][8]===''));
+  if(spec.engine)assert(f.memberRows.slice(0,4).every(m=>['Ready','Idle'].includes(f.roster.values[m.r-1][8])));
+  const before=f.roster.values.map(r=>r[8]);f.c.processDailyLOAs_(f.roster,f.tracker,f.c.todayInSheetTz_(),{sendWebhooks:false});assert.deepEqual(f.roster.values.map(r=>r[8]),before);
+ }
+ const f=fixture(),v=f.c.validateConfig_({STATUSES:{kind:'table',header:['Status','Kind','MinHours','Color'],rows:[]},STATUS_OVERRIDES:{kind:'table',header:['Scope','Match','Ladder'],rows:[]}});
+ assert(!v.problems.some(p=>p.sev==='ERROR'));const state=f.c.materialize_(v.config,true);assert.equal(state.tiers.length,0);
+ f.c.cfg_=()=>state;f.c.statusEngine_=f.actual.statusEngine;f.config.leaveTypes=state.legacy.leaveTypes;f.config.returnStatus=state.legacy.returnStatus;
+ assert(f.c.seedDemoRosterCore_().includes('no activity ladder'));assert(f.memberRows.every(m=>f.roster.values[m.r-1][8]===''));
+});
+check('menu preflight failures report no demo writes and do not queue publishing',()=>{
+ const f=fixture();f.config.sheets.tracker='Missing';f.c.runAction_=(_,fn)=>fn();const before=f.before();
+ assert.throws(()=>f.c.seedDemoRoster(),e=>/before changing demo data/.test(e.message)&&!/may already/.test(e.message));
+ assert.equal(f.before(),before);assert.equal(f.queued,0);assert(!f.held);assert.equal(vm.runInContext('DEV_WEBHOOKS_OFF_',f.c),false);
+ const partial=fixture();partial.c.runAction_=(_,fn)=>fn();partial.roster.getRange=()=>{throw Error('read failed');};
+ assert.throws(()=>partial.c.seedDemoRoster(),/before changing demo data/);assert.equal(partial.queued,0);
 });
 check('derived-stage failures and skipped views appear in the result',()=>{
  for(const fn of ['seedDemoStats_','seedDemoPromotions_','seedDemoPatrolLog_','seedDemoSignups_','buildCoverageCore_','buildGroupSheets_','buildAcademySheets_','refreshDashboard_']){

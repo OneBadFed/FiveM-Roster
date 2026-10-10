@@ -1,13 +1,15 @@
 # Demo command audit — October 9, 2026
 
-The `seedDemoRoster` command and its member, leave, patrol, signup, history, promotion and Welcome helpers were reviewed and repaired. The local verification gate passes **28 suites/checks**, including **14 new demo scenario groups**. These results use synthetic services; the destructive command has **not** been run on a live Google workbook.
+The `seedDemoRoster` command and its member, leave, patrol, signup, history, promotion and Welcome helpers were reviewed and repaired. The local verification gate passes **28 suites/checks**, including **16 demo scenario groups**. These results use synthetic services; the destructive command has **not** been run on a live Google workbook.
+
+The initial audit missed a valid empty-tier configuration: department reset deliberately leaves the status table empty, and First-Run Setup preserves it. The reported October 9 failure occurred while preparing demo people, before demo sheet writes. The loader now supports that configuration: ordinary activity/history statuses remain blank, hours are still seeded, and configured leaves/per-rank ladders still apply. Its result explains the limitation without changing settings. Preflight failures explicitly report no demo data changes and do not queue public publishing; failures after writing begins retain the partial-write warning and queue.
 
 ## Findings and repairs
 
 | Area | Problem found | Resulting behavior |
 |---|---|---|
 | IDs | Fixed Discord length; suffix wrapping; pending applicants could collide with roster members | Numeric text IDs honor configured lengths and remain distinct. Capacity is checked before writing; four applicants receive IDs beyond the member slot range. |
-| Activity | Fixed hour bands and three-tier assumptions produced wrong statuses under custom settings | Demo hours follow the rank's configured ladder, including one/two-tier configurations and overrides. The real status rules compute the result. Disabled leave types stay disabled. |
+| Activity | Fixed hour bands and three-tier assumptions produced wrong statuses under custom settings; the audited loader then rejected valid empty tiers | Demo hours follow the rank's configured ladder, including one/two-tier configurations and overrides. Tierless ranks receive hours with blank ordinary activity/history statuses, without inventing statuses or changing configuration. The real status rules compute configured ladders. Disabled leave types stay disabled. |
 | Leaves/history | Active tracker rows assumed `Approved`; history statuses were disconnected from snapshot dates | Approval/expiry values follow configuration. Active leaves use the tracker's single implicit type; returning members have ended leave records, so scheduler and coverage agree. Snapshot statuses reflect their Sunday dates and the matching leave intervals. The summary correctly describes four fortnightly snapshots. |
 | Shifts | Hard-coded choices overwrote slot assignments | Member shifts use configured choices. Slot-owned shifts survive unchanged, including open positions. |
 | Stale member data | Old custom fields, notes and extra previous-activity columns survived reloads | Old literal MEMBER fields/notes are cleared; custom calculation formulas and SLOT fields remain. All configured previous-activity columns update. The row-local Time in Rank formula remains supported with its normal SLOT classification. |

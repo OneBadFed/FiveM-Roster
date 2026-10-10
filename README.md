@@ -38,6 +38,8 @@ within seconds of any change here.
 5. **Want to see it working before adding real people?** 🧪 Dev / QA ▸ Demo / department reset ▸ **Load demo data (overwrites this copy)…** fills the whole
    existing roster slots with fictional members, processed signups, matching patrol hours and leave history.
    IDs, tiers, leave statuses and member-owned shifts follow your settings; slot-owned shifts stay in place.
+   With no activity tiers configured (including after department reset), hours are seeded and ordinary activity
+   and history statuses stay blank; configured leaves and per-rank ladders still apply. The result explains this.
    It **overwrites member and tracking records**. Use a dedicated copy with its own connections: retained form
    responses can be imported later, and a linked public roster receives demo data through its publishing queue.
    See [DEMO_AUDIT.md](DEMO_AUDIT.md) for checks, prerequisites and live verification limits.
